@@ -3,50 +3,20 @@
 # Import test bootstrapper first
 $testBootstrapper = Join-Path (Split-Path -Parent $PSScriptRoot) "Infrastructure\TestBootstrapper.ps1"
 if (Test-Path $testBootstrapper) {
-. $testBootstrapper
+    . $testBootstrapper
 }
+
 # Import Backup module functions for testing
 $BackupModulePath = Join-Path $PSScriptRoot '..\..\Private\Backup'
 Get-ChildItem -Path $BackupModulePath -Filter '*.ps1' | ForEach-Object {
-. #Requires -Module Pester
+    . $_.FullName
+}
 
-
-    # Import test bootstrapper first
-    $testBootstrapper = Join-Path (Split-Path -Parent $PSScriptRoot) "Infrastructure\TestBootstrapper.ps1"
-    if (Test-Path $testBootstrapper) {
-        . $testBootstrapper
-    }
-
-    # Import Backup module functions for testing
-    $BackupModulePath = Join-Path $PSScriptRoot '..\..\Private\Backup'
-    Get-ChildItem -Path $BackupModulePath -Filter '*.ps1' | ForEach-Object {
-        . $_.FullName
-    }
-
-    # Import test helpers if they exist
-    $TestHelpersPath = Join-Path $PSScriptRoot '..\TestHelpers\TestHelpers.ps1'
-    if (Test-Path $TestHelpersPath) {
-        . $TestHelpersPath
-    }
-
-    # Mock external dependencies
-    Mock Write-Verbose { }
-    Mock Write-Information { }
-    Mock Write-Warning { }
-    Mock Write-Error { }
-
-    # Mock file system operations
-    Mock Test-Path { return $true }
-    Mock Get-Item { return @{ FullName = 'MockPath'; LastWriteTime = (Get-Date) } }
-    Mock Get-ChildItem { return @() }
-    Mock New-Item { return @{ FullName = 'MockPath' } }
-    Mock Copy-Item { }
-    Mock Remove-Item { }
-    Mock Out-File { }
-    Mock Get-Content { return @() }
-
-    # Mock ACL operations
-    Mock Get-Acl { return @{ Access = @(); Owner = 'BUILTIN\Administrators' } }
+# Import test helpers if they exist
+$TestHelpersPath = Join-Path $PSScriptRoot '..\TestHelpers\TestHelpers.ps1'
+if (Test-Path $TestHelpersPath) {
+    . $TestHelpersPath
+}
     Mock Set-Acl { }
 
     # Mock logging function
@@ -54,7 +24,8 @@ Get-ChildItem -Path $BackupModulePath -Filter '*.ps1' | ForEach-Object {
 
     # Mock compression operations
     Mock Compress-Archive { }
-    Mock Expand-Archive { }
+    Mock Expand-Archive { }
+
 
 Describe "Find-BackupFile" -Tag "Unit", "Backup", "Discovery" {
 
@@ -177,7 +148,8 @@ Describe "Find-BackupFile" -Tag "Unit", "Backup", "Discovery" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $CorrelationId -eq $script:TestCorrelationId -and $Message -like "*backup search*" }
         }
-    }
+    }
+
 
 Describe "Get-BackupMetadata" -Tag "Unit", "Backup", "Metadata" {
 
@@ -287,7 +259,8 @@ Describe "Get-BackupMetadata" -Tag "Unit", "Backup", "Metadata" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $CorrelationId -eq $script:TestCorrelationId }
         }
-    }
+    }
+
 
 Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACL" {
 
@@ -441,7 +414,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACL" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $Message -like "*$env:USERNAME*" }
         }
-    }
+    }
+
 
 Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
 
@@ -589,7 +563,8 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $CorrelationId -eq $script:TestCorrelationId -and $Message -like "*integrity*" }
         }
-    }
+    }
+
 
 Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "Restore" {
 
@@ -782,7 +757,8 @@ Mock Set-Acl { }
 Mock Write-StructuredLog { }
 # Mock compression operations
 Mock Compress-Archive { }
-Mock Expand-Archive { }
+Mock Expand-Archive { }
+
 
 Describe "Find-BackupFile" -Tag "Unit", "Backup", "Discovery" {
 
@@ -905,7 +881,8 @@ Describe "Find-BackupFile" -Tag "Unit", "Backup", "Discovery" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $CorrelationId -eq $script:TestCorrelationId -and $Message -like "*backup search*" }
         }
-    }
+    }
+
 
 Describe "Get-BackupMetadata" -Tag "Unit", "Backup", "Metadata" {
 
@@ -1015,7 +992,8 @@ Describe "Get-BackupMetadata" -Tag "Unit", "Backup", "Metadata" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $CorrelationId -eq $script:TestCorrelationId }
         }
-    }
+    }
+
 
 Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACL" {
 
@@ -1169,7 +1147,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACL" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $Message -like "*$env:USERNAME*" }
         }
-    }
+    }
+
 
 Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
 
@@ -1317,7 +1296,8 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
 
             Should Invoke Write-StructuredLog -ParameterFilter { $CorrelationId -eq $script:TestCorrelationId -and $Message -like "*integrity*" }
         }
-    }
+    }
+
 
 Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "Restore" {
 
