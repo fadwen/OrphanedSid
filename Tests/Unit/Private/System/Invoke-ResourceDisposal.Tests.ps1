@@ -21,32 +21,35 @@
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 #>
 
-$projectRoot = Join-Path $PSScriptRoot '..\..\..\..'
-
 # The MemoryManager class is a typed parameter of Invoke-ResourceCleanup, so it must be defined
 # before that file is parsed.
-. (Join-Path $projectRoot 'Classes\MemoryManager.ps1')
-. (Join-Path $projectRoot 'Private\System\Invoke-ResourceDisposal.ps1')
+# IDisposable test double. Records whether Dispose ran and can be told to fail.
+BeforeAll {
+    $projectRoot = Join-Path $PSScriptRoot '..\..\..\..'
 
-if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
+    . (Join-Path $projectRoot 'Classes\MemoryManager.ps1')
+
+    . (Join-Path $projectRoot 'Private\System\Invoke-ResourceDisposal.ps1')
+
     # Stub so the function under test can be mocked. The parameter names are what the
     # -ParameterFilter blocks below bind to, so they are declared even though unused here.
+    # Defined unconditionally: another test file may leave a global Write-StructuredLog with different
+    # parameter names, and a mock built on that one binds the filter variables to the wrong arguments.
     function Write-StructuredLog {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
         param($Message, $Level, $Component, $CorrelationId, $Data)
     }
-}
 
-# IDisposable test double. Records whether Dispose ran and can be told to fail.
-class DisposableProbe : System.IDisposable {
-    [bool]$Disposed = $false
-    [bool]$ThrowOnDispose = $false
+    class DisposableProbe : System.IDisposable {
+        [bool]$Disposed = $false
+        [bool]$ThrowOnDispose = $false
 
-    [void] Dispose() {
-        if ($this.ThrowOnDispose) {
-            throw 'Dispose failed on purpose'
+        [void] Dispose() {
+            if ($this.ThrowOnDispose) {
+                throw 'Dispose failed on purpose'
+            }
+            $this.Disposed = $true
         }
-        $this.Disposed = $true
     }
 }
 
@@ -63,17 +66,17 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
 
             Invoke-ResourceCleanup -AdditionalResources @($script:probe, $second) -CorrelationId 'test-cleanup-1'
 
-            $script:probe.Disposed | Should Be $true
-            $second.Disposed | Should Be $true
+            $script:probe.Disposed | Should -Be $true
+            $second.Disposed | Should -Be $true
         }
 
         It 'Continues disposing when one resource throws' {
             $failing = [DisposableProbe]::new()
             $failing.ThrowOnDispose = $true
 
-            { Invoke-ResourceCleanup -AdditionalResources @($failing, $script:probe) } | Should Not Throw
+            { Invoke-ResourceCleanup -AdditionalResources @($failing, $script:probe) } | Should -Not -Throw
 
-            $script:probe.Disposed | Should Be $true
+            $script:probe.Disposed | Should -Be $true
         }
 
         It 'Logs a warning for the resource that failed to dispose' {
@@ -82,13 +85,13 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
 
             Invoke-ResourceCleanup -AdditionalResources @($failing)
 
-            Assert-MockCalled Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
                 $Level -eq 'Warning' -and $Message -like 'Failed to dispose additional resource:*'
             }
         }
 
         It 'Accepts a null AdditionalResources value' {
-            { Invoke-ResourceCleanup -AdditionalResources $null } | Should Not Throw
+            { Invoke-ResourceCleanup -AdditionalResources $null } | Should -Not -Throw
         }
     }
 
@@ -98,22 +101,22 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
 
             Invoke-ResourceCleanup -MemoryManager $manager
 
-            $manager.Disposed | Should Be $true
+            $manager.Disposed | Should -Be $true
         }
 
         It 'Does not dispose a MemoryManager twice' {
             $manager = [MemoryManager]::new(512, 25)
             $manager.Dispose()
 
-            { Invoke-ResourceCleanup -MemoryManager $manager } | Should Not Throw
+            { Invoke-ResourceCleanup -MemoryManager $manager } | Should -Not -Throw
 
-            Assert-MockCalled Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
                 $Message -eq 'Memory manager disposed successfully'
             }
         }
 
         It 'Accepts a null MemoryManager' {
-            { Invoke-ResourceCleanup -MemoryManager $null } | Should Not Throw
+            { Invoke-ResourceCleanup -MemoryManager $null } | Should -Not -Throw
         }
     }
 
@@ -121,16 +124,16 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
         It 'Still disposes resources under -WhatIf' {
             Invoke-ResourceCleanup -AdditionalResources @($script:probe) -WhatIf
 
-            $script:probe.Disposed | Should Be $true
+            $script:probe.Disposed | Should -Be $true
         }
 
         It 'Logs the WhatIf simulation message instead of the start message under -WhatIf' {
             Invoke-ResourceCleanup -AdditionalResources @($script:probe) -WhatIf
 
-            Assert-MockCalled Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
                 $Message -like 'WhatIf simulation:*'
             }
-            Assert-MockCalled Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
                 $Message -eq 'Starting resource cleanup and disposal...'
             }
         }
@@ -140,15 +143,15 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
         It 'Passes the supplied CorrelationId to every log entry' {
             Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId 'corr-123'
 
-            Assert-MockCalled Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
                 $CorrelationId -ne 'corr-123'
             }
         }
 
         It 'Generates a CorrelationId when given whitespace' {
-            { Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId '   ' } | Should Not Throw
+            { Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId '   ' } | Should -Not -Throw
 
-            Assert-MockCalled Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
                 [string]::IsNullOrWhiteSpace($CorrelationId)
             }
         }
@@ -168,12 +171,12 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
 
             $result = Invoke-ResourceDisposal -Resources @($first, $second)
 
-            $first.Disposed | Should Be $true
-            $second.Disposed | Should Be $true
-            $result.TotalResources | Should Be 2
-            $result.DisposedCount | Should Be 2
-            $result.FailedCount | Should Be 0
-            $result.SkippedCount | Should Be 0
+            $first.Disposed | Should -Be $true
+            $second.Disposed | Should -Be $true
+            $result.TotalResources | Should -Be 2
+            $result.DisposedCount | Should -Be 2
+            $result.FailedCount | Should -Be 0
+            $result.SkippedCount | Should -Be 0
         }
 
         It 'Skips null entries and non-disposable objects' {
@@ -181,15 +184,15 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
 
             $result = Invoke-ResourceDisposal -Resources @($null, 'just a string', $probe)
 
-            $result.DisposedCount | Should Be 1
-            $result.SkippedCount | Should Be 2
+            $result.DisposedCount | Should -Be 1
+            $result.SkippedCount | Should -Be 2
         }
 
         It 'Returns zero counts for an empty collection' {
             $result = Invoke-ResourceDisposal -Resources @()
 
-            $result.TotalResources | Should Be 0
-            $result.DisposedCount | Should Be 0
+            $result.TotalResources | Should -Be 0
+            $result.DisposedCount | Should -Be 0
         }
     }
 
@@ -198,7 +201,7 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
             $failing = [DisposableProbe]::new()
             $failing.ThrowOnDispose = $true
 
-            { Invoke-ResourceDisposal -Resources @($failing) } | Should Throw 'Dispose failed on purpose'
+            { Invoke-ResourceDisposal -Resources @($failing) } | Should -Throw '*Dispose failed on purpose*'
         }
 
         It 'Continues past a failure and records it with -Force' {
@@ -208,11 +211,11 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
 
             $result = Invoke-ResourceDisposal -Resources @($failing, $probe) -Force
 
-            $probe.Disposed | Should Be $true
-            $result.FailedCount | Should Be 1
-            $result.DisposedCount | Should Be 1
-            $result.Errors.Count | Should Be 1
-            $result.Errors[0] | Should Be 'Dispose failed on purpose'
+            $probe.Disposed | Should -Be $true
+            $result.FailedCount | Should -Be 1
+            $result.DisposedCount | Should -Be 1
+            $result.Errors.Count | Should -Be 1
+            $result.Errors[0] | Should -Be 'Dispose failed on purpose'
         }
 
         It 'Logs the failure at Warning level' {
@@ -221,7 +224,7 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
 
             Invoke-ResourceDisposal -Resources @($failing) -Force | Out-Null
 
-            Assert-MockCalled Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
                 $Level -eq 'Warning' -and $Message -like 'Failed to dispose resource DisposableProbe:*'
             }
         }
@@ -233,8 +236,8 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
 
             $result = Invoke-ResourceDisposal -Resources @($probe) -WhatIf
 
-            $probe.Disposed | Should Be $true
-            $result.DisposedCount | Should Be 1
+            $probe.Disposed | Should -Be $true
+            $result.DisposedCount | Should -Be 1
         }
 
         It 'Suppresses informational logging under -WhatIf' {
@@ -242,7 +245,7 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
 
             Invoke-ResourceDisposal -Resources @($probe) -WhatIf | Out-Null
 
-            Assert-MockCalled Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
                 $Level -eq 'Information'
             }
         }

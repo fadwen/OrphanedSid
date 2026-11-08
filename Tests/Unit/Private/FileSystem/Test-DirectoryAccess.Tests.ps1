@@ -1,13 +1,18 @@
 #Requires -Version 5.1
 
 # Import required modules and dependencies
-. $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLogEntry.ps1
-. $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1
-. $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1
-. $PSScriptRoot\..\..\..\..\Private\FileSystem\Test-DirectoryAccess.ps1
-
 # Initialize logging for tests
-Initialize-LoggingSystem -LogLevel 'Debug' -SuppressConsoleOutput
+BeforeAll {
+    . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLogEntry.ps1
+
+    . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1
+
+    . $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1
+
+    . $PSScriptRoot\..\..\..\..\Private\FileSystem\Test-DirectoryAccess.ps1
+
+    Initialize-LoggingSystem -LogLevel 'Debug' -SuppressConsoleOutput
+}
 
 Describe "Test-DirectoryAccess" {
     BeforeEach {
@@ -29,33 +34,33 @@ Describe "Test-DirectoryAccess" {
 
     Context "Parameter Validation" {
         It "Should reject null path" {
-            { Test-DirectoryAccess -Path $null } | Should Throw
+            { Test-DirectoryAccess -Path $null } | Should -Throw
         }
 
         It "Should reject empty path" {
-            { Test-DirectoryAccess -Path "" } | Should Throw
+            { Test-DirectoryAccess -Path "" } | Should -Throw
         }
 
         It "Should reject whitespace-only path" {
             $result = Test-DirectoryAccess -Path "   "
-            $result | Should Be $false
+            $result | Should -Be $false
         }
 
         It "Should accept valid path" {
             $validPath = Join-Path $script:TestTempDir "ValidPath"
-            { Test-DirectoryAccess -Path $validPath } | Should Not Throw
+            { Test-DirectoryAccess -Path $validPath } | Should -Not -Throw
         }
 
         It "Should handle long path names" {
             $longName = "a" * 200  # Very long directory name
             $longPath = Join-Path $script:TestTempDir $longName
             
-            { Test-DirectoryAccess -Path $longPath } | Should Not Throw
+            { Test-DirectoryAccess -Path $longPath } | Should -Not -Throw
         }
 
         It "Should handle special characters in path" {
             $specialPath = Join-Path $script:TestTempDir "Test Dir with spaces & symbols"
-            { Test-DirectoryAccess -Path $specialPath } | Should Not Throw
+            { Test-DirectoryAccess -Path $specialPath } | Should -Not -Throw
         }
     }
 
@@ -63,23 +68,23 @@ Describe "Test-DirectoryAccess" {
         It "Should create non-existent directory" {
             $result = Test-DirectoryAccess -Path $script:TestNonExistentDir
             
-            $result | Should Be $true
-            Test-Path $script:TestNonExistentDir | Should Be $true
+            $result | Should -Be $true
+            Test-Path $script:TestNonExistentDir | Should -Be $true
         }
 
         It "Should return true for existing directory" {
             $existingPath = $script:TestTempDir
             $result = Test-DirectoryAccess -Path $existingPath
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
 
         It "Should create nested directory structure" {
             $nestedPath = Join-Path $script:TestNonExistentDir "Level1\Level2\Level3"
             $result = Test-DirectoryAccess -Path $nestedPath
             
-            $result | Should Be $true
-            Test-Path $nestedPath | Should Be $true
+            $result | Should -Be $true
+            Test-Path $nestedPath | Should -Be $true
         }
 
         It "Should handle creation of existing directory" {
@@ -88,7 +93,7 @@ Describe "Test-DirectoryAccess" {
             
             # Test function should still return true
             $result = Test-DirectoryAccess -Path $script:TestNonExistentDir
-            $result | Should Be $true
+            $result | Should -Be $true
         }
     }
 
@@ -96,12 +101,12 @@ Describe "Test-DirectoryAccess" {
         It "Should test write permission on created directory" {
             $result = Test-DirectoryAccess -Path $script:TestNonExistentDir
             
-            $result | Should Be $true
+            $result | Should -Be $true
             
-            # Should be able to create a test file
+            # Should -be able to create a test file
             $testFile = Join-Path $script:TestNonExistentDir "writetest.tmp"
-            { "test" | Out-File $testFile } | Should Not Throw
-            Test-Path $testFile | Should Be $true
+            { "test" | Out-File $testFile } | Should -Not -Throw
+            Test-Path $testFile | Should -Be $true
         }
 
         It "Should return false for directory without write permission" {
@@ -109,7 +114,7 @@ Describe "Test-DirectoryAccess" {
             Mock Out-File { throw [System.UnauthorizedAccessException]::new("Access denied") }
             
             $result = Test-DirectoryAccess -Path $script:TestTempDir
-            $result | Should Be $false
+            $result | Should -Be $false
         }
     }
 
@@ -129,20 +134,20 @@ Describe "Test-DirectoryAccess" {
             $result = Test-DirectoryAccess -Path $invalidPath
             
             # Should handle gracefully and return false
-            $result | Should Be $false
+            $result | Should -Be $false
         }
 
         It "Should handle path traversal attempts" {
             $traversalPath = Join-Path $script:TestTempDir "..\..\..\Windows\System32"
             
-            # Should not throw but may return false for security
-            { Test-DirectoryAccess -Path $traversalPath } | Should Not Throw
+            # Should -Not -throw but may return false for security
+            { Test-DirectoryAccess -Path $traversalPath } | Should -Not -Throw
         }
 
         It "Should handle very long paths gracefully" {
             $veryLongPath = "C:\" + ("VeryLongDirectoryName" * 20)  # Exceed MAX_PATH
             
-            { Test-DirectoryAccess -Path $veryLongPath } | Should Not Throw
+            { Test-DirectoryAccess -Path $veryLongPath } | Should -Not -Throw
         }
 
         It "Should handle null reference exceptions" {
@@ -151,14 +156,14 @@ Describe "Test-DirectoryAccess" {
             $problematicPath = "C:\Test`0Dir\SubDir"
             
             # Should handle gracefully and not throw
-            { $result = Test-DirectoryAccess -Path $problematicPath } | Should Not Throw
+            { $result = Test-DirectoryAccess -Path $problematicPath } | Should -Not -Throw
         }
 
         It "Should handle existing directory correctly" {
             # Test that the function correctly identifies an existing directory
             # Use Windows temp directory which should always exist
             $result = Test-DirectoryAccess -Path 'C:\Windows\Temp'
-            $result | Should Be $true
+            $result | Should -Be $true
         }
     }
 
@@ -175,7 +180,7 @@ Describe "Test-DirectoryAccess" {
             foreach ($path in $invalidPaths) {
                 $result = Test-DirectoryAccess -Path $path
                 # Should handle gracefully, may return false
-                $result | Should BeOfType [bool]
+                $result | Should -BeOfType [bool]
             }
         }
 
@@ -187,7 +192,7 @@ Describe "Test-DirectoryAccess" {
             )
             
             foreach ($injection in $injectionAttempts) {
-                { Test-DirectoryAccess -Path $injection } | Should Not Throw
+                { Test-DirectoryAccess -Path $injection } | Should -Not -Throw
             }
         }
 
@@ -196,7 +201,7 @@ Describe "Test-DirectoryAccess" {
             
             # Should handle UNC paths without hanging or crashing
             $result = Test-DirectoryAccess -Path $uncPath
-            $result | Should BeOfType [bool]
+            $result | Should -BeOfType [bool]
         }
     }
 
@@ -223,9 +228,9 @@ Describe "Test-DirectoryAccess" {
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
             # Should have logged the operation
-            $script:LogMessages.Count | Should BeGreaterThan 0
+            $script:LogMessages.Count | Should -BeGreaterThan 0
             $successLog = $script:LogMessages | Where-Object { $_.Level -eq 'Information' -and $_.Message -like "*created*" }
-            $successLog | Should Not BeNullOrEmpty
+            $successLog | Should -Not -BeNullOrEmpty
         }
 
         It "Should log directory access validation" {
@@ -233,7 +238,7 @@ Describe "Test-DirectoryAccess" {
             
             # Should log validation
             $validationLog = $script:LogMessages | Where-Object { $_.Level -eq 'Debug' -and $_.Message -like "*validat*" }
-            $validationLog | Should Not BeNullOrEmpty
+            $validationLog | Should -Not -BeNullOrEmpty
         }
 
         It "Should log write permission testing" {
@@ -241,7 +246,7 @@ Describe "Test-DirectoryAccess" {
             
             # Should log write test
             $writeTestLog = $script:LogMessages | Where-Object { $_.Message -like "*write*" -or $_.Message -like "*permission*" }
-            $writeTestLog | Should Not BeNullOrEmpty
+            $writeTestLog | Should -Not -BeNullOrEmpty
         }
 
         It "Should log errors appropriately" {
@@ -251,7 +256,7 @@ Describe "Test-DirectoryAccess" {
             
             # Should log the error (function logs at Warning level for caught exceptions)
             $errorLog = $script:LogMessages | Where-Object { $_.Level -eq 'Warning' }
-            $errorLog | Should Not BeNullOrEmpty
+            $errorLog | Should -Not -BeNullOrEmpty
         }
 
         It "Should include correlation IDs in logs" {
@@ -263,7 +268,7 @@ Describe "Test-DirectoryAccess" {
                 $_.ParameterFilter -and $_.ParameterFilter.ToString().Contains($customCorrelationId) 
             }
             # Alternative check - just verify logs were created with our function call
-            $script:LogMessages.Count | Should BeGreaterThan 0
+            $script:LogMessages.Count | Should -BeGreaterThan 0
         }
     }
 
@@ -274,7 +279,7 @@ Describe "Test-DirectoryAccess" {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalMilliseconds
             
-            ($duration -lt 1000) | Should Be $true  # 1 second
+            ($duration -lt 1000) | Should -Be $true  # 1 second
         }
 
         It "Should handle multiple directory operations efficiently" {
@@ -287,7 +292,7 @@ Describe "Test-DirectoryAccess" {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalMilliseconds
             
-            ($duration -lt 5000) | Should Be $true  # 5 seconds for 10 directories
+            ($duration -lt 5000) | Should -Be $true  # 5 seconds for 10 directories
         }
 
         It "Should process repeated operations efficiently" {
@@ -300,8 +305,8 @@ Describe "Test-DirectoryAccess" {
             $time2 = Measure-Command { Test-DirectoryAccess -Path $testPath }
             
             # Both should complete successfully
-            $time1 | Should Not BeNullOrEmpty
-            $time2 | Should Not BeNullOrEmpty
+            $time1 | Should -Not -BeNullOrEmpty
+            $time2 | Should -Not -BeNullOrEmpty
         }
 
         It "Should handle large directory names efficiently" {
@@ -313,8 +318,8 @@ Describe "Test-DirectoryAccess" {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalMilliseconds
             
-            ($duration -lt 500) | Should Be $true
-            $result | Should Be $true
+            ($duration -lt 500) | Should -Be $true
+            $result | Should -Be $true
         }
     }
 
@@ -325,15 +330,15 @@ Describe "Test-DirectoryAccess" {
                 param($Message, $Level, $Component, $CorrelationId)
                 
                 # Validate enterprise logging format
-                $Level | Should Not BeNullOrEmpty
-                $Message | Should Not BeNullOrEmpty
-                $Component | Should Be 'FileSystem-Utilities'
+                $Level | Should -Not -BeNullOrEmpty
+                $Message | Should -Not -BeNullOrEmpty
+                $Component | Should -Be 'FileSystem-Utilities'
             }
             
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
             # Assert that Write-StructuredLog was called
-            Assert-MockCalled Write-StructuredLog -ParameterFilter { $Component -eq 'FileSystem-Utilities' }
+            Should -Invoke Write-StructuredLog -ParameterFilter { $Component -eq 'FileSystem-Utilities' }
         }
 
         It "Should support compliance monitoring" {
@@ -353,8 +358,8 @@ Describe "Test-DirectoryAccess" {
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
             # Should have compliance data
-            $script:complianceData.Count | Should BeGreaterThan 0
-            $script:complianceData[0].ComponentName | Should Be 'FileSystem-Utilities'
+            $script:complianceData.Count | Should -BeGreaterThan 0
+            $script:complianceData[0].ComponentName | Should -Be 'FileSystem-Utilities'
         }
 
         It "Should integrate with monitoring systems" {
@@ -370,7 +375,7 @@ Describe "Test-DirectoryAccess" {
             
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
-            $script:monitoringCalled | Should Be $true
+            $script:monitoringCalled | Should -Be $true
         }
 
         It "Should handle enterprise security policies" {
@@ -387,7 +392,7 @@ Describe "Test-DirectoryAccess" {
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
             # Security validation should occur in enterprise context
-            Assert-MockCalled Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
+            Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
         }
 
         It "Should support configuration management integration" {
@@ -396,12 +401,12 @@ Describe "Test-DirectoryAccess" {
                 param($Message, $Level, $Component, $CorrelationId)
                 
                 # Should include component information
-                $Component | Should Be 'FileSystem-Utilities'
+                $Component | Should -Be 'FileSystem-Utilities'
             }
             
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
+            Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
         }
     }
 }

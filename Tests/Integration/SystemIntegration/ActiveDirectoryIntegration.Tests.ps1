@@ -1,7 +1,9 @@
 ﻿# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-. "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
-
 # Integration test for Active Directory connectivity and operations
+
+BeforeAll {
+    . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
+}
 
 Describe "Active Directory Integration Tests" {
     BeforeAll {
@@ -92,21 +94,21 @@ Describe "Active Directory Integration Tests" {
         It "Should import Active Directory module successfully" {
             $result = Invoke-ADIntegrationTest -TestType 'ModuleImport'
             
-            $result.ModuleLoaded | Should Be $true
-            $result.ModuleName | Should Be 'ActiveDirectory'
+            $result.ModuleLoaded | Should -Be $true
+            $result.ModuleName | Should -Be 'ActiveDirectory'
         }
         
         It "Should verify AD module version" {
             $result = Invoke-ADIntegrationTest -TestType 'ModuleImport'
             
-            $result.ModuleVersion | Should Not BeNullOrEmpty
-            $result.Success | Should Be $true
+            $result.ModuleVersion | Should -Not -BeNullOrEmpty
+            $result.Success | Should -Be $true
         }
         
         It "Should complete module import within time limits" {
             $result = Invoke-ADIntegrationTest -TestType 'ModuleImport'
             
-            $result.ImportTime | Should BeLessThan ($script:config.performance.baselines.smallDataset.maxExecutionTimeSeconds * 1000)
+            $result.ImportTime | Should -BeLessThan ($script:config.performance.baselines.smallDataset.maxExecutionTimeSeconds * 1000)
         }
     }
     
@@ -114,21 +116,21 @@ Describe "Active Directory Integration Tests" {
         It "Should connect to domain controller successfully" {
             $result = Invoke-ADIntegrationTest -TestType 'DomainConnectivity'
             
-            $result.Connected | Should Be $true
-            $result.DomainController | Should Not BeNullOrEmpty
+            $result.Connected | Should -Be $true
+            $result.DomainController | Should -Not -BeNullOrEmpty
         }
         
         It "Should establish connection within timeout" {
             $result = Invoke-ADIntegrationTest -TestType 'DomainConnectivity'
             
-            $result.ConnectionTime | Should BeLessThan ($script:config.performance.baselines.smallDataset.maxExecutionTimeSeconds * 1000)
+            $result.ConnectionTime | Should -BeLessThan ($script:config.performance.baselines.smallDataset.maxExecutionTimeSeconds * 1000)
         }
         
         It "Should identify correct domain controller" {
             $result = Invoke-ADIntegrationTest -TestType 'DomainConnectivity'
             
-            $result.DomainController | Should Match '\.contoso\.com$'
-            $result.Success | Should Be $true
+            $result.DomainController | Should -Match '\.contoso\.com$'
+            $result.Success | Should -Be $true
         }
     }
     
@@ -136,21 +138,21 @@ Describe "Active Directory Integration Tests" {
         It "Should validate trust relationships" {
             $result = Invoke-ADIntegrationTest -TestType 'TrustValidation'
             
-            $result.TrustsFound | Should BeGreaterThan 0
-            $result.TrustedDomains | Should Not BeNullOrEmpty
+            $result.TrustsFound | Should -BeGreaterThan 0
+            $result.TrustedDomains | Should -Not -BeNullOrEmpty
         }
         
         It "Should complete trust validation within time limits" {
             $result = Invoke-ADIntegrationTest -TestType 'TrustValidation'
             
-            $result.ValidationTime | Should BeLessThan ($script:config.performance.baselines.mediumDataset.maxExecutionTimeSeconds * 1000)
+            $result.ValidationTime | Should -BeLessThan ($script:config.performance.baselines.mediumDataset.maxExecutionTimeSeconds * 1000)
         }
         
         It "Should identify expected trusted domains" {
             $result = Invoke-ADIntegrationTest -TestType 'TrustValidation'
             
-            $result.TrustedDomains -contains 'child.contoso.com' | Should Be $true
-            $result.AllTrustsValid | Should Be $true
+            $result.TrustedDomains -contains 'child.contoso.com' | Should -Be $true
+            $result.AllTrustsValid | Should -Be $true
         }
     }
     
@@ -158,21 +160,21 @@ Describe "Active Directory Integration Tests" {
         It "Should validate required permissions" {
             $result = Invoke-ADIntegrationTest -TestType 'PermissionCheck'
             
-            $result.HasRequiredPermissions | Should Be $true
-            $result.PermissionLevel | Should Not BeNullOrEmpty
+            $result.HasRequiredPermissions | Should -Be $true
+            $result.PermissionLevel | Should -Not -BeNullOrEmpty
         }
         
         It "Should complete permission check quickly" {
             $result = Invoke-ADIntegrationTest -TestType 'PermissionCheck'
             
-            $result.CheckTime | Should BeLessThan ($script:config.performance.baselines.smallDataset.maxExecutionTimeSeconds * 1000)
+            $result.CheckTime | Should -BeLessThan ($script:config.performance.baselines.smallDataset.maxExecutionTimeSeconds * 1000)
         }
         
         It "Should correctly identify admin rights status" {
             $result = Invoke-ADIntegrationTest -TestType 'PermissionCheck'
             
-            $result.AdminRights | Should BeOfType [Boolean]
-            $result.Success | Should Be $true
+            $result.AdminRights | Should -BeOfType [Boolean]
+            $result.Success | Should -Be $true
         }
     }
     
@@ -180,21 +182,21 @@ Describe "Active Directory Integration Tests" {
         It "Should query AD objects successfully" {
             $result = Invoke-ADIntegrationTest -TestType 'ADQuery'
             
-            $result.ObjectsFound | Should BeGreaterThan 0
-            $result.ResultsValid | Should Be $true
+            $result.ObjectsFound | Should -BeGreaterThan 0
+            $result.ResultsValid | Should -Be $true
         }
         
         It "Should complete queries within performance requirements" {
             $result = Invoke-ADIntegrationTest -TestType 'ADQuery'
             
-            $result.QueryTime | Should BeLessThan ($script:config.performance.baselines.mediumDataset.maxExecutionTimeSeconds * 1000)
+            $result.QueryTime | Should -BeLessThan ($script:config.performance.baselines.mediumDataset.maxExecutionTimeSeconds * 1000)
         }
         
         It "Should handle large result sets" {
             $result = Invoke-ADIntegrationTest -TestType 'ADQuery'
             
-            $result.ObjectsFound | Should BeGreaterThan 100
-            $result.Success | Should Be $true
+            $result.ObjectsFound | Should -BeGreaterThan 100
+            $result.Success | Should -Be $true
         }
     }
     
@@ -202,22 +204,22 @@ Describe "Active Directory Integration Tests" {
         It "Should handle connection timeouts gracefully" {
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.ErrorType | Should Be 'ConnectionTimeout'
-            $result.ErrorMessage | Should Not BeNullOrEmpty
+            $result.ErrorType | Should -Be 'ConnectionTimeout'
+            $result.ErrorMessage | Should -Not -BeNullOrEmpty
         }
         
         It "Should provide meaningful error codes" {
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.ErrorCode | Should Not BeNullOrEmpty
-            $result.Success | Should Be $false
+            $result.ErrorCode | Should -Not -BeNullOrEmpty
+            $result.Success | Should -Be $false
         }
         
         It "Should implement retry logic for transient failures" {
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.ErrorType | Should Match 'Timeout|Connection'
-            $result.ErrorMessage | Should Not BeNullOrEmpty
+            $result.ErrorType | Should -Match 'Timeout|Connection'
+            $result.ErrorMessage | Should -Not -BeNullOrEmpty
         }
     }
     
@@ -226,84 +228,84 @@ Describe "Active Directory Integration Tests" {
             Mock Get-ADDomain { return $null }
             $result = Invoke-ADIntegrationTest -TestType 'DomainConnectivity'
             
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle network connectivity issues" {
             Mock Test-NetConnection { return @{ PingSucceeded = $false } }
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.ErrorType | Should Be 'ConnectionTimeout'
+            $result.ErrorType | Should -Be 'ConnectionTimeout'
         }
         
         It "Should handle large Active Directory environments" {
             Mock Get-ADUser { return 1..10000 | ForEach-Object { @{ Name = "User$_" } } }
             $result = Invoke-ADIntegrationTest -TestType 'ADQuery'
             
-            $result.ObjectsFound | Should BeGreaterThan 1000
+            $result.ObjectsFound | Should -BeGreaterThan 1000
         }
         
         It "Should handle malformed LDAP queries" {
             Mock Get-ADUser { throw "Invalid LDAP filter" }
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.Success | Should Be $false
+            $result.Success | Should -Be $false
         }
         
         It "Should handle domain controller failures" {
             Mock Get-ADDomainController { throw "Domain controller unavailable" }
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.ErrorMessage | Should Not BeNullOrEmpty
+            $result.ErrorMessage | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle cross-forest authentication" {
             Mock Get-ADTrust { return @( @{ Name = 'external.forest.com'; TrustType = 'Forest' } ) }
             $result = Invoke-ADIntegrationTest -TestType 'TrustValidation'
             
-            $result.TrustsFound | Should BeGreaterThan 0
+            $result.TrustsFound | Should -BeGreaterThan 0
         }
         
         It "Should handle insufficient privileges gracefully" {
             Mock Test-ADServiceAccount { return $false }
             $result = Invoke-ADIntegrationTest -TestType 'PermissionCheck'
             
-            $result.HasRequiredPermissions | Should Be $true  # Mock returns success
+            $result.HasRequiredPermissions | Should -Be $true  # Mock returns success
         }
         
         It "Should handle schema extension queries" {
             Mock Get-ADObject { return @( @{ Name = 'CustomAttribute1'; ObjectClass = 'attributeSchema' } ) }
             $result = Invoke-ADIntegrationTest -TestType 'ADQuery'
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
         
         It "Should handle Unicode domain names" {
             Mock Get-ADDomain { return @{ Name = 'тест.local'; DNSRoot = 'тест.local' } }
             $result = Invoke-ADIntegrationTest -TestType 'DomainConnectivity'
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
         
         It "Should handle expired certificates" {
             Mock Get-ADDomainController { throw "Certificate has expired" }
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.ErrorType | Should Be 'ConnectionTimeout'
+            $result.ErrorType | Should -Be 'ConnectionTimeout'
         }
         
         It "Should handle directory service quota exceeded" {
             Mock Get-ADUser { throw "Directory quota exceeded" }
             $result = Invoke-ADIntegrationTest -TestType 'ErrorHandling'
             
-            $result.Success | Should Be $false
+            $result.Success | Should -Be $false
         }
         
         It "Should handle partial trust relationships" {
             Mock Get-ADTrust { return @( @{ Name = 'broken.trust.com'; TrustDirection = 'Disabled' } ) }
             $result = Invoke-ADIntegrationTest -TestType 'TrustValidation'
             
-            $result.AllTrustsValid | Should Be $true  # Mock behavior
+            $result.AllTrustsValid | Should -Be $true  # Mock behavior
         }
     }
 }

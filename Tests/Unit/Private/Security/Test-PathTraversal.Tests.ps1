@@ -1,5 +1,4 @@
-#Requires -Module Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Test-PathTraversal" {
     BeforeAll {
         # Set environment variable to suppress warnings during testing
@@ -61,29 +60,29 @@ Describe "Test-PathTraversal" {
     Context "Parameter Validation" {
         It "Should accept valid file paths" {
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath
-            $result | Should Not BeNullOrEmpty
-            $result.PSObject.TypeNames[0] | Should Be 'PathTraversalValidationResult'
+            $result | Should -Not -BeNullOrEmpty
+            $result.PSObject.TypeNames[0] | Should -Be 'PathTraversalValidationResult'
         }
 
         It "Should reject null path parameter" {
-            { Test-PathTraversal -Path $null -BasePath $script:TestBasePath } | Should Throw "Cannot bind argument to parameter 'Path' because it is null."
+            { Test-PathTraversal -Path $null -BasePath $script:TestBasePath } | Should -Throw "*Cannot bind argument to parameter 'Path' because it is null.*"
         }
 
         It "Should accept multiple paths in array" {
             $result = Test-PathTraversal -Path $script:ValidPaths -BasePath $script:TestBasePath
-            $result.TotalPaths | Should Be $script:ValidPaths.Count
-            $result.ValidationResults.Count | Should Be $script:ValidPaths.Count
+            $result.TotalPaths | Should -Be $script:ValidPaths.Count
+            $result.ValidationResults.Count | Should -Be $script:ValidPaths.Count
         }
 
         It "Should use current location as default base path" {
             $result = Test-PathTraversal -Path $script:SafeFile
-            $result.ValidationResults[0].BasePath | Should Be (Resolve-Path (Get-Location).Path).Path
+            $result.ValidationResults[0].BasePath | Should -Be (Resolve-Path (Get-Location).Path).Path
         }
 
         It "Should accept pipeline input" {
             $result = $script:SafeFile | Test-PathTraversal -BasePath $script:TestBasePath
-            $result | Should Not BeNullOrEmpty
-            $result.TotalPaths | Should Be 1
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalPaths | Should -Be 1
         }
     }
 
@@ -92,9 +91,9 @@ Describe "Test-PathTraversal" {
             $traversalPath = "$script:SafeDir\..\..\..\Windows"
             $result = Test-PathTraversal -Path $traversalPath -BasePath $script:TestBasePath
             
-            $result.UnsafePaths | Should BeGreaterThan 0
-            $result.ValidationPassed | Should Be $false
-            $result.ValidationResults[0].ContainsTraversalPattern | Should Be $true
+            $result.UnsafePaths | Should -BeGreaterThan 0
+            $result.ValidationPassed | Should -Be $false
+            $result.ValidationResults[0].ContainsTraversalPattern | Should -Be $true
         }
 
         It "Should detect URL-encoded traversal patterns" {
@@ -105,7 +104,7 @@ Describe "Test-PathTraversal" {
             
             foreach ($path in $encodedPaths) {
                 $result = Test-PathTraversal -Path $path -BasePath $script:TestBasePath
-                $result.ValidationResults[0].ContainsTraversalPattern | Should Be $true
+                $result.ValidationResults[0].ContainsTraversalPattern | Should -Be $true
             }
         }
 
@@ -113,8 +112,8 @@ Describe "Test-PathTraversal" {
             $result = Test-PathTraversal -Path $script:ValidPaths -BasePath $script:TestBasePath
             
             foreach ($validationResult in $result.ValidationResults) {
-                $validationResult.IsWithinBasePath | Should Be $true
-                $validationResult.IsSafe | Should Be $true
+                $validationResult.IsWithinBasePath | Should -Be $true
+                $validationResult.IsSafe | Should -Be $true
             }
         }
 
@@ -125,8 +124,8 @@ Describe "Test-PathTraversal" {
             
             try {
                 $result = Test-PathTraversal -Path $outsideFile -BasePath $script:TestBasePath
-                $result.ValidationResults[0].IsWithinBasePath | Should Be $false
-                $result.ValidationResults[0].IsSafe | Should Be $false
+                $result.ValidationResults[0].IsWithinBasePath | Should -Be $false
+                $result.ValidationResults[0].IsSafe | Should -Be $false
             }
             finally {
                 Remove-Item $outsideFile -Force -ErrorAction SilentlyContinue
@@ -140,9 +139,9 @@ Describe "Test-PathTraversal" {
             )
             
             $result = Test-PathTraversal -Path $mixedPaths -BasePath $script:TestBasePath
-            $result.SafePaths | Should Be 1
-            $result.UnsafePaths | Should Be 1
-            $result.ValidationPassed | Should Be $false
+            $result.SafePaths | Should -Be 1
+            $result.UnsafePaths | Should -Be 1
+            $result.ValidationPassed | Should -Be $false
         }
     }
 
@@ -158,7 +157,7 @@ Describe "Test-PathTraversal" {
             foreach ($pattern in $attackPatterns) {
                 $testPath = Join-Path $script:SafeDir $pattern
                 $result = Test-PathTraversal -Path $testPath -BasePath $script:TestBasePath
-                $result.ValidationResults[0].ContainsTraversalPattern | Should Be $true
+                $result.ValidationResults[0].ContainsTraversalPattern | Should -Be $true
             }
         }
 
@@ -172,7 +171,7 @@ Describe "Test-PathTraversal" {
             foreach ($path in $absolutePaths) {
                 if (Test-Path $path) {
                     $result = Test-PathTraversal -Path $path -BasePath $script:TestBasePath
-                    $result.ValidationResults[0].IsWithinBasePath | Should Be $false
+                    $result.ValidationResults[0].IsWithinBasePath | Should -Be $false
                 }
             }
         }
@@ -191,16 +190,16 @@ Describe "Test-PathTraversal" {
                     $result = Test-PathTraversal -Path $linkPath -BasePath $script:TestBasePath
                     
                     # Enhanced behavior: The function now resolves symbolic links to their targets
-                    # Since the target (C:\Windows) is outside our test base path, it should be unsafe
-                    $result.ValidationResults[0].IsSymbolicLink | Should Be $true
-                    $result.ValidationResults[0].FinalTargetPath | Should Be $targetPath
-                    $result.ValidationResults[0].IsWithinBasePath | Should Be $false
-                    $result.ValidationResults[0].IsSafe | Should Be $false
+                    # Since the target (C:\Windows) is outside our test base path, it Should -be unsafe
+                    $result.ValidationResults[0].IsSymbolicLink | Should -Be $true
+                    $result.ValidationResults[0].FinalTargetPath | Should -Be $targetPath
+                    $result.ValidationResults[0].IsWithinBasePath | Should -Be $false
+                    $result.ValidationResults[0].IsSafe | Should -Be $false
                     
                     # Overall result should indicate unsafe path detected
-                    $result.ValidationPassed | Should Be $false
-                    $result.SafePaths | Should Be 0
-                    $result.UnsafePaths | Should Be 1
+                    $result.ValidationPassed | Should -Be $false
+                    $result.SafePaths | Should -Be 0
+                    $result.UnsafePaths | Should -Be 1
                 } else {
                     Write-Warning "Skipping symbolic link test: Failed to create symbolic link"
                 }
@@ -222,22 +221,22 @@ Describe "Test-PathTraversal" {
             $nonExistentPath = Join-Path $script:TestBasePath "nonexistent.txt"
             
             $result = Test-PathTraversal -Path $nonExistentPath -BasePath $script:TestBasePath
-            $result.UnsafePaths | Should Be 1
-            $result.ValidationPassed | Should Be $false
+            $result.UnsafePaths | Should -Be 1
+            $result.ValidationPassed | Should -Be $false
         }
 
         It "Should handle invalid base path gracefully" {
             $invalidBasePath = "Z:\NonExistent\Path"
             
-            { Test-PathTraversal -Path $script:SafeFile -BasePath $invalidBasePath } | Should Throw
+            { Test-PathTraversal -Path $script:SafeFile -BasePath $invalidBasePath } | Should -Throw
         }
 
         It "Should provide meaningful error messages for invalid paths" {
             $invalidPath = ":"  # Invalid path character on Windows
             
             $result = Test-PathTraversal -Path $invalidPath -BasePath $script:TestBasePath
-            $result.UnsafePaths | Should Be 1
-            $result.ValidationPassed | Should Be $false
+            $result.UnsafePaths | Should -Be 1
+            $result.ValidationPassed | Should -Be $false
         }
 
         It "Should maintain correlation tracking during errors" {
@@ -245,7 +244,7 @@ Describe "Test-PathTraversal" {
             $invalidPath = Join-Path $script:TestBasePath "invalid|file.txt"
             
             $result = Test-PathTraversal -Path $invalidPath -BasePath $script:TestBasePath -CorrelationId $correlationId
-            $result.CorrelationId | Should Be $correlationId
+            $result.CorrelationId | Should -Be $correlationId
         }
     }
 
@@ -257,9 +256,9 @@ Describe "Test-PathTraversal" {
             $result = Test-PathTraversal -Path $largeBatch -BasePath $script:TestBasePath
             $stopwatch.Stop()
             
-            $result.TotalPaths | Should Be 50
-            $result.SafePaths | Should Be 50
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 5000  # Should complete within 5 seconds
+            $result.TotalPaths | Should -Be 50
+            $result.SafePaths | Should -Be 50
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 5000  # Should complete within 5 seconds
         }
 
         It "Should maintain statistics across batch operations" {
@@ -271,10 +270,10 @@ Describe "Test-PathTraversal" {
             )
             
             $result = Test-PathTraversal -Path $mixedBatch -BasePath $script:TestBasePath
-            $result.TotalPaths | Should Be 4
-            $result.SafePaths | Should Be 2
-            $result.UnsafePaths | Should Be 2
-            $result.ValidationPassed | Should Be $false
+            $result.TotalPaths | Should -Be 4
+            $result.SafePaths | Should -Be 2
+            $result.UnsafePaths | Should -Be 2
+            $result.ValidationPassed | Should -Be $false
         }
 
         It "Should generate correlation ID for each validation operation" {
@@ -283,7 +282,7 @@ Describe "Test-PathTraversal" {
             $result = Test-PathTraversal -Path $script:ValidPaths -BasePath $script:TestBasePath -CorrelationId $customCorrelationId
             
             foreach ($validationResult in $result.ValidationResults) {
-                $validationResult.CorrelationId | Should Be $customCorrelationId
+                $validationResult.CorrelationId | Should -Be $customCorrelationId
             }
         }
     }
@@ -294,9 +293,9 @@ Describe "Test-PathTraversal" {
                 Select-Object -ExpandProperty FullName | 
                 Test-PathTraversal -BasePath $script:TestBasePath
             
-            $pipelineResult.TotalPaths | Should BeGreaterThan 0
-            $pipelineResult.SafePaths | Should Be $pipelineResult.TotalPaths
-            $pipelineResult.ValidationPassed | Should Be $true
+            $pipelineResult.TotalPaths | Should -BeGreaterThan 0
+            $pipelineResult.SafePaths | Should -Be $pipelineResult.TotalPaths
+            $pipelineResult.ValidationPassed | Should -Be $true
         }
 
         It "Should process pipeline input with different path types" {
@@ -307,8 +306,8 @@ Describe "Test-PathTraversal" {
             )
             
             $result = $pathTypes | Test-PathTraversal -BasePath $script:TestBasePath
-            $result.TotalPaths | Should Be 3
-            $result.SafePaths | Should Be 3
+            $result.TotalPaths | Should -Be 3
+            $result.SafePaths | Should -Be 3
         }
 
         It "Should maintain performance with pipeline processing" {
@@ -318,8 +317,8 @@ Describe "Test-PathTraversal" {
             $result = $files.FullName | Test-PathTraversal -BasePath $script:TestBasePath
             $stopwatch.Stop()
             
-            $result.ValidationPassed | Should Be $true
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 2000  # Should complete within 2 seconds
+            $result.ValidationPassed | Should -Be $true
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 2000  # Should complete within 2 seconds
         }
     }
 
@@ -327,7 +326,7 @@ Describe "Test-PathTraversal" {
         It "Should include correlation ID in result when available" {
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath
             
-            $result.CorrelationId | Should Not BeNullOrEmpty
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
         }
 
         It "Should include custom correlation ID when provided" {
@@ -335,7 +334,7 @@ Describe "Test-PathTraversal" {
             
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath -CorrelationId $correlationId
             
-            $result.CorrelationId | Should Be $correlationId
+            $result.CorrelationId | Should -Be $correlationId
         }
 
         It "Should validate logging context for security analysis" {
@@ -344,17 +343,17 @@ Describe "Test-PathTraversal" {
             $result = Test-PathTraversal -Path $unsafePath -BasePath $script:TestBasePath
             
             # Should identify unsafe path in results
-            $result.UnsafePaths | Should BeGreaterThan 0
-            $result.ValidationPassed | Should Be $false
+            $result.UnsafePaths | Should -BeGreaterThan 0
+            $result.ValidationPassed | Should -Be $false
         }
 
         It "Should provide comprehensive validation details" {
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath
             
             # Should include comprehensive validation details
-            $result.BasePath | Should Not BeNullOrEmpty
-            $result.ValidationResults | Should Not BeNullOrEmpty
-            $result.CorrelationId | Should Not BeNullOrEmpty
+            $result.BasePath | Should -Not -BeNullOrEmpty
+            $result.ValidationResults | Should -Not -BeNullOrEmpty
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
         }
     }
 
@@ -362,31 +361,31 @@ Describe "Test-PathTraversal" {
         It "Should return properly structured result object" {
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath
             
-            $result | Should Not BeNullOrEmpty
-            $result.PSObject.TypeNames[0] | Should Be 'PathTraversalValidationResult'
-            $result.ValidationResults | Should Not BeNullOrEmpty
-            $result.TotalPaths | Should BeGreaterThan 0
+            $result | Should -Not -BeNullOrEmpty
+            $result.PSObject.TypeNames[0] | Should -Be 'PathTraversalValidationResult'
+            $result.ValidationResults | Should -Not -BeNullOrEmpty
+            $result.TotalPaths | Should -BeGreaterThan 0
         }
 
         It "Should include all required properties" {
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath
             
-            $result.ValidationResults | Should Not BeNullOrEmpty
-            $result.TotalPaths | Should Not BeNullOrEmpty
-            $result.SafePaths | Should Not BeNullOrEmpty
-            $result.UnsafePaths | Should Not BeNullOrEmpty
-            $result.ValidationPassed | Should Not BeNullOrEmpty
-            $result.BasePath | Should Not BeNullOrEmpty
-            $result.CorrelationId | Should Not BeNullOrEmpty
+            $result.ValidationResults | Should -Not -BeNullOrEmpty
+            $result.TotalPaths | Should -Not -BeNullOrEmpty
+            $result.SafePaths | Should -Not -BeNullOrEmpty
+            $result.UnsafePaths | Should -Not -BeNullOrEmpty
+            $result.ValidationPassed | Should -Not -BeNullOrEmpty
+            $result.BasePath | Should -Not -BeNullOrEmpty
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
         }
 
         It "Should maintain data type consistency across results" {
             $result = Test-PathTraversal -Path $script:SafeFile -BasePath $script:TestBasePath
             
-            $result.TotalPaths.GetType().Name | Should Be 'Int32'
-            $result.SafePaths.GetType().Name | Should Be 'Int32'
-            $result.UnsafePaths.GetType().Name | Should Be 'Int32'
-            $result.ValidationPassed.GetType().Name | Should Be 'Boolean'
+            $result.TotalPaths.GetType().Name | Should -Be 'Int32'
+            $result.SafePaths.GetType().Name | Should -Be 'Int32'
+            $result.UnsafePaths.GetType().Name | Should -Be 'Int32'
+            $result.ValidationPassed.GetType().Name | Should -Be 'Boolean'
         }
     }
 
@@ -398,8 +397,8 @@ Describe "Test-PathTraversal" {
             $result = Test-PathTraversal -Path $largeBatch -BasePath $script:TestBasePath
             $stopwatch.Stop()
             
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 10000  # 10 seconds max
-            $result.TotalPaths | Should Be 100
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 10000  # 10 seconds max
+            $result.TotalPaths | Should -Be 100
         }
 
         It "Should handle memory efficiently with large datasets" {
@@ -411,8 +410,8 @@ Describe "Test-PathTraversal" {
             $afterMemory = [System.GC]::GetTotalMemory($false)
             $memoryUsedMB = ($afterMemory - $beforeMemory) / 1MB
             
-            $memoryUsedMB | Should BeLessThan 50  # Should use less than 50MB
-            $result.TotalPaths | Should Be 500
+            $memoryUsedMB | Should -BeLessThan 50  # Should use less than 50MB
+            $result.TotalPaths | Should -Be 500
         }
     }
 }

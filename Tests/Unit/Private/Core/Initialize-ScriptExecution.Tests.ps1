@@ -1,4 +1,4 @@
-#Requires -Module Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
 <#
@@ -35,8 +35,11 @@
 #>
 
 # Import required test helpers
-. "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
-. "$PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1"
+BeforeAll {
+    . "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
+
+    . "$PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1"
+}
 
 Describe "Initialize-ScriptExecution Function Tests" {
     
@@ -205,7 +208,7 @@ Describe "Initialize-ScriptExecution Function Tests" {
             return @{
                 Success = $true
                 LoggingSystem = @{
-                    Level = $args[1]  # LogLevel parameter
+                    Level = $LogLevel  # Pester 6 binds the mocked command's parameters as variables
                     IsInitialized = $true
                     LogPath = 'C:\Logs'
                 }
@@ -215,7 +218,7 @@ Describe "Initialize-ScriptExecution Function Tests" {
             return @{
                 Success = $true
                 MemoryManager = @{
-                    MaxMemoryMB = $args[0]  # MaxMemoryMB parameter
+                    MaxMemoryMB = $MaxMemoryMB  # Pester 6 binds the mocked command's parameters as variables
                     IsInitialized = $true
                     Initialize = { return $true }
                 }
@@ -231,8 +234,8 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution -ConfigPath $configPath
             
-            $result.Success | Should Be $true
-            $result.Configuration.MemoryThresholdMB | Should Be 512  # Using default from our mock
+            $result.Success | Should -Be $true
+            $result.Configuration.MemoryThresholdMB | Should -Be 512  # Using default from our mock
         }
         
         It "Should handle missing configuration file gracefully" {
@@ -241,28 +244,28 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution -ConfigPath $configPath
             
-            $result.Success | Should Be $true
-            $result.Configuration | Should Not BeNullOrEmpty
+            $result.Success | Should -Be $true
+            $result.Configuration | Should -Not -BeNullOrEmpty
         }
         
         It "Should validate configuration structure" {
             $result = Initialize-ScriptExecution -ConfigPath "test.json"
             
-            $result.Success | Should Be $true
-            $result.Configuration.MemoryThresholdMB | Should BeGreaterThan 0
+            $result.Success | Should -Be $true
+            $result.Configuration.MemoryThresholdMB | Should -BeGreaterThan 0
         }
         
         It "Should apply default configuration when invalid JSON" {
             $result = Initialize-ScriptExecution -ConfigPath "invalid.json"
             
-            $result.Success | Should Be $true
-            $result.Configuration | Should Not BeNullOrEmpty
+            $result.Success | Should -Be $true
+            $result.Configuration | Should -Not -BeNullOrEmpty
         }
         
         It "Should validate memory threshold boundaries" {
             $result = Initialize-ScriptExecution -ConfigPath "test.json"
             
-            $result.Configuration.MemoryThresholdMB | Should BeGreaterThan 99
+            $result.Configuration.MemoryThresholdMB | Should -BeGreaterThan 99
         }
     }
     
@@ -270,9 +273,9 @@ Describe "Initialize-ScriptExecution Function Tests" {
         It "Should initialize memory manager with configuration" {
             $result = Initialize-ScriptExecution -ConfigPath "test.json"
             
-            $result.Success | Should Be $true
-            $result.MemoryManager | Should Not BeNullOrEmpty
-            $result.MemoryManager.IsInitialized | Should Be $true
+            $result.Success | Should -Be $true
+            $result.MemoryManager | Should -Not -BeNullOrEmpty
+            $result.MemoryManager.IsInitialized | Should -Be $true
         }
         
         It "Should handle memory manager initialization failure" {
@@ -282,21 +285,21 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution -ConfigPath "test.json"
             
-            $result.Success | Should Be $false
-            $result.Error | Should Match "Memory manager initialization failed"
+            $result.Success | Should -Be $false
+            $result.Error | Should -Match "Memory manager initialization failed"
         }
         
         It "Should configure memory threshold correctly" {
             $result = Initialize-ScriptExecution -ConfigPath "test.json"
             
-            $result.MemoryManager.MaxMemoryMB | Should BeGreaterThan 0
+            $result.MemoryManager.MaxMemoryMB | Should -BeGreaterThan 0
         }
         
         It "Should validate memory manager object creation" {
             $result = Initialize-ScriptExecution
             
-            $result.MemoryManager | Should Not BeNullOrEmpty
-            $result.MemoryManager.IsInitialized | Should Be $true
+            $result.MemoryManager | Should -Not -BeNullOrEmpty
+            $result.MemoryManager.IsInitialized | Should -Be $true
         }
     }
     
@@ -304,9 +307,9 @@ Describe "Initialize-ScriptExecution Function Tests" {
         It "Should initialize logging system successfully" {
             $result = Initialize-ScriptExecution -LogLevel 'Debug'
             
-            $result.Success | Should Be $true
-            $result.LoggingSystem | Should Not BeNullOrEmpty
-            $result.LoggingSystem.IsInitialized | Should Be $true
+            $result.Success | Should -Be $true
+            $result.LoggingSystem | Should -Not -BeNullOrEmpty
+            $result.LoggingSystem.IsInitialized | Should -Be $true
         }
         
         It "Should handle logging system initialization failure" {
@@ -316,20 +319,20 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution
             
-            $result.Success | Should Be $false
-            $result.Error | Should Match "Logging system initialization failed"
+            $result.Success | Should -Be $false
+            $result.Error | Should -Match "Logging system initialization failed"
         }
         
         It "Should configure log level from parameter" {
             $result = Initialize-ScriptExecution -LogLevel 'Verbose'
             
-            $result.LoggingSystem.Level | Should Be 'Verbose'
+            $result.LoggingSystem.Level | Should -Be 'Verbose'
         }
         
         It "Should apply default log level when not specified" {
             $result = Initialize-ScriptExecution
             
-            $result.LoggingSystem.Level | Should Not BeNullOrEmpty
+            $result.LoggingSystem.Level | Should -Not -BeNullOrEmpty
         }
     }
     
@@ -337,27 +340,27 @@ Describe "Initialize-ScriptExecution Function Tests" {
         It "Should provide default memory threshold" {
             $result = Initialize-ScriptExecution
             
-            $result.Configuration.MemoryThresholdMB | Should BeGreaterThan 99
-            $result.Configuration.MemoryThresholdMB | Should BeLessThan 16385
+            $result.Configuration.MemoryThresholdMB | Should -BeGreaterThan 99
+            $result.Configuration.MemoryThresholdMB | Should -BeLessThan 16385
         }
         
         It "Should provide default retry settings" {
             $result = Initialize-ScriptExecution
             
-            $result.Configuration.MaxRetryAttempts | Should BeGreaterThan 0
-            $result.Configuration.RetryDelaySeconds | Should BeGreaterThan 0
+            $result.Configuration.MaxRetryAttempts | Should -BeGreaterThan 0
+            $result.Configuration.RetryDelaySeconds | Should -BeGreaterThan 0
         }
         
         It "Should provide default batch processing settings" {
             $result = Initialize-ScriptExecution
             
-            $result.Configuration.BatchSize | Should BeGreaterThan 0
+            $result.Configuration.BatchSize | Should -BeGreaterThan 0
         }
         
         It "Should enable audit trail by default" {
             $result = Initialize-ScriptExecution
             
-            $result.Configuration.AuditTrailEnabled | Should Be $true
+            $result.Configuration.AuditTrailEnabled | Should -Be $true
         }
     }
     
@@ -380,8 +383,8 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution -ConfigPath "test.json"
             
-            $result.Success | Should Be $true
-            $result.Configuration | Should Not BeNullOrEmpty
+            $result.Success | Should -Be $true
+            $result.Configuration | Should -Not -BeNullOrEmpty
         }
         
         It "Should provide correlation ID for error tracking" {
@@ -391,15 +394,15 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution
             
-            $result.CorrelationId | Should Not BeNullOrEmpty
-            $result.CorrelationId | Should Match "^[A-Fa-f0-9\-]{36}$"
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
+            $result.CorrelationId | Should -Match "^[A-Fa-f0-9\-]{36}$"
         }
         
         It "Should log initialization steps for troubleshooting" {
             $result = Initialize-ScriptExecution
             
             # In Pester 3.4.x, check if the mock was called by verifying behavior
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
         
         It "Should handle partial initialization gracefully" {
@@ -409,8 +412,8 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution
             
-            $result.Success | Should Be $false
-            $result.CorrelationId | Should Not BeNullOrEmpty
+            $result.Success | Should -Be $false
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
         }
     }
     
@@ -420,22 +423,22 @@ Describe "Initialize-ScriptExecution Function Tests" {
             
             $result = Initialize-ScriptExecution -ConfigPath $maliciousPath
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             # Function should sanitize and still work
         }
         
         It "Should validate log level parameter values" {
             $result = Initialize-ScriptExecution -LogLevel 'InvalidLevel'
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             $validLevels = @('Debug', 'Verbose', 'Information', 'Warning', 'Error', 'InvalidLevel')
-            $validLevels -contains $result.LoggingSystem.Level | Should Be $true
+            $validLevels -contains $result.LoggingSystem.Level | Should -Be $true
         }
         
         It "Should include security validation in configuration" {
             $result = Initialize-ScriptExecution
             
-            $result.Configuration.SecurityValidationLevel | Should Not BeNullOrEmpty
+            $result.Configuration.SecurityValidationLevel | Should -Not -BeNullOrEmpty
         }
     }
     
@@ -443,15 +446,15 @@ Describe "Initialize-ScriptExecution Function Tests" {
         It "Should track initialization resources" {
             $result = Initialize-ScriptExecution
             
-            $result.Resources | Should Not BeNullOrEmpty
-            $result.Resources.Count | Should BeGreaterThan 0
+            $result.Resources | Should -Not -BeNullOrEmpty
+            $result.Resources.Count | Should -BeGreaterThan 0
         }
         
         It "Should provide cleanup instructions" {
             $result = Initialize-ScriptExecution
             
-            $result.Cleanup | Should Not BeNullOrEmpty
-            $result.Cleanup.Instructions | Should Not BeNullOrEmpty
+            $result.Cleanup | Should -Not -BeNullOrEmpty
+            $result.Cleanup.Instructions | Should -Not -BeNullOrEmpty
         }
     }
 }

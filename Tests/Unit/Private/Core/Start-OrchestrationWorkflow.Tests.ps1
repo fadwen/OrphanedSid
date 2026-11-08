@@ -1,15 +1,7 @@
-#Requires -Module Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
 # Stub so this file runs on its own; every Write-StructuredLog call is mocked below.
-if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
-    function Write-StructuredLog {
-        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
-            Justification = 'Stub; the parameter names are what Mock -ParameterFilter binds to')]
-        param($Message, $Level, $Component, $CorrelationId, $Data, $LogPath)
-    }
-}
-
 <#
 .SYNOPSIS
     Comprehensive Pester tests for Start-OrchestrationWorkflow function
@@ -38,6 +30,16 @@ if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
     - Parameter handling: .\Troubleshooting\Core\Parameter-Handling.md
     - Error handling: .\Troubleshooting\Core\Error-Handling.md
 #>
+
+BeforeAll {
+    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
+        function Write-StructuredLog {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
+                Justification = 'Stub; the parameter names are what Mock -ParameterFilter binds to')]
+            param($Message, $Level, $Component, $CorrelationId, $Data, $LogPath)
+        }
+    }
+}
 
 Describe "Start-OrchestrationWorkflow Function Tests" {
     
@@ -196,10 +198,10 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters -CorrelationId $script:TestCorrelationId
             
-            $result.Success | Should Be $true
-            $result.ProcessedItems | Should Be 15
-            $result.OperationType | Should Be 'Discovery'
-            $result.CorrelationId | Should Be $script:TestCorrelationId
+            $result.Success | Should -Be $true
+            $result.ProcessedItems | Should -Be 15
+            $result.OperationType | Should -Be 'Discovery'
+            $result.CorrelationId | Should -Be $script:TestCorrelationId
         }
         
         It "Should pass all parameters correctly to Discovery workflow" {
@@ -213,20 +215,20 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters -CorrelationId $script:TestCorrelationId
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             
             # Verify the call was made with correct parameters
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall | Should Not BeNullOrEmpty
+            $mainProcessingCall | Should -Not -BeNullOrEmpty
             
-            # The function adds CorrelationId to the Parameters hashtable, so it should be in the splatted call
+            # The function adds CorrelationId to the Parameters hashtable, so it Should -be in the splatted call
             $allParams = $mainProcessingCall.Parameters
-            $allParams.SearchBase | Should Be $script:TestSearchBase
-            $allParams.MaxResults | Should Be 100
-            $allParams.Timeout | Should Be 300
-            $allParams.ExcludeBuiltIn | Should Be $true
-            $allParams.Filter | Should Be '(objectClass=user)'
-            $allParams.CorrelationId | Should Be $script:TestCorrelationId
+            $allParams.SearchBase | Should -Be $script:TestSearchBase
+            $allParams.MaxResults | Should -Be 100
+            $allParams.Timeout | Should -Be 300
+            $allParams.ExcludeBuiltIn | Should -Be $true
+            $allParams.Filter | Should -Be '(objectClass=user)'
+            $allParams.CorrelationId | Should -Be $script:TestCorrelationId
         }
         
         It "Should generate CorrelationId if not provided in Discovery" {
@@ -237,9 +239,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             # Don't provide CorrelationId parameter - function should generate one
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             
-            $result.Success | Should Be $true
-            $result.CorrelationId | Should Not BeNullOrEmpty
-            $result.CorrelationId | Should Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            $result.Success | Should -Be $true
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
+            $result.CorrelationId | Should -Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         }
         
         It "Should preserve existing CorrelationId in Discovery operations" {
@@ -250,7 +252,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters -CorrelationId $existingCorrelationId
             
-            $result.CorrelationId | Should Be $existingCorrelationId
+            $result.CorrelationId | Should -Be $existingCorrelationId
         }
         
         It "Should log Discovery workflow initiation and completion" {
@@ -262,14 +264,14 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             
             $logCalls = $script:MockCallLog | Where-Object { $_.Function -eq 'Write-StructuredLog' }
-            $logCalls.Count | Should BeGreaterThan 1
+            $logCalls.Count | Should -BeGreaterThan 1
             
             # Should have starting and completion logs
             $startLog = $logCalls | Where-Object { $_.Parameters.Message -like '*Starting orchestration workflow: Discovery*' }
             $endLog = $logCalls | Where-Object { $_.Parameters.Message -like '*Orchestration workflow completed: Discovery*' }
             
-            $startLog | Should Not BeNullOrEmpty
-            $endLog | Should Not BeNullOrEmpty
+            $startLog | Should -Not -BeNullOrEmpty
+            $endLog | Should -Not -BeNullOrEmpty
         }
     }
     
@@ -282,10 +284,10 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $parameters
             
-            $result.Success | Should Be $true
-            $result.ProcessedItems | Should Be 15
-            $result.OperationType | Should Be 'Removal'
-            $result.CorrelationId | Should Be $script:TestCorrelationId
+            $result.Success | Should -Be $true
+            $result.ProcessedItems | Should -Be 15
+            $result.OperationType | Should -Be 'Removal'
+            $result.CorrelationId | Should -Be $script:TestCorrelationId
         }
         
         It "Should add Remove flag to parameters for Removal operations" {
@@ -298,7 +300,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             # Verify Remove flag was added
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.Remove | Should Be $true
+            $mainProcessingCall.Parameters.Remove | Should -Be $true
         }
         
         It "Should pass all parameters correctly to Removal workflow" {
@@ -312,15 +314,15 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $parameters
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             
             # Verify all parameters were passed correctly
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.SearchBase | Should Be $script:TestSearchBase
-            $mainProcessingCall.Parameters.MaxResults | Should Be 50
-            $mainProcessingCall.Parameters.BackupLocation | Should Be 'C:\Backups'
-            $mainProcessingCall.Parameters.WhatIf | Should Be $true
-            $mainProcessingCall.Parameters.Remove | Should Be $true
+            $mainProcessingCall.Parameters.SearchBase | Should -Be $script:TestSearchBase
+            $mainProcessingCall.Parameters.MaxResults | Should -Be 50
+            $mainProcessingCall.Parameters.BackupLocation | Should -Be 'C:\Backups'
+            $mainProcessingCall.Parameters.WhatIf | Should -Be $true
+            $mainProcessingCall.Parameters.Remove | Should -Be $true
         }
         
         It "Should log Removal workflow coordination" {
@@ -334,9 +336,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $logCalls = $script:MockCallLog | Where-Object { $_.Function -eq 'Write-StructuredLog' }
             $coordinationLog = $logCalls | Where-Object { $_.Parameters.Message -like '*Coordinating removal workflow*' }
             
-            $coordinationLog | Should Not BeNullOrEmpty
-            $coordinationLog.Parameters.Component | Should Be 'Orchestration'
-            $coordinationLog.Parameters.CorrelationId | Should Be $script:TestCorrelationId
+            $coordinationLog | Should -Not -BeNullOrEmpty
+            $coordinationLog.Parameters.Component | Should -Be 'Orchestration'
+            $coordinationLog.Parameters.CorrelationId | Should -Be $script:TestCorrelationId
         }
     }
     
@@ -350,11 +352,11 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters
             
-            $result.Success | Should Be $true
-            $result.RestoredObjects | Should Be 3
-            $result.TargetObjectDN | Should Be $script:TestTargetDN
-            $result.BackupPath | Should Be $script:TestBackupPath
-            $result.CorrelationId | Should Be $script:TestCorrelationId
+            $result.Success | Should -Be $true
+            $result.RestoredObjects | Should -Be 3
+            $result.TargetObjectDN | Should -Be $script:TestTargetDN
+            $result.BackupPath | Should -Be $script:TestBackupPath
+            $result.CorrelationId | Should -Be $script:TestCorrelationId
         }
         
         It "Should map parameters correctly for Restore workflow" {
@@ -369,11 +371,11 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             # Verify parameter mapping
             $restoreCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-RestoreWorkflow' }
-            $restoreCall | Should Not BeNullOrEmpty
-            $restoreCall.Parameters.TargetObjectDN | Should Be $script:TestTargetDN
-            $restoreCall.Parameters.BackupPath | Should Be $script:TestBackupPath
-            $restoreCall.Parameters.CorrelationId | Should Be $script:TestCorrelationId
-            $restoreCall.Parameters.WhatIf | Should Be $true
+            $restoreCall | Should -Not -BeNullOrEmpty
+            $restoreCall.Parameters.TargetObjectDN | Should -Be $script:TestTargetDN
+            $restoreCall.Parameters.BackupPath | Should -Be $script:TestBackupPath
+            $restoreCall.Parameters.CorrelationId | Should -Be $script:TestCorrelationId
+            $restoreCall.Parameters.WhatIf | Should -Be $true
         }
         
         It "Should handle missing restore parameters gracefully" {
@@ -387,7 +389,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             # Should still call the restore workflow (let it handle validation)
             $restoreCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-RestoreWorkflow' }
-            $restoreCall | Should Not BeNullOrEmpty
+            $restoreCall | Should -Not -BeNullOrEmpty
         }
         
         It "Should log Restore workflow coordination" {
@@ -402,8 +404,8 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $logCalls = $script:MockCallLog | Where-Object { $_.Function -eq 'Write-StructuredLog' }
             $coordinationLog = $logCalls | Where-Object { $_.Parameters.Message -like '*Coordinating restore workflow*' }
             
-            $coordinationLog | Should Not BeNullOrEmpty
-            $coordinationLog.Parameters.Component | Should Be 'Orchestration'
+            $coordinationLog | Should -Not -BeNullOrEmpty
+            $coordinationLog.Parameters.Component | Should -Be 'Orchestration'
         }
     }
     
@@ -412,9 +414,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $parameters = @{ SearchBase = $script:TestSearchBase }
             
             # Valid operation types should work
-            { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should Not Throw
-            { Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $parameters } | Should Not Throw
-            { Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters } | Should Not Throw
+            { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should -Not -Throw
+            { Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $parameters } | Should -Not -Throw
+            { Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters } | Should -Not -Throw
         }
         
         It "Should handle hashtable parameters correctly" {
@@ -432,12 +434,12 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $complexParameters
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             
             # Verify complex parameters were passed through
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.CustomSettings | Should Not BeNullOrEmpty
-            $mainProcessingCall.Parameters.CustomSettings.DetailedLogging | Should Be $true
+            $mainProcessingCall.Parameters.CustomSettings | Should -Not -BeNullOrEmpty
+            $mainProcessingCall.Parameters.CustomSettings.DetailedLogging | Should -Be $true
         }
         
         It "Should preserve parameter types during delegation" {
@@ -453,9 +455,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.MaxResults.GetType().Name | Should Be 'Int32'
-            $mainProcessingCall.Parameters.ExcludeBuiltIn.GetType().Name | Should Be 'Boolean'
-            $mainProcessingCall.Parameters.StartDate.GetType().Name | Should Be 'DateTime'
+            $mainProcessingCall.Parameters.MaxResults.GetType().Name | Should -Be 'Int32'
+            $mainProcessingCall.Parameters.ExcludeBuiltIn.GetType().Name | Should -Be 'Boolean'
+            $mainProcessingCall.Parameters.StartDate.GetType().Name | Should -Be 'DateTime'
         }
         
         It "Should add CorrelationId to parameters if missing" {
@@ -466,11 +468,11 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             
-            $result.CorrelationId | Should Not BeNullOrEmpty
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
             
             # Verify it was added to the parameters passed to the delegate
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.CorrelationId | Should Not BeNullOrEmpty
+            $mainProcessingCall.Parameters.CorrelationId | Should -Not -BeNullOrEmpty
         }
         
         It "Should not overwrite existing CorrelationId in parameters" {
@@ -483,7 +485,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.CorrelationId | Should Be $existingCorrelationId
+            $mainProcessingCall.Parameters.CorrelationId | Should -Be $existingCorrelationId
         }
     }
     
@@ -496,7 +498,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $parameters = @{ SearchBase = $script:TestSearchBase }
             
-            { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should Throw "Discovery workflow failed: AD connection timeout"
+            { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should -Throw "*Discovery workflow failed: AD connection timeout*"
         }
         
         It "Should handle exceptions from Removal workflow" {
@@ -507,7 +509,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $parameters = @{ SearchBase = $script:TestSearchBase }
             
-            { Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $parameters } | Should Throw "Removal workflow failed: Insufficient permissions"
+            { Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $parameters } | Should -Throw "*Removal workflow failed: Insufficient permissions*"
         }
         
         It "Should handle exceptions from Restore workflow" {
@@ -521,7 +523,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 BackupPath = $script:TestBackupPath
             }
             
-            { Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters } | Should Throw "Restore workflow failed: Backup file not found"
+            { Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters } | Should -Throw "*Restore workflow failed: Backup file not found*"
         }
         
         It "Should log errors appropriately during failure" {
@@ -551,7 +553,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                     $_.Function -eq 'Write-StructuredLog' -and 
                     $_.Parameters.Level -eq 'Error' 
                 }
-                $errorLogs | Should Not BeNullOrEmpty
+                $errorLogs | Should -Not -BeNullOrEmpty
             }
         }
         
@@ -586,7 +588,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                     $_.Function -eq 'Write-StructuredLog' -and 
                     $_.Parameters.CorrelationId -eq $testCorrelationId
                 }
-                $errorLogs | Should Not BeNullOrEmpty
+                $errorLogs | Should -Not -BeNullOrEmpty
             }
         }
     }
@@ -605,10 +607,10 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 $_.Parameters.Message -like '*Starting orchestration workflow: Discovery*'
             }
             
-            $initLogs | Should Not BeNullOrEmpty
-            $initLogs.Parameters.Level | Should Be 'Information'
-            $initLogs.Parameters.Component | Should Be 'Orchestration'
-            $initLogs.Parameters.CorrelationId | Should Be $script:TestCorrelationId
+            $initLogs | Should -Not -BeNullOrEmpty
+            $initLogs.Parameters.Level | Should -Be 'Information'
+            $initLogs.Parameters.Component | Should -Be 'Orchestration'
+            $initLogs.Parameters.CorrelationId | Should -Be $script:TestCorrelationId
         }
         
         It "Should log workflow completion with proper details" {
@@ -624,9 +626,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 $_.Parameters.Message -like '*Orchestration workflow completed: Discovery*'
             }
             
-            $completionLogs | Should Not BeNullOrEmpty
-            $completionLogs.Parameters.Level | Should Be 'Information'
-            $completionLogs.Parameters.Component | Should Be 'Orchestration'
+            $completionLogs | Should -Not -BeNullOrEmpty
+            $completionLogs.Parameters.Level | Should -Be 'Information'
+            $completionLogs.Parameters.Component | Should -Be 'Orchestration'
         }
         
         It "Should log delegation activities with debug level" {
@@ -642,8 +644,8 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 $_.Parameters.Message -like '*Coordinating discovery workflow*'
             }
             
-            $debugLogs | Should Not BeNullOrEmpty
-            $debugLogs.Parameters.Level | Should Be 'Debug'
+            $debugLogs | Should -Not -BeNullOrEmpty
+            $debugLogs.Parameters.Level | Should -Be 'Debug'
         }
         
         It "Should maintain consistent correlation ID throughout workflow" {
@@ -658,7 +660,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             # All log entries should have the same correlation ID
             $allLogCalls = $script:MockCallLog | Where-Object { $_.Function -eq 'Write-StructuredLog' }
             foreach ($logCall in $allLogCalls) {
-                $logCall.Parameters.CorrelationId | Should Be $testCorrelationId
+                $logCall.Parameters.CorrelationId | Should -Be $testCorrelationId
             }
         }
         
@@ -674,11 +676,11 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             # Verify logs were created within reasonable time bounds
             $logTimes = $script:MockCallLog | Where-Object { $_.Function -eq 'Write-StructuredLog' } | ForEach-Object { $_.Timestamp }
-            $logTimes | Should Not BeNullOrEmpty
+            $logTimes | Should -Not -BeNullOrEmpty
             
             foreach ($logTime in $logTimes) {
-                $logTime | Should BeGreaterThan $startTime.AddSeconds(-1)
-                $logTime | Should BeLessThan $endTime.AddSeconds(1)
+                $logTime | Should -BeGreaterThan $startTime.AddSeconds(-1)
+                $logTime | Should -BeLessThan $endTime.AddSeconds(1)
             }
         }
     }
@@ -700,7 +702,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 CorrelationId = $script:TestCorrelationId
             }
             
-            { Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $restoreParams } | Should Not Throw
+            { Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $restoreParams } | Should -Not -Throw
         }
         
         It "Should handle begin/process/end blocks correctly" {
@@ -710,7 +712,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             }
             
             # Should execute without errors and complete all phases
-            { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should Not Throw
+            { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should -Not -Throw
             
             # Verify that both start and completion logs exist (indicating full execution)
             $startLogs = $script:MockCallLog | Where-Object { 
@@ -722,8 +724,8 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 $_.Parameters.Message -like '*Orchestration workflow completed*'
             }
             
-            $startLogs | Should Not BeNullOrEmpty
-            $endLogs | Should Not BeNullOrEmpty
+            $startLogs | Should -Not -BeNullOrEmpty
+            $endLogs | Should -Not -BeNullOrEmpty
         }
         
         It "Should execute finally block even during errors" {
@@ -745,7 +747,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             # The function should have attempted to execute the finally block
             # This is structural validation rather than runtime verification
-            $true | Should Be $true  # Placeholder for structural test
+            $true | Should -Be $true  # Placeholder for structural test
         }
     }
     
@@ -757,7 +759,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             # Discovery routing
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $baseParams
             $discoveryCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $discoveryCall | Should Not BeNullOrEmpty
+            $discoveryCall | Should -Not -BeNullOrEmpty
             
             # Reset for next test
             $script:MockCallLog = @()
@@ -765,7 +767,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             # Removal routing  
             Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $baseParams
             $removalCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $removalCall.Parameters.Remove | Should Be $true
+            $removalCall.Parameters.Remove | Should -Be $true
             
             # Reset for next test
             $script:MockCallLog = @()
@@ -774,7 +776,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $restoreParams = @{ TargetObjectDN = $script:TestTargetDN; BackupPath = $script:TestBackupPath }
             Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $restoreParams
             $restoreCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-RestoreWorkflow' }
-            $restoreCall | Should Not BeNullOrEmpty
+            $restoreCall | Should -Not -BeNullOrEmpty
         }
         
         It "Should maintain audit trail continuity" {
@@ -792,14 +794,14 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 $_.Parameters.CorrelationId -eq $testCorrelationId 
             }
             
-            $correlatedCalls.Count | Should BeGreaterThan 1
+            $correlatedCalls.Count | Should -BeGreaterThan 1
             
             # Should include both logging and processing calls
             $logCalls = $correlatedCalls | Where-Object { $_.Function -eq 'Write-StructuredLog' }
             $processingCalls = $correlatedCalls | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
             
-            $logCalls | Should Not BeNullOrEmpty
-            $processingCalls | Should Not BeNullOrEmpty
+            $logCalls | Should -Not -BeNullOrEmpty
+            $processingCalls | Should -Not -BeNullOrEmpty
         }
         
         It "Should support enterprise workflow standards" {
@@ -815,14 +817,14 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result = Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             
             # Verify enterprise parameters were passed through
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
-            $mainProcessingCall.Parameters.RequestId | Should Be 'REQ-2025-001'
-            $mainProcessingCall.Parameters.UserId | Should Be 'admin@contoso.com'
-            $mainProcessingCall.Parameters.Department | Should Be 'IT Security'
-            $mainProcessingCall.Parameters.Priority | Should Be 'High'
+            $mainProcessingCall.Parameters.RequestId | Should -Be 'REQ-2025-001'
+            $mainProcessingCall.Parameters.UserId | Should -Be 'admin@contoso.com'
+            $mainProcessingCall.Parameters.Department | Should -Be 'IT Security'
+            $mainProcessingCall.Parameters.Priority | Should -Be 'High'
         }
     }
 }

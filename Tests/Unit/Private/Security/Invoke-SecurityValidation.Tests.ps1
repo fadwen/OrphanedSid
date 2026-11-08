@@ -1,16 +1,22 @@
 #Requires -Version 5.1
 
-$script:TestPath = $PSScriptRoot
-$script:ProjectRoot = Split-Path (Split-Path (Split-Path (Split-Path $TestPath -Parent) -Parent) -Parent) -Parent
-$script:FunctionPath = Join-Path $ProjectRoot 'Private\Security\Invoke-SecurityValidation.ps1'
-
 # Dot source the function
-. $script:FunctionPath
-
 # Import required dependencies
-. (Join-Path $ProjectRoot 'Classes\SecurityValidationResult.ps1')
-. (Join-Path $ProjectRoot 'Private\SID\Test-SIDSecurity.ps1')
-. (Join-Path $ProjectRoot 'Private\Logging\Write-StructuredLog.ps1')
+BeforeAll {
+    $script:TestPath = $PSScriptRoot
+
+    $script:ProjectRoot = Split-Path (Split-Path (Split-Path (Split-Path $TestPath -Parent) -Parent) -Parent) -Parent
+
+    $script:FunctionPath = Join-Path $ProjectRoot 'Private\Security\Invoke-SecurityValidation.ps1'
+
+    . $script:FunctionPath
+
+    . (Join-Path $ProjectRoot 'Classes\SecurityValidationResult.ps1')
+
+    . (Join-Path $ProjectRoot 'Private\SID\Test-SIDSecurity.ps1')
+
+    . (Join-Path $ProjectRoot 'Private\Logging\Write-StructuredLog.ps1')
+}
 
 Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
     BeforeAll {
@@ -37,9 +43,9 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
                     ValidatorVersion = '1.0.0'
                     PSTypeName = 'SecurityValidationResult'
                 }
-            } -Scope It
+            }
 
-            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs } | Should Not Throw
+            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs } | Should -Not -Throw
         }
 
         It 'Should accept ObjectDN parameter' {
@@ -59,17 +65,17 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
                     ValidatorVersion = '1.0.0'
                     PSTypeName = 'SecurityValidationResult'
                 }
-            } -Scope It
+            }
 
-            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs -ObjectDN 'CN=TestObject,DC=test,DC=com' } | Should Not Throw
+            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs -ObjectDN 'CN=TestObject,DC=test,DC=com' } | Should -Not -Throw
         }
 
-        It 'Should throw on null OrphanedSIDs' {
-            { Invoke-SecurityValidation -OrphanedSIDs $null } | Should Throw
+        It 'Should -throw on null OrphanedSIDs' {
+            { Invoke-SecurityValidation -OrphanedSIDs $null } | Should -Throw
         }
 
-        It 'Should throw on empty OrphanedSIDs array' {
-            { Invoke-SecurityValidation -OrphanedSIDs @() } | Should Throw
+        It 'Should -throw on empty OrphanedSIDs array' {
+            { Invoke-SecurityValidation -OrphanedSIDs @() } | Should -Throw
         }
     }
 
@@ -91,12 +97,12 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
                     ValidatorVersion = '1.0.0'
                     PSTypeName = 'SecurityValidationResult'
                 }
-            } -Scope It
+            }
 
             $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $result | Should Not BeNullOrEmpty
-            $result.IsValid | Should Be $true
-            $result.RiskLevel | Should Be 'Low'
+            $result | Should -Not -BeNullOrEmpty
+            $result.IsValid | Should -Be $true
+            $result.RiskLevel | Should -Be 'Low'
         }
 
         It 'Should block protected system SIDs' {
@@ -116,12 +122,12 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
                     ValidatorVersion = '1.0.0'
                     PSTypeName = 'SecurityValidationResult'
                 }
-            } -Scope It
+            }
 
             $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $result | Should Not BeNullOrEmpty
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be 'Critical'
+            $result | Should -Not -BeNullOrEmpty
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be 'Critical'
             # Function only sets RequiresElevatedConfirmation for allowed SIDs, not blocked ones
         }
 
@@ -143,11 +149,11 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
                     ValidatorVersion = '1.0.0'
                     PSTypeName = 'SecurityValidationResult'
                 }
-            } -Scope It
+            }
 
             Invoke-SecurityValidation -OrphanedSIDs $testSIDs -ObjectDN $objectDN
 
-            Assert-MockCalled Test-SIDSecurity -Exactly 1 -Scope It -ParameterFilter {
+            Should -Invoke Test-SIDSecurity -Exactly 1 -Scope It -ParameterFilter {
                 $SIDString -eq 'S-1-5-21-1234567890-1234567890-1234567890-1001' -and
                 $ObjectDN -eq $objectDN
             }
@@ -179,7 +185,7 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
             $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
             
             # Should call Test-SIDSecurity for each SID
-            Assert-MockCalled Test-SIDSecurity -Exactly 3
+            Should -Invoke Test-SIDSecurity -Exactly 3
         }
     }
 
@@ -205,7 +211,7 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
             }
 
             $result = $testSIDs | Invoke-SecurityValidation
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
     }
 
@@ -217,13 +223,13 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
 
             Mock Test-SIDSecurity {
                 throw "Simulated validation error for testing"
-            } -Scope It
+            }
 
             $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $result | Should Not BeNullOrEmpty
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be 'Critical'
-            $result.Issues[0] | Should BeLike "*Simulated validation error*"
+            $result | Should -Not -BeNullOrEmpty
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be 'Critical'
+            $result.Issues[0] | Should -BeLike "*Simulated validation error*"
         }
 
         It 'Should handle empty string SID' {
@@ -231,7 +237,7 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
                 ''
             )
 
-            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs } | Should Throw
+            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs } | Should -Throw
         }
     }
 
@@ -258,7 +264,7 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
             Invoke-SecurityValidation -OrphanedSIDs $testSIDs
 
             # Verify structured logging was called
-            Assert-MockCalled Write-StructuredLog -Times 1
+            Should -Invoke Write-StructuredLog -Times 1
         }
     }
 
@@ -288,7 +294,7 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
             $stopwatch.Stop()
 
             # Should complete within 1 second for single SID
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 1000
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
         }
     }
 }

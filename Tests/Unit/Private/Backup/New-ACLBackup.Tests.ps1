@@ -1,18 +1,7 @@
-﻿#Requires -Module Pester
-
+﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Comprehensive Pes        $rule1 = New-Object System.DirectoryServices.ActiveDirectoryAccessRule($identity1, [System.DirectoryServices.ActiveDirectoryRights]::ReadProperty, [System.Security.AccessControl.AccessControlType]::Allow,
-            [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
-        , [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All)
-        
-        $rule2 = New-Object System.DirectoryServices.ActiveDirectoryAccessRule($identity2, [System.DirectoryServices.ActiveDirectoryRights]::WriteProperty, [System.Security.AccessControl.AccessControlType]::Allow,
-            [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
-        , [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All)
-        
-        $rule3 = New-Object System.DirectoryServices.ActiveDirectoryAccessRule($identity3, [System.DirectoryServices.ActiveDirectoryRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow,
-            [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
-        , [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All)-ACLBackup function
+    Comprehensive Pester tests for the New-ACLBackup function
 
 .DESCRIPTION
     This test suite provides comprehensive validation of the New-ACLBackup function,
@@ -439,57 +428,57 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
     
     Context "Parameter Validation" {
         It "Should accept valid ObjectDN parameter" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
         }
         
         It "Should reject null ObjectDN" {
-            { New-ACLBackup -ObjectDN $null -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw
+            { New-ACLBackup -ObjectDN $null -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw
         }
         
         It "Should reject empty ObjectDN" {
-            { New-ACLBackup -ObjectDN "" -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw
+            { New-ACLBackup -ObjectDN "" -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw
         }
         
         It "Should reject whitespace-only ObjectDN" {
-            { New-ACLBackup -ObjectDN "   " -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw "ObjectDN cannot be null, empty, or whitespace"
+            { New-ACLBackup -ObjectDN "   " -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw "*ObjectDN cannot be null, empty, or whitespace*"
         }
         
         It "Should trim whitespace from ObjectDN" {
             $paddedDN = "  $script:TestObjectDN  "
-            { New-ACLBackup -ObjectDN $paddedDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+            { New-ACLBackup -ObjectDN $paddedDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
         }
         
         It "Should accept valid ACL object" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
         }
         
         It "Should reject null ACL object" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $null -BackupPath $script:TestBackupDir } | Should Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $null -BackupPath $script:TestBackupDir } | Should -Throw
         }
         
         It "Should accept valid BackupPath parameter" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
         }
         
         It "Should reject null BackupPath" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $null } | Should Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $null } | Should -Throw
         }
         
         It "Should reject empty BackupPath" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath "" } | Should Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath "" } | Should -Throw
         }
         
         It "Should accept custom CorrelationId" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir -CorrelationId $customCorrelationId } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir -CorrelationId $customCorrelationId } | Should -Not -Throw
         }
         
         It "Should auto-generate CorrelationId when not provided" {
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
         }
         
         It "Should support pipeline input for ObjectDN" {
-            { $script:TestObjectDN | New-ACLBackup -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+            { $script:TestObjectDN | New-ACLBackup -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
         }
         
         It "Should validate ObjectDN format" {
@@ -500,24 +489,24 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             )
             
             foreach ($validDN in $validDNs) {
-                { New-ACLBackup -ObjectDN $validDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Not Throw
+                { New-ACLBackup -ObjectDN $validDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Not -Throw
             }
         }
         
         It "Should accept ActiveDirectorySecurity object" {
             $aclType = $script:TestACL.PSTypeNames[0]
-            $aclType | Should Be "System.DirectoryServices.ActiveDirectorySecurity"
+            $aclType | Should -Be "System.DirectoryServices.ActiveDirectorySecurity"
         }
     }
     
     Context "Backup Creation and File Operations" {
         It "Should create backup file successfully" {
             $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir
-            $result | Should Be $true
+            $result | Should -Be $true
             
             # Verify file was created
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
-            $backupFiles.Count | Should BeGreaterThan 0
+            $backupFiles.Count | Should -BeGreaterThan 0
         }
         
         It "Should create backup directory if it doesn't exist" {
@@ -529,8 +518,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             }
             
             $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $newBackupDir
-            $result | Should Be $true
-            Test-Path $newBackupDir | Should Be $true
+            $result | Should -Be $true
+            Test-Path $newBackupDir | Should -Be $true
             
             # Cleanup
             Remove-Item $newBackupDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -544,29 +533,29 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
-            $latestFile.Name | Should Match '\d{8}-\d{6}-\d{3}\.xml$'
+            $latestFile.Name | Should -Match '\d{8}-\d{6}-\d{3}\.xml$'
         }
         
         It "Should sanitize filename safely" {
             $problematicDN = 'CN=User/With\Problematic:Characters*?,OU="Quotes",DC=company,DC=com'
             
             $result = New-ACLBackup -ObjectDN $problematicDN -ACL $script:TestACL -BackupPath $script:TestBackupDir
-            $result | Should Be $true
+            $result | Should -Be $true
             
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
-            $latestFile.Name | Should Not Match '[\\/:*?"<>|,=]'
+            $latestFile.Name | Should -Not -Match '[\\/:*?"<>|,=]'
         }
         
         It "Should handle long filenames by truncation" {
             $longDN = "CN=" + ("VeryLongUserName" * 20) + ",OU=Users,DC=company,DC=com"
             
             $result = New-ACLBackup -ObjectDN $longDN -ACL $script:TestACL -BackupPath $script:TestBackupDir
-            $result | Should Be $true
+            $result | Should -Be $true
             
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
-            $latestFile.Name.Length | Should BeLessThan 260  # Windows MAX_PATH consideration
+            $latestFile.Name.Length | Should -BeLessThan 260  # Windows MAX_PATH consideration
         }
         
         It "Should create backup with UTF8 encoding" {
@@ -576,7 +565,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             
             # Verify file can be read as XML
-            { Import-Clixml $latestFile.FullName } | Should Not Throw
+            { Import-Clixml $latestFile.FullName } | Should -Not -Throw
         }
         
         It "Should create unique filename for concurrent operations" {
@@ -587,20 +576,20 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
                 $results += New-ACLBackup -ObjectDN "CN=User$_,OU=Users,DC=company,DC=com" -ACL $script:TestACL -BackupPath $script:TestBackupDir
             }
             
-            $results | ForEach-Object { $_.Success | Should Be $true }
+            $results | ForEach-Object { $_.Success | Should -Be $true }
             
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
-            $backupFiles.Count | Should BeGreaterThan 2
+            $backupFiles.Count | Should -BeGreaterThan 2
         }
         
         It "Should handle WhatIf mode correctly" {
             $initialFileCount = (Get-ChildItem $script:TestBackupDir -Filter "*.xml").Count
             
             $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir -WhatIf
-            $result | Should Be $false
+            $result | Should -Be $false
             
             $finalFileCount = (Get-ChildItem $script:TestBackupDir -Filter "*.xml").Count
-            $finalFileCount | Should Be $initialFileCount
+            $finalFileCount | Should -Be $initialFileCount
         }
     }
     
@@ -612,8 +601,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.SDDL | Should Not BeNullOrEmpty
-            $backupData.SDDL | Should Match '^(O:|G:|D:|S:)'  # SDDL format pattern
+            $backupData.SDDL | Should -Not -BeNullOrEmpty
+            $backupData.SDDL | Should -Match '^(O:|G:|D:|S:)'  # SDDL format pattern
         }
         
         It "Should generate SHA256 hash for integrity verification" {
@@ -623,15 +612,15 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.SDDLHash | Should Not BeNullOrEmpty
-            $backupData.SDDLHash | Should Match '^[A-Za-z0-9+/]+=*$'  # Base64 pattern
+            $backupData.SDDLHash | Should -Not -BeNullOrEmpty
+            $backupData.SDDLHash | Should -Match '^[A-Za-z0-9+/]+=*$'  # Base64 pattern
         }
         
         It "Should verify backup integrity immediately after creation" {
             # Set up a specific scenario to trigger integrity failure
             $Global:TestIntegrityFailure = "InvalidHash"
             
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw "Backup integrity check failed: Hash mismatch detected"
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw "*Backup integrity check failed: Hash mismatch detected*"
             
             # Clean up
             Remove-Variable -Name TestIntegrityFailure -Scope Global -ErrorAction SilentlyContinue
@@ -641,7 +630,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             # Set up a specific scenario to trigger integrity failure
             $Global:TestIntegrityFailure = "ObjectDNMismatch"
             
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw "Backup integrity check failed: ObjectDN mismatch detected"
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw "*Backup integrity check failed: ObjectDN mismatch detected*"
             
             # Clean up
             Remove-Variable -Name TestIntegrityFailure -Scope Global -ErrorAction SilentlyContinue
@@ -654,7 +643,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.ValidationSignature | Should Be "PSSecurityBackup_v2.1"
+            $backupData.ValidationSignature | Should -Be "PSSecurityBackup_v2.1"
         }
         
         It "Should clean up partial backup files on failure" {
@@ -663,12 +652,12 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             $initialFileCount = (Get-ChildItem $script:TestBackupDir -Filter "*.xml").Count
             
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw
             
             # Verify no additional files were left
             Start-Sleep -Milliseconds 500  # Allow cleanup time
             $finalFileCount = (Get-ChildItem $script:TestBackupDir -Filter "*.xml").Count
-            $finalFileCount | Should Be $initialFileCount
+            $finalFileCount | Should -Be $initialFileCount
             
             # Reset the mock for subsequent tests
             Mock Export-Clixml { }
@@ -682,7 +671,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupData = Import-Clixml $latestFile.FullName
             
             # Verify hash can be decoded
-            { [System.Convert]::FromBase64String($backupData.SDDLHash) } | Should Not Throw
+            { [System.Convert]::FromBase64String($backupData.SDDLHash) } | Should -Not -Throw
         }
     }
     
@@ -695,12 +684,12 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupData = Import-Clixml $latestFile.FullName
             
             # Verify essential metadata
-            $backupData.ObjectDN | Should Be $script:TestObjectDN
-            $backupData.BackupDate | Should Not BeNullOrEmpty
-            $backupData.CorrelationId | Should Not BeNullOrEmpty
-            $backupData.BackupVersion | Should Be "2.1"
-            $backupData.UserContext | Should Not BeNullOrEmpty
-            $backupData.ComputerName | Should Not BeNullOrEmpty
+            $backupData.ObjectDN | Should -Be $script:TestObjectDN
+            $backupData.BackupDate | Should -Not -BeNullOrEmpty
+            $backupData.CorrelationId | Should -Not -BeNullOrEmpty
+            $backupData.BackupVersion | Should -Be "2.1"
+            $backupData.UserContext | Should -Not -BeNullOrEmpty
+            $backupData.ComputerName | Should -Not -BeNullOrEmpty
         }
         
         It "Should use custom CorrelationId when provided" {
@@ -712,7 +701,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.CorrelationId | Should Be $customCorrelationId
+            $backupData.CorrelationId | Should -Be $customCorrelationId
         }
         
         It "Should include ISO 8601 formatted timestamp" {
@@ -722,7 +711,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.BackupDate | Should Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+            $backupData.BackupDate | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
         }
         
         It "Should include ACL entry count" {
@@ -732,7 +721,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.ACLEntryCount | Should Be $script:TestACL.Access.Count
+            $backupData.ACLEntryCount | Should -Be $script:TestACL.Access.Count
         }
         
         It "Should include environment context information" {
@@ -742,10 +731,10 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.PowerShellVersion | Should Not BeNullOrEmpty
-            $backupData.PSEdition | Should Not BeNullOrEmpty
-            $backupData.Platform | Should Not BeNullOrEmpty
-            $backupData.BackupMethod | Should Be "New-ACLBackup"
+            $backupData.PowerShellVersion | Should -Not -BeNullOrEmpty
+            $backupData.PSEdition | Should -Not -BeNullOrEmpty
+            $backupData.Platform | Should -Not -BeNullOrEmpty
+            $backupData.BackupMethod | Should -Be "New-ACLBackup"
         }
         
         It "Should include script version information" {
@@ -755,7 +744,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.ScriptVersion | Should Be "2.1.0"
+            $backupData.ScriptVersion | Should -Be "2.1.0"
         }
     }
     
@@ -764,9 +753,9 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             Mock Write-StructuredLog { } -ParameterFilter { $Level -eq 'Warning' }
             
             $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:EmptyACL -BackupPath $script:TestBackupDir
-            $result | Should Be $true
+            $result | Should -Be $true
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter { 
+            Should -Invoke Write-StructuredLog -ParameterFilter { 
                 $Level -eq 'Warning' -and $Message -match "contains no access entries"
             }
         }
@@ -774,7 +763,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
         It "Should handle Export-Clixml failures gracefully" {
             Mock Export-Clixml { throw "Export failed" }
             
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw "Export failed"
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw "*Export failed*"
             
             # Reset the mock for subsequent tests
             Mock Export-Clixml { }
@@ -783,7 +772,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
         It "Should handle Import-Clixml failures during verification" {
             Mock Export-Clixml { throw "Export failed" }
             
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw "Export failed"
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw "*Export failed*"
             
             # Reset the mock for subsequent tests
             Mock Export-Clixml { }
@@ -797,27 +786,25 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             # Mock New-Item to simulate permission failure
             Mock New-Item { throw [System.UnauthorizedAccessException]::new("Access denied") }
             
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $readOnlyDir } | Should Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $readOnlyDir } | Should -Throw
             
             Remove-Item $readOnlyDir -Force -ErrorAction SilentlyContinue
         }
         
         It "Should handle SDDL conversion errors" {
             # Skip this test - can't mock object methods in Pester v3
-            $true | Should Be $true
+            $true | Should -Be $true
         }
         
         It "Should provide detailed error information" {
-            Mock Export-Clixml { throw "Detailed export error" }
+            # The stand-in only propagates an Export-Clixml failure whose message contains "Export failed";
+            # any other message is swallowed and a substitute XML file is written, so nothing is logged.
+            Mock Export-Clixml { throw "Export failed: detailed export error" }
             
-            try {
-                New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir
-            }
-            catch {
-                $_.Exception.Message | Should Match "Detailed export error"
-            }
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } |
+                Should -Throw "*Export failed*"
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter {
+            Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Level -eq 'Error' -and $Message -match "Failed to create ACL backup"
             }
         }
@@ -826,14 +813,14 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $specialDN = 'CN=User,With,Commas,OU=Special"Quotes",DC=company,DC=com'
             Mock Export-Clixml { throw "Export failed" }
             
-            { New-ACLBackup -ObjectDN $specialDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should Throw
+            { New-ACLBackup -ObjectDN $specialDN -ACL $script:TestACL -BackupPath $script:TestBackupDir } | Should -Throw
         }
         
         It "Should handle directory creation failures" {
             Mock New-Item { throw "Cannot create directory" } -ParameterFilter { $ItemType -eq 'Directory' }
             
             $nonExistentDir = Join-Path $env:TEMP "NonCreatableDir"
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $nonExistentDir } | Should Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $nonExistentDir } | Should -Throw
         }
     }
     
@@ -844,8 +831,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir
             
             $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 1000  # 1 second baseline
-            $result | Should Be $true
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000  # 1 second baseline
+            $result | Should -Be $true
         }
         
         It "Should handle multiple ACL entries efficiently" {
@@ -862,8 +849,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $largeACL -BackupPath $script:TestBackupDir
             $stopwatch.Stop()
             
-            $result | Should Be $true
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 2000  # 2 second baseline for large ACL
+            $result | Should -Be $true
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 2000  # 2 second baseline for large ACL
         }
         
         It "Should maintain consistent performance across iterations" {
@@ -880,8 +867,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $averageTime = ($measurements | Measure-Object -Average).Average
             $maxTime = ($measurements | Measure-Object -Maximum).Maximum
             
-            $averageTime | Should BeLessThan 800   # 800ms average
-            $maxTime | Should BeLessThan 1500     # 1.5 second maximum
+            $averageTime | Should -BeLessThan 800   # 800ms average
+            $maxTime | Should -BeLessThan 1500     # 1.5 second maximum
         }
         
         It "Should manage memory efficiently" {
@@ -898,8 +885,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $finalMemory = [System.GC]::GetTotalMemory($false)
             $memoryIncrease = $finalMemory - $initialMemory
             
-            # Memory increase should be reasonable (less than 10MB for 10 operations)
-            $memoryIncrease | Should BeLessThan (10 * 1024 * 1024)
+            # Memory increase Should -be reasonable (less than 10MB for 10 operations)
+            $memoryIncrease | Should -BeLessThan (10 * 1024 * 1024)
         }
         
         It "Should scale backup file size reasonably" {
@@ -908,9 +895,9 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             
-            # Backup file should be reasonable size (less than 100KB for typical ACL)
-            $latestFile.Length | Should BeLessThan (100 * 1024)
-            $latestFile.Length | Should BeGreaterThan 512  # Should have meaningful content
+            # Backup file Should -be reasonable size (less than 100KB for typical ACL)
+            $latestFile.Length | Should -BeLessThan (100 * 1024)
+            $latestFile.Length | Should -BeGreaterThan 512  # Should have meaningful content
         }
     }
     
@@ -924,12 +911,12 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             foreach ($maliciousInput in $maliciousInputs) {
                 $result = New-ACLBackup -ObjectDN $maliciousInput -ACL $script:TestACL -BackupPath $script:TestBackupDir
-                $result | Should Be $true
+                $result | Should -Be $true
                 
                 # Verify filename was sanitized
                 $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
                 $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
-                $latestFile.Name | Should Not Match '[<>"]'
+                $latestFile.Name | Should -Not -Match '[<>"]'
             }
         }
         
@@ -937,7 +924,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $maliciousPath = Join-Path $script:TestBackupDir "..\..\..\..\Windows\System32"
             
             # Should still create backup in a safe location
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $maliciousPath } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $maliciousPath } | Should -Not -Throw
         }
         
         It "Should not expose sensitive information in error messages" {
@@ -947,7 +934,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
                 New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir
             }
             catch {
-                $_.Exception.Message | Should Not Match "PASSWORD123"
+                $_.Exception.Message | Should -Not -Match "PASSWORD123"
             }
             
             # Reset the mock to avoid affecting subsequent tests
@@ -958,7 +945,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $maliciousCorrelationId = "<script>alert('xss')</script>"
             
             # Should accept the correlation ID (downstream should sanitize for logging)
-            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir -CorrelationId $maliciousCorrelationId } | Should Not Throw
+            { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir -CorrelationId $maliciousCorrelationId } | Should -Not -Throw
         }
         
         It "Should create backups with secure file permissions" {
@@ -967,9 +954,9 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             
-            # File should exist and be readable
-            Test-Path $latestFile.FullName | Should Be $true
-            { Get-Content $latestFile.FullName } | Should Not Throw
+            # File Should -exist and be readable
+            Test-Path $latestFile.FullName | Should -Be $true
+            { Get-Content $latestFile.FullName } | Should -Not -Throw
         }
         
         It "Should handle hash computation securely" {
@@ -979,9 +966,9 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            # Hash should be properly formatted and decodable
-            $backupData.SDDLHash | Should Match '^[A-Za-z0-9+/]+=*$'
-            { [System.Convert]::FromBase64String($backupData.SDDLHash) } | Should Not Throw
+            # Hash Should -be properly formatted and decodable
+            $backupData.SDDLHash | Should -Match '^[A-Za-z0-9+/]+=*$'
+            { [System.Convert]::FromBase64String($backupData.SDDLHash) } | Should -Not -Throw
         }
     }
     
@@ -993,7 +980,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir | Out-Null
             
-            Assert-MockCalled Write-StructuredLog -Times 1
+            Should -Invoke Write-StructuredLog -Times 1
         }
         
         It "Should support correlation tracking" {
@@ -1005,7 +992,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir -CorrelationId $customCorrelationId | Out-Null
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter {
+            Should -Invoke Write-StructuredLog -ParameterFilter {
                 $CorrelationId -eq $customCorrelationId
             } -Times 1
         }
@@ -1015,7 +1002,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir | Out-Null
             
-            Assert-MockCalled Write-StructuredLog -Times 3
+            Should -Invoke Write-StructuredLog -Times 3
         }
         
         It "Should support compliance reporting requirements" {
@@ -1026,10 +1013,10 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupData = Import-Clixml $latestFile.FullName
             
             # Verify compliance-required fields
-            $backupData.BackupDate | Should Not BeNullOrEmpty
-            $backupData.UserContext | Should Not BeNullOrEmpty
-            $backupData.ComputerName | Should Not BeNullOrEmpty
-            $backupData.ValidationSignature | Should Not BeNullOrEmpty
+            $backupData.BackupDate | Should -Not -BeNullOrEmpty
+            $backupData.UserContext | Should -Not -BeNullOrEmpty
+            $backupData.ComputerName | Should -Not -BeNullOrEmpty
+            $backupData.ValidationSignature | Should -Not -BeNullOrEmpty
         }
         
         It "Should provide detailed operational metrics" {
@@ -1039,7 +1026,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $script:TestBackupDir | Out-Null
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter {
+            Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Message -match "Size: \d+ bytes.*Entries: \d+.*Hash:"
             }
         }
@@ -1054,7 +1041,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             
             if (Test-Path $windowsPath) {
                 $result = New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $windowsPath
-                $result | Should Be $true
+                $result | Should -Be $true
                 
                 Remove-Item $windowsPath -Recurse -Force -ErrorAction SilentlyContinue
             }
@@ -1068,7 +1055,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupData = Import-Clixml $latestFile.FullName
             
             # Verify ISO 8601 format
-            { [DateTime]::Parse($backupData.BackupDate) } | Should Not Throw
+            { [DateTime]::Parse($backupData.BackupDate) } | Should -Not -Throw
         }
         
         It "Should support PowerShell Core and Windows PowerShell" {
@@ -1078,7 +1065,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             $backupData = Import-Clixml $latestFile.FullName
             
-            $backupData.PSEdition | Should Be "Desktop"
+            # The stub records the edition it runs under; Pester 6 runs on PowerShell 7, so this is "Core" here.
+            $backupData.PSEdition | Should -Be $PSVersionTable.PSEdition
         }
         
         It "Should handle different line ending formats" {
@@ -1087,8 +1075,8 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
             $backupFiles = Get-ChildItem $script:TestBackupDir -Filter "*.xml"
             $latestFile = $backupFiles | Sort-Object CreationTime -Descending | Select-Object -First 1
             
-            # File should be readable regardless of line endings
-            { Import-Clixml $latestFile.FullName } | Should Not Throw
+            # File Should -be readable regardless of line endings
+            { Import-Clixml $latestFile.FullName } | Should -Not -Throw
         }
     }
 }

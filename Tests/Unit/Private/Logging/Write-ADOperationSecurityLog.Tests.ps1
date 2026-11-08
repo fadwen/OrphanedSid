@@ -1,15 +1,19 @@
 # Pester 3.4 tests for Write-ADOperationSecurityLog.ps1
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sut = (Split-Path -Leaf $MyInvocation.MyCommand.Path) -replace '\.Tests\.', '.'
-$modulePath = "$here\..\..\..\..\Private\Logging\$sut"
-
 # Import the script content for testing
-. $modulePath
-
 # Import dependencies
-. "$here\..\..\..\..\Private\Logging\Write-SecurityLog.ps1"
+BeforeAll {
+    $here = $PSScriptRoot
 
-Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', 'ActiveDirectory') {
+    $sut = (Split-Path -Leaf $PSCommandPath) -replace '\.Tests\.', '.'
+
+    $modulePath = "$here\..\..\..\..\Private\Logging\$sut"
+
+    . $modulePath
+
+    . "$here\..\..\..\..\Private\Logging\Write-SecurityLog.ps1"
+}
+
+Describe "Write-ADOperationSecurityLog" -Tag @('Unit', 'Logging', 'Security', 'ActiveDirectory') {
 
     BeforeEach {
         # Reset mock call counters for each test
@@ -22,24 +26,24 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should accept valid Outcome values" {
             $validOutcomes = @('Attempt', 'Success', 'Failure')
             foreach ($outcome in $validOutcomes) {
-                { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome $outcome } | Should Not Throw
+                { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome $outcome } | Should -Not -Throw
             }
         }
 
         It "Should accept optional SecurityContext hashtable" {
             $context = @{ ObjectDN = "CN=TestUser,OU=Users,DC=domain,DC=com" }
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $context } | Should Not Throw
+            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $context } | Should -Not -Throw
         }
 
         It "Should accept optional CorrelationId" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $correlationId } | Should Not Throw
+            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $correlationId } | Should -Not -Throw
         }
 
         It "Should generate CorrelationId when not provided" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $CorrelationId -ne $null -and $CorrelationId -ne ""
             }
         }
@@ -47,7 +51,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should create standardized audit context" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext -ne $null -and
                 $SecurityContext.OperationName -eq "Get-ADUser" -and
                 $SecurityContext.Outcome -eq "Success" -and
@@ -60,7 +64,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             $beforeTime = Get-Date
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext.Timestamp -ne $null -and
                 $SecurityContext.Timestamp -ge $beforeTime.AddSeconds(-1)
             }
@@ -69,7 +73,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should include user context information" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext.UserContext -match "$env:USERNAME@$env:COMPUTERNAME"
             }
         }
@@ -78,7 +82,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             $testCorrelationId = "test-correlation-123"
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $testCorrelationId
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext.CorrelationId -eq $testCorrelationId -and
                 $CorrelationId -eq $testCorrelationId
             }
@@ -93,7 +97,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $additionalContext
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext.ObjectDN -eq "CN=TestUser,OU=Users,DC=domain,DC=com" -and
                 $SecurityContext.Filter -eq "samAccountName -eq 'testuser'" -and
                 $SecurityContext.Properties -ne $null
@@ -103,9 +107,9 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle empty additional security context" {
             $emptyContext = @{}
             
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $emptyContext } | Should Not Throw
+            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $emptyContext } | Should -Not -Throw
             
-            Assert-MockCalled Write-SecurityLog
+            Should -Invoke Write-SecurityLog
         }
     }
 
@@ -114,7 +118,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should generate attempt message for Attempt outcome" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Attempt"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -eq "Attempting Active Directory operation: Get-ADUser" -and
                 $Outcome -eq "Attempt"
             }
@@ -123,7 +127,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should generate success message for Success outcome" {
             Write-ADOperationSecurityLog -OperationName "Set-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -eq "Successfully completed Active Directory operation: Set-ADUser" -and
                 $Outcome -eq "Success"
             }
@@ -132,7 +136,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should generate failure message for Failure outcome" {
             Write-ADOperationSecurityLog -OperationName "Remove-ADUser" -Outcome "Failure"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -eq "Failed Active Directory operation: Remove-ADUser" -and
                 $Outcome -eq "Failure"
             }
@@ -149,7 +153,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
                 foreach ($outcome in $outcomes) {
                     Write-ADOperationSecurityLog -OperationName $operation -Outcome $outcome
                     
-                    Assert-MockCalled Write-SecurityLog -ParameterFilter {
+                    Should -Invoke Write-SecurityLog -ParameterFilter {
                         $SecurityEventType -eq "ObjectAccess"
                     }
                 }
@@ -161,7 +165,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $testCorrelationId
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $CorrelationId -eq $testCorrelationId
             }
         }
@@ -171,7 +175,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $additionalContext
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext -ne $null -and
                 $SecurityContext.Count -ge 7  # Standard context plus additional
             }
@@ -183,7 +187,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle Get-ADUser operations" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -match "Get-ADUser"
             }
         }
@@ -191,7 +195,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle Set-ADUser operations" {
             Write-ADOperationSecurityLog -OperationName "Set-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -match "Set-ADUser"
             }
         }
@@ -199,7 +203,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle New-ADUser operations" {
             Write-ADOperationSecurityLog -OperationName "New-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -match "New-ADUser"
             }
         }
@@ -207,7 +211,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle Remove-ADUser operations" {
             Write-ADOperationSecurityLog -OperationName "Remove-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -match "Remove-ADUser"
             }
         }
@@ -215,7 +219,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle custom AD operation names" {
             Write-ADOperationSecurityLog -OperationName "Custom-ADOperation" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $Message -match "Custom-ADOperation"
             }
         }
@@ -226,7 +230,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should always include required audit fields" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext.OperationName -ne $null -and
                 $SecurityContext.Outcome -ne $null -and
                 $SecurityContext.Timestamp -ne $null -and
@@ -241,7 +245,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Attempt"
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
             
-            Assert-MockCalled Write-SecurityLog
+            Should -Invoke Write-SecurityLog
         }
 
         It "Should support traceability through CorrelationId" {
@@ -250,7 +254,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Attempt" -CorrelationId $traceId
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $traceId
             
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $CorrelationId -eq $traceId
             }
         }
@@ -261,7 +265,7 @@ Describe "Write-ADOperationSecurityLog" -Tags @('Unit', 'Logging', 'Security', '
         It "Should handle Write-SecurityLog failures gracefully" {
             Mock Write-SecurityLog { throw "Security log system failure" } 
             
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" } | Should Throw
+            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" } | Should -Throw
         }
     }
 }

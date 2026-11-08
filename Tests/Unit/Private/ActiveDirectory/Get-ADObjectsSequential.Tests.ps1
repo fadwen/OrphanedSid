@@ -1,223 +1,248 @@
 # Get-ADObjectsSequential         'OU=Users,DC=contoso,DC=com' = @(
 # Get-ADObjectsSequential Function Tests - Comprehensive Pester 3.4.x Compatible
 
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sut = (Split-Path -Leaf $MyInvocation.MyCommand.Path) -replace '\.Tests\.', '.'
-
 # Import the function under test
-$functionPath = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))) "Private\ActiveDirectory\Get-ADObjectsSequential.ps1"
-if (Test-Path $functionPath) {
-    . $functionPath
-}
-
 # Set up global test data at file level (outside Describe block)
-$Global:TestConfig = @{
-    ValidSearchBases = @(
-        'OU=Users,DC=contoso,DC=com'
-        'OU=Groups,DC=contoso,DC=com'
-        'OU=Computers,DC=contoso,DC=com'
-    )
-    LargeSearchBases = @(
-        'OU=Corp,DC=contoso,DC=com'
-        'OU=Sales,DC=contoso,DC=com'
-        'OU=Marketing,DC=contoso,DC=com'
-        'OU=IT,DC=contoso,DC=com'
-        'OU=Finance,DC=contoso,DC=com'
-    )
-    TestObjects = @{
-        'OU=Users,DC=contoso,DC=com' = @(
-            [PSCustomObject]@{
-                DistinguishedName = 'CN=User1,OU=Users,DC=contoso,DC=com'
-                Name = 'User1'
-                ObjectClass = 'user'
-                nTSecurityDescriptor = 'MockSecurityDescriptor1'
-            }
-            [PSCustomObject]@{
-                DistinguishedName = 'CN=User2,OU=Users,DC=contoso,DC=com'
-                Name = 'User2'
-                ObjectClass = 'user'
-                nTSecurityDescriptor = 'MockSecurityDescriptor2'
-            }
-            [PSCustomObject]@{
-                DistinguishedName = 'CN=User3,OU=Users,DC=contoso,DC=com'
-                Name = 'User3'
-                ObjectClass = 'user'
-                nTSecurityDescriptor = 'MockSecurityDescriptor3'
-            }
-        )
-        'OU=Groups,DC=contoso,DC=com' = @(
-            [PSCustomObject]@{
-                DistinguishedName = 'CN=Group1,OU=Groups,DC=contoso,DC=com'
-                Name = 'Group1'
-                ObjectClass = 'group'
-                nTSecurityDescriptor = 'MockSecurityDescriptor3'
-            }
-        )
-        'OU=Computers,DC=contoso,DC=com' = @(
-            [PSCustomObject]@{
-                DistinguishedName = 'CN=Computer1,OU=Computers,DC=contoso,DC=com'
-                Name = 'Computer1$'
-                ObjectClass = 'computer'
-                nTSecurityDescriptor = 'MockSecurityDescriptor4'
-            }
-        )
-        'OU=Corp,DC=contoso,DC=com' = @(
-            1..50 | ForEach-Object {
-                [PSCustomObject]@{
-                    DistinguishedName = "CN=CorpUser$_,OU=Corp,DC=contoso,DC=com"
-                    Name = "CorpUser$_"
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = "MockSecurityDescriptor$($_+100)"
-                }
-            }
-        )
-        'OU=Sales,DC=contoso,DC=com' = @(
-            1..30 | ForEach-Object {
-                [PSCustomObject]@{
-                    DistinguishedName = "CN=SalesUser$_,OU=Sales,DC=contoso,DC=com"
-                    Name = "SalesUser$_"
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = "MockSecurityDescriptor$($_+200)"
-                }
-            }
-        )
-        'OU=Marketing,DC=contoso,DC=com' = @(
-            1..25 | ForEach-Object {
-                [PSCustomObject]@{
-                    DistinguishedName = "CN=MarketingUser$_,OU=Marketing,DC=contoso,DC=com"
-                    Name = "MarketingUser$_"
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = "MockSecurityDescriptor$($_+300)"
-                }
-            }
-        )
-        'OU=IT,DC=contoso,DC=com' = @(
-            1..15 | ForEach-Object {
-                [PSCustomObject]@{
-                    DistinguishedName = "CN=ITUser$_,OU=IT,DC=contoso,DC=com"
-                    Name = "ITUser$_"
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = "MockSecurityDescriptor$($_+350)"
-                }
-            }
-        )
-        'OU=Finance,DC=contoso,DC=com' = @(
-            1..20 | ForEach-Object {
-                [PSCustomObject]@{
-                    DistinguishedName = "CN=FinanceUser$_,OU=Finance,DC=contoso,DC=com"
-                    Name = "FinanceUser$_"
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = "MockSecurityDescriptor$($_+400)"
-                }
-            }
-        )
-        'OU=Invalid,DC=contoso,DC=com' = $null  # For testing error handling
-        'OU=Invalid1,DC=contoso,DC=com' = $null
-        'OU=Invalid2,DC=contoso,DC=com' = $null
-    }
-}
-
 # Initialize call tracking arrays
-$Global:GetADObjectFromSearchBaseCalls = @()
-$Global:WriteSecurityLogCalls = @()
-$Global:WriteVerboseCalls = @()
-$Global:MockDebugInfo = @{}
-
 # Create mock functions at file level
-function Global:Get-ADObjectFromSearchBase {
-    param($SearchBase, $IncludeInherited, $CorrelationId)
-    
-    # Handle both single string and array input - convert to single string for lookup
-    $searchBaseKey = if ($SearchBase -is [array] -and $SearchBase.Count -eq 1) {
-        $SearchBase[0]
-    } elseif ($SearchBase -is [string]) {
-        $SearchBase
-    } else {
-        $SearchBase -join ','
+# Create script scope mock function as backup
+# Mock logging functions with call tracking
+# Additional mock functions for completeness
+BeforeAll {
+    $here = $PSScriptRoot
+
+    $sut = (Split-Path -Leaf $PSCommandPath) -replace '\.Tests\.', '.'
+
+    $functionPath = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))) "Private\ActiveDirectory\Get-ADObjectsSequential.ps1"
+
+    if (Test-Path $functionPath) {
+        . $functionPath
     }
-    
-    # Track function calls for verification
-    $Global:GetADObjectFromSearchBaseCalls += @{
-        SearchBase = $searchBaseKey
-        IncludeInherited = $IncludeInherited
-        CorrelationId = $CorrelationId
-        Timestamp = Get-Date
+
+    $Global:TestConfig = @{
+        ValidSearchBases = @(
+            'OU=Users,DC=contoso,DC=com'
+            'OU=Groups,DC=contoso,DC=com'
+            'OU=Computers,DC=contoso,DC=com'
+        )
+        LargeSearchBases = @(
+            'OU=Corp,DC=contoso,DC=com'
+            'OU=Sales,DC=contoso,DC=com'
+            'OU=Marketing,DC=contoso,DC=com'
+            'OU=IT,DC=contoso,DC=com'
+            'OU=Finance,DC=contoso,DC=com'
+        )
+        TestObjects = @{
+            'OU=Users,DC=contoso,DC=com' = @(
+                [PSCustomObject]@{
+                    DistinguishedName = 'CN=User1,OU=Users,DC=contoso,DC=com'
+                    Name = 'User1'
+                    ObjectClass = 'user'
+                    nTSecurityDescriptor = 'MockSecurityDescriptor1'
+                }
+                [PSCustomObject]@{
+                    DistinguishedName = 'CN=User2,OU=Users,DC=contoso,DC=com'
+                    Name = 'User2'
+                    ObjectClass = 'user'
+                    nTSecurityDescriptor = 'MockSecurityDescriptor2'
+                }
+                [PSCustomObject]@{
+                    DistinguishedName = 'CN=User3,OU=Users,DC=contoso,DC=com'
+                    Name = 'User3'
+                    ObjectClass = 'user'
+                    nTSecurityDescriptor = 'MockSecurityDescriptor3'
+                }
+            )
+            'OU=Groups,DC=contoso,DC=com' = @(
+                [PSCustomObject]@{
+                    DistinguishedName = 'CN=Group1,OU=Groups,DC=contoso,DC=com'
+                    Name = 'Group1'
+                    ObjectClass = 'group'
+                    nTSecurityDescriptor = 'MockSecurityDescriptor3'
+                }
+            )
+            'OU=Computers,DC=contoso,DC=com' = @(
+                [PSCustomObject]@{
+                    DistinguishedName = 'CN=Computer1,OU=Computers,DC=contoso,DC=com'
+                    Name = 'Computer1$'
+                    ObjectClass = 'computer'
+                    nTSecurityDescriptor = 'MockSecurityDescriptor4'
+                }
+            )
+            'OU=Corp,DC=contoso,DC=com' = @(
+                1..50 | ForEach-Object {
+                    [PSCustomObject]@{
+                        DistinguishedName = "CN=CorpUser$_,OU=Corp,DC=contoso,DC=com"
+                        Name = "CorpUser$_"
+                        ObjectClass = 'user'
+                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+100)"
+                    }
+                }
+            )
+            'OU=Sales,DC=contoso,DC=com' = @(
+                1..30 | ForEach-Object {
+                    [PSCustomObject]@{
+                        DistinguishedName = "CN=SalesUser$_,OU=Sales,DC=contoso,DC=com"
+                        Name = "SalesUser$_"
+                        ObjectClass = 'user'
+                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+200)"
+                    }
+                }
+            )
+            'OU=Marketing,DC=contoso,DC=com' = @(
+                1..25 | ForEach-Object {
+                    [PSCustomObject]@{
+                        DistinguishedName = "CN=MarketingUser$_,OU=Marketing,DC=contoso,DC=com"
+                        Name = "MarketingUser$_"
+                        ObjectClass = 'user'
+                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+300)"
+                    }
+                }
+            )
+            'OU=IT,DC=contoso,DC=com' = @(
+                1..15 | ForEach-Object {
+                    [PSCustomObject]@{
+                        DistinguishedName = "CN=ITUser$_,OU=IT,DC=contoso,DC=com"
+                        Name = "ITUser$_"
+                        ObjectClass = 'user'
+                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+350)"
+                    }
+                }
+            )
+            'OU=Finance,DC=contoso,DC=com' = @(
+                1..20 | ForEach-Object {
+                    [PSCustomObject]@{
+                        DistinguishedName = "CN=FinanceUser$_,OU=Finance,DC=contoso,DC=com"
+                        Name = "FinanceUser$_"
+                        ObjectClass = 'user'
+                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+400)"
+                    }
+                }
+            )
+            'OU=Invalid,DC=contoso,DC=com' = $null  # For testing error handling
+            'OU=Invalid1,DC=contoso,DC=com' = $null
+            'OU=Invalid2,DC=contoso,DC=com' = $null
+        }
     }
-    
-    # Increment call counter for legacy tests
-    $script:GetADObjectFromSearchBaseCallCount++
-    
-    Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-    
-    $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
-    
-    Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-    
-    if ($containsKeyResult) {
-        $result = $Global:TestConfig.TestObjects[$searchBaseKey]
-        # If the search base is marked as invalid (null value), throw an exception
-        if ($result -eq $null -and $searchBaseKey -like "*Invalid*") {
-            Write-Debug "GLOBAL MOCK: Simulating error for invalid $searchBaseKey"
+
+    $Global:GetADObjectFromSearchBaseCalls = @()
+
+    $Global:WriteSecurityLogCalls = @()
+
+    $Global:WriteVerboseCalls = @()
+
+    $Global:MockDebugInfo = @{}
+
+    function Global:Get-ADObjectFromSearchBase {
+        param($SearchBase, $IncludeInherited, $CorrelationId)
+        
+        # Handle both single string and array input - convert to single string for lookup
+        $searchBaseKey = if ($SearchBase -is [array] -and $SearchBase.Count -eq 1) {
+            $SearchBase[0]
+        } elseif ($SearchBase -is [string]) {
+            $SearchBase
+        } else {
+            $SearchBase -join ','
+        }
+        
+        # Track function calls for verification
+        $Global:GetADObjectFromSearchBaseCalls += @{
+            SearchBase = $searchBaseKey
+            IncludeInherited = $IncludeInherited
+            CorrelationId = $CorrelationId
+            Timestamp = Get-Date
+        }
+        
+        # Increment call counter for legacy tests
+        $script:GetADObjectFromSearchBaseCallCount++
+        
+        Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
+        
+        $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
+        
+        Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
+        
+        if ($containsKeyResult) {
+            $result = $Global:TestConfig.TestObjects[$searchBaseKey]
+            # If the search base is marked as invalid (null value), throw an exception
+            if ($result -eq $null -and $searchBaseKey -like "*Invalid*") {
+                Write-Debug "GLOBAL MOCK: Simulating error for invalid $searchBaseKey"
+                if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
+                    throw "The specified domain either does not exist or could not be contacted."
+                } else {
+                    throw "The specified domain either does not exist or could not be contacted."
+                }
+            } elseif ($result -ne $null) {
+                Write-Debug "GLOBAL MOCK: Returning $($result.Count) objects for $searchBaseKey"
+                return $result
+            } else {
+                Write-Debug "GLOBAL MOCK: No test objects found for $searchBaseKey"
+                return @()
+            }
+        } elseif ($searchBaseKey -like "*Invalid*") {
+            Write-Debug "GLOBAL MOCK: Simulating error for $searchBaseKey"
             if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
                 throw "The specified domain either does not exist or could not be contacted."
             } else {
                 throw "The specified domain either does not exist or could not be contacted."
             }
-        } elseif ($result -ne $null) {
-            Write-Debug "GLOBAL MOCK: Returning $($result.Count) objects for $searchBaseKey"
-            return $result
         } else {
             Write-Debug "GLOBAL MOCK: No test objects found for $searchBaseKey"
             return @()
         }
-    } elseif ($searchBaseKey -like "*Invalid*") {
-        Write-Debug "GLOBAL MOCK: Simulating error for $searchBaseKey"
-        if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
-            throw "The specified domain either does not exist or could not be contacted."
-        } else {
-            throw "The specified domain either does not exist or could not be contacted."
-        }
-    } else {
-        Write-Debug "GLOBAL MOCK: No test objects found for $searchBaseKey"
-        return @()
     }
-}
 
-# Create script scope mock function as backup
-function script:Get-ADObjectFromSearchBase {
-    param($SearchBase, $IncludeInherited, $CorrelationId)
-    
-    # Handle both single string and array input - convert to single string for lookup
-    $searchBaseKey = if ($SearchBase -is [array] -and $SearchBase.Count -eq 1) {
-        $SearchBase[0]
-    } elseif ($SearchBase -is [string]) {
-        $SearchBase
-    } else {
-        $SearchBase -join ','
-    }
-    
-    # Track function calls for verification  
-    $Global:GetADObjectFromSearchBaseCalls += @{
-        SearchBase = $searchBaseKey
-        IncludeInherited = $IncludeInherited
-        CorrelationId = $CorrelationId
-        Timestamp = Get-Date
-    }
-    
-    # Increment call counter for legacy tests
-    $script:GetADObjectFromSearchBaseCallCount++
-    
-    Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-    
-    $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
-    
-    Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-    
-    if ($containsKeyResult) {
-        $result = $Global:TestConfig.TestObjects[$searchBaseKey]
-        # If the search base is marked as invalid (null value), throw an exception
-        if ($result -eq $null -and $searchBaseKey -like "*Invalid*") {
-            Write-Debug "SCRIPT MOCK: Simulating error for invalid $searchBaseKey"
+    function script:Get-ADObjectFromSearchBase {
+        param($SearchBase, $IncludeInherited, $CorrelationId)
+        
+        # Handle both single string and array input - convert to single string for lookup
+        $searchBaseKey = if ($SearchBase -is [array] -and $SearchBase.Count -eq 1) {
+            $SearchBase[0]
+        } elseif ($SearchBase -is [string]) {
+            $SearchBase
+        } else {
+            $SearchBase -join ','
+        }
+        
+        # Track function calls for verification  
+        $Global:GetADObjectFromSearchBaseCalls += @{
+            SearchBase = $searchBaseKey
+            IncludeInherited = $IncludeInherited
+            CorrelationId = $CorrelationId
+            Timestamp = Get-Date
+        }
+        
+        # Increment call counter for legacy tests
+        $script:GetADObjectFromSearchBaseCallCount++
+        
+        Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
+        
+        $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
+        
+        Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
+        
+        if ($containsKeyResult) {
+            $result = $Global:TestConfig.TestObjects[$searchBaseKey]
+            # If the search base is marked as invalid (null value), throw an exception
+            if ($result -eq $null -and $searchBaseKey -like "*Invalid*") {
+                Write-Debug "SCRIPT MOCK: Simulating error for invalid $searchBaseKey"
+                if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
+                    throw "The specified domain either does not exist or could not be contacted."
+                } elseif ($searchBaseKey -like 'OU=Invalid*,DC=contoso,DC=com') {
+                    throw "The specified domain either does not exist or could not be contacted."
+                } else {
+                    throw "The specified domain either does not exist or could not be contacted."
+                }
+            } elseif ($result -ne $null) {
+                Write-Debug "SCRIPT MOCK: Returning $($result.Count) objects for $searchBaseKey"
+                return $result
+            } else {
+                Write-Debug "SCRIPT MOCK: No test objects found for $searchBaseKey"
+                return @()
+            }
+        } elseif ($searchBaseKey -like "*Invalid*") {
+            Write-Debug "SCRIPT MOCK: Simulating error for $searchBaseKey"
+            # Handle both old and new invalid test patterns
             if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
                 throw "The specified domain either does not exist or could not be contacted."
             } elseif ($searchBaseKey -like 'OU=Invalid*,DC=contoso,DC=com') {
@@ -225,138 +250,120 @@ function script:Get-ADObjectFromSearchBase {
             } else {
                 throw "The specified domain either does not exist or could not be contacted."
             }
-        } elseif ($result -ne $null) {
-            Write-Debug "SCRIPT MOCK: Returning $($result.Count) objects for $searchBaseKey"
-            return $result
         } else {
             Write-Debug "SCRIPT MOCK: No test objects found for $searchBaseKey"
             return @()
         }
-    } elseif ($searchBaseKey -like "*Invalid*") {
-        Write-Debug "SCRIPT MOCK: Simulating error for $searchBaseKey"
-        # Handle both old and new invalid test patterns
-        if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
-            throw "The specified domain either does not exist or could not be contacted."
-        } elseif ($searchBaseKey -like 'OU=Invalid*,DC=contoso,DC=com') {
-            throw "The specified domain either does not exist or could not be contacted."
-        } else {
-            throw "The specified domain either does not exist or could not be contacted."
+    }
+
+    function Global:Write-ADOperationSecurityLog {
+        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
+        $Global:WriteSecurityLogCalls += @{
+            OperationName = $OperationName
+            Outcome = $Outcome
+            SecurityContext = $SecurityContext
+            CorrelationId = $CorrelationId
+            Timestamp = Get-Date
         }
-    } else {
-        Write-Debug "SCRIPT MOCK: No test objects found for $searchBaseKey"
-        return @()
     }
-}
 
-# Mock logging functions with call tracking
-function Global:Write-ADOperationSecurityLog {
-    param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-    $Global:WriteSecurityLogCalls += @{
-        OperationName = $OperationName
-        Outcome = $Outcome
-        SecurityContext = $SecurityContext
-        CorrelationId = $CorrelationId
-        Timestamp = Get-Date
+    function script:Write-ADOperationSecurityLog {
+        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
+        $Global:WriteSecurityLogCalls += @{
+            OperationName = $OperationName
+            Outcome = $Outcome
+            SecurityContext = $SecurityContext
+            CorrelationId = $CorrelationId
+            Timestamp = Get-Date
+        }
     }
-}
 
-function script:Write-ADOperationSecurityLog {
-    param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-    $Global:WriteSecurityLogCalls += @{
-        OperationName = $OperationName
-        Outcome = $Outcome
-        SecurityContext = $SecurityContext
-        CorrelationId = $CorrelationId
-        Timestamp = Get-Date
+    function Global:Write-Verbose {
+        param([string]$Message)
+        $Global:WriteVerboseCalls += @{
+            Message = $Message
+            Timestamp = Get-Date
+        }
     }
-}
 
-function Global:Write-Verbose {
-    param([string]$Message)
-    $Global:WriteVerboseCalls += @{
-        Message = $Message
-        Timestamp = Get-Date
+    function script:Write-Verbose {
+        param([string]$Message)
+        $Global:WriteVerboseCalls += @{
+            Message = $Message
+            Timestamp = Get-Date
+        }
     }
-}
 
-function script:Write-Verbose {
-    param([string]$Message)
-    $Global:WriteVerboseCalls += @{
-        Message = $Message
-        Timestamp = Get-Date
+    function Global:Write-StructuredLog {
+        param($Level, $Message, $Component, $CorrelationId, $Data)
+        # Mock implementation - just track the call
     }
-}
 
-# Additional mock functions for completeness
-function Global:Write-StructuredLog {
-    param($Level, $Message, $Component, $CorrelationId, $Data)
-    # Mock implementation - just track the call
-}
-
-function script:Write-StructuredLog {
-    param($Level, $Message, $Component, $CorrelationId, $Data)
-    # Mock implementation - just track the call
-}
-
-function Global:Write-SecurityStructuredLogEntry {
-    param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
-    # Mock implementation - just track the call
-}
-
-function script:Write-SecurityStructuredLogEntry {
-    param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
-    # Mock implementation - just track the call
-}
-
-function Global:Write-SecurityLog {
-    param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $Outcome, $SecurityContext)
-    $Global:WriteSecurityLogCalls += @{
-        Level = $Level
-        Message = $Message
-        Component = $Component
-        Operation = $Operation
-        CorrelationId = $CorrelationId
-        Data = $Data
-        Outcome = $Outcome
-        SecurityContext = $SecurityContext
-        Timestamp = Get-Date
+    function script:Write-StructuredLog {
+        param($Level, $Message, $Component, $CorrelationId, $Data)
+        # Mock implementation - just track the call
     }
-}
 
-function script:Write-SecurityLog {
-    param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $Outcome, $SecurityContext)
-    $Global:WriteSecurityLogCalls += @{
-        Level = $Level
-        Message = $Message
-        Component = $Component
-        Operation = $Operation
-        CorrelationId = $CorrelationId
-        Data = $Data
-        Outcome = $Outcome
-        SecurityContext = $SecurityContext
-        Timestamp = Get-Date
+    function Global:Write-SecurityStructuredLogEntry {
+        param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
+        # Mock implementation - just track the call
     }
-}
 
-function Global:Write-ADOperationSecurityLog {
-    param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-    $Global:WriteSecurityLogCalls += @{
-        OperationName = $OperationName
-        Outcome = $Outcome
-        SecurityContext = $SecurityContext
-        CorrelationId = $CorrelationId
-        Timestamp = Get-Date
+    function script:Write-SecurityStructuredLogEntry {
+        param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
+        # Mock implementation - just track the call
     }
-}
 
-function script:Write-ADOperationSecurityLog {
-    param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-    $Global:WriteSecurityLogCalls += @{
-        OperationName = $OperationName
-        Outcome = $Outcome
-        SecurityContext = $SecurityContext
-        CorrelationId = $CorrelationId
-        Timestamp = Get-Date
+    function Global:Write-SecurityLog {
+        param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $Outcome, $SecurityContext)
+        $Global:WriteSecurityLogCalls += @{
+            Level = $Level
+            Message = $Message
+            Component = $Component
+            Operation = $Operation
+            CorrelationId = $CorrelationId
+            Data = $Data
+            Outcome = $Outcome
+            SecurityContext = $SecurityContext
+            Timestamp = Get-Date
+        }
+    }
+
+    function script:Write-SecurityLog {
+        param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $Outcome, $SecurityContext)
+        $Global:WriteSecurityLogCalls += @{
+            Level = $Level
+            Message = $Message
+            Component = $Component
+            Operation = $Operation
+            CorrelationId = $CorrelationId
+            Data = $Data
+            Outcome = $Outcome
+            SecurityContext = $SecurityContext
+            Timestamp = Get-Date
+        }
+    }
+
+    function Global:Write-ADOperationSecurityLog {
+        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
+        $Global:WriteSecurityLogCalls += @{
+            OperationName = $OperationName
+            Outcome = $Outcome
+            SecurityContext = $SecurityContext
+            CorrelationId = $CorrelationId
+            Timestamp = Get-Date
+        }
+    }
+
+    function script:Write-ADOperationSecurityLog {
+        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
+        $Global:WriteSecurityLogCalls += @{
+            OperationName = $OperationName
+            Outcome = $Outcome
+            SecurityContext = $SecurityContext
+            CorrelationId = $CorrelationId
+            Timestamp = Get-Date
+        }
     }
 }
 
@@ -375,33 +382,33 @@ Describe "Get-ADObjectsSequential" {
     Context "Parameter Validation and Security" {
         It "Should validate mandatory SearchBase parameter" {
             # Test that mandatory parameter validation works by calling with $null
-            { Get-ADObjectsSequential -SearchBase $null -ErrorAction Stop } | Should Throw
+            { Get-ADObjectsSequential -SearchBase $null -ErrorAction Stop } | Should -Throw
         }
         
         It "Should accept array of valid Distinguished Names" {
-            { Get-ADObjectsSequential -SearchBase $Global:TestConfig.ValidSearchBases } | Should Not Throw
+            { Get-ADObjectsSequential -SearchBase $Global:TestConfig.ValidSearchBases } | Should -Not -Throw
         }
         
         It "Should handle single search base as array" {
             $searchBase = $Global:TestConfig.ValidSearchBases[0]
             $result = Get-ADObjectsSequential -SearchBase $searchBase
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
         
         It "Should support IncludeInherited switch parameter" {
             $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            { Get-ADObjectsSequential -SearchBase $searchBase -IncludeInherited } | Should Not Throw
+            { Get-ADObjectsSequential -SearchBase $searchBase -IncludeInherited } | Should -Not -Throw
         }
         
         It "Should validate correlation ID parameter format" {
             $searchBase = $Global:TestConfig.ValidSearchBases[0]
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-ADObjectsSequential -SearchBase $searchBase -CorrelationId $correlationId } | Should Not Throw
+            { Get-ADObjectsSequential -SearchBase $searchBase -CorrelationId $correlationId } | Should -Not -Throw
         }
         
         It "Should auto-generate correlation ID when not provided" {
             $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            { Get-ADObjectsSequential -SearchBase $searchBase } | Should Not Throw
+            { Get-ADObjectsSequential -SearchBase $searchBase } | Should -Not -Throw
         }
     }
     
@@ -419,13 +426,13 @@ Describe "Get-ADObjectsSequential" {
                 Write-Debug "Called with: $($call.SearchBase)"
             }
             
-            $results.Count | Should Be 5  # 3 users + 1 group + 1 computer
+            $results.Count | Should -Be 5  # 3 users + 1 group + 1 computer
         }
         
         It "Should call Get-ADObjectFromSearchBase for each search base" {
             $searchBases = $Global:TestConfig.ValidSearchBases[0..2]  # First 3 search bases
             Get-ADObjectsSequential -SearchBase $searchBases
-            $script:GetADObjectFromSearchBaseCallCount | Should Be $searchBases.Count
+            $script:GetADObjectFromSearchBaseCallCount | Should -Be $searchBases.Count
         }
         
         It "Should aggregate results from all search bases" {
@@ -435,7 +442,7 @@ Describe "Get-ADObjectsSequential" {
                 $Global:TestConfig.ValidSearchBases[2]  # Computers (1 object)
             )
             $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results.Count | Should Be 5  # 3 users + 1 group + 1 computer
+            $results.Count | Should -Be 5  # 3 users + 1 group + 1 computer
         }
         
         It "Should pass IncludeInherited parameter to Get-ADObjectFromSearchBase" {
@@ -443,7 +450,7 @@ Describe "Get-ADObjectsSequential" {
             Get-ADObjectsSequential -SearchBase $searchBase -IncludeInherited
             
             $callWithInherited = $Global:GetADObjectFromSearchBaseCalls | Where-Object { $_.IncludeInherited -eq $true }
-            $callWithInherited | Should Not BeNullOrEmpty
+            $callWithInherited | Should -Not -BeNullOrEmpty
         }
         
         It "Should maintain object order from search bases" {
@@ -452,7 +459,7 @@ Describe "Get-ADObjectsSequential" {
                 $Global:TestConfig.ValidSearchBases[1]  # Groups
             )
             $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results[0].ObjectClass | Should Be 'user'
+            $results[0].ObjectClass | Should -Be 'user'
         }
     }
     
@@ -462,8 +469,8 @@ Describe "Get-ADObjectsSequential" {
             Get-ADObjectsSequential -SearchBase $searchBases
             
             $attemptLog = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Attempt' }
-            $attemptLog | Should Not BeNullOrEmpty
-            $attemptLog.SecurityContext.SearchBaseCount | Should Be 2
+            $attemptLog | Should -Not -BeNullOrEmpty
+            $attemptLog.SecurityContext.SearchBaseCount | Should -Be 2
         }
         
         It "Should log operation success with comprehensive metrics" {
@@ -482,14 +489,14 @@ Describe "Get-ADObjectsSequential" {
             Get-ADObjectsSequential -SearchBase $searchBases
             
             $successCall = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
-            $successCall | Should Not BeNullOrEmpty
+            $successCall | Should -Not -BeNullOrEmpty
             
             # Store actual result for debugging
             $Global:MockDebugInfo.ActualSearchBaseCount = $successCall.SecurityContext.SearchBaseCount
             $Global:MockDebugInfo.ExpectedCount = @($searchBases).Count
             
             # Simple assertion that should pass if arrays work correctly
-            $successCall.SecurityContext.SearchBaseCount | Should Be @($searchBases).Count
+            $successCall.SecurityContext.SearchBaseCount | Should -Be @($searchBases).Count
         }
         
         It "Should include result summary in success logging" {
@@ -497,7 +504,7 @@ Describe "Get-ADObjectsSequential" {
             Get-ADObjectsSequential -SearchBase $searchBases
             
             $successCall = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
-            $successCall.SecurityContext.TotalObjectsRetrieved | Should BeGreaterThan 0
+            $successCall.SecurityContext.TotalObjectsRetrieved | Should -BeGreaterThan 0
         }
     }
     
@@ -509,11 +516,11 @@ Describe "Get-ADObjectsSequential" {
                 $Global:TestConfig.ValidSearchBases[1]     # Valid
             )
             $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results.Count | Should BeGreaterThan 0
+            $results.Count | Should -BeGreaterThan 0
         }
         
         It "Should handle empty search base arrays" {
-            { Get-ADObjectsSequential -SearchBase @() -ErrorAction Stop } | Should Throw
+            { Get-ADObjectsSequential -SearchBase @() -ErrorAction Stop } | Should -Throw
         }
         
         It "Should handle all search bases failing" {
@@ -525,7 +532,7 @@ Describe "Get-ADObjectsSequential" {
             $results = Get-ADObjectsSequential -SearchBase $searchBases -ErrorAction SilentlyContinue
             
             $logCalls = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Failure' }
-            $logCalls.Count | Should Be 2
+            $logCalls.Count | Should -Be 2
         }
         
         It "Should provide graceful degradation when AD is unavailable" {
@@ -533,8 +540,8 @@ Describe "Get-ADObjectsSequential" {
             # Mock the scenario where AD is completely unavailable
             
             $results = Get-ADObjectsSequential -SearchBase $searchBases -ErrorAction SilentlyContinue
-            # Should not throw but may return empty results
-            { $results } | Should Not Throw
+            # Should -Not -throw but may return empty results
+            { $results } | Should -Not -Throw
         }
     }
     
@@ -549,7 +556,7 @@ Describe "Get-ADObjectsSequential" {
             
             # Verify progress logging occurred
             $startMessage = $Global:WriteVerboseCalls | Where-Object { $_.Message -like "*Starting*" }
-            $startMessage | Should Not BeNullOrEmpty
+            $startMessage | Should -Not -BeNullOrEmpty
         }
         
         It "Should efficiently process large numbers of search bases" {
@@ -560,8 +567,8 @@ Describe "Get-ADObjectsSequential" {
             $stopwatch.Stop()
             
             # Should complete within reasonable time (adjust threshold as needed)
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 10000  # 10 seconds
-            $results.Count | Should Be 140  # 50+30+25+15+20 from large search bases
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 10000  # 10 seconds
+            $results.Count | Should -Be 140  # 50+30+25+15+20 from large search bases
         }
         
         It "Should provide accurate object counting and metrics" {
@@ -570,10 +577,10 @@ Describe "Get-ADObjectsSequential" {
                 $Global:TestConfig.ValidSearchBases[1]  # Groups (1 object)
             )
             $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results.Count | Should Be 4  # 3 users + 1 group
+            $results.Count | Should -Be 4  # 3 users + 1 group
             
             $successLog = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
-            $successLog.SecurityContext.TotalObjectsRetrieved | Should Be 4
+            $successLog.SecurityContext.TotalObjectsRetrieved | Should -Be 4
         }
         
         It "Should handle memory efficiently for large result sets" {
@@ -584,8 +591,8 @@ Describe "Get-ADObjectsSequential" {
             $afterMemory = [System.GC]::GetTotalMemory($false)
             
             $memoryUsed = ($afterMemory - $beforeMemory) / 1MB
-            $results.Count | Should Be 140  # 50+30+25+15+20 from large search bases
-            $memoryUsed | Should BeLessThan 50  # Should use less than 50MB
+            $results.Count | Should -Be 140  # 50+30+25+15+20 from large search bases
+            $memoryUsed | Should -BeLessThan 50  # Should use less than 50MB
         }
     }
     
@@ -593,7 +600,7 @@ Describe "Get-ADObjectsSequential" {
         It "Should output objects directly to pipeline for efficiency" {
             $searchBases = $Global:TestConfig.ValidSearchBases
             $results = Get-ADObjectsSequential -SearchBase $searchBases | Where-Object { $_.ObjectClass -eq 'user' }
-            @($results).Count | Should Be 3
+            @($results).Count | Should -Be 3
         }
         
         It "Should maintain object integrity through pipeline" {
@@ -601,9 +608,9 @@ Describe "Get-ADObjectsSequential" {
             $results = Get-ADObjectsSequential -SearchBase $searchBase
             
             foreach ($result in $results) {
-                $result.DistinguishedName | Should Not BeNullOrEmpty
-                $result.ObjectClass | Should Not BeNullOrEmpty
-                $result.nTSecurityDescriptor | Should Not BeNullOrEmpty
+                $result.DistinguishedName | Should -Not -BeNullOrEmpty
+                $result.ObjectClass | Should -Not -BeNullOrEmpty
+                $result.nTSecurityDescriptor | Should -Not -BeNullOrEmpty
             }
         }
         
@@ -612,7 +619,7 @@ Describe "Get-ADObjectsSequential" {
             $results = Get-ADObjectsSequential -SearchBase $searchBases | 
                        Where-Object { $_.ObjectClass -eq 'user' } |
                        Select-Object -First 2
-            @($results).Count | Should Be 2
+            @($results).Count | Should -Be 2
         }
     }
 }

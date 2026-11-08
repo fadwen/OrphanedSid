@@ -3,100 +3,106 @@
 # PowerShell 5.1 and Pester 3.4 compatible test infrastructure
 
 # Import Pester 3.4 explicitly for PowerShell 5.1 compatibility
-Import-Module Pester -RequiredVersion 3.4.0 -Force
-
 # Import test helpers for security validation and mocking
-. $PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1
-. $PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1
-
 # Load test configuration
-$TestConfigPath = Join-Path $PSScriptRoot '..\..\..\TestData\Configurations\test-config.json'
-if (Test-Path $TestConfigPath) {
-    $TestConfig = Get-Content $TestConfigPath | ConvertFrom-Json
-} else {
-    $TestConfig = @{ security = @{ inputValidation = @{ maxSearchBaseLength = 256 } } }
-}
-
 # Create enhanced stubs for dependencies - ENTERPRISE GRADE
-function Write-StructuredLog { 
-    param($Message, $Level = 'Info', $CorrelationId, $Component = 'Test', $Data = @{})
-    Write-Verbose "[$Level] [$Component] [$CorrelationId] $Message"
-}
-
-function Test-SIDFormat { 
-    param($SID, $CorrelationId)
-    # Mock SID format validation - safe for testing
-    return $SID -match '^S-1-\d+(-\d+)*$'
-}
-
-function Test-WellKnownSID { 
-    param($SID, $CorrelationId)
-    # Mock well-known SID detection
-    $wellKnownSIDs = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-32-547', 'S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-    return $SID -in $wellKnownSIDs
-}
-
 # Load required classes and functions with error handling
-$ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
-if (Test-Path $ClassPath) {
-    Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { 
-        try { . $_.FullName } catch { Write-Warning "Failed to load class: $($_.Name)" }
-    }
-}
-
 # Load SID functions with comprehensive error handling
-$SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
-if (Test-Path $SIDPath) {
-    Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { 
-        try { . $_.FullName } catch { Write-Warning "Failed to load SID function: $($_.Name)" }
-    }
-}
+BeforeAll {
+    . $PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1
 
-Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "SID", "Security", "Enterprise") {
-    
-    # CRITICAL: Mock all security validation to prevent malicious execution
-    Mock Test-InputForMaliciousContent {
-        param($InputString, $ValidationType)
-        return @{
-            IsValid = $true
-            RiskLevel = 'Low'
-            Threats = @()
+    . $PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1
+
+    $TestConfigPath = Join-Path $PSScriptRoot '..\..\..\TestData\Configurations\test-config.json'
+
+    if (Test-Path $TestConfigPath) {
+        $TestConfig = Get-Content $TestConfigPath | ConvertFrom-Json
+    } else {
+        $TestConfig = @{ security = @{ inputValidation = @{ maxSearchBaseLength = 256 } } }
+    }
+
+    function Write-StructuredLog { 
+        param($Message, $Level = 'Info', $CorrelationId, $Component = 'Test', $Data = @{})
+        Write-Verbose "[$Level] [$Component] [$CorrelationId] $Message"
+    }
+
+    function Test-SIDFormat { 
+        param($SID, $CorrelationId)
+        # Mock SID format validation - safe for testing
+        return $SID -match '^S-1-\d+(-\d+)*$'
+    }
+
+    function Test-WellKnownSID { 
+        param($SID, $CorrelationId)
+        # Mock well-known SID detection
+        $wellKnownSIDs = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-32-547', 'S-1-5-18', 'S-1-5-19', 'S-1-5-20')
+        return $SID -in $wellKnownSIDs
+    }
+
+    $ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
+
+    if (Test-Path $ClassPath) {
+        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { 
+            try { . $_.FullName } catch { Write-Warning "Failed to load class: $($_.Name)" }
         }
     }
-    
-    # Mock dangerous operations for security
-    Mock Invoke-Expression { 
-        throw [System.Security.SecurityException]::new("Invoke-Expression blocked for security")
+
+    $SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
+
+    if (Test-Path $SIDPath) {
+        Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { 
+            try { . $_.FullName } catch { Write-Warning "Failed to load SID function: $($_.Name)" }
+        }
     }
+}
+
+Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tag @("Unit", "SID", "Security", "Enterprise") {
     
-    Mock Start-Process { 
-        throw [System.Security.SecurityException]::new("Start-Process blocked for security")
+    # CRITICAL: Mock all security validation to prevent malicious execution
+    BeforeAll {
+    Mock Test-InputForMaliciousContent {
+            param($InputString, $ValidationType)
+            return @{
+                IsValid = $true
+                RiskLevel = 'Low'
+                Threats = @()
+            }
+        }
+        
+        # Mock dangerous operations for security
+        Mock Invoke-Expression { 
+            throw [System.Security.SecurityException]::new("Invoke-Expression blocked for security")
+        }
+        
+        Mock Start-Process { 
+            throw [System.Security.SecurityException]::new("Start-Process blocked for security")
+        }
     }
     
     Context "Parameter Validation and Security" {
         It "Should accept valid SID parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            { Get-SIDAnalysis -SIDString $testSID } | Should Not Throw
+            { Get-SIDAnalysis -SIDString $testSID } | Should -Not -Throw
         }
         
         It "Should accept CurrentDomainSID parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $domainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            { Get-SIDAnalysis -SIDString $testSID -CurrentDomainSID $domainSID } | Should Not Throw
+            { Get-SIDAnalysis -SIDString $testSID -CurrentDomainSID $domainSID } | Should -Not -Throw
         }
         
         It "Should accept CorrelationId parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId } | Should -Not -Throw
         }
         
         It "Should reject null SID parameter" {
-            { Get-SIDAnalysis -SIDString $null } | Should Throw
+            { Get-SIDAnalysis -SIDString $null } | Should -Throw
         }
         
         It "Should reject empty SID parameter" {
-            { Get-SIDAnalysis -SIDString '' } | Should Throw
+            { Get-SIDAnalysis -SIDString '' } | Should -Throw
         }
         
         It "Should handle malicious SID inputs safely: <MaliciousInput>" -TestCases @(
@@ -109,17 +115,17 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             # Enhanced security validation - input should return Invalid analysis
             $result = Get-SIDAnalysis -SIDString $MaliciousInput
-            $result.LikelySource | Should Be 'Invalid'
-            $result.RiskLevel | Should Be 'High'
-            $result.Confidence | Should Be 'High'
+            $result.LikelySource | Should -Be 'Invalid'
+            $result.RiskLevel | Should -Be 'High'
+            $result.Confidence | Should -Be 'High'
         }
         
         It "Should handle excessively long SID inputs" {
             $longSID = 'S-1-5-21-' + ('1234567890-' * 100) + '1001'
             
             $result = Get-SIDAnalysis -SIDString $longSID
-            $result.LikelySource | Should Match 'Invalid|Analysis Error'
-            $result.RiskLevel | Should Be 'High'
+            $result.LikelySource | Should -Match 'Invalid|Analysis Error'
+            $result.RiskLevel | Should -Be 'High'
         }
     }
     
@@ -130,14 +136,14 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $domainSID -CurrentDomainSID $currentDomainSID
             
-            $result | Should Not BeNullOrEmpty
-            $result.SID | Should Be $domainSID
-            $result.LikelySource | Should Match 'Local Domain|Standard User/Group'
-            $result.Confidence | Should Be 'High'
-            $result.DomainContext | Should Be 'Local'
-            $result.RiskLevel | Should Match 'Low|Medium'
-            $result.Notes | Should Not BeNullOrEmpty
-            $result.AnalyzedAt | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
+            $result.SID | Should -Be $domainSID
+            $result.LikelySource | Should -Match 'Local Domain|Standard User/Group'
+            $result.Confidence | Should -Be 'High'
+            $result.DomainContext | Should -Be 'Local'
+            $result.RiskLevel | Should -Match 'Low|Medium'
+            $result.Notes | Should -Not -BeNullOrEmpty
+            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
         }
         
         It "Should analyze SID usage patterns across domains" {
@@ -146,10 +152,10 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $foreignSID -CurrentDomainSID $currentDomainSID
             
-            $result.LikelySource | Should Be 'Foreign Domain/Trust'
-            $result.DomainContext | Should Be 'Foreign'
-            $result.RiskLevel | Should Be 'High'
-            $result.Notes | Should Match 'External domain SID.*trust'
+            $result.LikelySource | Should -Be 'Foreign Domain/Trust'
+            $result.DomainContext | Should -Be 'Foreign'
+            $result.RiskLevel | Should -Be 'High'
+            $result.Notes | Should -Match 'External domain SID.*trust'
         }
         
         It "Should correlate SID relationships and dependencies" {
@@ -158,9 +164,9 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $builtinAdminSID -CurrentDomainSID $currentDomainSID
             
-            $result.LikelySource | Should Be 'Built-in Administrator'
-            $result.RiskLevel | Should Be 'Medium'
-            $result.Notes | Should Match 'Built-in Administrator.*verify.*deleted'
+            $result.LikelySource | Should -Be 'Built-in Administrator'
+            $result.RiskLevel | Should -Be 'Medium'
+            $result.Notes | Should -Match 'Built-in Administrator.*verify.*deleted'
         }
         
         It "Should generate comprehensive risk assessments for critical SIDs" {
@@ -169,9 +175,9 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $krbtgtSID -CurrentDomainSID $currentDomainSID
             
-            $result.LikelySource | Should Be 'KRBTGT Account'
-            $result.RiskLevel | Should Be 'High'
-            $result.Notes | Should Match 'KRBTGT.*critical.*investigate'
+            $result.LikelySource | Should -Be 'KRBTGT Account'
+            $result.RiskLevel | Should -Be 'High'
+            $result.Notes | Should -Match 'KRBTGT.*critical.*investigate'
         }
         
         It "Should analyze RID ranges for object type identification" {
@@ -187,8 +193,8 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             foreach ($testCase in $ridTestCases) {
                 $result = Get-SIDAnalysis -SIDString $testCase.SID -CurrentDomainSID $currentDomainSID
-                $result.LikelySource | Should Be $testCase.ExpectedSource
-                $result.RiskLevel | Should Be $testCase.ExpectedRisk
+                $result.LikelySource | Should -Be $testCase.ExpectedSource
+                $result.RiskLevel | Should -Be $testCase.ExpectedRisk
             }
         }
         
@@ -201,10 +207,10 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             foreach ($testCase in $wellKnownSIDs) {
                 $result = Get-SIDAnalysis -SIDString $testCase.SID
-                $result.LikelySource | Should Be $testCase.ExpectedSource
-                $result.RiskLevel | Should Be $testCase.ExpectedRisk
-                $result.DomainContext | Should Be $testCase.ExpectedContext
-                $result.Confidence | Should Be 'High'
+                $result.LikelySource | Should -Be $testCase.ExpectedSource
+                $result.RiskLevel | Should -Be $testCase.ExpectedRisk
+                $result.DomainContext | Should -Be $testCase.ExpectedContext
+                $result.Confidence | Should -Be 'High'
             }
         }
     }
@@ -215,9 +221,9 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $orphanedSID
             
-            $result.LikelySource | Should Be 'Unknown Domain'
-            $result.RiskLevel | Should Be 'High'
-            $result.Notes | Should Match 'Cannot determine domain context.*investigate.*migration.*trust.*external'
+            $result.LikelySource | Should -Be 'Unknown Domain'
+            $result.RiskLevel | Should -Be 'High'
+            $result.Notes | Should -Match 'Cannot determine domain context.*investigate.*migration.*trust.*external'
         }
         
         It "Should prioritize recommendations by business impact" {
@@ -228,10 +234,10 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $highRiskResult = Get-SIDAnalysis -SIDString $highRiskSID -CurrentDomainSID $currentDomainSID
             $lowRiskResult = Get-SIDAnalysis -SIDString $lowRiskSID -CurrentDomainSID $currentDomainSID
             
-            $highRiskResult.RiskLevel | Should Be 'High'
-            $lowRiskResult.RiskLevel | Should Be 'Low'
-            $highRiskResult.Notes | Should Match 'critical.*investigate'
-            $lowRiskResult.Notes | Should Match 'deleted user.*group'
+            $highRiskResult.RiskLevel | Should -Be 'High'
+            $lowRiskResult.RiskLevel | Should -Be 'Low'
+            $highRiskResult.Notes | Should -Match 'critical.*investigate'
+            $lowRiskResult.Notes | Should -Match 'deleted user.*group'
         }
         
         It "Should provide remediation workflows in notes" {
@@ -240,7 +246,7 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $foreignSID -CurrentDomainSID $currentDomainSID
             
-            $result.Notes | Should Match 'verify trust.*cross-domain.*Broken trust.*Migrated.*Deleted external'
+            $result.Notes | Should -Match 'verify trust.*cross-domain.*Broken trust.*Migrated.*Deleted external'
         }
         
         It "Should integrate with change management processes via structured output" {
@@ -250,12 +256,12 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $result = Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId
             
             # Verify structured output suitable for change management
-            $result.SID | Should Not BeNullOrEmpty
-            $result.LikelySource | Should Not BeNullOrEmpty
-            $result.Confidence | Should Match 'High|Medium|Low'
-            $result.RiskLevel | Should Match 'Low|Medium|High'
-            $result.AnalyzedAt | Should BeOfType [DateTime]
-            $result.DomainContext | Should Not BeNullOrEmpty
+            $result.SID | Should -Not -BeNullOrEmpty
+            $result.LikelySource | Should -Not -BeNullOrEmpty
+            $result.Confidence | Should -Match 'High|Medium|Low'
+            $result.RiskLevel | Should -Match 'Low|Medium|High'
+            $result.AnalyzedAt | Should -BeOfType [DateTime]
+            $result.DomainContext | Should -Not -BeNullOrEmpty
         }
     }
     
@@ -268,18 +274,18 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
                 $result1 = Get-SIDAnalysis -SIDString $testSID
             }
             
-            # Second analysis (should be faster if caching is implemented)
+            # Second analysis (Should -be faster if caching is implemented)
             $secondAnalysis = Measure-Command {
                 $result2 = Get-SIDAnalysis -SIDString $testSID
             }
             
             # Both should produce same results
-            $result1.SID | Should Be $result2.SID
-            $result1.LikelySource | Should Be $result2.LikelySource
+            $result1.SID | Should -Be $result2.SID
+            $result1.LikelySource | Should -Be $result2.LikelySource
             
             # Performance validation
-            $firstAnalysis.TotalMilliseconds | Should BeLessThan 5000
-            $secondAnalysis.TotalMilliseconds | Should BeLessThan 5000
+            $firstAnalysis.TotalMilliseconds | Should -BeLessThan 5000
+            $secondAnalysis.TotalMilliseconds | Should -BeLessThan 5000
         }
         
         It "Should batch-process large SID collections efficiently" {
@@ -293,16 +299,16 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             }
             
             # Verify all SIDs were processed
-            $results.Count | Should Be 100
+            $results.Count | Should -Be 100
             
             # Performance requirement: Should process 100 SIDs in under 30 seconds
-            $batchProcessingTime.TotalSeconds | Should BeLessThan 30
+            $batchProcessingTime.TotalSeconds | Should -BeLessThan 30
             
             # Verify each result is valid
             foreach ($result in $results) {
-                $result.SID | Should Not BeNullOrEmpty
-                $result.LikelySource | Should Not BeNullOrEmpty
-                $result.RiskLevel | Should Match 'Low|Medium|High'
+                $result.SID | Should -Not -BeNullOrEmpty
+                $result.LikelySource | Should -Not -BeNullOrEmpty
+                $result.RiskLevel | Should -Match 'Low|Medium|High'
             }
         }
         
@@ -320,8 +326,8 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $afterMemory = [System.GC]::GetTotalMemory($false)
             $memoryUsed = ($afterMemory - $beforeMemory) / 1MB
             
-            # Memory usage should be reasonable (less than 50MB for 50 SIDs)
-            $memoryUsed | Should BeLessThan 50
+            # Memory usage Should -be reasonable (less than 50MB for 50 SIDs)
+            $memoryUsed | Should -BeLessThan 50
             
             # Force garbage collection and verify cleanup
             [System.GC]::Collect()
@@ -331,7 +337,7 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $memoryDifference = [Math]::Abs($cleanupMemory - $beforeMemory) / 1MB
             
             # Should release most memory (within 10MB tolerance)
-            $memoryDifference | Should BeLessThan 10
+            $memoryDifference | Should -BeLessThan 10
         }
         
         It "Should complete single SID analysis within performance baseline" {
@@ -342,12 +348,12 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             }
             
             # Performance baseline: Single SID analysis should complete in under 100ms
-            $executionTime.TotalMilliseconds | Should BeLessThan 100
+            $executionTime.TotalMilliseconds | Should -BeLessThan 100
             
             # Verify result quality wasn't compromised for performance
-            $result.SID | Should Be $testSID
-            $result.LikelySource | Should Not BeNullOrEmpty
-            $result.RiskLevel | Should Match 'Low|Medium|High'
+            $result.SID | Should -Be $testSID
+            $result.LikelySource | Should -Not -BeNullOrEmpty
+            $result.RiskLevel | Should -Match 'Low|Medium|High'
         }
     }
     
@@ -362,9 +368,9 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             foreach ($invalidSID in $invalidSIDs) {
                 $result = Get-SIDAnalysis -SIDString $invalidSID.SID
-                $result.LikelySource | Should Be $invalidSID.ExpectedSource
-                $result.RiskLevel | Should Be 'High'
-                $result.Confidence | Should Match 'High|Low'
+                $result.LikelySource | Should -Be $invalidSID.ExpectedSource
+                $result.RiskLevel | Should -Be 'High'
+                $result.Confidence | Should -Match 'High|Low'
             }
         }
         
@@ -374,15 +380,15 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $problematicSID
             
-            # Should not throw, but return error analysis
-            $result | Should Not BeNullOrEmpty
-            $result.SID | Should Be $problematicSID
+            # Should -Not -throw, but return error analysis
+            $result | Should -Not -BeNullOrEmpty
+            $result.SID | Should -Be $problematicSID
             
-            # Error should be captured in analysis
+            # Error Should -be captured in analysis
             if ($result.LikelySource -eq 'Analysis Error') {
-                $result.RiskLevel | Should Be 'High'
-                $result.Confidence | Should Be 'Low'
-                $result.Notes | Should Match 'Error during analysis'
+                $result.RiskLevel | Should -Be 'High'
+                $result.Confidence | Should -Be 'Low'
+                $result.Notes | Should -Match 'Error during analysis'
             }
         }
         
@@ -424,13 +430,13 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $jobs | Remove-Job
             
             # Verify consistency
-            $results.Count | Should Be 5
+            $results.Count | Should -Be 5
             $uniqueSources = $results | Select-Object -ExpandProperty LikelySource -Unique
             $uniqueRiskLevels = $results | Select-Object -ExpandProperty RiskLevel -Unique
             
-            # All results should be consistent
-            $uniqueSources.Count | Should Be 1
-            $uniqueRiskLevels.Count | Should Be 1
+            # All results Should -be consistent
+            $uniqueSources.Count | Should -Be 1
+            $uniqueRiskLevels.Count | Should -Be 1
         }
     }
     
@@ -443,12 +449,12 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $result = Get-SIDAnalysis -SIDString $testSID -CurrentDomainSID $currentDomainSID -CorrelationId $correlationId
             
             # SOX compliance: All operations must be traceable
-            $result.AnalyzedAt | Should Not BeNullOrEmpty
-            $result.SID | Should Be $testSID
+            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
+            $result.SID | Should -Be $testSID
             
-            # High-risk operations should be flagged appropriately
-            $result.RiskLevel | Should Be 'Medium'
-            $result.LikelySource | Should Be 'Built-in Administrator'
+            # High-risk operations Should -be flagged appropriately
+            $result.RiskLevel | Should -Be 'Medium'
+            $result.LikelySource | Should -Be 'Built-in Administrator'
         }
         
         It "Should ensure HIPAA audit trail completeness" {
@@ -458,12 +464,12 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $result = Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId
             
             # HIPAA compliance: Complete audit trail
-            $result.SID | Should Not BeNullOrEmpty
-            $result.AnalyzedAt | Should Not BeNullOrEmpty
-            $result.LikelySource | Should Not BeNullOrEmpty
-            $result.Confidence | Should Not BeNullOrEmpty
-            $result.RiskLevel | Should Not BeNullOrEmpty
-            $result.DomainContext | Should Not BeNullOrEmpty
+            $result.SID | Should -Not -BeNullOrEmpty
+            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
+            $result.LikelySource | Should -Not -BeNullOrEmpty
+            $result.Confidence | Should -Not -BeNullOrEmpty
+            $result.RiskLevel | Should -Not -BeNullOrEmpty
+            $result.DomainContext | Should -Not -BeNullOrEmpty
         }
         
         It "Should track all operations with correlation IDs" {
@@ -471,10 +477,10 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             
             # Operation should accept and handle correlation ID
-            { Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId } | Should -Not -Throw
             
-            # Correlation ID should be valid GUID format
-            [System.Guid]::Parse($correlationId) | Should BeOfType [System.Guid]
+            # Correlation ID Should -be valid GUID format
+            [System.Guid]::Parse($correlationId) | Should -BeOfType [System.Guid]
         }
         
         It "Should log security events for enterprise monitoring" {
@@ -482,10 +488,10 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $result = Get-SIDAnalysis -SIDString $highRiskSID
             
-            # High-risk SIDs should be flagged for security monitoring
-            $result.RiskLevel | Should Be 'High'
-            $result.LikelySource | Should Be 'Unknown Domain'
-            $result.Notes | Should Match 'investigate'
+            # High-risk SIDs Should -be flagged for security monitoring
+            $result.RiskLevel | Should -Be 'High'
+            $result.LikelySource | Should -Be 'Unknown Domain'
+            $result.Notes | Should -Match 'investigate'
         }
     }
     
@@ -499,11 +505,11 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             
             $results = $sidArray | Get-SIDAnalysis
             
-            $results.Count | Should Be 3
+            $results.Count | Should -Be 3
             foreach ($result in $results) {
-                $result.SID | Should Not BeNullOrEmpty
-                $result.LikelySource | Should Not BeNullOrEmpty
-                $result.RiskLevel | Should Match 'Low|Medium|High'
+                $result.SID | Should -Not -BeNullOrEmpty
+                $result.LikelySource | Should -Not -BeNullOrEmpty
+                $result.RiskLevel | Should -Match 'Low|Medium|High'
             }
         }
         
@@ -513,14 +519,14 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             $result = Get-SIDAnalysis -SIDString $testSID
             
             # Verify enterprise-standard properties
-            $result | Should Not BeNullOrEmpty
-            $result.SID | Should Not BeNullOrEmpty
-            $result.LikelySource | Should Not BeNullOrEmpty
-            $result.Confidence | Should Not BeNullOrEmpty
-            $result.Notes | Should Not BeNullOrEmpty
-            $result.RiskLevel | Should Not BeNullOrEmpty
-            $result.AnalyzedAt | Should Not BeNullOrEmpty
-            $result.DomainContext | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
+            $result.SID | Should -Not -BeNullOrEmpty
+            $result.LikelySource | Should -Not -BeNullOrEmpty
+            $result.Confidence | Should -Not -BeNullOrEmpty
+            $result.Notes | Should -Not -BeNullOrEmpty
+            $result.RiskLevel | Should -Not -BeNullOrEmpty
+            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
+            $result.DomainContext | Should -Not -BeNullOrEmpty
         }
         
         It "Should maintain performance standards for enterprise scale" {
@@ -535,14 +541,14 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tags @("Unit", "S
             }
             
             # Enterprise performance requirement: 100 SIDs in under 60 seconds
-            $performanceTest.TotalSeconds | Should BeLessThan 60
+            $performanceTest.TotalSeconds | Should -BeLessThan 60
             
             # Verify quality maintained under load
-            $testResults.Count | Should Be 100
+            $testResults.Count | Should -Be 100
             $testResults | ForEach-Object {
-                $_.SID | Should Not BeNullOrEmpty
-                $_.LikelySource | Should Not BeNullOrEmpty
-                $_.RiskLevel | Should Match 'Low|Medium|High'
+                $_.SID | Should -Not -BeNullOrEmpty
+                $_.LikelySource | Should -Not -BeNullOrEmpty
+                $_.RiskLevel | Should -Match 'Low|Medium|High'
             }
         }
     }

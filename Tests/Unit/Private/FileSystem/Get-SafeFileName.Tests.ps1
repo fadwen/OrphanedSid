@@ -1,4 +1,4 @@
-#Requires -Modules Pester
+﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
 <#
@@ -24,25 +24,30 @@
 #>
 
 # Initialize test logging system first
-$initLoggingPath = Join-Path $PSScriptRoot "..\..\..\TestHelpers\Initialize-TestLogging.ps1"
-if (Test-Path $initLoggingPath) {
-    . $initLoggingPath
-} else {
-    Write-Warning "Could not find test logging initialization script"
-}
-
 # Import the function for testing
-$functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\FileSystem\Get-SafeFileName.ps1"
-if (Test-Path $functionPath) {
-    . $functionPath
-} else {
-    Write-Error "Cannot find Get-SafeFileName.ps1 at expected path: $functionPath"
-}
-
 # Import test helpers
-$testHelpersPath = Join-Path $PSScriptRoot "..\..\..\TestHelpers"
-if (Test-Path (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")) {
-    . (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
+BeforeAll {
+    $initLoggingPath = Join-Path $PSScriptRoot "..\..\..\TestHelpers\Initialize-TestLogging.ps1"
+
+    if (Test-Path $initLoggingPath) {
+        . $initLoggingPath
+    } else {
+        Write-Warning "Could not find test logging initialization script"
+    }
+
+    $functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\FileSystem\Get-SafeFileName.ps1"
+
+    if (Test-Path $functionPath) {
+        . $functionPath
+    } else {
+        Write-Error "Cannot find Get-SafeFileName.ps1 at expected path: $functionPath"
+    }
+
+    $testHelpersPath = Join-Path $PSScriptRoot "..\..\..\TestHelpers"
+
+    if (Test-Path (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")) {
+        . (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
+    }
 }
 
 Describe "Get-SafeFileName" {
@@ -50,50 +55,50 @@ Describe "Get-SafeFileName" {
     Context "Parameter Validation" {
         
         It "Should accept mandatory InputString parameter" {
-            { Get-SafeFileName -InputString "test" } | Should Not Throw
+            { Get-SafeFileName -InputString "test" } | Should -Not -Throw
         }
 
         It "Should accept empty string as valid input" {
             $result = Get-SafeFileName -InputString ""
-            $result | Should Be "Unknown"
+            $result | Should -Be "Unknown"
         }
 
         It "Should accept whitespace-only string as valid input" {
             $result = Get-SafeFileName -InputString "   "
-            $result | Should Be "Unknown"
+            $result | Should -Be "Unknown"
         }
 
         It "Should validate MaxLength parameter range" {
-            { Get-SafeFileName -InputString "test" -MaxLength 5 } | Should Throw
-            { Get-SafeFileName -InputString "test" -MaxLength 250 } | Should Throw
+            { Get-SafeFileName -InputString "test" -MaxLength 5 } | Should -Throw
+            { Get-SafeFileName -InputString "test" -MaxLength 250 } | Should -Throw
         }
 
         It "Should accept valid MaxLength parameter" {
-            { Get-SafeFileName -InputString "test" -MaxLength 50 } | Should Not Throw
-            { Get-SafeFileName -InputString "test" -MaxLength 200 } | Should Not Throw
+            { Get-SafeFileName -InputString "test" -MaxLength 50 } | Should -Not -Throw
+            { Get-SafeFileName -InputString "test" -MaxLength 200 } | Should -Not -Throw
         }
 
         It "Should use default MaxLength when not specified" {
             $result = Get-SafeFileName -InputString "test"
-            $result | Should Be "test"
+            $result | Should -Be "test"
         }
 
         It "Should accept CorrelationId parameter" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-SafeFileName -InputString "test" -CorrelationId $correlationId } | Should Not Throw
+            { Get-SafeFileName -InputString "test" -CorrelationId $correlationId } | Should -Not -Throw
         }
 
         It "Should auto-generate CorrelationId when not provided" {
-            { Get-SafeFileName -InputString "test" } | Should Not Throw
+            { Get-SafeFileName -InputString "test" } | Should -Not -Throw
         }
 
         It "Should support pipeline input" {
             $testStrings = @("test1", "test2", "test3")
             $results = $testStrings | Get-SafeFileName
-            $results.Count | Should Be 3
-            $results[0] | Should Be "test1"
-            $results[1] | Should Be "test2"
-            $results[2] | Should Be "test3"
+            $results.Count | Should -Be 3
+            $results[0] | Should -Be "test1"
+            $results[1] | Should -Be "test2"
+            $results[2] | Should -Be "test3"
         }
     }
 
@@ -101,7 +106,7 @@ Describe "Get-SafeFileName" {
 
         It "Should return clean filename for normal strings" {
             $result = Get-SafeFileName -InputString "normal_filename"
-            $result | Should Be "normal_filename"
+            $result | Should -Be "normal_filename"
         }
 
         It "Should replace illegal Windows characters with underscores" {
@@ -109,33 +114,33 @@ Describe "Get-SafeFileName" {
             foreach ($char in $illegalChars.ToCharArray()) {
                 $testString = "test${char}file"
                 $result = Get-SafeFileName -InputString $testString
-                $result | Should Be "test_file"
+                $result | Should -Be "test_file"
             }
         }
 
         It "Should handle multiple illegal characters in single string" {
             $result = Get-SafeFileName -InputString 'test\file:with*illegal?"chars<>|'
-            $result | Should Be "test_file_with_illegal__chars"
+            $result | Should -Be "test_file_with_illegal__chars"
         }
 
         It "Should consolidate multiple whitespace characters" {
             $result = Get-SafeFileName -InputString "test   multiple    spaces"
-            $result | Should Be "test_multiple_spaces"
+            $result | Should -Be "test_multiple_spaces"
         }
 
         It "Should handle mixed whitespace and illegal characters" {
             $result = Get-SafeFileName -InputString "test file\with:mixed* chars"
-            $result | Should Be "test_file_with_mixed__chars"
+            $result | Should -Be "test_file_with_mixed__chars"
         }
 
         It "Should trim leading and trailing underscores" {
             $result = Get-SafeFileName -InputString "___test___"
-            $result | Should Be "test"
+            $result | Should -Be "test"
         }
 
         It "Should trim leading and trailing spaces" {
             $result = Get-SafeFileName -InputString "   test   "
-            $result | Should Be "test"
+            $result | Should -Be "test"
         }
     }
 
@@ -144,26 +149,26 @@ Describe "Get-SafeFileName" {
         It "Should sanitize simple Distinguished Name" {
             $dn = "CN=Test User,OU=Users,DC=contoso,DC=com"
             $result = Get-SafeFileName -InputString $dn
-            $result | Should Be "CN=Test_User,OU=Users,DC=contoso,DC=com"
+            $result | Should -Be "CN=Test_User,OU=Users,DC=contoso,DC=com"
         }
 
         It "Should handle complex Distinguished Name with special characters" {
             $dn = 'CN=Test\User,OU=IT/Users,DC=contoso,DC=com'
             $result = Get-SafeFileName -InputString $dn
-            $result | Should Be "CN=Test_User,OU=IT_Users,DC=contoso,DC=com"
+            $result | Should -Be "CN=Test_User,OU=IT_Users,DC=contoso,DC=com"
         }
 
         It "Should handle Distinguished Name with quotes" {
             $dn = 'CN="Test User",OU=Users,DC=contoso,DC=com'
             $result = Get-SafeFileName -InputString $dn
-            $result | Should Be "CN=_Test_User_,OU=Users,DC=contoso,DC=com"
+            $result | Should -Be "CN=_Test_User_,OU=Users,DC=contoso,DC=com"
         }
 
         It "Should handle very long Distinguished Name" {
             $longDN = "CN=Very Long User Name With Lots Of Text,OU=Very Long Organizational Unit Name,OU=Another Long OU Name,DC=very-long-domain-name,DC=com"
             $result = Get-SafeFileName -InputString $longDN -MaxLength 100
-            $result | Should Match "_truncated$"
-            $result.Length | Should Be 100
+            $result | Should -Match "_truncated$"
+            $result.Length | Should -Be 100
         }
     }
 
@@ -172,37 +177,37 @@ Describe "Get-SafeFileName" {
         It "Should truncate long strings and add suffix" {
             $longString = "a" * 250
             $result = Get-SafeFileName -InputString $longString -MaxLength 50
-            $result | Should Match "_truncated$"
-            $result.Length | Should Be 50
+            $result | Should -Match "_truncated$"
+            $result.Length | Should -Be 50
         }
 
         It "Should preserve content when under length limit" {
             $shortString = "short_filename"
             $result = Get-SafeFileName -InputString $shortString -MaxLength 50
-            $result | Should Be "short_filename"
+            $result | Should -Be "short_filename"
         }
 
         It "Should handle edge case where MaxLength equals content length" {
             $testString = "exactly50characters_exactly50characters_exactly50"
             $result = Get-SafeFileName -InputString $testString -MaxLength 50
-            $result | Should Be $testString
+            $result | Should -Be $testString
         }
 
         It "Should handle very small MaxLength values" {
             $result = Get-SafeFileName -InputString "test" -MaxLength 15
-            $result | Should Be "test"
+            $result | Should -Be "test"
         }
 
         It "Should handle MaxLength smaller than suffix" {
             $result = Get-SafeFileName -InputString "verylongstring" -MaxLength 10
-            $result | Should Be "truncated"
+            $result | Should -Be "truncated"
         }
 
         It "Should calculate truncation correctly with illegal characters" {
             $longStringWithIllegal = ("a" * 100) + "\/:*?" + ("b" * 100)
             $result = Get-SafeFileName -InputString $longStringWithIllegal -MaxLength 50
-            $result | Should Match "_truncated$"
-            $result.Length | Should Be 50
+            $result | Should -Match "_truncated$"
+            $result.Length | Should -Be 50
         }
     }
 
@@ -211,46 +216,46 @@ Describe "Get-SafeFileName" {
         It "Should handle null string gracefully" {
             # Note: [AllowEmptyString()] attribute should allow this
             $result = Get-SafeFileName -InputString ""
-            $result | Should Be "Unknown"
+            $result | Should -Be "Unknown"
         }
 
         It "Should handle string with only illegal characters" {
             $result = Get-SafeFileName -InputString '\/:*?"<>|'
-            $result | Should Match "^Unknown_[a-f0-9]{8}$" # Should generate fallback with hash
-            $result.Length | Should Be 16 # "Unknown_" + 8-char hash
+            $result | Should -Match "^Unknown_[a-f0-9]{8}$" # Should generate fallback with hash
+            $result.Length | Should -Be 16 # "Unknown_" + 8-char hash
         }
 
         It "Should handle string that becomes empty after sanitization" {
             $result = Get-SafeFileName -InputString "___"
-            $result | Should Match "^Unknown_[a-f0-9]+$"  # Should be Unknown_ followed by hex characters
+            $result | Should -Match "^Unknown_[a-f0-9]+$"  # Should -be Unknown_ followed by hex characters
         }
 
         It "Should generate unique fallback names for invalid inputs" {
             $result1 = Get-SafeFileName -InputString "___"
             $result2 = Get-SafeFileName -InputString "___"
-            $result1 | Should Not Be $result2
+            $result1 | Should -Not -Be $result2
         }
 
         It "Should handle Unicode characters appropriately" {
             $unicodeString = "téšt_fílé_ñámé"
             $result = Get-SafeFileName -InputString $unicodeString
-            $result | Should Be "téšt_fílé_ñámé"
+            $result | Should -Be "téšt_fílé_ñámé"
         }
 
         It "Should handle mixed ASCII and Unicode" {
             $mixedString = "test_fîlé\name:with*ñámé"
             $result = Get-SafeFileName -InputString $mixedString
-            $result | Should Be "test_fîlé_name_with_ñámé"
+            $result | Should -Be "test_fîlé_name_with_ñámé"
         }
 
         It "Should handle numeric input" {
             $result = Get-SafeFileName -InputString "12345"
-            $result | Should Be "12345"
+            $result | Should -Be "12345"
         }
 
         It "Should handle alphanumeric with symbols" {
             $result = Get-SafeFileName -InputString "test123-file_name.backup"
-            $result | Should Be "test123-file_name.backup"
+            $result | Should -Be "test123-file_name.backup"
         }
     }
 
@@ -263,13 +268,13 @@ Describe "Get-SafeFileName" {
                 "..\admin\secrets.txt"
             )
             
-            foreach ($input in $maliciousInputs) {
-                $result = Get-SafeFileName -InputString $input
-                $result | Should Not BeNullOrEmpty
-                $result | Should BeOfType "string"
+            foreach ($testInput in $maliciousInputs) {
+                $result = Get-SafeFileName -InputString $testInput
+                $result | Should -Not -BeNullOrEmpty
+                $result | Should -BeOfType "string"
                 
                 # Should replace path separators and dots to make filename safe
-                $result | Should Not Match "[/\\]"  # No path separators allowed
+                $result | Should -Not -Match "[/\\]"  # No path separators allowed
                 # Dots are replaced with underscores where they form .. patterns
             }
         }
@@ -283,12 +288,12 @@ Describe "Get-SafeFileName" {
             
             foreach ($attempt in $injectionAttempts) {
                 $result = Get-SafeFileName -InputString $attempt
-                $result | Should Not BeNullOrEmpty
-                $result | Should BeOfType "string"
+                $result | Should -Not -BeNullOrEmpty
+                $result | Should -BeOfType "string"
                 
                 # Function only replaces Windows-illegal filename characters (\/:*?"<>|)
                 # Other characters like $, ;, & are valid in Windows filenames
-                # So they should be preserved in the output
+                # So they Should -be preserved in the output
             }
         }
 
@@ -301,7 +306,7 @@ Describe "Get-SafeFileName" {
             
             foreach ($name in $executableNames) {
                 $result = Get-SafeFileName -InputString $name
-                $result | Should Be $name # Should preserve but sanitize
+                $result | Should -Be $name # Should preserve but sanitize
             }
         }
 
@@ -314,7 +319,7 @@ Describe "Get-SafeFileName" {
             
             foreach ($prefix in $specialPrefixes) {
                 $result = Get-SafeFileName -InputString $prefix
-                $result | Should Not BeNullOrEmpty
+                $result | Should -Not -BeNullOrEmpty
             }
         }
     }
@@ -324,19 +329,19 @@ Describe "Get-SafeFileName" {
         It "Should handle Windows UNC path components" {
             $uncPath = "\\server\share\folder\file.txt"
             $result = Get-SafeFileName -InputString $uncPath
-            $result | Should Be "server_share_folder_file.txt"
+            $result | Should -Be "server_share_folder_file.txt"
         }
 
         It "Should handle Unix-style path components" {
             $unixPath = "/home/user/documents/file.txt"
             $result = Get-SafeFileName -InputString $unixPath
-            $result | Should Be "home_user_documents_file.txt"
+            $result | Should -Be "home_user_documents_file.txt"
         }
 
         It "Should handle mixed path separators" {
             $mixedPath = "folder\subfolder/file.txt"
             $result = Get-SafeFileName -InputString $mixedPath
-            $result | Should Be "folder_subfolder_file.txt"
+            $result | Should -Be "folder_subfolder_file.txt"
         }
 
         It "Should preserve valid filename extensions" {
@@ -344,13 +349,13 @@ Describe "Get-SafeFileName" {
             foreach ($ext in $extensions) {
                 $filename = "testfile$ext"
                 $result = Get-SafeFileName -InputString $filename
-                $result | Should Be $filename
+                $result | Should -Be $filename
             }
         }
 
         It "Should handle filenames with multiple dots" {
             $result = Get-SafeFileName -InputString "file.name.with.dots.txt"
-            $result | Should Be "file.name.with.dots.txt"
+            $result | Should -Be "file.name.with.dots.txt"
         }
     }
 
@@ -362,8 +367,8 @@ Describe "Get-SafeFileName" {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalMilliseconds
             
-            $duration | Should BeLessThan 100
-            $result | Should Be "test_performance_filename"
+            $duration | Should -BeLessThan 100
+            $result | Should -Be "test_performance_filename"
         }
 
         It "Should handle bulk processing efficiently" {
@@ -374,8 +379,8 @@ Describe "Get-SafeFileName" {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalMilliseconds
             
-            $duration | Should BeLessThan 1000 # 1 second for 100 files
-            $results.Count | Should Be 100
+            $duration | Should -BeLessThan 1000 # 1 second for 100 files
+            $results.Count | Should -Be 100
         }
 
         It "Should handle very long strings efficiently" {
@@ -386,8 +391,8 @@ Describe "Get-SafeFileName" {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalMilliseconds
             
-            $duration | Should BeLessThan 50
-            $result.Length | Should Be 100
+            $duration | Should -BeLessThan 50
+            $result.Length | Should -Be 100
         }
 
         It "Should maintain consistent performance with different input types" {
@@ -408,28 +413,30 @@ Describe "Get-SafeFileName" {
             }
             
             $maxDuration = ($durations | Measure-Object -Maximum).Maximum
-            $maxDuration | Should BeLessThan 100
+            $maxDuration | Should -BeLessThan 100
         }
     }
 
     Context "Logging Integration" {
         
         # Mock Write-StructuredLog to prevent actual logging during tests
-        Mock Write-StructuredLog {
-            param($Message, $Level, $CorrelationId)
-            # Return structured data for validation
-            return @{
-                Message = $Message
-                Level = $Level  
-                CorrelationId = $CorrelationId
-                Timestamp = Get-Date
+        BeforeAll {
+    Mock Write-StructuredLog {
+                param($Message, $Level, $CorrelationId)
+                # Return structured data for validation
+                return @{
+                    Message = $Message
+                    Level = $Level  
+                    CorrelationId = $CorrelationId
+                    Timestamp = Get-Date
+                }
             }
         }
 
         It "Should log debug messages for successful operations" {
             $result = Get-SafeFileName -InputString "test_logging"
             
-            Assert-MockCalled Write-StructuredLog -Exactly 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Exactly 1 -ParameterFilter {
                 $Message -like "*Safe filename generation successful*" -and $Level -eq "Debug"
             }
         }
@@ -437,7 +444,7 @@ Describe "Get-SafeFileName" {
         It "Should log debug messages for empty input handling" {
             $result = Get-SafeFileName -InputString ""
             
-            Assert-MockCalled Write-StructuredLog -Exactly 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Exactly 1 -ParameterFilter {
                 $Message -like "*Input string was empty*" -and $Level -eq "Debug"
             }
         }
@@ -446,7 +453,7 @@ Describe "Get-SafeFileName" {
             $longString = "a" * 250
             $result = Get-SafeFileName -InputString $longString -MaxLength 50
             
-            Assert-MockCalled Write-StructuredLog -Exactly 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Exactly 1 -ParameterFilter {
                 $Message -like "*Truncated filename*" -and $Level -eq "Debug"
             }
         }
@@ -454,7 +461,7 @@ Describe "Get-SafeFileName" {
         It "Should log warning messages for fallback operations" {
             $result = Get-SafeFileName -InputString "___"
             
-            Assert-MockCalled Write-StructuredLog -Exactly 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Exactly 1 -ParameterFilter {
                 $Message -like "*Generated fallback filename*" -and $Level -eq "Warning"
             }
         }
@@ -463,7 +470,7 @@ Describe "Get-SafeFileName" {
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
             $result = Get-SafeFileName -InputString "test" -CorrelationId $testCorrelationId
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter {
+            Should -Invoke Write-StructuredLog -ParameterFilter {
                 $CorrelationId -eq $testCorrelationId
             }
         }
@@ -474,10 +481,10 @@ Describe "Get-SafeFileName" {
         It "Should return string type for all inputs" {
             $testInputs = @("test", "", "  ", "complex\file:name", $null)
             
-            foreach ($input in $testInputs) {
-                if ($input -ne $null) {
-                    $result = Get-SafeFileName -InputString $input
-                    $result | Should BeOfType [string]
+            foreach ($testInput in $testInputs) {
+                if ($testInput -ne $null) {
+                    $result = Get-SafeFileName -InputString $testInput
+                    $result | Should -BeOfType [string]
                 }
             }
         }
@@ -500,8 +507,8 @@ Describe "Get-SafeFileName" {
             $results = $jobs | Wait-Job | Receive-Job
             $jobs | Remove-Job
             
-            $results.Count | Should Be 10
-            $results | ForEach-Object { $_ | Should Match "concurrent_test_\d+" }
+            $results.Count | Should -Be 10
+            $results | ForEach-Object { $_ | Should -Match "concurrent_test_\d+" }
         }
 
         It "Should integrate with configuration management" {
@@ -510,8 +517,8 @@ Describe "Get-SafeFileName" {
             
             foreach ($maxLength in $configValues) {
                 $result = Get-SafeFileName -InputString "configuration_test_filename" -MaxLength $maxLength
-                $result | Should Not BeNullOrEmpty
-                $result.Length | Should BeLessThan ($maxLength + 1)
+                $result | Should -Not -BeNullOrEmpty
+                $result.Length | Should -BeLessThan ($maxLength + 1)
             }
         }
 
@@ -522,8 +529,8 @@ Describe "Get-SafeFileName" {
             $result = Get-SafeFileName -InputString $originalString -CorrelationId $testCorrelationId
             
             # Verify result is correctly processed
-            $result | Should Be $originalString
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Be $originalString
+            $result | Should -Not -BeNullOrEmpty
         }
 
         It "Should handle enterprise filename patterns" {
@@ -536,8 +543,8 @@ Describe "Get-SafeFileName" {
             
             foreach ($pattern in $enterprisePatterns) {
                 $result = Get-SafeFileName -InputString $pattern
-                $result | Should Not BeNullOrEmpty
-                $result | Should Not Match '[\\/:*?"<>|]'
+                $result | Should -Not -BeNullOrEmpty
+                $result | Should -Not -Match '[\\/:*?"<>|]'
             }
         }
     }

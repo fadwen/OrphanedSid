@@ -1,29 +1,31 @@
 #Requires -Version 5.1
-#Requires -Modules Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 # Write-RemovalSecurityLog.Tests.ps1 - Unit Tests for Write-RemovalSecurityLog Function
 # Tests security audit logging for SID removal operations with comprehensive validation
 
 # Import the function under test and its dependencies directly
-$functionPath = "$PSScriptRoot\..\..\..\..\Private\Logging\Write-RemovalSecurityLog.ps1"
-if (Test-Path $functionPath) {
-    . $functionPath
-} else {
-    throw "Could not find Write-RemovalSecurityLog.ps1 at $functionPath"
-}
-
 # Import dependencies
-$dependencies = @(
-    "$PSScriptRoot\..\..\..\..\Private\Logging\Write-SecurityLog.ps1"
-)
+BeforeAll {
+    $functionPath = "$PSScriptRoot\..\..\..\..\Private\Logging\Write-RemovalSecurityLog.ps1"
 
-foreach ($dep in $dependencies) {
-    if (Test-Path $dep) {
-        . $dep
+    if (Test-Path $functionPath) {
+        . $functionPath
+    } else {
+        throw "Could not find Write-RemovalSecurityLog.ps1 at $functionPath"
+    }
+
+    $dependencies = @(
+        "$PSScriptRoot\..\..\..\..\Private\Logging\Write-SecurityLog.ps1"
+    )
+
+    foreach ($dep in $dependencies) {
+        if (Test-Path $dep) {
+            . $dep
+        }
     }
 }
 
-Describe "Write-RemovalSecurityLog" -Tags @('Unit', 'Logging', 'Security') {
+Describe "Write-RemovalSecurityLog" -Tag @('Unit', 'Logging', 'Security') {
     BeforeEach {
         # Override the problematic global Write-StructuredLog mock
         Mock Write-StructuredLog {
@@ -39,25 +41,25 @@ Describe "Write-RemovalSecurityLog" -Tags @('Unit', 'Logging', 'Security') {
         It "Should accept valid SecurityEventType values" {
             $validEventTypes = @('PrivilegeUse', 'ObjectAccess', 'SecurityValidation', 'AuditTrail')
             foreach ($eventType in $validEventTypes) {
-                { Write-RemovalSecurityLog -SecurityEventType $eventType -Message "Test message" -Outcome "Success" } | Should Not Throw
+                { Write-RemovalSecurityLog -SecurityEventType $eventType -Message "Test message" -Outcome "Success" } | Should -Not -Throw
             }
         }
 
         It "Should accept valid Outcome values" {
             $validOutcomes = @('Attempt', 'Success', 'Failure')
             foreach ($outcome in $validOutcomes) {
-                { Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome $outcome } | Should Not Throw
+                { Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome $outcome } | Should -Not -Throw
             }
         }
 
         It "Should accept optional CorrelationId parameter" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success" -CorrelationId $correlationId } | Should Not Throw
+            { Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success" -CorrelationId $correlationId } | Should -Not -Throw
         }
 
         It "Should accept optional SecurityContext parameter" {
             $securityContext = @{ TestKey = 'TestValue' }
-            { Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success" -SecurityContext $securityContext } | Should Not Throw
+            { Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success" -SecurityContext $securityContext } | Should -Not -Throw
         }
     }
 
@@ -65,7 +67,7 @@ Describe "Write-RemovalSecurityLog" -Tags @('Unit', 'Logging', 'Security') {
         It "Should call Write-SecurityLog with correct parameters" {
             Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test removal operation" -Outcome "Success"
 
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityEventType -eq "PrivilegeUse" -and
                 $Message -eq "Test removal operation" -and
                 $Outcome -eq "Success"
@@ -76,7 +78,7 @@ Describe "Write-RemovalSecurityLog" -Tags @('Unit', 'Logging', 'Security') {
             $customContext = @{ SIDType = 'User'; Domain = 'TestDomain' }
             Write-RemovalSecurityLog -SecurityEventType "ObjectAccess" -Message "SID removal" -Outcome "Success" -SecurityContext $customContext
 
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $SecurityContext.Operation -eq 'SIDRemoval' -and
                 $SecurityContext.Component -eq 'RemovalSecurityLogging' -and
                 $SecurityContext.SIDType -eq 'User' -and
@@ -87,7 +89,7 @@ Describe "Write-RemovalSecurityLog" -Tags @('Unit', 'Logging', 'Security') {
         It "Should generate correlation ID if not provided" {
             Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success"
 
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $CorrelationId -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             }
         }
@@ -96,7 +98,7 @@ Describe "Write-RemovalSecurityLog" -Tags @('Unit', 'Logging', 'Security') {
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
             Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success" -CorrelationId $testCorrelationId
 
-            Assert-MockCalled Write-SecurityLog -ParameterFilter {
+            Should -Invoke Write-SecurityLog -ParameterFilter {
                 $CorrelationId -eq $testCorrelationId
             }
         }

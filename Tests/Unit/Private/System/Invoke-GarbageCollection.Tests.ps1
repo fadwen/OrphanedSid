@@ -18,30 +18,35 @@
 #>
 
 # Source the Invoke-GarbageCollection function
-$functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
-if (Test-Path $functionPath) {
-    . $functionPath
-} else {
-    throw "Could not find function file at: $functionPath"
-}
-
 # Stub Write-StructuredLog for mocking
-if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
-    function Write-StructuredLog {
-        param($Message, $Level, $Component, $CorrelationId)
-        # Stub implementation for testing
-    }
-}
-
 # Stub .NET static methods that can't be mocked in Pester 3.4
-if (-not (Get-Command Invoke-GCCollect -ErrorAction SilentlyContinue)) {
-    function Invoke-GCCollect { [System.GC]::Collect() }
-}
-if (-not (Get-Command Invoke-GCWaitForPendingFinalizers -ErrorAction SilentlyContinue)) {
-    function Invoke-GCWaitForPendingFinalizers { [System.GC]::WaitForPendingFinalizers() }
-}
-if (-not (Get-Command Get-GCTotalMemory -ErrorAction SilentlyContinue)) {
-    function Get-GCTotalMemory { param($forceCollection) return [System.GC]::GetTotalMemory($forceCollection) }
+BeforeAll {
+    $functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
+
+    if (Test-Path $functionPath) {
+        . $functionPath
+    } else {
+        throw "Could not find function file at: $functionPath"
+    }
+
+    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
+        function Write-StructuredLog {
+            param($Message, $Level, $Component, $CorrelationId)
+            # Stub implementation for testing
+        }
+    }
+
+    if (-not (Get-Command Invoke-GCCollect -ErrorAction SilentlyContinue)) {
+        function Invoke-GCCollect { [System.GC]::Collect() }
+    }
+
+    if (-not (Get-Command Invoke-GCWaitForPendingFinalizers -ErrorAction SilentlyContinue)) {
+        function Invoke-GCWaitForPendingFinalizers { [System.GC]::WaitForPendingFinalizers() }
+    }
+
+    if (-not (Get-Command Get-GCTotalMemory -ErrorAction SilentlyContinue)) {
+        function Get-GCTotalMemory { param($forceCollection) return [System.GC]::GetTotalMemory($forceCollection) }
+    }
 }
 
 Describe "Invoke-GarbageCollection" {
@@ -52,8 +57,8 @@ Describe "Invoke-GarbageCollection" {
             Mock Invoke-GCWaitForPendingFinalizers { }
             Mock Write-StructuredLog { }
             
-            { Invoke-GarbageCollection } | Should Not Throw
-            { Invoke-GarbageCollection -Force } | Should Not Throw
+            { Invoke-GarbageCollection } | Should -Not -Throw
+            { Invoke-GarbageCollection -Force } | Should -Not -Throw
         }
         
         It "Should accept optional CorrelationId parameter" {
@@ -62,7 +67,7 @@ Describe "Invoke-GarbageCollection" {
             Mock Write-StructuredLog { }
             
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Invoke-GarbageCollection -CorrelationId $correlationId } | Should Not Throw
+            { Invoke-GarbageCollection -CorrelationId $correlationId } | Should -Not -Throw
         }
     }
     
@@ -77,20 +82,20 @@ Describe "Invoke-GarbageCollection" {
         It "Should perform basic garbage collection" {
             $result = Invoke-GarbageCollection
             
-            Assert-MockCalled Invoke-GCCollect -Exactly 2  # Called twice in full collection
-            Assert-MockCalled Invoke-GCWaitForPendingFinalizers -Exactly 1
-            $result.Success | Should Be $true
+            Should -Invoke Invoke-GCCollect -Exactly 2  # Called twice in full collection
+            Should -Invoke Invoke-GCWaitForPendingFinalizers -Exactly 1
+            $result.Success | Should -Be $true
         }
         
         It "Should return PSCustomObject with expected properties" {
             $result = Invoke-GarbageCollection
             
-            $result | Should Not BeNullOrEmpty
-            $result | Should BeOfType [PSCustomObject]
-            $result.PSObject.Properties.Name -contains "Success" | Should Be $true
-            $result.PSObject.Properties.Name -contains "MemoryBefore" | Should Be $true
-            $result.PSObject.Properties.Name -contains "MemoryAfter" | Should Be $true
-            $result.PSObject.Properties.Name -contains "CorrelationId" | Should Be $true
+            $result | Should -Not -BeNullOrEmpty
+            $result | Should -BeOfType [PSCustomObject]
+            $result.PSObject.Properties.Name -contains "Success" | Should -Be $true
+            $result.PSObject.Properties.Name -contains "MemoryBefore" | Should -Be $true
+            $result.PSObject.Properties.Name -contains "MemoryAfter" | Should -Be $true
+            $result.PSObject.Properties.Name -contains "CorrelationId" | Should -Be $true
         }
         
         It "Should accept CorrelationId parameter" {
@@ -98,7 +103,7 @@ Describe "Invoke-GarbageCollection" {
             Mock Invoke-GCWaitForPendingFinalizers { }
             Mock Write-StructuredLog { }
             
-            { Invoke-GarbageCollection -Force -CorrelationId 'test-id' } | Should Not Throw
+            { Invoke-GarbageCollection -Force -CorrelationId 'test-id' } | Should -Not -Throw
         }
     }
     
@@ -116,26 +121,26 @@ Describe "Invoke-GarbageCollection" {
         It "Should call GC.Collect() without force by default" {
             Invoke-GarbageCollection
             
-            Assert-MockCalled Invoke-GCCollect -Times 1
+            Should -Invoke Invoke-GCCollect -Times 1
         }
         
         It "Should call GC.Collect() with force when specified" {
             Invoke-GarbageCollection -Force
             
-            Assert-MockCalled Invoke-GCCollect -Times 1
+            Should -Invoke Invoke-GCCollect -Times 1
         }
         
         It "Should wait for pending finalizers" {
             Invoke-GarbageCollection
             
-            Assert-MockCalled Invoke-GCWaitForPendingFinalizers -Times 1
+            Should -Invoke Invoke-GCWaitForPendingFinalizers -Times 1
         }
         
         It "Should perform final collection after finalizers" {
             Invoke-GarbageCollection
             
-            # Should be called twice: initial collection + final collection
-            Assert-MockCalled Invoke-GCCollect -Times 2
+            # Should -be called twice: initial collection + final collection
+            Should -Invoke Invoke-GCCollect -Times 2
         }
         
         It "Should return memory statistics" {
@@ -149,9 +154,9 @@ Describe "Invoke-GarbageCollection" {
             
             $result = Invoke-GarbageCollection
             
-            $result | Should Not BeNullOrEmpty
-            $result.MemoryBefore | Should Be 1000
-            $result.MemoryAfter | Should Be 800
+            $result | Should -Not -BeNullOrEmpty
+            $result.MemoryBefore | Should -Be 1000
+            $result.MemoryAfter | Should -Be 800
         }
     }
     
@@ -162,7 +167,7 @@ Describe "Invoke-GarbageCollection" {
                 throw "Garbage collection failed"
             }
             
-            { Invoke-GarbageCollection } | Should Throw
+            { Invoke-GarbageCollection } | Should -Throw
         }
         
         It "Should log collection failure" {
@@ -178,7 +183,7 @@ Describe "Invoke-GarbageCollection" {
                 # Expected to throw
             }
             
-            Assert-MockCalled Write-StructuredLog -Times 1
+            Should -Invoke Write-StructuredLog -Times 1
         }
         
         It "Should handle memory measurement failure" {
@@ -189,7 +194,7 @@ Describe "Invoke-GarbageCollection" {
                 throw "Memory measurement failed"
             }
             
-            { Invoke-GarbageCollection } | Should Throw "Memory measurement failed"
+            { Invoke-GarbageCollection } | Should -Throw "*Memory measurement failed*"
         }
     }
 }

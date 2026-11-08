@@ -15,28 +15,30 @@
 #>
 
 # Define mock functions first to avoid dependency issues
-function Write-StructuredLog {
-    param($Message, $Level = 'Information', $CorrelationId, $Data)
-    # For testing - track calls
-    $script:LogCalls += @{
-        Level = $Level
-        Message = $Message  
-        CorrelationId = $CorrelationId
-        Data = $Data
-    }
-}
-
 # Pester 3.4 can only mock a command that exists. Stub Get-ADObject when the RSAT
 # ActiveDirectory module is not installed so the Mock calls below have something to replace.
-if (-not (Get-Command Get-ADObject -ErrorAction SilentlyContinue)) {
-    function global:Get-ADObject {
-        param($Identity, $SearchBase, $Filter, $Properties, $SearchScope, $ResultPageSize, $Server)
-        throw 'Get-ADObject stub: the ActiveDirectory module is not installed and this call was not mocked'
-    }
-}
-
 # Now import the function under test
-. "$PSScriptRoot\..\..\..\..\Private\Security\Get-SecurityDescriptor.ps1"
+BeforeAll {
+    function Write-StructuredLog {
+        param($Message, $Level = 'Information', $CorrelationId, $Data)
+        # For testing - track calls
+        $script:LogCalls += @{
+            Level = $Level
+            Message = $Message  
+            CorrelationId = $CorrelationId
+            Data = $Data
+        }
+    }
+
+    if (-not (Get-Command Get-ADObject -ErrorAction SilentlyContinue)) {
+        function global:Get-ADObject {
+            param($Identity, $SearchBase, $Filter, $Properties, $SearchScope, $ResultPageSize, $Server)
+            throw 'Get-ADObject stub: the ActiveDirectory module is not installed and this call was not mocked'
+        }
+    }
+
+    . "$PSScriptRoot\..\..\..\..\Private\Security\Get-SecurityDescriptor.ps1"
+}
 
 Describe "Get-ObjectAccessRule Tests" {
     
@@ -90,7 +92,7 @@ Describe "Get-ObjectAccessRule Tests" {
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
             
-            { Get-ObjectAccessRule -ADObject $testObject } | Should Not Throw
+            { Get-ObjectAccessRule -ADObject $testObject } | Should -Not -Throw
         }
         
         It "Should accept valid AD object input" {
@@ -99,7 +101,7 @@ Describe "Get-ObjectAccessRule Tests" {
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
             
-            { Get-ObjectAccessRule -ADObject $testObject } | Should Not Throw
+            { Get-ObjectAccessRule -ADObject $testObject } | Should -Not -Throw
         }
         
         It "Should accept IncludeInherited switch" {
@@ -108,7 +110,7 @@ Describe "Get-ObjectAccessRule Tests" {
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
             
-            { Get-ObjectAccessRule -ADObject $testObject -IncludeInherited } | Should Not Throw
+            { Get-ObjectAccessRule -ADObject $testObject -IncludeInherited } | Should -Not -Throw
         }
         
         It "Should accept custom CorrelationId" {
@@ -117,7 +119,7 @@ Describe "Get-ObjectAccessRule Tests" {
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
             
-            { Get-ObjectAccessRule -ADObject $testObject -CorrelationId $script:TestCorrelationId } | Should Not Throw
+            { Get-ObjectAccessRule -ADObject $testObject -CorrelationId $script:TestCorrelationId } | Should -Not -Throw
         }
     }
     
@@ -130,11 +132,11 @@ Describe "Get-ObjectAccessRule Tests" {
             }
             
             $result = Get-ObjectAccessRule -ADObject $testObject
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 2
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 2
             
             # Verify Get-Acl was called 
-            Assert-MockCalled Get-Acl -Times 1
+            Should -Invoke Get-Acl -Times 1
         }
         
         It "Should filter inherited rules when IncludeInherited is false" {
@@ -152,9 +154,9 @@ Describe "Get-ObjectAccessRule Tests" {
             $result = Get-ObjectAccessRule -ADObject $testObject -IncludeInherited:$false
             
             # Should return the 2 non-inherited rules from our main mock
-            $result.Count | Should Be 2
-            $result[0].IsInherited | Should Be $false
-            $result[1].IsInherited | Should Be $false
+            $result.Count | Should -Be 2
+            $result[0].IsInherited | Should -Be $false
+            $result[1].IsInherited | Should -Be $false
         }
         
         It "Should include inherited rules when IncludeInherited is true" {
@@ -164,8 +166,8 @@ Describe "Get-ObjectAccessRule Tests" {
             }
             
             $result = Get-ObjectAccessRule -ADObject $testObject -IncludeInherited
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 2
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 2
         }
     }
     
@@ -178,7 +180,7 @@ Describe "Get-ObjectAccessRule Tests" {
             }
             
             $result = Get-ObjectAccessRule -ADObject $testObject
-            Assert-MockCalled Get-Acl -Exactly 1
+            Should -Invoke Get-Acl -Exactly 1
         }
         
         It "Should handle Get-Acl failures gracefully" {
@@ -189,7 +191,7 @@ Describe "Get-ObjectAccessRule Tests" {
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
             
-            { Get-ObjectAccessRule -ADObject $testObject } | Should Not Throw
+            { Get-ObjectAccessRule -ADObject $testObject } | Should -Not -Throw
         }
     }
     
@@ -204,7 +206,7 @@ Describe "Get-ObjectAccessRule Tests" {
             }
             
             $result = Get-ObjectAccessRule -ADObject $testObject
-            Assert-MockCalled Get-ADObject -Exactly 1
+            Should -Invoke Get-ADObject -Exactly 1
         }
         
         It "Should handle fresh AD query failures gracefully" {
@@ -217,7 +219,7 @@ Describe "Get-ObjectAccessRule Tests" {
             }
             
             $result = Get-ObjectAccessRule -ADObject $testObject
-            $result | Should BeNullOrEmpty
+            $result | Should -BeNullOrEmpty
         }
     }
     
@@ -231,8 +233,8 @@ Describe "Get-ObjectAccessRule Tests" {
             
             $result = Get-ObjectAccessRule -ADObject $testObject -CorrelationId $script:TestCorrelationId
             
-            $script:LogCalls | Should Not BeNullOrEmpty
-            $script:LogCalls | Where-Object { $_.CorrelationId -eq $script:TestCorrelationId } | Should Not BeNullOrEmpty
+            $script:LogCalls | Should -Not -BeNullOrEmpty
+            $script:LogCalls | Where-Object { $_.CorrelationId -eq $script:TestCorrelationId } | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle objects without DistinguishedName gracefully" {
@@ -241,7 +243,7 @@ Describe "Get-ObjectAccessRule Tests" {
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
             
-            { Get-ObjectAccessRule -ADObject $testObject } | Should Not Throw
+            { Get-ObjectAccessRule -ADObject $testObject } | Should -Not -Throw
         }
         
         It "Should return null when all methods fail" {
@@ -254,7 +256,7 @@ Describe "Get-ObjectAccessRule Tests" {
             }
             
             $result = Get-ObjectAccessRule -ADObject $testObject
-            $result | Should BeNullOrEmpty
+            $result | Should -BeNullOrEmpty
         }
     }
     
@@ -294,7 +296,7 @@ Describe "Get-ObjectAccessRule Tests" {
             )
             
             $results = $testObjects | Get-ObjectAccessRule
-            $results | Should Not BeNullOrEmpty
+            $results | Should -Not -BeNullOrEmpty
         }
         
         It "Should process each pipeline object independently" {
@@ -314,11 +316,11 @@ Describe "Get-ObjectAccessRule Tests" {
             # Debug output shows Results count = 2, and DistinguishedName is empty
             # This suggests the function returns 1 access rule per input object (not 2)
             # And the DistinguishedName is not being set correctly in the returned objects
-            $results.Count | Should Be 2
+            $results.Count | Should -Be 2
             
             # Get-Acl is being called 4 times (likely 2 per object due to method fallback)
             # In Pester 3.4.x, we can't use -AtLeast, so let's just verify it was called
-            Assert-MockCalled Get-Acl
+            Should -Invoke Get-Acl
         }
     }
 }

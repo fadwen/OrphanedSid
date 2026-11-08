@@ -2,26 +2,31 @@
 # Tests for New-SIDResult private function module (New-OrphanedSIDResult and related functions)
 
 # Create minimal stubs for missing dependencies FIRST
-function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
-function Test-SIDFormat { param($SID) return $SID -match '^S-1-\d+' }
-
 # Load required classes and functions
-$ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
-if (Test-Path $ClassPath) {
-    Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
-}
-
 # Load SID functions
-$SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
-if (Test-Path $SIDPath) {
-    Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+BeforeAll {
+    function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
+
+    function Test-SIDFormat { param($SID) return $SID -match '^S-1-\d+' }
+
+    $ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
+
+    if (Test-Path $ClassPath) {
+        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+    }
+
+    $SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
+
+    if (Test-Path $SIDPath) {
+        Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+    }
 }
 
 Describe "New-OrphanedSIDResult Function Tests" {
     
     Context "Function Existence and Core Functionality" {
         It "Should have New-OrphanedSIDResult function available" {
-            Get-Command New-OrphanedSIDResult -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
+            Get-Command New-OrphanedSIDResult -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
         }
         
         It "Should accept required parameters and create result object" {
@@ -36,7 +41,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
                 InheritedObjectType = [System.Guid]::Empty
             }
             
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule } | Should Not Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule } | Should -Not -Throw
         }
         
         It "Should return OrphanedSIDResult object" {
@@ -48,8 +53,8 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result | Should Not BeNullOrEmpty
-            $result.GetType().Name | Should Be 'OrphanedSIDResult'
+            $result | Should -Not -BeNullOrEmpty
+            $result.GetType().Name | Should -Be 'OrphanedSIDResult'
         }
         
         It "Should include correlation ID tracking" {
@@ -59,7 +64,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -CorrelationId $correlationId
-            $result.CorrelationId | Should Be $correlationId
+            $result.CorrelationId | Should -Be $correlationId
         }
     }
     
@@ -68,14 +73,14 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
-            { New-OrphanedSIDResult -ObjectDN $null -OrphanedSID $testSID -AccessRule $testAccessRule } | Should Throw
+            { New-OrphanedSIDResult -ObjectDN $null -OrphanedSID $testSID -AccessRule $testAccessRule } | Should -Throw
         }
         
         It "Should validate required OrphanedSID parameter" {
             $testObjectDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $null -AccessRule $testAccessRule } | Should Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $null -AccessRule $testAccessRule } | Should -Throw
         }
         
         It "Should validate SID format through Test-SIDFormat function" {
@@ -83,7 +88,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $invalidSID = 'INVALID-SID-FORMAT'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $invalidSID -AccessRule $testAccessRule } | Should Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $invalidSID -AccessRule $testAccessRule } | Should -Throw
         }
         
         It "Should validate Confidence parameter values" {
@@ -91,7 +96,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'InvalidLevel' } | Should Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'InvalidLevel' } | Should -Throw
         }
         
         It "Should accept valid Confidence parameter values" {
@@ -99,9 +104,9 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'High' } | Should Not Throw
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'Medium' } | Should Not Throw
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'Low' } | Should Not Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'High' } | Should -Not -Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'Medium' } | Should -Not -Throw
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'Low' } | Should -Not -Throw
         }
     }
     
@@ -117,12 +122,12 @@ Describe "New-OrphanedSIDResult Function Tests" {
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -ObjectClass $testObjectClass -OrphanedSID $testSID -AccessRule $testAccessRule -LikelySource $likelySource -Confidence $confidence -Notes $notes
             
-            $result.ObjectDN | Should Be $testObjectDN
-            $result.ObjectClass | Should Be $testObjectClass
-            $result.OrphanedSID | Should Be $testSID
-            $result.LikelySource | Should Be $likelySource
-            $result.Confidence | Should Be $confidence
-            $result.AnalysisNotes | Should Be $notes
+            $result.ObjectDN | Should -Be $testObjectDN
+            $result.ObjectClass | Should -Be $testObjectClass
+            $result.OrphanedSID | Should -Be $testSID
+            $result.LikelySource | Should -Be $likelySource
+            $result.Confidence | Should -Be $confidence
+            $result.AnalysisNotes | Should -Be $notes
         }
         
         It "Should include processing metadata" {
@@ -133,10 +138,10 @@ Describe "New-OrphanedSIDResult Function Tests" {
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -ProcessingMethod $processingMethod
             
-            $result.ProcessingMethod | Should Be $processingMethod
-            $result.ActionTaken | Should Be 'Detected'
-            $result.Timestamp | Should Not BeNullOrEmpty
-            $result.ProcessingContext | Should Not BeNullOrEmpty
+            $result.ProcessingMethod | Should -Be $processingMethod
+            $result.ActionTaken | Should -Be 'Detected'
+            $result.Timestamp | Should -Not -BeNullOrEmpty
+            $result.ProcessingContext | Should -Not -BeNullOrEmpty
         }
         
         It "Should extract ACL metadata from access rule" {
@@ -153,12 +158,12 @@ Describe "New-OrphanedSIDResult Function Tests" {
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
             
-            $result.AccessControlType | Should Be $testAccessRule.AccessControlType
-            $result.ActiveDirectoryRights | Should Be $testAccessRule.ActiveDirectoryRights
-            $result.InheritanceType | Should Be $testAccessRule.InheritanceFlags
-            $result.IsInherited | Should Be $testAccessRule.IsInherited
-            $result.ObjectType | Should Be $testAccessRule.ObjectType
-            $result.InheritedObjectType | Should Be $testAccessRule.InheritedObjectType
+            $result.AccessControlType | Should -Be $testAccessRule.AccessControlType
+            $result.ActiveDirectoryRights | Should -Be $testAccessRule.ActiveDirectoryRights
+            $result.InheritanceType | Should -Be $testAccessRule.InheritanceFlags
+            $result.IsInherited | Should -Be $testAccessRule.IsInherited
+            $result.ObjectType | Should -Be $testAccessRule.ObjectType
+            $result.InheritedObjectType | Should -Be $testAccessRule.InheritedObjectType
         }
         
         It "Should handle default values for optional parameters" {
@@ -168,11 +173,11 @@ Describe "New-OrphanedSIDResult Function Tests" {
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
             
-            $result.ObjectClass | Should Be 'Unknown'
-            $result.LikelySource | Should Be 'Unknown'
-            $result.Confidence | Should Be 'Medium'
-            $result.AnalysisNotes | Should Be ''
-            $result.ProcessingMethod | Should Be 'Standard'
+            $result.ObjectClass | Should -Be 'Unknown'
+            $result.LikelySource | Should -Be 'Unknown'
+            $result.Confidence | Should -Be 'Medium'
+            $result.AnalysisNotes | Should -Be ''
+            $result.ProcessingMethod | Should -Be 'Standard'
         }
     }
     
@@ -186,7 +191,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.AccessControlType | Should Be 'Allow'
+            $result.AccessControlType | Should -Be 'Allow'
         }
         
         It "Should handle access rule with missing ActiveDirectoryRights" {
@@ -198,7 +203,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ActiveDirectoryRights | Should Be 'GenericRead'
+            $result.ActiveDirectoryRights | Should -Be 'GenericRead'
         }
         
         It "Should handle access rule with Rights property instead of ActiveDirectoryRights" {
@@ -210,7 +215,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ActiveDirectoryRights | Should Be 'GenericAll'
+            $result.ActiveDirectoryRights | Should -Be 'GenericAll'
         }
         
         It "Should handle access rule with missing inheritance properties" {
@@ -223,8 +228,8 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.InheritanceType | Should Be 'None'
-            $result.IsInherited | Should Be $false
+            $result.InheritanceType | Should -Be 'None'
+            $result.IsInherited | Should -Be $false
         }
     }
     
@@ -240,8 +245,8 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ObjectType | Should Be $testGuid
-            $result.InheritedObjectType | Should Be $testGuid
+            $result.ObjectType | Should -Be $testGuid
+            $result.InheritedObjectType | Should -Be $testGuid
         }
         
         It "Should handle empty GUID objects" {
@@ -254,8 +259,8 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ObjectType | Should Be ([System.Guid]::Empty)
-            $result.InheritedObjectType | Should Be ([System.Guid]::Empty)
+            $result.ObjectType | Should -Be ([System.Guid]::Empty)
+            $result.InheritedObjectType | Should -Be ([System.Guid]::Empty)
         }
         
         It "Should handle GUID strings" {
@@ -269,7 +274,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ObjectType | Should Be ([System.Guid]::Parse($testGuidString))
+            $result.ObjectType | Should -Be ([System.Guid]::Parse($testGuidString))
         }
         
         It "Should handle null or empty GUID properties" {
@@ -282,8 +287,8 @@ Describe "New-OrphanedSIDResult Function Tests" {
             }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ObjectType | Should Be ([System.Guid]::Empty)
-            $result.InheritedObjectType | Should Be ([System.Guid]::Empty)
+            $result.ObjectType | Should -Be ([System.Guid]::Empty)
+            $result.InheritedObjectType | Should -Be ([System.Guid]::Empty)
         }
     }
     
@@ -295,12 +300,12 @@ Describe "New-OrphanedSIDResult Function Tests" {
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
             
-            $result.ProcessingContext | Should Not BeNullOrEmpty
-            $result.ProcessingContext.MachineName | Should Be $env:COMPUTERNAME
-            $result.ProcessingContext.UserName | Should Be $env:USERNAME
-            $result.ProcessingContext.ProcessId | Should Be $PID
-            $result.ProcessingContext.PowerShellVersion | Should Not BeNullOrEmpty
-            $result.ProcessingContext.ModuleVersion | Should Be '1.0.0'
+            $result.ProcessingContext | Should -Not -BeNullOrEmpty
+            $result.ProcessingContext.MachineName | Should -Be $env:COMPUTERNAME
+            $result.ProcessingContext.UserName | Should -Be $env:USERNAME
+            $result.ProcessingContext.ProcessId | Should -Be $PID
+            $result.ProcessingContext.PowerShellVersion | Should -Not -BeNullOrEmpty
+            $result.ProcessingContext.ModuleVersion | Should -Be '1.0.0'
         }
         
         It "Should trim ObjectDN input" {
@@ -309,7 +314,7 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.ObjectDN | Should Be 'CN=TestUser,OU=Users,DC=contoso,DC=com'
+            $result.ObjectDN | Should -Be 'CN=TestUser,OU=Users,DC=contoso,DC=com'
         }
         
         It "Should auto-generate correlation ID when not provided" {
@@ -318,9 +323,9 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule
-            $result.CorrelationId | Should Not BeNullOrEmpty
-            # Should be a valid GUID format
-            { [System.Guid]::Parse($result.CorrelationId) } | Should Not Throw
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
+            # Should -be a valid GUID format
+            { [System.Guid]::Parse($result.CorrelationId) } | Should -Not -Throw
         }
     }
 }
@@ -329,7 +334,7 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
     
     Context "Export Summary Generation" {
         It "Should have ConvertTo-ResultSummary function available" {
-            Get-Command ConvertTo-ResultSummary -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
+            Get-Command ConvertTo-ResultSummary -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
         }
         
         It "Should generate summary from collection of results" {
@@ -344,10 +349,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary | Should Not BeNullOrEmpty
-            $summary.TotalOrphanedSIDs | Should Be 5
-            $summary.UniqueObjects | Should Be 5
-            $summary.UniqueOrphanedSIDs | Should Be 5
+            $summary | Should -Not -BeNullOrEmpty
+            $summary.TotalOrphanedSIDs | Should -Be 5
+            $summary.UniqueObjects | Should -Be 5
+            $summary.UniqueOrphanedSIDs | Should -Be 5
         }
         
         It "Should include source category analysis" {
@@ -361,10 +366,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.SourceCategories | Should Not BeNullOrEmpty
+            $summary.SourceCategories | Should -Not -BeNullOrEmpty
             $deletedUserCategory = $summary.SourceCategories | Where-Object { $_.Source -eq 'Deleted User' }
-            $deletedUserCategory.Count | Should Be 2
-            $deletedUserCategory.Percentage | Should Be 66.67
+            $deletedUserCategory.Count | Should -Be 2
+            $deletedUserCategory.Percentage | Should -Be 66.67
         }
         
         It "Should include confidence distribution analysis" {
@@ -378,10 +383,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.ConfidenceDistribution | Should Not BeNullOrEmpty
+            $summary.ConfidenceDistribution | Should -Not -BeNullOrEmpty
             $highConfidence = $summary.ConfidenceDistribution | Where-Object { $_.Confidence -eq 'High' }
-            $highConfidence.Count | Should Be 2
-            $highConfidence.Percentage | Should Be 66.67
+            $highConfidence.Count | Should -Be 2
+            $highConfidence.Percentage | Should -Be 66.67
         }
         
         It "Should include object class analysis" {
@@ -395,10 +400,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.ObjectClassAnalysis | Should Not BeNullOrEmpty
+            $summary.ObjectClassAnalysis | Should -Not -BeNullOrEmpty
             $groupClass = $summary.ObjectClassAnalysis | Where-Object { $_.ObjectClass -eq 'Group' }
-            $groupClass.Count | Should Be 2
-            $groupClass.Percentage | Should Be 66.67
+            $groupClass.Count | Should -Be 2
+            $groupClass.Percentage | Should -Be 66.67
         }
         
         It "Should include processing method statistics" {
@@ -411,10 +416,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.ProcessingMethods | Should Not BeNullOrEmpty
+            $summary.ProcessingMethods | Should -Not -BeNullOrEmpty
             $enhancedMethod = $summary.ProcessingMethods | Where-Object { $_.Method -eq 'Enhanced-ACL-Retrieval' }
-            $enhancedMethod.Count | Should Be 1
-            $enhancedMethod.Percentage | Should Be 50
+            $enhancedMethod.Count | Should -Be 1
+            $enhancedMethod.Percentage | Should -Be 50
         }
         
         It "Should include temporal analysis" {
@@ -427,10 +432,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.ProcessingTimespan | Should Not BeNullOrEmpty
-            $summary.ProcessingTimespan.Earliest | Should Not BeNullOrEmpty
-            $summary.ProcessingTimespan.Latest | Should Not BeNullOrEmpty
-            $summary.ProcessingTimespan.Latest | Should BeGreaterThan $summary.ProcessingTimespan.Earliest
+            $summary.ProcessingTimespan | Should -Not -BeNullOrEmpty
+            $summary.ProcessingTimespan.Earliest | Should -Not -BeNullOrEmpty
+            $summary.ProcessingTimespan.Latest | Should -Not -BeNullOrEmpty
+            $summary.ProcessingTimespan.Latest | Should -BeGreaterThan $summary.ProcessingTimespan.Earliest
         }
         
         It "Should include access rights analysis" {
@@ -444,10 +449,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.AccessRightsAnalysis | Should Not BeNullOrEmpty
+            $summary.AccessRightsAnalysis | Should -Not -BeNullOrEmpty
             $readProperty = $summary.AccessRightsAnalysis | Where-Object { $_.Rights -eq 'ReadProperty' }
-            $readProperty.Count | Should Be 2
-            $readProperty.Percentage | Should Be 66.67
+            $readProperty.Count | Should -Be 2
+            $readProperty.Percentage | Should -Be 66.67
         }
         
         It "Should include comprehensive summary metadata" {
@@ -459,11 +464,11 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             $summary = $results | ConvertTo-ResultSummary -CorrelationId $correlationId
             
-            $summary.SummaryMetadata | Should Not BeNullOrEmpty
-            $summary.SummaryMetadata.GeneratedAt | Should Not BeNullOrEmpty
-            $summary.SummaryMetadata.CorrelationId | Should Be $correlationId
-            $summary.SummaryMetadata.GeneratedBy | Should Be $env:USERNAME
-            $summary.SummaryMetadata.MachineName | Should Be $env:COMPUTERNAME
+            $summary.SummaryMetadata | Should -Not -BeNullOrEmpty
+            $summary.SummaryMetadata.GeneratedAt | Should -Not -BeNullOrEmpty
+            $summary.SummaryMetadata.CorrelationId | Should -Be $correlationId
+            $summary.SummaryMetadata.GeneratedBy | Should -Be $env:USERNAME
+            $summary.SummaryMetadata.MachineName | Should -Be $env:COMPUTERNAME
         }
     }
     
@@ -472,10 +477,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             $emptyResults = @()
             $summary = $emptyResults | ConvertTo-ResultSummary
             
-            $summary.TotalOrphanedSIDs | Should Be 0
-            $summary.UniqueObjects | Should Be 0
-            $summary.UniqueOrphanedSIDs | Should Be 0
-            $summary.SourceCategories | Should BeNullOrEmpty
+            $summary.TotalOrphanedSIDs | Should -Be 0
+            $summary.UniqueObjects | Should -Be 0
+            $summary.UniqueOrphanedSIDs | Should -Be 0
+            $summary.SourceCategories | Should -BeNullOrEmpty
         }
         
         It "Should sort categories by count in descending order" {
@@ -490,10 +495,10 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.SourceCategories[0].Source | Should Be 'Deleted User'
-            $summary.SourceCategories[0].Count | Should Be 3
-            $summary.SourceCategories[1].Source | Should Be 'Moved Account'
-            $summary.SourceCategories[1].Count | Should Be 1
+            $summary.SourceCategories[0].Source | Should -Be 'Deleted User'
+            $summary.SourceCategories[0].Count | Should -Be 3
+            $summary.SourceCategories[1].Source | Should -Be 'Moved Account'
+            $summary.SourceCategories[1].Count | Should -Be 1
         }
         
         It "Should limit access rights analysis to top 10 entries" {
@@ -509,7 +514,7 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.AccessRightsAnalysis.Count | Should BeLessThan 11
+            $summary.AccessRightsAnalysis.Count | Should -BeLessThan 11
         }
         
         It "Should calculate percentages correctly with rounding" {
@@ -525,7 +530,7 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             # Each source should have 33.33% (rounded to 2 decimal places)
             $summary.SourceCategories | ForEach-Object {
-                $_.Percentage | Should Be 33.33
+                $_.Percentage | Should -Be 33.33
             }
         }
     }
@@ -542,11 +547,11 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
                 }
                 
                 $summary = $results | ConvertTo-ResultSummary
-                $summary.TotalOrphanedSIDs | Should Be 100
+                $summary.TotalOrphanedSIDs | Should -Be 100
             }
             
             # Should complete within reasonable time (less than 5 seconds for 100 objects)
-            $executionTime.TotalSeconds | Should BeLessThan 5
+            $executionTime.TotalSeconds | Should -BeLessThan 5
         }
         
         It "Should handle duplicate SIDs in unique count calculation" {
@@ -561,9 +566,9 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.TotalOrphanedSIDs | Should Be 3
-            $summary.UniqueObjects | Should Be 3
-            $summary.UniqueOrphanedSIDs | Should Be 2  # Only 2 unique SIDs
+            $summary.TotalOrphanedSIDs | Should -Be 3
+            $summary.UniqueObjects | Should -Be 3
+            $summary.UniqueOrphanedSIDs | Should -Be 2  # Only 2 unique SIDs
         }
     }
 }

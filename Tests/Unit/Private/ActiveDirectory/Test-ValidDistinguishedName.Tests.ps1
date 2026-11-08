@@ -1,18 +1,24 @@
-# Test-ValidDistinguishedName Tests - Pester 3.4.x Compatible
-
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sut = (Split-Path -Leaf $MyInvocation.MyCommand.Path) -replace '\.Tests\.', '.'
+﻿# Test-ValidDistinguishedName Tests - Pester 3.4.x Compatible
 
 # Import the function under test
-$functionPath = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))) "Private\ActiveDirectory\Test-ValidDistinguishedName.ps1"
-if (Test-Path $functionPath) {
-    . $functionPath
-}
-
 # Import dependencies
-$basePath = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))
-. (Join-Path $basePath "Private\Logging\Write-ADOperationSecurityLog.ps1")
-. (Join-Path $basePath "Private\Logging\Write-StructuredLog.ps1")
+BeforeAll {
+    $here = $PSScriptRoot
+
+    $sut = (Split-Path -Leaf $PSCommandPath) -replace '\.Tests\.', '.'
+
+    $functionPath = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))) "Private\ActiveDirectory\Test-ValidDistinguishedName.ps1"
+
+    if (Test-Path $functionPath) {
+        . $functionPath
+    }
+
+    $basePath = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))
+
+    . (Join-Path $basePath "Private\Logging\Write-ADOperationSecurityLog.ps1")
+
+    . (Join-Path $basePath "Private\Logging\Write-StructuredLog.ps1")
+}
 
 Describe "Test-ValidDistinguishedName" {
     
@@ -72,37 +78,37 @@ Describe "Test-ValidDistinguishedName" {
     Context "Parameter Validation and Input Security" {
         It "Should handle empty string gracefully" {
             $result = '' | Test-ValidDistinguishedName
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should accept string array via pipeline" {
-            { $script:testData.ValidDNs[0..2] | Test-ValidDistinguishedName } | Should Not Throw
+            { $script:testData.ValidDNs[0..2] | Test-ValidDistinguishedName } | Should -Not -Throw
         }
         
         It "Should accept single string for DistinguishedName parameter" {
-            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] } | Should Not Throw
+            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] } | Should -Not -Throw
         }
         
         It "Should support CorrelationId parameter" {
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
             
-            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] -CorrelationId $testCorrelationId } | Should Not Throw
+            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] -CorrelationId $testCorrelationId } | Should -Not -Throw
         }
         
         It "Should auto-generate correlation ID when not provided" {
-            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] } | Should Not Throw
+            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] } | Should -Not -Throw
         }
         
         It "Should reject null input gracefully" {
             $result = Test-ValidDistinguishedName -DistinguishedName $null
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should reject empty string input" {
             $result = Test-ValidDistinguishedName -DistinguishedName ''
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
     }
     
@@ -112,7 +118,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $userDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should validate group DN format" {
@@ -120,7 +126,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $groupDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should validate computer DN format" {
@@ -128,7 +134,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $computerDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should validate organizational unit DN format" {
@@ -136,7 +142,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $ouDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should validate domain component only DN" {
@@ -144,7 +150,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $dcDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should validate complex configuration container DN" {
@@ -152,29 +158,29 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $configDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
     }
     
     Context "Invalid DN Format Detection" {
         It "Should reject obviously invalid DN - InvalidDN" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'InvalidDN'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should reject obviously invalid DN - CN=User" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should reject obviously invalid DN - OU=NoCommonName" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'OU=NoCommonName'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should reject obviously invalid DN - DC=onlydc" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'DC=onlydc'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should reject DNs with empty components" {
@@ -186,7 +192,7 @@ Describe "Test-ValidDistinguishedName" {
             
             foreach ($dn in $emptyComponentDNs) {
                 $result = Test-ValidDistinguishedName -DistinguishedName $dn
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
         
@@ -199,7 +205,7 @@ Describe "Test-ValidDistinguishedName" {
             
             foreach ($dn in $invalidSeparatorDNs) {
                 $result = Test-ValidDistinguishedName -DistinguishedName $dn
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
     }
@@ -207,22 +213,22 @@ Describe "Test-ValidDistinguishedName" {
     Context "Security Injection Prevention" {
         It "Should detect and reject PowerShell injection - Get-Process" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User$(Get-Process),OU=Users,DC=contoso,DC=com'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect and reject PowerShell injection - Invoke-Expression" {
             $result = Test-ValidDistinguishedName -DistinguishedName "CN=User`$(Invoke-Expression 'whoami'),OU=Users,DC=contoso,DC=com"
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect and reject PowerShell injection - powershell.exe" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User&powershell.exe,OU=Users,DC=contoso,DC=com'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect and reject PowerShell injection - Out-File" {
             $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User|Out-File malicious.txt,OU=Users,DC=contoso,DC=com'
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect SQL injection patterns" {
@@ -230,7 +236,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $sqlInjectionDN
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect path traversal attempts" {
@@ -238,7 +244,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $pathTraversalDN
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect script injection attempts" {
@@ -246,7 +252,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $scriptInjectionDN
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should detect null byte injection" {
@@ -254,7 +260,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $nullByteDN
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should handle embedded null characters safely" {
@@ -262,7 +268,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $nullCharDN
             
-            $result | Should Be $false
+            $result | Should -Be $false
         }
     }
     
@@ -272,8 +278,8 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $unicodeDN
             
-            # Should be valid for Unicode characters
-            $result | Should Be $true
+            # Should -be valid for Unicode characters
+            $result | Should -Be $true
         }
         
         It "Should handle escaped characters correctly" {
@@ -281,8 +287,8 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $escapedDN
             
-            # Should be valid for properly escaped characters
-            $result | Should Be $true
+            # Should -be valid for properly escaped characters
+            $result | Should -Be $true
         }
         
         It "Should handle quoted values correctly" {
@@ -290,16 +296,16 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $quotedDN
             
-            # Should be valid for quoted values
-            $result | Should Be $true
+            # Should -be valid for quoted values
+            $result | Should -Be $true
         }
         
-        It "Should be case insensitive for attribute names" {
+        It "Should -be case insensitive for attribute names" {
             $mixedCaseDN = 'cn=user,ou=users,dc=CONTOSO,DC=COM'
             
             $result = Test-ValidDistinguishedName -DistinguishedName $mixedCaseDN
             
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should handle spaces around equals signs" {
@@ -308,7 +314,7 @@ Describe "Test-ValidDistinguishedName" {
             $result = Test-ValidDistinguishedName -DistinguishedName $spacedDN
             
             # Should normalize spaces correctly
-            $result | Should Be $true
+            $result | Should -Be $true
         }
         
         It "Should validate against maximum DN length limits" {
@@ -318,7 +324,7 @@ Describe "Test-ValidDistinguishedName" {
             $result = Test-ValidDistinguishedName -DistinguishedName $longDN
             
             # Should reject overly long DNs
-            $result | Should Be $false
+            $result | Should -Be $false
         }
     }
     
@@ -328,8 +334,8 @@ Describe "Test-ValidDistinguishedName" {
             
             $results = $validDNs | Test-ValidDistinguishedName
             
-            @($results).Count | Should Be $validDNs.Count
-            $results | Where-Object { $_ -eq $false } | Should BeNullOrEmpty
+            @($results).Count | Should -Be $validDNs.Count
+            $results | Where-Object { $_ -eq $false } | Should -BeNullOrEmpty
         }
         
         It "Should process mixed valid and invalid DNs" {
@@ -342,17 +348,17 @@ Describe "Test-ValidDistinguishedName" {
             
             $results = $mixedDNs | Test-ValidDistinguishedName
             
-            @($results).Count | Should Be 4
-            $results[0] | Should Be $true   # Valid
-            $results[1] | Should Be $false  # Invalid
-            $results[2] | Should Be $true   # Valid
-            $results[3] | Should Be $false  # Invalid
+            @($results).Count | Should -Be 4
+            $results[0] | Should -Be $true   # Valid
+            $results[1] | Should -Be $false  # Invalid
+            $results[2] | Should -Be $true   # Valid
+            $results[3] | Should -Be $false  # Invalid
         }
         
         It "Should handle empty array input" {
             $results = @() | Test-ValidDistinguishedName
             
-            $results | Should BeNullOrEmpty
+            $results | Should -BeNullOrEmpty
         }
         
         It "Should handle large arrays efficiently" {
@@ -363,8 +369,8 @@ Describe "Test-ValidDistinguishedName" {
             
             $results = $largeDNArray | Test-ValidDistinguishedName
             
-            @($results).Count | Should Be 100
-            $results | Where-Object { $_ -eq $false } | Should BeNullOrEmpty
+            @($results).Count | Should -Be 100
+            $results | Where-Object { $_ -eq $false } | Should -BeNullOrEmpty
         }
     }
     
@@ -375,7 +381,7 @@ Describe "Test-ValidDistinguishedName" {
             
             Test-ValidDistinguishedName -DistinguishedName $testDN -CorrelationId $testCorrelationId
             
-            Assert-MockCalled Write-StructuredLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
                 $Message -match 'Distinguished Name validation successful'
             }
         }
@@ -390,7 +396,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $mixedDNs | Test-ValidDistinguishedName -CorrelationId $testCorrelationId
             
-            Assert-MockCalled Write-StructuredLog -Times 3 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 3 -ParameterFilter {
                 $Component -eq 'DNValidator'
             }
         }
@@ -400,7 +406,7 @@ Describe "Test-ValidDistinguishedName" {
             
             Test-ValidDistinguishedName -DistinguishedName $maliciousDN
             
-            Assert-MockCalled Write-StructuredLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
                 $Message -match 'Contains dangerous characters' -and
                 $Level -eq 'Warning'
             }
@@ -411,7 +417,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $testDNs | Test-ValidDistinguishedName
             
-            Assert-MockCalled Write-StructuredLog -Times 3 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 3 -ParameterFilter {
                 $Message -match 'Distinguished Name validation successful'
             }
         }
@@ -428,7 +434,7 @@ Describe "Test-ValidDistinguishedName" {
             }
             
             # Should complete within reasonable time (5 seconds for 100 DNs)
-            $executionTime.TotalSeconds | Should BeLessThan 5
+            $executionTime.TotalSeconds | Should -BeLessThan 5
         }
         
         It "Should provide structured logging for operations" {
@@ -438,7 +444,7 @@ Describe "Test-ValidDistinguishedName" {
             
             $largeBatch | Test-ValidDistinguishedName
             
-            Assert-MockCalled Write-StructuredLog -Times 100 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 100 -ParameterFilter {
                 $Message -match 'Distinguished Name validation successful'
             }
         }
@@ -451,8 +457,8 @@ Describe "Test-ValidDistinguishedName" {
             
             $results = $veryLargeBatch | Test-ValidDistinguishedName
             
-            @($results).Count | Should Be 500
-            $results | Where-Object { $_ -eq $false } | Should BeNullOrEmpty  # All should be valid
+            @($results).Count | Should -Be 500
+            $results | Where-Object { $_ -eq $false } | Should -BeNullOrEmpty  # All Should -be valid
         }
     }
     
@@ -466,10 +472,10 @@ Describe "Test-ValidDistinguishedName" {
             
             $results = $arrayWithNulls | Test-ValidDistinguishedName
             
-            @($results).Count | Should Be 3
-            $results[0] | Should Be $true
-            $results[1] | Should Be $false  # null should be invalid
-            $results[2] | Should Be $true
+            @($results).Count | Should -Be 3
+            $results[0] | Should -Be $true
+            $results[1] | Should -Be $false  # null Should -be invalid
+            $results[2] | Should -Be $true
         }
         
         It "Should handle whitespace-only strings" {
@@ -482,7 +488,7 @@ Describe "Test-ValidDistinguishedName" {
             
             foreach ($ws in $whitespaceStrings) {
                 $result = Test-ValidDistinguishedName -DistinguishedName $ws
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
         
@@ -492,7 +498,7 @@ Describe "Test-ValidDistinguishedName" {
             $result = Test-ValidDistinguishedName -DistinguishedName $longComponentDN
             
             # Should reject overly long components
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should handle special characters that might break regex" {
@@ -504,8 +510,8 @@ Describe "Test-ValidDistinguishedName" {
             )
             
             foreach ($dn in $specialCharDNs) {
-                # Should not throw exceptions
-                { $dn | Test-ValidDistinguishedName } | Should Not Throw
+                # Should -Not -throw exceptions
+                { $dn | Test-ValidDistinguishedName } | Should -Not -Throw
             }
         }
     }

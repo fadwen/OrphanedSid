@@ -4,86 +4,95 @@
 param()
 
 # Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-. "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
-
 # Import test helpers
-$testHelpersPath = Join-Path $PSScriptRoot "..\..\TestHelpers"
-. (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
-. (Join-Path $testHelpersPath "BackupTestHelpers.ps1")
-
 # Load test configuration
-$testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
-$TestConfig = Get-Content $testConfigPath | ConvertFrom-Json
-
 # Mock behavior management
-$script:MockBehavior = @{}
-
-function Set-MockBehavior { 
-    param([string]$Scenario, [hashtable]$Output)
-    $script:MockBehavior[$Scenario] = $Output
-}
-function Get-MockBehavior { 
-    param([string]$Scenario)
-    return $script:MockBehavior[$Scenario]
-}
-function Clear-MockBehavior { $script:MockBehavior = @{} }
-
 # Test configuration
-$script:TestCorrelationId = "TEST-REMOVAL-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-$script:TestOutputPath = Join-Path $env:TEMP "test-output-removal-$script:TestCorrelationId.csv"
-$script:TestBackupPath = Join-Path $env:TEMP "test-backup-removal-$script:TestCorrelationId.json"
-
 # Mock wrapper function to prevent actual script execution
-function Invoke-FindUnknownSIDScript {
-    param(
-        [string]$SearchBase,
-        [string]$OutputPath,
-        [string]$BackupPath,
-        [string]$CorrelationId,
-        [string]$Mode = "Remove",
-        [switch]$WhatIf,
-        [switch]$Force
-    )
-    
-    # Check for scenario-specific behavior
-    foreach ($scenario in $script:MockBehavior.Keys) {
-        $mockOutput = $script:MockBehavior[$scenario]
-        if ($mockOutput) {
-            return $mockOutput
-        }
+BeforeAll {
+    . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
+
+    $testHelpersPath = Join-Path $PSScriptRoot "..\..\TestHelpers"
+
+    . (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
+
+    . (Join-Path $testHelpersPath "BackupTestHelpers.ps1")
+
+    $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
+
+    $TestConfig = Get-Content $testConfigPath | ConvertFrom-Json
+
+    $script:MockBehavior = @{}
+
+    function Set-MockBehavior { 
+        param([string]$Scenario, [hashtable]$Output)
+        $script:MockBehavior[$Scenario] = $Output
     }
-    
-    # Return mock removal results based on parameters
-    if ($WhatIf) {
-        return [PSCustomObject]@{
-            CorrelationId = $CorrelationId
-            SearchBase = $SearchBase
-            Mode = "WhatIf"
-            OrphanedSIDsFound = 3
-            OrphanedSIDsRemoved = 0
-            BackupCreated = $false
-            Status = "WhatIfCompleted"
-            ExecutionTime = "00:00:02"
-        }
+
+    function Get-MockBehavior { 
+        param([string]$Scenario)
+        return $script:MockBehavior[$Scenario]
     }
-    else {
-        return [PSCustomObject]@{
-            CorrelationId = $CorrelationId
-            SearchBase = $SearchBase
-            Mode = "Remove"
-            OrphanedSIDsFound = 3
-            OrphanedSIDsRemoved = 3
-            BackupCreated = $true
-            BackupPath = $BackupPath
-            BackupSize = 1024000  # 1MB default
-            Status = "Completed"
-            ExecutionTime = "00:00:08"
-            # Edge case specific properties
-            ACLDependenciesResolved = 1
-            CircularDependenciesResolved = 1
-            InheritanceBlockingResolved = 1
-            ProtectedObjectsSkipped = 1
-            BackupConflictsResolved = 1
+
+    function Clear-MockBehavior { $script:MockBehavior = @{} }
+
+    $script:TestCorrelationId = "TEST-REMOVAL-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+
+    $script:TestOutputPath = Join-Path $env:TEMP "test-output-removal-$script:TestCorrelationId.csv"
+
+    $script:TestBackupPath = Join-Path $env:TEMP "test-backup-removal-$script:TestCorrelationId.json"
+
+    function Invoke-FindUnknownSIDScript {
+        param(
+            [string]$SearchBase,
+            [string]$OutputPath,
+            [string]$BackupPath,
+            [string]$CorrelationId,
+            [string]$Mode = "Remove",
+            [switch]$WhatIf,
+            [switch]$Force
+        )
+        
+        # Check for scenario-specific behavior
+        foreach ($scenario in $script:MockBehavior.Keys) {
+            $mockOutput = $script:MockBehavior[$scenario]
+            if ($mockOutput) {
+                return $mockOutput
+            }
+        }
+        
+        # Return mock removal results based on parameters
+        if ($WhatIf) {
+            return [PSCustomObject]@{
+                CorrelationId = $CorrelationId
+                SearchBase = $SearchBase
+                Mode = "WhatIf"
+                OrphanedSIDsFound = 3
+                OrphanedSIDsRemoved = 0
+                BackupCreated = $false
+                Status = "WhatIfCompleted"
+                ExecutionTime = "00:00:02"
+            }
+        }
+        else {
+            return [PSCustomObject]@{
+                CorrelationId = $CorrelationId
+                SearchBase = $SearchBase
+                Mode = "Remove"
+                OrphanedSIDsFound = 3
+                OrphanedSIDsRemoved = 3
+                BackupCreated = $true
+                BackupPath = $BackupPath
+                BackupSize = 1024000  # 1MB default
+                Status = "Completed"
+                ExecutionTime = "00:00:08"
+                # Edge case specific properties
+                ACLDependenciesResolved = 1
+                CircularDependenciesResolved = 1
+                InheritanceBlockingResolved = 1
+                ProtectedObjectsSkipped = 1
+                BackupConflictsResolved = 1
+            }
         }
     }
 }
@@ -129,11 +138,11 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath -CorrelationId $script:TestCorrelationId -Mode "Remove" -WhatIf
             
             # Assert - Verify WhatIf results
-            $result | Should Not Be $null
-            $result.Mode | Should Be "WhatIf"
-            $result.OrphanedSIDsRemoved | Should Be 0
-            $result.BackupCreated | Should Be $false
-            $result.Status | Should Be "WhatIfCompleted"
+            $result | Should -Not -Be $null
+            $result.Mode | Should -Be "WhatIf"
+            $result.OrphanedSIDsRemoved | Should -Be 0
+            $result.BackupCreated | Should -Be $false
+            $result.Status | Should -Be "WhatIfCompleted"
         }
         
         It "Should identify removal candidates in WhatIf mode" {
@@ -141,9 +150,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -WhatIf
             
             # Assert - Verify identification
-            $result | Should Not Be $null
-            $result.OrphanedSIDsFound | Should BeGreaterThan 0
-            $result.Mode | Should Be "WhatIf"
+            $result | Should -Not -Be $null
+            $result.OrphanedSIDsFound | Should -BeGreaterThan 0
+            $result.Mode | Should -Be "WhatIf"
         }
     }
     
@@ -153,11 +162,11 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify removal results
-            $result | Should Not Be $null
-            $result.Mode | Should Be "Remove"
-            $result.OrphanedSIDsRemoved | Should BeGreaterThan 0
-            $result.BackupCreated | Should Be $true
-            $result.Status | Should Be "Completed"
+            $result | Should -Not -Be $null
+            $result.Mode | Should -Be "Remove"
+            $result.OrphanedSIDsRemoved | Should -BeGreaterThan 0
+            $result.BackupCreated | Should -Be $true
+            $result.Status | Should -Be "Completed"
         }
         
         It "Should create backup before removal operations" {
@@ -165,9 +174,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify backup creation
-            $result | Should Not Be $null
-            $result.BackupCreated | Should Be $true
-            $result.BackupPath | Should Be $script:TestBackupPath
+            $result | Should -Not -Be $null
+            $result.BackupCreated | Should -Be $true
+            $result.BackupPath | Should -Be $script:TestBackupPath
         }
         
         It "Should handle Force mode for immediate removal" {
@@ -175,9 +184,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -Mode "Remove" -Force
             
             # Assert - Verify forced removal
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.OrphanedSIDsRemoved | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.OrphanedSIDsRemoved | Should -BeGreaterThan 0
         }
     }
     
@@ -187,8 +196,8 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify safety measures
-            $result | Should Not Be $null
-            $result.BackupCreated | Should Be $true
+            $result | Should -Not -Be $null
+            $result.BackupCreated | Should -Be $true
         }
         
         It "Should validate removal permissions before execution" {
@@ -196,8 +205,8 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify permission validation
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
         }
     }
     
@@ -210,8 +219,8 @@ Describe "Complete Removal Workflow" {
             $executionTime = $stopwatch.Elapsed.TotalSeconds
             
             # Assert - Verify performance
-            $result | Should Not Be $null
-            $executionTime | Should BeLessThan $TestConfig.performance.baselines.smallDataset.maxExecutionTimeSeconds
+            $result | Should -Not -Be $null
+            $executionTime | Should -BeLessThan $TestConfig.performance.baselines.smallDataset.maxExecutionTimeSeconds
         }
     }
     
@@ -221,7 +230,7 @@ Describe "Complete Removal Workflow" {
             Mock Set-ADObject { throw "Access denied" }
             
             # Act & Assert - Should handle error gracefully
-            { Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -Mode "Remove" } | Should Not Throw
+            { Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -Mode "Remove" } | Should -Not -Throw
         }
         
         It "Should handle backup creation failures" {
@@ -229,7 +238,7 @@ Describe "Complete Removal Workflow" {
             Mock ConvertTo-Json { throw "Backup location access denied" }
             
             # Act & Assert - Should handle backup error gracefully
-            { Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove" } | Should Not Throw
+            { Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove" } | Should -Not -Throw
         }
     }
     
@@ -239,8 +248,8 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify correlation ID usage
-            $result | Should Not Be $null
-            $result.CorrelationId | Should Be $script:TestCorrelationId
+            $result | Should -Not -Be $null
+            $result.CorrelationId | Should -Be $script:TestCorrelationId
         }
         
         It "Should integrate with backup and recovery systems" {
@@ -248,9 +257,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify backup integration
-            $result | Should Not Be $null
-            $result.BackupCreated | Should Be $true
-            $result.Status | Should Be "Completed"
+            $result | Should -Not -Be $null
+            $result.BackupCreated | Should -Be $true
+            $result.Status | Should -Be "Completed"
         }
     }
     
@@ -270,10 +279,10 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify graceful handling of missing SIDs
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.ObjectsToRemove | Should Be 0
-            $result.ObjectsRemoved | Should Be 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.ObjectsToRemove | Should -Be 0
+            $result.ObjectsRemoved | Should -Be 0
             
             # Clear mock behavior
             Clear-MockBehavior
@@ -287,9 +296,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify complex ACL handling
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.ACLDependenciesResolved | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.ACLDependenciesResolved | Should -BeGreaterThan 0
             
             # Clean up
             Clear-MockBehavior
@@ -313,9 +322,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify backup corruption handling
-            $result | Should Not Be $null
-            $result.Status | Should Match "Error|Failed"
-            $result.BackupErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Match "Error|Failed"
+            $result.BackupErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -339,9 +348,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify replication conflict handling
-            $result | Should Not Be $null
-            $result.Status | Should Match "Error|Failed"
-            $result.ReplicationErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Match "Error|Failed"
+            $result.ReplicationErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -370,9 +379,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Groups,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify circular membership handling
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.CircularDependenciesResolved | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.CircularDependenciesResolved | Should -BeGreaterThan 0
         }
         
         It "Should handle removal during domain controller maintenance window" {
@@ -393,9 +402,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify DC maintenance handling
-            $result | Should Not Be $null
-            $result.Status | Should Match "Error|Failed"
-            $result.DCAvailabilityErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Match "Error|Failed"
+            $result.DCAvailabilityErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -413,9 +422,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify inheritance blocking handling
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.InheritanceBlockingResolved | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.InheritanceBlockingResolved | Should -BeGreaterThan 0
         }
         
         It "Should handle extremely large backup files efficiently" {
@@ -441,9 +450,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify large backup handling
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.BackupSize | Should BeGreaterThan (50 * 1024 * 1024)  # >50MB
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.BackupSize | Should -BeGreaterThan (50 * 1024 * 1024)  # >50MB
             
             # Clean up
             Clear-MockBehavior
@@ -467,9 +476,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify privilege handling
-            $result | Should Not Be $null
-            $result.Status | Should Match "Error|Failed"
-            $result.PrivilegeErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Match "Error|Failed"
+            $result.PrivilegeErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -498,9 +507,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify rollback handling
-            $result | Should Not Be $null
-            $result.Status | Should Match "Error|Failed|PartialSuccess"
-            $result.PartialFailures | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Match "Error|Failed|PartialSuccess"
+            $result.PartialFailures | Should -BeGreaterThan 0
             
             # Clean up
             Clear-MockBehavior
@@ -522,9 +531,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=AdminAccounts,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify protected object handling
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.ProtectedObjectsSkipped | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.ProtectedObjectsSkipped | Should -BeGreaterThan 0
         }
         
         It "Should handle removal during scheduled backup windows" {
@@ -541,9 +550,9 @@ Describe "Complete Removal Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Remove"
             
             # Assert - Verify backup window handling
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.BackupConflictsResolved | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.BackupConflictsResolved | Should -BeGreaterThan 0
         }
     }
 }
