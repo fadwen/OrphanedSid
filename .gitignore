@@ -1,8 +1,10 @@
 # Run output. Every command writes a log under .\Logs and Remove-OrphanedSid writes backups under
 # .\Backup relative to the current directory, which during development is the repository root.
 # Both name real objects from whatever domain the module was last run against.
-Logs/
-Backup/
+/Logs/
+# The runtime backup folder at the repository root only. A bare Backup/ also hid
+# Tests/Unit/Private/Backup/, so a new test file there was never committed.
+/Backup/
 
 # Pester / coverage output
 coverage.xml

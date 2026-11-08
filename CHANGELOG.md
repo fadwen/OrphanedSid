@@ -73,6 +73,12 @@ its history is carried over in this repository.
   mocked a command no file had defined, asserted a file-load state another test had changed, or
   reused a per-test object from a previous context, so they passed only in declaration order.
   Every test file now passes alone in a fresh process with a shuffled order.
+- The quality-gates workflow set `$ErrorActionPreference = 'Stop'` before `Invoke-Pester`, so every
+  `Write-Error` in a function under test terminated instead of continuing; the tests now run with
+  the default preference and the gates throw explicitly. The coverage gate is a ratchet at 60%,
+  the level the inherited suite measures, instead of an 80% it never met; raise it, never lower it.
+- `.gitignore` ignored every folder named `Backup/`, including `Tests/Unit/Private/Backup/`, so a
+  new test file there was never committed. The rule is anchored to the repository root.
 - `Write-SecurityLogEvent` and `Export-DiagnosticData` passed `-Data` and `-ErrorRecord` to
   `Write-StructuredLogEntry`, whose parameter is `-Details`.
 
