@@ -167,5 +167,4 @@ function Write-RemovalSecurityLog {
     }
 }
 
-Write-StructuredLog "Removal security logging module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

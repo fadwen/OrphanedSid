@@ -347,5 +347,4 @@ function New-ACLBackup {
     }
 }
 
-Write-StructuredLog "New-ACLBackup module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

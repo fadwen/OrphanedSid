@@ -532,5 +532,4 @@ function Get-StringFromIdentityReference {
 
 #endregion
 
-Write-StructuredLog "Resolve-SIDIdentity module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

@@ -86,6 +86,8 @@ function Start-OrchestrationWorkflow {
         - For workflow coordination: .\Troubleshooting\Common\Workflow-Issues.md
     #>
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Routes to workflow functions that gate their own writes with ShouldProcess')]
     param(
         [Parameter(Mandatory)]
         [ValidateSet('Discovery', 'Removal', 'Restore')]

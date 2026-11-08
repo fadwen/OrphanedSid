@@ -186,5 +186,4 @@ function Get-SafeFileName {
     }
 }
 
-Write-StructuredLog "String-Utilities module loaded successfully" -Level Debug -CorrelationId ([System.Guid]::NewGuid().ToString())
 

@@ -42,6 +42,8 @@ function Get-ADObjectFromSearchBase {
 
     [CmdletBinding()]
     [OutputType('Microsoft.ActiveDirectory.Management.ADObject')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'IncludeInherited',
+        Justification = 'Accepted for call-site parity; inheritance is filtered when the ACL is examined')]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
@@ -59,7 +61,7 @@ function Get-ADObjectFromSearchBase {
 
     process {
         try {
-            Write-Verbose "Retrieving AD objects from search base: $SearchBase"
+            Write-Verbose "Retrieving AD objects from search base: $SearchBase - CorrelationId: $CorrelationId"
 
             # Ensure nTSecurityDescriptor is always included
             $allProperties = @($Properties) + @('nTSecurityDescriptor') | Sort-Object -Unique

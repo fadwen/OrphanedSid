@@ -129,6 +129,8 @@ function Get-BackupMetadata {
 
     [CmdletBinding()]
     [OutputType('BackupMetadata')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Metadata is a mass noun; the name is shared with the tests and docs')]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
@@ -239,5 +241,4 @@ function Get-BackupMetadata {
     }
 }
 
-Write-StructuredLog "Get-BackupMetadata module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

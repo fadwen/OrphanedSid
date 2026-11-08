@@ -570,5 +570,4 @@ function Invoke-FreshADQuery {
 
 #endregion
 
-Write-StructuredLog "Get-SecurityDescriptor module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

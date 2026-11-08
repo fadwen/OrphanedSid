@@ -116,6 +116,6 @@ function Write-ConsoleLogEntry {
         'Information' { Write-Information $FormattedMessage -InformationAction Continue }
         'Debug' { Write-Debug $FormattedMessage }
         'Verbose' { Write-Verbose $FormattedMessage }
-        default { Write-Host $FormattedMessage }
+        default { Write-Information $FormattedMessage -InformationAction Continue }
     }
 }

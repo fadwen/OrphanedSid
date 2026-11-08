@@ -149,7 +149,6 @@ function Invoke-MemoryCheck {
 
             # Get current memory usage for analysis
             $currentMemory = [math]::Round((Get-SystemGCTotalMemory) / 1MB, 2)
-            $beforeTime = Get-Date
             
             $MemoryManager.CheckMemoryUsage()
             

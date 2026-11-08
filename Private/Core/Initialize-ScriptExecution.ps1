@@ -246,7 +246,7 @@ function Initialize-ScriptExecution {
                 Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
                 Initialize-LogDirectory -LogPath $LogPath
             } else {
-                $defaultLogPath = ".\Logs\Find-UnknownSID_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+                $defaultLogPath = ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
                 Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
                 Initialize-LogDirectory -LogPath $defaultLogPath
             }

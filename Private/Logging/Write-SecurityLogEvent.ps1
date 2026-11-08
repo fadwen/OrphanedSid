@@ -302,7 +302,7 @@ function Protect-SecurityContext {
             }
         } else {
             # Sanitize the value using log message protection
-            if ($value -ne $null) {
+            if ($null -ne $value) {
                 $sanitizedContext[$key] = Protect-LogMessage -Message $value.ToString()
             } else {
                 $sanitizedContext[$key] = '[NULL]'

@@ -182,5 +182,4 @@ function Invoke-SecurityValidation {
     }
 }
 
-Write-StructuredLog "Security validation module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

@@ -121,7 +121,7 @@ function Initialize-LogDirectory {
 
             # Attempt fallback to current directory
             try {
-                $fallbackPath = Join-Path (Get-Location) "Find-UnknownSID_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+                $fallbackPath = Join-Path (Get-Location) "OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
                 Write-Warning "Attempting fallback log path: $fallbackPath"
 
                 $script:LogPath = $fallbackPath
@@ -183,7 +183,7 @@ function Resolve-LogPath {
     $LogPath = $LogPath.Trim()
     if ([string]::IsNullOrWhiteSpace($LogPath)) {
         Write-Verbose "LogPath is empty, using default log file name"
-        $LogPath = ".\Logs\Find-UnknownSID_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        $LogPath = ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     }
 
     # SECURITY: Validate against directory traversal BEFORE path resolution
@@ -295,7 +295,7 @@ function Get-ScriptRootDirectory {
         $callerScript = Get-PSCallStack | Where-Object {
             $_.ScriptName -and
             $_.ScriptName -notlike "*\Private\*" -and
-            $_.ScriptName -like "*Find-UnknownSID*"
+            $_.ScriptName -like "*OrphanedSid*"
         } | Select-Object -First 1
 
         if ($callerScript -and $callerScript.ScriptName) {
@@ -339,6 +339,8 @@ function New-LogDirectory {
         Creates directories with inherited permissions from parent.
     #>
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Creates the log folder with -WhatIf:$false by design so a preview run can still log')]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
@@ -411,7 +413,7 @@ function Initialize-LogFile {
 
         # Create comprehensive log header
         $logHeader = @"
-=== Find-UnknownSID Script Log ===
+=== OrphanedSid Log ===
 Script Version: 2.0.0
 Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Correlation ID: $($loggingState.CorrelationId)

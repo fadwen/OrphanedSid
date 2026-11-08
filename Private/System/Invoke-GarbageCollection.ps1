@@ -230,6 +230,8 @@ function Invoke-GarbageCollection {
     #>
 
     [CmdletBinding(SupportsShouldProcess)]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Force',
+        Justification = 'Kept for call-site compatibility; the collection always runs')]
     param(
         [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString(),
@@ -344,6 +346,10 @@ function Invoke-GCCollect {
 }
 
 function Invoke-GCWaitForPendingFinalizers {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Mirrors the .NET method name GC.WaitForPendingFinalizers')]
+    param()
+
     [System.GC]::WaitForPendingFinalizers()
 }
 

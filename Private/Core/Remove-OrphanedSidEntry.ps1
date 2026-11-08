@@ -30,7 +30,7 @@
     - All modular dependencies are handled by the workflow orchestrator
 #>
 
-function Remove-OrphanedSID {
+function Remove-OrphanedSidEntry {
     <#
     .SYNOPSIS
         Removes orphaned SIDs from Active Directory objects with enterprise-grade security
@@ -135,7 +135,7 @@ function Remove-OrphanedSID {
         Auto-generated if not provided for seamless operation tracking.
 
     .EXAMPLE
-        PS> Remove-OrphanedSID -ObjectDN "OU=Finance,DC=contoso,DC=com" -OrphanedSIDs "S-1-5-21-1234567890-1234567890-1234567890-1001"
+        PS> Remove-OrphanedSidEntry -ObjectDN "OU=Finance,DC=contoso,DC=com" -OrphanedSIDs "S-1-5-21-1234567890-1234567890-1234567890-1001"
 
         DESCRIPTION: Basic orphaned SID removal from a single organizational unit
         OUTPUT: RemovalOperationResult with success status and removal details
@@ -143,7 +143,7 @@ function Remove-OrphanedSID {
         DURATION: Typically 2-5 seconds for simple ACL structures
 
     .EXAMPLE
-        PS> Remove-OrphanedSID -ObjectDN "OU=SharedResources,DC=contoso,DC=com" -OrphanedSIDs @("S-1-5-21-...-1001", "S-1-5-21-...-1002") -BackupPath "\\backup\AD" -WhatIfMode
+        PS> Remove-OrphanedSidEntry -ObjectDN "OU=SharedResources,DC=contoso,DC=com" -OrphanedSIDs @("S-1-5-21-...-1001", "S-1-5-21-...-1002") -BackupPath "\\backup\AD" -WhatIfMode
 
         DESCRIPTION: Preview mode for multiple SID removal with custom backup location
         OUTPUT: Shows planned changes without executing, validates all components
@@ -151,7 +151,7 @@ function Remove-OrphanedSID {
         DURATION: ~1-2 seconds for preview operations
 
     .EXAMPLE
-        PS> @("OU=HR,DC=contoso,DC=com", "OU=IT,DC=contoso,DC=com") | Remove-OrphanedSID -OrphanedSIDs $orphanedSIDs -CorrelationId "CHANGE-2025-001"
+        PS> @("OU=HR,DC=contoso,DC=com", "OU=IT,DC=contoso,DC=com") | Remove-OrphanedSidEntry -OrphanedSIDs $orphanedSIDs -CorrelationId "CHANGE-2025-001"
 
         DESCRIPTION: Pipeline processing of multiple objects with correlation tracking
         OUTPUT: RemovalOperationResult objects for each processed object
@@ -243,6 +243,15 @@ function Remove-OrphanedSID {
             try {
                 Write-StructuredLog "Starting SID removal operation for $dn (Public API v2.0)" -Level Verbose -CorrelationId $CorrelationId
 
+                # Invoke-RemovalWorkflow honours -WhatIfMode and $WhatIfPreference itself and prints the
+                # preview, so both still reach it unchanged; this guard only answers -Confirm.
+                if (-not $WhatIfMode -and -not $WhatIfPreference -and
+                    -not $PSCmdlet.ShouldProcess($dn, 'Remove orphaned SIDs from the ACL')) {
+                    $declined = "Removal declined at the confirmation prompt for $dn"
+                    Write-StructuredLog $declined -Level Warning -CorrelationId $CorrelationId
+                    continue
+                }
+
                 # Delegate to modular workflow orchestration
                 $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $dn -OrphanedSIDs $OrphanedSIDs -BackupPath $BackupPath -WhatIfMode:$WhatIfMode -CorrelationId $CorrelationId
 
@@ -265,5 +274,4 @@ function Remove-OrphanedSID {
     }
 }
 
-Write-StructuredLog "Public SID removal API loaded successfully (v2.0 Modular Architecture)" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

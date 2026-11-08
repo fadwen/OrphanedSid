@@ -123,8 +123,8 @@ function Write-SecurityStructuredLogEntry {
                 # Fallback 2: Write to temp directory as last resort
                 try {
                     $emergencyEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') [SECURITY-EMERGENCY] [$Level] $Message (CorrelationId: $effectiveCorrelationId)"
-                    $emergencyEntry | Out-File -FilePath "$env:TEMP\Find-UnknownSID-Security-Emergency.log" -Append -Encoding UTF8 -ErrorAction Stop
-                    Write-Warning "Security log written to emergency file: $env:TEMP\Find-UnknownSID-Security-Emergency.log"
+                    $emergencyEntry | Out-File -FilePath "$env:TEMP\OrphanedSid-Security-Emergency.log" -Append -Encoding UTF8 -ErrorAction Stop
+                    Write-Warning "Security log written to emergency file: $env:TEMP\OrphanedSid-Security-Emergency.log"
                 }
                 catch {
                     Write-Error "CRITICAL SECURITY LOGGING FAILURE: Unable to write security audit entry: $Message"
@@ -154,6 +154,8 @@ function Write-SecurityConsoleEntry {
         Security log level
     #>
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+        Justification = 'Critical security alerts are coloured on purpose; Write-Information cannot colour')]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
@@ -274,7 +276,7 @@ function Write-SecurityFileEntryDirect {
 
     # Fallback to temp directory
     try {
-        $tempLogPath = Join-Path $env:TEMP "Find-UnknownSID-Security-$(Get-Date -Format 'yyyyMMdd').log"
+        $tempLogPath = Join-Path $env:TEMP "OrphanedSid-Security-$(Get-Date -Format 'yyyyMMdd').log"
         Add-Content -Path $tempLogPath -Value $Message -Encoding UTF8 -ErrorAction Stop
         Write-Warning "Security log written to emergency location: $tempLogPath"
     }
@@ -297,6 +299,10 @@ function Update-SecurityLoggingMetrics {
         Security log level that was written
     #>
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Metrics is a mass noun for the security logging counters')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Changes module state only, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [ValidateSet('Critical', 'Error', 'Warning', 'Information')]

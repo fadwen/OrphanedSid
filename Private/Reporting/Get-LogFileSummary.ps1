@@ -385,6 +385,8 @@ function Get-LogFileStatistics {
     #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Statistics is a mass noun for the aggregate counters')]
     param(
         [Parameter()]
         [ValidateRange(1, 30)]

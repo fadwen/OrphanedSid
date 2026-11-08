@@ -244,7 +244,6 @@ function Test-ValidDistinguishedName {
                     return $false
                 }
                 
-                $attributeType = $component.Substring(0, $equalsIndex).Trim()
                 $value = $component.Substring($equalsIndex + 1).Trim()
                 
                 # Handle quoted values - remove quotes for validation

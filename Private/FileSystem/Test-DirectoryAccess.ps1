@@ -208,4 +208,3 @@ function Test-DirectoryAccess {
     }
 }
 
-Write-StructuredLog "FileSystem-Utilities module loaded successfully" -Level Debug -Component 'FileSystem-Utilities' -CorrelationId ([System.Guid]::NewGuid().ToString())

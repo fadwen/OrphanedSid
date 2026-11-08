@@ -154,6 +154,10 @@ function Update-LoggingMetrics {
     #>
 
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Metrics is a mass noun for the logging counters')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Changes module state only, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [ValidateSet('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')]
@@ -195,6 +199,8 @@ function Set-LogLevel {
     #>
 
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Changes module state only, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [ValidateSet('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')]

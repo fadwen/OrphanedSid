@@ -1,0 +1,80 @@
+TOPIC
+    about_OrphanedSid
+
+SHORT DESCRIPTION
+    Finds, removes and restores orphaned SIDs in Active Directory access control lists.
+
+LONG DESCRIPTION
+    An orphaned SID is an access control entry whose trustee no longer exists. When a user,
+    group or computer is deleted, every ACL that named it keeps the entry, now showing only
+    the raw security identifier. The entries grant nothing to anyone, but they clutter
+    security reviews, hide real delegations, and are the first thing an auditor asks about.
+
+    The module has three commands:
+
+    Find-OrphanedSid
+        Walks the objects under one or more search bases, reads each security descriptor,
+        resolves every identity reference and writes one OrphanedSIDResult per entry that
+        cannot be resolved. Nothing is changed.
+
+    Remove-OrphanedSid
+        Runs the same discovery, validates each SID against the protected and well-known
+        lists, writes a Clixml backup of the object's ACL into a timestamped folder, and
+        removes the orphaned entries. ConfirmImpact is High: it prompts once, -WhatIf
+        previews, and an unattended run needs -Force.
+
+    Restore-OrphanedSidBackup
+        Applies the backed-up ACL of an object, or of every object under a container, from
+        a backup folder, after validating the file's format, DN and SHA256 hash. Also
+        ConfirmImpact High.
+
+HOW RESULTS ARE REPORTED
+    Each command writes its results to the pipeline as objects. -OutputPath additionally
+    writes the same rows as CSV. A summary (objects processed, orphaned SIDs found, duration,
+    peak memory) goes to the console and to the log file.
+
+    Logs go to .\Logs\<Command>_<yyyyMMdd_HHmmss>.log under the current directory unless
+    -LogPath is given. Every line carries the run's correlation ID, so one run can be pulled
+    out of a shared log with Select-String. Pass -CorrelationId to tie a run to a change
+    record. -LogLevel sets the lowest level written to the file; security events are written
+    at every level.
+
+BACKUPS
+    Remove-OrphanedSid writes one backup file per modified object into
+    <BackupPath>\<yyyyMMdd_HHmmss>\, default .\Backup under the current directory. The file is
+    Clixml holding the object DN, the SDDL, a SHA256 hash of the SDDL, the correlation ID and
+    the user and computer that made the change. Restore-OrphanedSidBackup reads these files;
+    nothing else does.
+
+PROTECTED SIDS
+    SIDs in the ProtectedSIDs list (the BUILTIN Administrators, Users and Guests groups,
+    SYSTEM, LOCAL SERVICE and NETWORK SERVICE) and SIDs matching WellKnownSIDPatterns are
+    never reported as orphaned and never removed. Both lists can be extended through a JSON
+    file passed as -ConfigPath.
+
+CONFIGURATION FILE
+    -ConfigPath accepts a JSON file. Only these top-level keys are read; anything else is
+    ignored: WellKnownSIDPatterns, ProtectedSIDs, BatchSize (results per streaming batch file,
+    default 50), MemoryCheckInterval (default 50), EnableDetailedLogging, LogLevel,
+    LogFilePath, EnableLogFileRotation, MaxLogFileSizeMB.
+
+REQUIREMENTS
+    Windows PowerShell 5.1 or PowerShell 7 on Windows, and the RSAT ActiveDirectory module.
+    Discovery needs read access to the objects under -SearchBase; removal and restore need
+    write access to their security descriptors. The commands run as the caller; there is no
+    -Credential parameter.
+
+EXAMPLES
+    Find-OrphanedSid -SearchBase 'OU=Users,DC=contoso,DC=com'
+
+    Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf
+
+    Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -Force -BackupPath 'D:\ADBackups'
+
+    Restore-OrphanedSidBackup -TargetObjectDN 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups\20260703_104232' -Force
+
+SEE ALSO
+    Find-OrphanedSid
+    Remove-OrphanedSid
+    Restore-OrphanedSidBackup
+    https://github.com/fadwen/OrphanedSid

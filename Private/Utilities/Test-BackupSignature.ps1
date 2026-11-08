@@ -1,4 +1,4 @@
-function Validate-BackupSignature {
+function Test-BackupSignature {
     <#
     .SYNOPSIS
         Validates backup signature for security

@@ -331,5 +331,4 @@ function Find-BackupFile {
     }
 }
 
-Write-StructuredLog "Find-BackupFile module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 
