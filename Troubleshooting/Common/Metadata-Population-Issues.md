@@ -68,9 +68,10 @@ the CSV (only class members are exported). To see it, run the per-object functio
 diagnostic session:
 
 ```powershell
-Set-Location 'C:\Scripts\Find-UnknownSID'
+Import-Module OrphanedSid
 Import-Module ActiveDirectory
-. .\Private\Core\Import-LoggingSystem.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 Get-ChildItem .\Classes\*.ps1 | ForEach-Object { . $_.FullName }
 'SID\Test-SIDFormat', 'SID\Get-SIDAnalysis', 'ActiveDirectory\Invoke-ADOperationWithRetry',
 'Operations\Invoke-OperationWithRetry', 'Logging\Write-ADOperationSecurityLog', 'SID\Test-OrphanedSID',
@@ -111,7 +112,7 @@ To tie a result back to a run, filter the log file by `ObjectDN` instead:
 
 ```powershell
 $dn = 'CN=User1,OU=Test,DC=contoso,DC=com'
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern ([regex]::Escape($dn)) | Select-Object -First 10
+Select-String -Path .\Logs\<Command>_*.log -Pattern ([regex]::Escape($dn)) | Select-Object -First 10
 ```
 
 #### Issue: Correlation ID format
@@ -122,7 +123,7 @@ any string for `-CorrelationId`, but `Test-BackupValidation` in the restore path
 
 ```powershell
 $id = [guid]::NewGuid().ToString()
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
+.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
 ```
 
 ### 4. Processing Context

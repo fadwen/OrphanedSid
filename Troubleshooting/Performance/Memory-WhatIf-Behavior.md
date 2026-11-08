@@ -124,8 +124,8 @@ WhatIf: Would initialize memory manager with threshold 1024 MB
 WhatIf: Would check memory usage and cleanup if needed
 WhatIf: Would perform memory cleanup
 WhatIf: Would dispose and cleanup resources
-WhatIf: Would create temporary directory: <TEMP>\Find-UnknownSID-<CorrelationId>
-WhatIf: Would flush batch 1 with 50 results to <TEMP>\Find-UnknownSID-<CorrelationId>\batch_1.json
+WhatIf: Would create temporary directory: <TEMP>\OrphanedSid-<CorrelationId>
+WhatIf: Would flush batch 1 with 50 results to <TEMP>\OrphanedSid-<CorrelationId>\batch_1.json
 ```
 
 ## Troubleshooting

@@ -1,6 +1,6 @@
-﻿# Find-UnknownSID Automation Guide
+﻿# OrphanedSid Automation Guide
 
-This guide covers running `Find-UnknownSID.ps1` from a scheduled task, a CI/CD job or any other
+This guide covers running `Find-OrphanedSid` from a scheduled task, a CI/CD job or any other
 session where nobody can answer a prompt, and how such a job reads the results.
 
 ## Exit Codes
@@ -19,7 +19,7 @@ the exit code; those outcomes are recorded in the log and in the per-object resu
 |-----------|----------------------|
 | `-SearchBase <string[]>` | OU or object DNs to scan. Omitted: the current domain root, with a warning. |
 | `-OutputPath <path>` | CSV file for discovery and removal results. The parent folder must exist. Without it, results exist only in the log. |
-| `-LogPath <path>` | Log file. Default `.\Logs\Find-UnknownSID_<yyyyMMdd_HHmmss>.log` relative to the working directory. |
+| `-LogPath <path>` | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` relative to the working directory. |
 | `-LogLevel <level>` | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
 | `-SuppressConsoleOutput` | Suppresses console log output. File logging is unaffected. |
 | `-CorrelationId <string>` | Identifier stamped on every log line and every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
@@ -31,7 +31,7 @@ the exit code; those outcomes are recorded in the log and in the per-object resu
 | `-IncludeInherited` | Also report inherited access control entries. |
 | `-PreserveTempFiles` | Keep the per-run streaming results folder after the run. |
 
-The script writes nothing to the pipeline. `$result = .\Find-UnknownSID.ps1 ...` captures nothing
+The script writes nothing to the pipeline. `$result = .\Find-OrphanedSid ...` captures nothing
 useful; read `$LASTEXITCODE`, the CSV and the log instead.
 
 ## Confirmation in Non-Interactive Sessions
@@ -48,20 +48,21 @@ Discovery mode (neither switch) never prompts.
 
 ```powershell
 # Discovery, unattended
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -OutputPath "C:\Reports\orphaned-sids.csv" -SuppressConsoleOutput
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -OutputPath "C:\Reports\orphaned-sids.csv" -SuppressConsoleOutput
 
 # Removal preview, unattended
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Users,DC=contoso,DC=com" -WhatIf -SuppressConsoleOutput
+.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -WhatIf -SuppressConsoleOutput
 
 # Removal, unattended
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups" -Force -SuppressConsoleOutput
+.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups" -Force -SuppressConsoleOutput
 ```
 
 ## CI/CD Integration
 
-The script does not detect CI environments and has no automation-specific mode; a pipeline step
-is an ordinary unattended run. Pass a correlation ID from the pipeline so the log can be tied back
-to the job.
+The module does not detect CI environments and has no automation-specific mode; a pipeline step
+is an ordinary unattended run on a Windows agent that has the RSAT ActiveDirectory module. Pass a
+correlation ID from the pipeline so the log can be tied back to the job. A terminating error from
+the command fails the step; the result objects are the pipeline's data.
 
 ### Azure DevOps Pipeline
 
@@ -69,14 +70,15 @@ to the job.
 - task: PowerShell@2
   displayName: 'Scan for orphaned SIDs'
   inputs:
-    filePath: 'Powershell/Active Directory/Find-UnknownSID/Find-UnknownSID.ps1'
-    arguments: >-
-      -SearchBase "DC=contoso,DC=com"
-      -OutputPath "$(Build.ArtifactStagingDirectory)/orphaned-sids.csv"
-      -LogPath "$(Build.ArtifactStagingDirectory)/Find-UnknownSID.log"
-      -CorrelationId "$(Build.BuildId)"
-      -SuppressConsoleOutput
-    failOnStderr: false
+    targetType: inline
+    pwsh: true
+    script: |
+      Install-PSResource -Name OrphanedSid -Scope CurrentUser -TrustRepository
+      $found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' `
+          -OutputPath "$(Build.ArtifactStagingDirectory)/orphaned-sids.csv" `
+          -LogPath "$(Build.ArtifactStagingDirectory)/OrphanedSid.log" `
+          -CorrelationId "$(Build.BuildId)" -SuppressConsoleOutput)
+      Write-Host "##vso[task.setvariable variable=OrphanedSidCount]$($found.Count)"
 ```
 
 ### GitHub Actions
@@ -85,24 +87,24 @@ to the job.
 - name: Scan for orphaned SIDs
   shell: pwsh
   run: |
-    & "./Powershell/Active Directory/Find-UnknownSID/Find-UnknownSID.ps1" `
-        -SearchBase "DC=contoso,DC=com" `
+    Install-PSResource -Name OrphanedSid -Scope CurrentUser -TrustRepository
+    $found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' `
         -OutputPath "$env:RUNNER_TEMP/orphaned-sids.csv" `
-        -LogPath "$env:RUNNER_TEMP/Find-UnknownSID.log" `
-        -CorrelationId "$env:GITHUB_RUN_ID" `
-        -SuppressConsoleOutput
-    if ($LASTEXITCODE -ne 0) { throw "Find-UnknownSID exited with $LASTEXITCODE" }
+        -LogPath "$env:RUNNER_TEMP/OrphanedSid.log" `
+        -CorrelationId "$env:GITHUB_RUN_ID" -SuppressConsoleOutput)
+    "found=$($found.Count)" >> $env:GITHUB_OUTPUT
 ```
 
 ### Scheduled Task
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument (
-    '-NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\Find-UnknownSID\Find-UnknownSID.ps1" ' +
-    '-SearchBase "DC=contoso,DC=com" -OutputPath "C:\Reports\orphaned-sids.csv" ' +
-    '-LogPath "C:\Logs\Find-UnknownSID.log" -SuppressConsoleOutput'
-)
+$command = 'Import-Module OrphanedSid; Find-OrphanedSid -SearchBase ''DC=contoso,DC=com'' ' +
+    '-OutputPath ''C:\Reports\orphaned-sids.csv'' -LogPath ''C:\Logs\OrphanedSid.log'' -SuppressConsoleOutput'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -Command `"$command`""
 ```
+
+A scheduled `Remove-OrphanedSid` must pass `-Force`; without it the command stops at the
+confirmation prompt, which a non-interactive session cannot answer.
 
 ## Reading the Results
 
@@ -136,7 +138,7 @@ entries carry the component `SecurityAudit`. Filter by the correlation ID to iso
 several share a log file:
 
 ```powershell
-Select-String -Path "C:\Logs\Find-UnknownSID.log" -Pattern "\[12345678-1234-1234-1234-123456789012\]" |
+Select-String -Path "C:\Logs\OrphanedSid.log" -Pattern "\[12345678-1234-1234-1234-123456789012\]" |
     Where-Object { $_.Line -match '\[(Error|Warning)\]' }
 ```
 
@@ -145,7 +147,7 @@ lines and drops `Information`, `Debug` and `Verbose`. Security audit entries byp
 
 ### Temporary Files
 
-Discovery results are streamed in batches to `<TEMP>\Find-UnknownSID-<CorrelationId>\` as
+Discovery results are streamed in batches to `<TEMP>\OrphanedSid-<CorrelationId>\` as
 `batch_<n>.json`, `results_<timestamp>.json` and `summary_<timestamp>.json`. The folder is deleted
 when the run ends unless `-PreserveTempFiles` is given, in which case its path is logged.
 

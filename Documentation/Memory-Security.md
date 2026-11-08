@@ -1,4 +1,4 @@
-﻿# Find-UnknownSID Memory Management and Security Troubleshooting
+﻿# OrphanedSid Memory Management and Security Troubleshooting
 
 ## Memory Management
 
@@ -18,7 +18,7 @@ stop the run or cap the process.
 
 Discovery results are not held in memory. `StreamingResultsManager`
 (`Classes/StreamingResultsManager.ps1`) writes them in batches of `BatchSize` objects (configuration
-key, default 100) to `<TEMP>\Find-UnknownSID-<CorrelationId>\batch_<n>.json` and reads them back only
+key, default 100) to `<TEMP>\OrphanedSid-<CorrelationId>\batch_<n>.json` and reads them back only
 when the CSV is exported. The folder is removed at the end of the run unless `-PreserveTempFiles` is
 given.
 
@@ -41,7 +41,7 @@ Peak working set is reported in the run summary as `PeakMemoryUsageMB`.
    ```
 
    ```powershell
-   .\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -ConfigPath ".\low-memory.json"
+   .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath ".\low-memory.json"
    ```
 
 3. Scan one OU at a time by passing several `-SearchBase` values across separate runs rather than
@@ -52,7 +52,7 @@ Peak working set is reported in the run summary as `PeakMemoryUsageMB`.
 
 The streaming folder is deleted by `Dispose()` at the end of the run. It remains on disk when
 `-PreserveTempFiles` was given (the path is logged) or when the process was terminated before the
-`end` block ran. In either case it is safe to delete `<TEMP>\Find-UnknownSID-<CorrelationId>`.
+`end` block ran. In either case it is safe to delete `<TEMP>\OrphanedSid-<CorrelationId>`.
 
 See [Memory-Management.md](../Troubleshooting/Performance/Memory-Management.md),
 [Memory-Management-Issues.md](../Troubleshooting/Performance/Memory-Management-Issues.md) and

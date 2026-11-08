@@ -1,8 +1,8 @@
-﻿# Find-UnknownSID Common Issues Troubleshooting Guide
+﻿# OrphanedSid Common Issues Troubleshooting Guide
 
 ## Overview
 
-This guide covers the issues most often reported when running `Find-UnknownSID.ps1`, with the
+This guide covers the issues most often reported when running `Find-OrphanedSid`, with the
 exact messages the script emits and fixes that use its real parameters.
 
 The script accepts: `-SearchBase` (string array, also from the pipeline, alias `DistinguishedName`),
@@ -42,53 +42,19 @@ Add-WindowsFeature RSAT-AD-PowerShell
 Get-Module -ListAvailable -Name ActiveDirectory
 ```
 
-#### Issue: "Critical class import failure"
+#### Issue: Import-Module fails or a command "is not recognized"
 
 **Symptoms:**
 
-- `Secure class loading failed: Class validation failed. Failed classes: N` followed by
-  `Script initialization failed: Critical class import failure`.
-- Occurs after `Loading security-validated components...` and before any AD query.
+- `Import-Module OrphanedSid` reports a parse error naming a file under `Classes\` or `Private\`.
+- A command runs but fails with `The term '<function>' is not recognized`.
 
-**Root Cause:** a file under `Classes\` is missing, unreadable, or its content no longer matches the
-hash recorded by `Import-SecureClasses`. The nine required classes are `MemoryManager`,
-`OrphanedSIDResult`, `ProcessingStatistics`, `RemovalOperationResult`, `RestoreOperationResult`,
-`ScriptConfiguration`, `SecurityValidationResult`, `SIDAnalysisResult` and `StreamingResultsManager`.
+**Root Cause:** an incomplete or edited copy of the module. `OrphanedSid.psm1` dot-sources every
+file under `Classes\` and `Private\<Area>\` in a fixed order; a missing or broken file either fails
+the import or leaves a dependent function undefined until it is first called.
 
-**Resolution:**
-
-```powershell
-# Confirm every class file is present and readable
-$scriptRoot = 'C:\Scripts\Find-UnknownSID'   # folder that holds Find-UnknownSID.ps1
-$required = 'MemoryManager', 'OrphanedSIDResult', 'ProcessingStatistics', 'RemovalOperationResult',
-    'RestoreOperationResult', 'ScriptConfiguration', 'SecurityValidationResult', 'SIDAnalysisResult',
-    'StreamingResultsManager'
-foreach ($name in $required) {
-    $path = Join-Path $scriptRoot "Classes\$name.ps1"
-    if (Test-Path $path) { "Found   $name" } else { "Missing $name" }
-}
-
-# Re-run with Debug logging to see which class failed validation and why
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -LogLevel Debug -WhatIf
-```
-
-If a class file was edited locally, restore it from source control. Hash validation is described in
-`.\Documentation\Class-Loading-Security-Analysis.md`.
-
-#### Issue: "Missing critical dependency" or "Module file not found"
-
-**Symptoms:**
-
-- `ClassManagement function not found: <path>` then `Missing critical dependency: <file>.ps1`.
-- `Modular logging system not found: <path>\Private\Core\Import-LoggingSystem.ps1`.
-- `WARNING: Module file not found: <path>` for a file under `Private\`.
-
-**Root Cause:** the `Private\` tree was copied incompletely. The script dot-sources one function per
-file from `Private\<Area>\*.ps1`; a missing `ClassManagement` or `Core` file stops the run, a
-missing file elsewhere is warned about and the dependent command later fails with
-"is not recognized".
-
-**Resolution:** redeploy the whole folder. Verify with:
+**Resolution:** reinstall from the Gallery, or redeploy the whole module folder from source
+control. Verify with:
 
 ```powershell
 Get-ChildItem -Path .\Private -Recurse -Filter *.ps1 | Measure-Object
@@ -140,7 +106,7 @@ Test-NetConnection -ComputerName $dc -Port 389 -InformationLevel Detailed
 Resolve-DnsName -Name $dc -Type A
 
 # Raise the retry count for SID lookups and object discovery (default 3, maximum 10)
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -MaxRetries 5
+.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -MaxRetries 5
 ```
 
 `-MaxRetries` governs the per-object retry loop in `Invoke-MainProcessingLogic`: when processing an
@@ -171,10 +137,10 @@ prompt - a scheduled task, CI agent, or remote host - is treated as a refusal.
 
 ```powershell
 # Preview without any prompt or change
-.\Find-UnknownSID.ps1 -Remove -SearchBase 'OU=Test,DC=contoso,DC=com' -WhatIf
+.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -WhatIf
 
 # Unattended run - skips the confirmation
-.\Find-UnknownSID.ps1 -Remove -SearchBase 'OU=Test,DC=contoso,DC=com' -Force
+.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -Force
 ```
 
 `-WhatIf` never prompts. `-Force` only affects this confirmation; it does not change what is
@@ -195,7 +161,7 @@ removed or restored.
 
 ```powershell
 # Raise the ceiling (100-16384 MB; default 1024)
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096
 
 # Watch the process while it runs (pwsh or powershell depending on host)
 Get-Process -Id $PID | Select-Object ProcessName, @{ n = 'WorkingSetMB'; e = { [math]::Round($_.WorkingSet64 / 1MB) } }
@@ -203,12 +169,12 @@ Get-Process -Id $PID | Select-Object ProcessName, @{ n = 'WorkingSetMB'; e = { [
 # Split a large domain into several runs
 $ous = Get-ADOrganizationalUnit -Filter * -SearchScope OneLevel | Select-Object -ExpandProperty DistinguishedName
 foreach ($ou in $ous) {
-    .\Find-UnknownSID.ps1 -SearchBase $ou -OutputPath ".\Reports\$($ou.Split(',')[0].Substring(3)).csv"
+    .\Find-OrphanedSid -SearchBase $ou -OutputPath ".\Reports\$($ou.Split(',')[0].Substring(3)).csv"
 }
 ```
 
 Objects are processed one at a time; there is no parallel mode and no throttle parameter. Results
-are streamed to batch files under `$env:TEMP\Find-UnknownSID-<CorrelationId>\` so result count does
+are streamed to batch files under `$env:TEMP\OrphanedSid-<CorrelationId>\` so result count does
 not drive memory use. See `.\Troubleshooting\Performance\Memory-Management-Issues.md` and
 `.\Troubleshooting\Performance\Performance-Tuning.md`.
 
@@ -237,13 +203,13 @@ when the error looks transient.
 
 ```powershell
 # See each lookup as it happens
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -LogLevel Debug
+.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -LogLevel Debug
 
 # Bound the run from a wrapper
-$job = Start-Job -ScriptBlock { & 'C:\Scripts\Find-UnknownSID\Find-UnknownSID.ps1' -SearchBase 'OU=Test,DC=contoso,DC=com' }
+$job = Start-Job -ScriptBlock { Find-OrphanedSid' -SearchBase 'OU=Test,DC=contoso,DC=com' }
 if (-not (Wait-Job -Job $job -Timeout 1800)) {
     Stop-Job -Job $job
-    Write-Warning 'Find-UnknownSID did not finish within 30 minutes'
+    Write-Warning 'Find-OrphanedSid did not finish within 30 minutes'
 }
 Receive-Job -Job $job
 ```
@@ -326,10 +292,10 @@ must already exist.
 
 ```powershell
 New-Item -Path .\Reports -ItemType Directory -Force | Out-Null
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -OutputPath '.\Reports\orphaned-sids.csv'
+.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -OutputPath '.\Reports\orphaned-sids.csv'
 
 # Confirm from the log
-Select-String -Path (Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1).FullName -Pattern 'Orphaned SIDs found:|Results exported to:'
+Select-String -Path (Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1).FullName -Pattern 'Orphaned SIDs found:|Results exported to:'
 ```
 
 Columns follow the `OrphanedSIDResult` class: `ObjectDN`, `ObjectClass`, `OrphanedSID`,
@@ -343,15 +309,15 @@ Columns follow the `OrphanedSIDResult` class: `ObjectDN`, `ObjectClass`, `Orphan
 
 **Root Cause:** the correlation ID is written in every log line as the fourth bracketed field,
 `[<timestamp>] [<Level>] [<Component>] [<CorrelationId>] <Message>`. It is never part of the log
-file name, which is `Find-UnknownSID_<yyyyMMdd_HHmmss>.log` by default. When `-CorrelationId` is
+file name, which is `<Command>_<yyyyMMdd_HHmmss>.log` by default. When `-CorrelationId` is
 not given a new GUID is generated per run.
 
 **Resolution:**
 
 ```powershell
 $correlationId = [guid]::NewGuid().ToString()
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $correlationId
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern "\[$correlationId\]" | Select-Object -First 20
+.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $correlationId
+Select-String -Path .\Logs\<Command>_*.log -Pattern "\[$correlationId\]" | Select-Object -First 20
 ```
 
 Any string is accepted for `-CorrelationId` on the main script, but `Test-BackupValidation` in the
@@ -379,7 +345,7 @@ New-Item -Path $backupRoot -ItemType Directory -Force | Out-Null
 $drive = Get-PSDrive -Name $backupRoot.Substring(0, 1)
 "Free space: $([math]::Round($drive.Free / 1GB, 2)) GB"
 
-.\Find-UnknownSID.ps1 -Remove -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
+.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
 ```
 
 The parent of `-BackupPath` must exist (`Parent directory does not exist for backup path: <dir>`
@@ -396,10 +362,10 @@ otherwise). Full backup and restore guidance is in
 
 ```powershell
 # Write only Warning and above to the file; console output is unaffected
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -LogLevel Warning
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning
 
 # Remove logs older than 30 days
-Get-ChildItem -Path .\Logs -Filter 'Find-UnknownSID_*.log' |
+Get-ChildItem -Path .\Logs -Filter '<Command>_*.log' |
     Where-Object LastWriteTime -lt (Get-Date).AddDays(-30) |
     Remove-Item -Force
 ```
@@ -418,22 +384,18 @@ When `-LogLevel` is not given, `-Verbose` sets the file level to `Verbose` and `
 ### Quick health check
 
 ```powershell
-function Test-FindUnknownSIDHealth {
-    param([string]$ScriptRoot = (Get-Location).Path)
-
+function Test-OrphanedSidHealth {
     "PowerShell: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
 
     if (Get-Module -ListAvailable -Name ActiveDirectory) { 'ActiveDirectory module: available' }
     else { 'ActiveDirectory module: MISSING' }
 
-    $files = 'Find-UnknownSID.ps1',
-        'Private\Core\Import-LoggingSystem.ps1',
-        'Private\ClassManagement\Import-SecureClasses.ps1',
-        'Classes\ScriptConfiguration.ps1',
-        'Classes\StreamingResultsManager.ps1'
-    foreach ($file in $files) {
-        if (Test-Path (Join-Path $ScriptRoot $file)) { "Present: $file" } else { "MISSING: $file" }
-    }
+    $module = Get-Module -ListAvailable -Name OrphanedSid | Sort-Object Version -Descending | Select-Object -First 1
+    if ($module) { "OrphanedSid $($module.Version) at $($module.ModuleBase)" } else { 'OrphanedSid module: MISSING' }
+
+    Import-Module OrphanedSid -ErrorAction Stop
+    $exported = (Get-Module OrphanedSid).ExportedFunctions.Keys -join ', '
+    "Exported commands: $exported"
 
     try {
         $domain = Get-ADDomain -ErrorAction Stop
@@ -452,7 +414,7 @@ New-Item -Path $diag -ItemType Directory -Force | Out-Null
 $PSVersionTable | Out-File "$diag\powershell-version.txt"
 Get-ADDomain | Out-File "$diag\ad-domain.txt"
 if (Test-Path .\config.json) { Copy-Item .\config.json "$diag\config.json" }
-Get-ChildItem .\Logs -Filter 'Find-UnknownSID_*.log' | Sort-Object LastWriteTime -Descending |
+Get-ChildItem .\Logs -Filter '<Command>_*.log' | Sort-Object LastWriteTime -Descending |
     Select-Object -First 3 | Copy-Item -Destination $diag
 "Diagnostic package: $diag"
 ```
@@ -466,4 +428,4 @@ Include the correlation ID of the failed run, the exact error text, and the doma
 - `.\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md`
 - `.\Troubleshooting\Performance\Memory-Management-Issues.md`
 - `.\Troubleshooting\Security\Orphaned-SID-Issues.md`
-- `.\Documentation\Find-UnknownSID-Automation.md`
+- `.\Documentation\Automation.md`

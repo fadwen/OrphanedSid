@@ -1,8 +1,7 @@
-﻿# Security Validation Guide - Find-UnknownSID
-
+﻿# Security Validation Guide - OrphanedSid
 ## Overview
 
-This guide describes the security controls built into `Find-UnknownSID.ps1`: how a run is gated
+This guide describes the security controls built into `Find-OrphanedSid`: how a run is gated
 before it changes anything, how each SID is validated before removal, what is backed up, how class
 files are loaded, and how the audit trail is protected from log-level filtering. It also shows how
 to verify each control and how to customise the lists it relies on.
@@ -39,13 +38,13 @@ A `-Remove` or `-Restore` run without `-WhatIf` requires an explicit go-ahead:
 
 ```powershell
 # Preview
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Test,DC=contoso,DC=com" -WhatIf
+.\Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -WhatIf
 
 # Interactive, prompted once
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Test,DC=contoso,DC=com"
+.\Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com"
 
 # Unattended
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConsoleOutput
+.\Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConsoleOutput
 ```
 
 ## Input Validation
@@ -146,15 +145,11 @@ approval). It is a reporting helper and is not called by the main script.
 The functions are private. Load them, then test representative SIDs:
 
 ```powershell
-Set-Location "<path to Find-UnknownSID>"
-. .\Private\Core\Import-LoggingSystem.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 . .\Classes\ScriptConfiguration.ps1
 . .\Classes\SecurityValidationResult.ps1
 . .\Classes\SIDAnalysisResult.ps1
-. .\Private\SID\Test-SIDFormat.ps1
-. .\Private\SID\Get-SIDAnalysis.ps1
-. .\Private\SID\Test-SIDSecurity.ps1
-. .\Private\Security\Invoke-SecurityValidation.ps1
 Initialize-LoggingSystem -LogLevel Information
 $script:Config = [ScriptConfiguration]::new()
 
@@ -190,20 +185,12 @@ without it. Under `-WhatIf` no backup is written because no change is made.
 hash) before `Restore-ACLOperation` rewrites the ACL. See
 [Backup-Restore-Issues.md](../Common/Backup-Restore-Issues.md).
 
-## Class Loading
+## Module Integrity
 
-Classes are loaded through `Import-SecureClasses` (`Private\ClassManagement\Import-SecureClasses.ps1`):
-
-- Only class names on the list returned by `Get-ApprovedClassList` are accepted; a request for an
-  unknown class fails the import.
-- `Resolve-ClassPath` resolves each name to `Classes\<Name>.ps1` under the script root.
-- `Test-ClassIntegrity -Class <name>` (`Private\Security\Test-ClassIntegrity.ps1`) checks the
-  class name only. No file hash is computed or compared at load time; the `ExpectedHash` values in
-  `Get-ApprovedClassList` are reference data for `Tools\Generate-ClassHashes.ps1`, not a runtime
-  gate.
-
-Protect the `Classes\` and `Private\` folders with file-system ACLs; the script trusts their
-contents.
+`OrphanedSid.psm1` dot-sources every file under `Classes\` and `Private\` at import time and
+performs no hash or signature check on them. Install from the PowerShell Gallery, which records the
+package hash, or from a source-control checkout, and protect the installed module folder with
+file-system ACLs; the module trusts its own files.
 
 ## Audit Trail
 
@@ -270,4 +257,4 @@ Supply a JSON file with `-ConfigPath`. Only these keys are read:
 - [SID Format Issues](./SID-Format-Issues.md)
 - [SID Analysis Issues](./SID-Analysis-Issues.md)
 - [Backup and Restore Issues](../Common/Backup-Restore-Issues.md)
-- [Find-UnknownSID Issues](../Common/Find-UnknownSID-Issues.md)
+- [Common Issues](../Common/Common-Issues.md)

@@ -3,7 +3,7 @@
 ## Overview
 
 This guide covers memory problems that can appear during large discovery or removal runs of
-`Find-UnknownSID.ps1`: memory that keeps growing, warnings that the configured threshold has been
+`Find-OrphanedSid`: memory that keeps growing, warnings that the configured threshold has been
 exceeded, and out-of-memory failures. It describes the memory controls the script actually has and
 how to read their output. The architecture itself is described in
 [Memory-Management.md](./Memory-Management.md); the levers you can tune are in
@@ -57,7 +57,7 @@ when the script itself is behaving.
 2. Raise the threshold to something the host can afford. The parameter accepts up to 16384:
 
    ```powershell
-   .\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
+   .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
    ```
 
 3. If the warning recurs after garbage collection, check more often so cleanup starts earlier. The
@@ -65,7 +65,7 @@ when the script itself is behaving.
 
    ```powershell
    @{ MemoryCheckInterval = 10 } | ConvertTo-Json | Set-Content .\config.json
-   .\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+   .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
    ```
 
 4. Reduce the scope of a single run by passing smaller search bases (see
@@ -124,7 +124,7 @@ The run terminates with `OutOfMemoryException`, typically while reading a very l
 3. For very large result sets, run one search base per invocation with its own `-OutputPath` so
    each export is bounded.
 4. Keep the batch files for inspection with `-PreserveTempFiles`; they are plain JSON arrays under
-   `$env:TEMP\Find-UnknownSID-<CorrelationId>\batch_N.json` and can be read with
+   `$env:TEMP\OrphanedSid-<CorrelationId>\batch_N.json` and can be read with
    `Get-Content -Raw | ConvertFrom-Json` without running the export.
 
 ## Validation Commands
@@ -136,14 +136,9 @@ it first lets the full versions from the logging system and `Get-MemoryStatistic
 precedence.
 
 ```powershell
-Set-Location "<path to Find-UnknownSID>"
-. .\Private\System\Invoke-GarbageCollection.ps1
-. .\Private\Core\Import-LoggingSystem.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 . .\Classes\MemoryManager.ps1
-. .\Private\System\Get-MemoryStatistics.ps1
-. .\Private\System\Initialize-MemoryManager.ps1
-. .\Private\System\Invoke-MemoryMonitoring.ps1
-. .\Private\System\Invoke-ResourceDisposal.ps1
 Initialize-LoggingSystem -LogLevel Information
 ```
 

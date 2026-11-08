@@ -24,8 +24,8 @@ Invoke-MainProcessingLogic                      (Private\Core)
           Get-SIDAnalysis -SIDString            (Private\SID\Get-SIDAnalysis.ps1)
           New-OrphanedSIDResult                 (Private\SID\New-SIDResult.ps1)
       attach ProcessingStatistics to each result
-    StreamingResultsManager.AddResult(...)      (batch files under $env:TEMP\Find-UnknownSID-<CorrelationId>)
-    if -Remove: Remove-OrphanedSID per result
+    StreamingResultsManager.AddResult(...)      (batch files under $env:TEMP\OrphanedSid-<CorrelationId>)
+    if -Remove: Remove-OrphanedSidEntry per result
 ```
 
 Objects are processed sequentially; there is no parallel path.
@@ -77,7 +77,7 @@ One case is logged at Information level and is easy to miss:
 rule is skipped and no result is created. Count these when the CSV looks short:
 
 ```powershell
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern 'ORPHANED ACCOUNT DETECTED' | Measure-Object
+Select-String -Path .\Logs\<Command>_*.log -Pattern 'ORPHANED ACCOUNT DETECTED' | Measure-Object
 ```
 
 ### 3. Over-Reporting When the Domain Controller Is Unreachable
@@ -96,7 +96,7 @@ Check before acting on results:
 
 ```powershell
 # Look for lookup failures in the log
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern 'lookup failed for SID|Error testing SID for orphaned status' | Measure-Object
+Select-String -Path .\Logs\<Command>_*.log -Pattern 'lookup failed for SID|Error testing SID for orphaned status' | Measure-Object
 
 # Re-test a reported SID directly
 $sid = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
@@ -121,7 +121,7 @@ the count of main-loop exceptions.
 
 ### 5. Resource Clean-up
 
-Results are streamed to `$env:TEMP\Find-UnknownSID-<CorrelationId>\batch_<n>.json` by
+Results are streamed to `$env:TEMP\OrphanedSid-<CorrelationId>\batch_<n>.json` by
 `StreamingResultsManager` (`BatchSize` results per file, default 50) and the folder is removed when the script's `finally`
 block disposes it. Pass `-PreserveTempFiles` to keep the folder for inspection; the log then shows
 `Temporary result files preserved as requested`. Every 100 objects the main loop calls
@@ -129,11 +129,11 @@ block disposes it. Pass `-PreserveTempFiles` to keep the folder for inspection; 
 (`Memory usage at N objects: X MB (Freed: Y MB)`).
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Test,DC=contoso,DC=com' -PreserveTempFiles -CorrelationId ($id = [guid]::NewGuid().ToString())
-Get-ChildItem -Path (Join-Path $env:TEMP "Find-UnknownSID-$id")
+.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -PreserveTempFiles -CorrelationId ($id = [guid]::NewGuid().ToString())
+Get-ChildItem -Path (Join-Path $env:TEMP "OrphanedSid-$id")
 ```
 
-If a run was killed before `finally` ran, delete leftover `Find-UnknownSID-*` folders under
+If a run was killed before `finally` ran, delete leftover `OrphanedSid-*` folders under
 `$env:TEMP` by hand. See `.\Troubleshooting\Performance\Memory-Management-Issues.md` for the
 memory manager and `.\Troubleshooting\Performance\Memory-WhatIf-Behavior.md` for `-WhatIf` runs.
 
@@ -149,9 +149,10 @@ controller becomes reachable again, otherwise cached `$true` verdicts persist.
 ## Running the Workflow by Hand
 
 ```powershell
-Set-Location 'C:\Scripts\Find-UnknownSID'
+Import-Module OrphanedSid
 Import-Module ActiveDirectory
-. .\Private\Core\Import-LoggingSystem.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 Get-ChildItem .\Classes\*.ps1 | ForEach-Object { . $_.FullName }
 'SID\Test-SIDFormat', 'SID\Get-SIDAnalysis', 'Operations\Invoke-OperationWithRetry',
 'Logging\Write-ADOperationSecurityLog', 'ActiveDirectory\Invoke-ADOperationWithRetry', 'SID\Test-OrphanedSID',

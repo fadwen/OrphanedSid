@@ -43,7 +43,7 @@ logged but not reported as an orphaned SID.
 Search the log for the Information line above to find the affected objects and account names:
 
 ```powershell
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 Select-String -Path $log.FullName -Pattern 'ORPHANED ACCOUNT DETECTED'
 ```
 
@@ -106,7 +106,7 @@ $acl = Get-Acl -Path "AD:\CN=Example,OU=Users,DC=contoso,DC=com"
 $acl.Access | Where-Object { [string]::IsNullOrWhiteSpace($_.IdentityReference.Value) }
 ```
 
-If an entry has no identity, repair the ACL outside this script; `Find-UnknownSID.ps1` never
+If an entry has no identity, repair the ACL outside this script; `Find-OrphanedSid` never
 removes an ACE it could not resolve.
 
 ### 3. Identity references of other types
@@ -167,17 +167,10 @@ To exclude additional SIDs, add patterns or exact SIDs through `-ConfigPath`; se
 The module depends on the logging system, the result class and the sibling SID modules:
 
 ```powershell
-Set-Location "<path to Find-UnknownSID>"
-. .\Private\Core\Import-LoggingSystem.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 . .\Classes\OrphanedSIDResult.ps1
 . .\Classes\SIDAnalysisResult.ps1
-. .\Private\SID\Test-SIDFormat.ps1
-. .\Private\ActiveDirectory\Invoke-ADOperationWithRetry.ps1
-. .\Private\Operations\Invoke-OperationWithRetry.ps1
-. .\Private\SID\Test-OrphanedSID.ps1
-. .\Private\SID\Get-SIDAnalysis.ps1
-. .\Private\SID\New-SIDResult.ps1
-. .\Private\SID\Resolve-SIDIdentity.ps1
 Initialize-LoggingSystem -LogLevel Debug
 ```
 

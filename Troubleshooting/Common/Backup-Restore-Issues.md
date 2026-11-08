@@ -2,8 +2,8 @@
 
 ## Overview
 
-`Find-UnknownSID.ps1 -Remove` backs up every ACL it is about to modify, and
-`Find-UnknownSID.ps1 -Restore` re-applies those backups. This guide describes the backup format,
+`Remove-OrphanedSid` backs up every ACL it is about to modify, and
+`Restore-OrphanedSidBackup` re-applies those backups. This guide describes the backup format,
 the messages each phase emits, and how to diagnose failures.
 
 ## How Backups Are Stored
@@ -146,7 +146,7 @@ $drive = Get-PSDrive -Name $backupRoot.Substring(0, 1)
 "Free: $([math]::Round($drive.Free / 1GB, 2)) GB"
 
 # Keep paths short
-.\Find-UnknownSID.ps1 -Remove -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
+.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
 ```
 
 #### Issue: `ACL object contains no access entries to backup for <DN>`
@@ -171,15 +171,14 @@ or more of these issues, joined by a semicolon and a space:
 | `Invalid SDDL format: <message>` | `SetSecurityDescriptorSddlForm` rejected the SDDL |
 
 **Root Cause:** the file was edited or truncated after creation, copied through a tool that altered
-encoding, or is not a Find-UnknownSID backup at all.
+encoding, or is not an OrphanedSid backup at all.
 
 **Resolution:** inspect the file with the shipped validator. Dot-source the logging system first so
 the private functions can log, then the file-based `Test-BackupIntegrity` from `Private\Utilities`:
 
 ```powershell
-Set-Location 'C:\Scripts\Find-UnknownSID'
-. .\Private\Core\Import-LoggingSystem.ps1
-. .\Private\Utilities\Test-BackupIntegrity.ps1      # -BackupFilePath form
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
 Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Object {
     $check = Test-BackupIntegrity -BackupFilePath $_.FullName
@@ -200,8 +199,6 @@ only the one needed in a diagnostic session.
 For an inventory of a backup folder with filtering:
 
 ```powershell
-. .\Private\Backup\Get-BackupMetadata.ps1
-. .\Private\Backup\Find-BackupFile.ps1
 Find-BackupFile -BackupPath 'D:\ACLBackups\20250702_103631' -ObjectDN '*OU=Test,DC=contoso,DC=com' |
     Select-Object FileName, ObjectDN, BackupDate, ACLEntryCount, BackupVersion
 ```
@@ -323,7 +320,7 @@ timestamped backup subfolder, and restore each subfolder separately:
 $ous = Get-ADOrganizationalUnit -Filter * -SearchBase 'OU=Departments,DC=contoso,DC=com' -SearchScope OneLevel |
     Select-Object -ExpandProperty DistinguishedName
 foreach ($ou in $ous) {
-    .\Find-UnknownSID.ps1 -Remove -SearchBase $ou -BackupPath 'D:\ACLBackups' -Force
+    .\Remove-OrphanedSid -SearchBase $ou -BackupPath 'D:\ACLBackups' -Force
 }
 ```
 
@@ -341,8 +338,8 @@ Get-ChildItem -Path 'D:\ACLBackups' -Directory | Sort-Object Name -Descending | 
 Copy every file that still passes validation into a new folder, then restore from that folder:
 
 ```powershell
-. .\Private\Core\Import-LoggingSystem.ps1
-. .\Private\Utilities\Test-BackupIntegrity.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
 $source   = 'D:\ACLBackups\20250702_103631'
 $recovery = 'D:\ACLBackups\Recovered_20250702_103631'
@@ -357,7 +354,7 @@ Get-ChildItem -Path $source -Filter *.xml | ForEach-Object {
     }
 }
 
-.\Find-UnknownSID.ps1 -Restore -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $recovery -WhatIf
+.\Restore-OrphanedSidBackup -TargetObjectDN 'OU=Test,DC=contoso,DC=com' -BackupPath $recovery -WhatIf
 ```
 
 ### 7. Manual ACL Clean-up Without a Backup
@@ -385,7 +382,7 @@ if ($removed -gt 0) { Set-Acl -Path "AD:$dn" -AclObject $acl -WhatIf }
 ```
 
 Only SID-form identities are tested here; the script's own detection (`Test-OrphanedSID`) also
-checks deleted objects and performs AD lookups, so prefer `Find-UnknownSID.ps1 -Remove` whenever the
+checks deleted objects and performs AD lookups, so prefer `Remove-OrphanedSid` whenever the
 script can run.
 
 ## Preventive Measures
@@ -393,8 +390,8 @@ script can run.
 ### 8. Validate Recent Backup Sets Automatically
 
 ```powershell
-. .\Private\Core\Import-LoggingSystem.ps1
-. .\Private\Utilities\Test-BackupIntegrity.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
 $root = 'D:\ACLBackups'
 Get-ChildItem -Path $root -Directory | Where-Object CreationTime -gt (Get-Date).AddHours(-24) | ForEach-Object {
@@ -418,5 +415,5 @@ When reporting a backup or restore problem, provide:
 ## Related Documentation
 
 - `.\Documentation\Backup-and-Restore-Guide.md`
-- `.\Troubleshooting\Common\Find-UnknownSID-Issues.md`
+- `.\Troubleshooting\Common\Common-Issues.md`
 - `.\Troubleshooting\Security\Security-Validation-Guide.md`

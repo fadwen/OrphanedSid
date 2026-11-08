@@ -1,8 +1,7 @@
-﻿# Performance Tuning Guide - Find-UnknownSID
-
+﻿# Performance Tuning Guide - OrphanedSid
 ## Overview
 
-`Find-UnknownSID.ps1` processes Active Directory objects sequentially: one `Get-ADObject` query per
+`Find-OrphanedSid` processes Active Directory objects sequentially: one `Get-ADObject` query per
 search base, then for each object one security descriptor read and one or more directory lookups
 per distinct SID. There is no parallel processing and no connection pooling, so run time is
 dominated by the number of objects, the number of access control entries per object, the number
@@ -33,7 +32,7 @@ garbage collection. Set it high enough that the threshold is not crossed during 
 each forced collection pauses the run.
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
 ```
 
 See [Memory-Management.md](./Memory-Management.md) for the behaviour behind the threshold.
@@ -46,13 +45,13 @@ difference is small either way because a check costs a few milliseconds.
 
 ```powershell
 @{ MemoryCheckInterval = 100 } | ConvertTo-Json | Set-Content .\config.json
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 ```
 
 ### BatchSize (configuration key)
 
 `BatchSize` (1-1000, default 50) is the number of results `StreamingResultsManager` holds in
-memory before writing a batch file to `<TEMP>\Find-UnknownSID-<CorrelationId>\`. A larger value
+memory before writing a batch file to `<TEMP>\OrphanedSid-<CorrelationId>\`. A larger value
 means fewer, larger writes and a slightly higher working set; a smaller value flushes more often.
 The effect is small either way because each result is a few hundred bytes. Change it only when the
 log shows memory warnings on a host with very little RAM (lower it) or when the temp folder fills
@@ -60,7 +59,7 @@ with thousands of tiny files on a very large OU (raise it).
 
 ```powershell
 @{ BatchSize = 200 } | ConvertTo-Json | Set-Content .\config.json
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 ```
 
 ### -MaxRetries
@@ -85,7 +84,7 @@ log and measurable I/O. Use `Information` (the default) or `Warning` for product
 `Debug` for reproducing a specific object. Security audit entries are written regardless of level.
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -LogLevel Warning
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Warning
 ```
 
 `-SuppressConsoleOutput` removes console writes for scheduled runs; file logging is unaffected.
@@ -110,7 +109,7 @@ $searchBases = @(
 
 foreach ($base in $searchBases) {
     $name = ($base -split ',')[0] -replace '^OU=', ''
-    .\Find-UnknownSID.ps1 -SearchBase $base -OutputPath ".\Reports\$name.csv" -MaxMemoryUsageMB 2048 -LogLevel Warning
+    .\Find-OrphanedSid -SearchBase $base -OutputPath ".\Reports\$name.csv" -MaxMemoryUsageMB 2048 -LogLevel Warning
 }
 ```
 
@@ -120,12 +119,12 @@ over the parent container is faster.
 
 ### -PreserveTempFiles
 
-Keeps `<TEMP>\Find-UnknownSID-<CorrelationId>\batch_N.json` after the run. Use it to inspect
+Keeps `<TEMP>\OrphanedSid-<CorrelationId>\batch_N.json` after the run. Use it to inspect
 intermediate results without re-running, or to recover results when the CSV export failed:
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'perf-01'
-$dir = Join-Path ([System.IO.Path]::GetTempPath()) 'Find-UnknownSID-perf-01'
+.\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'perf-01'
+$dir = Join-Path ([System.IO.Path]::GetTempPath()) 'OrphanedSid-perf-01'
 Get-ChildItem $dir -Filter 'batch_*.json' | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json } |
     Export-Csv .\recovered.csv -NoTypeInformation
 ```
@@ -150,12 +149,12 @@ To time a run and extract those lines:
 ```powershell
 $correlationId = [guid]::NewGuid().ToString()
 $elapsed = Measure-Command {
-    .\Find-UnknownSID.ps1 -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $correlationId -LogLevel Information
+    .\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $correlationId -LogLevel Information
 }
 "Wall time: $($elapsed.TotalSeconds) s"
 
 # Log files are named by timestamp, not by correlation ID; take the newest
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 Select-String -Path $log.FullName -Pattern 'Total objects processed|Processing duration|Processing rate|Peak memory usage|Orphaned SIDs found'
 ```
 
@@ -186,5 +185,5 @@ noise.
 - [Memory Management](./Memory-Management.md)
 - [Memory Management Issues](./Memory-Management-Issues.md)
 - [Memory WhatIf Behavior](./Memory-WhatIf-Behavior.md)
-- [Find-UnknownSID Issues](../Common/Find-UnknownSID-Issues.md)
+- [Common Issues](../Common/Common-Issues.md)
 - [Enterprise Integration Guide](../Integration/Enterprise-Integration-Guide.md)

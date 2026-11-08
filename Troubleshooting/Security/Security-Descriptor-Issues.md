@@ -20,9 +20,8 @@ Objects are supplied by `Get-ADObjectFromSearchBase`, which always requests
 `nTSecurityDescriptor`; `Find-OrphanedSIDsInObject` skips objects where that property is empty
 before calling `Get-ObjectAccessRule`.
 
-The functions are private. To call them in a session, dot-source
-`Private\Core\Import-LoggingSystem.ps1` and `Private\Security\Get-SecurityDescriptor.ps1`, then
-run `Initialize-LoggingSystem -LogLevel Debug`.
+The functions are private. To call one in a session, import the module and run it in the module's
+scope: `& (Get-Module OrphanedSid) { Get-ObjectAccessRule -ADObject $object -Verbose }`.
 
 ## Common Issues and Solutions
 
