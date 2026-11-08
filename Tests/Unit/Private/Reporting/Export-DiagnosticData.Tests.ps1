@@ -118,8 +118,9 @@ Describe "Export-DiagnosticData" -Tag "Unit", "Private", "Reporting" {
                 Export-DiagnosticData -OutputPath $null
                 $false | Should -Be $true  # Should not reach this line
             } catch {
-                # PowerShell 7 words the ValidateNotNullOrEmpty failure as "The argument is null or empty"
-                $_.Exception.Message | Should -Match "null or empty"
+                # PowerShell 7 says "The argument is null or empty"; Windows PowerShell 5.1 says
+                # "Cannot bind argument to parameter Path because it is an empty string"
+                $_.Exception.Message | Should -Match "null or empty|empty string"
             }
         }
 
