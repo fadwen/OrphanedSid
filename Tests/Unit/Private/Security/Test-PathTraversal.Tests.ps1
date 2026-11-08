@@ -14,7 +14,9 @@ Describe "Test-PathTraversal" {
         Mock Write-StructuredLog { }
 
         # Create test directory structure for path traversal testing
-        $script:TestBasePath = Join-Path $env:TEMP "PathTraversalTests"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestBasePath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "PathTraversalTests"
         if (Test-Path $script:TestBasePath) {
             Remove-Item $script:TestBasePath -Recurse -Force
         }
@@ -119,7 +121,7 @@ Describe "Test-PathTraversal" {
 
         It "Should detect paths outside base directory" {
             # Create a test file outside the base path
-            $outsideFile = Join-Path $env:TEMP "outside.txt"
+            $outsideFile = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "outside.txt"
             "Outside content" | Out-File $outsideFile
             
             try {

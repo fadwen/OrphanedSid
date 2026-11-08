@@ -308,6 +308,10 @@ Describe "ProcessingStatistics Class Tests" {
     }
     
     Context "Performance Tests" {
+        BeforeEach {
+            $script:testStats = [ProcessingStatistics]::new()
+        }
+
         It "Should create instances quickly" {
             $iterations = 1000
             $elapsedTime = Measure-Command {

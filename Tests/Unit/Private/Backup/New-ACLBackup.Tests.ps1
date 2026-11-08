@@ -358,7 +358,9 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
         
         # Test data setup
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        $script:TestBackupDir = Join-Path $env:TEMP "ACLBackupTests"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "ACLBackupTests"
         $script:TestObjectDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
         $script:FileCreationCounter = 0
         
@@ -510,7 +512,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
         }
         
         It "Should create backup directory if it doesn't exist" {
-            $newBackupDir = Join-Path $env:TEMP "NewACLBackupDir"
+            $newBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "NewACLBackupDir"
             
             # Ensure directory doesn't exist
             if (Test-Path $newBackupDir) {
@@ -780,7 +782,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
         
         It "Should handle file system permission errors" {
             # Create a read-only directory scenario
-            $readOnlyDir = Join-Path $env:TEMP "ReadOnlyBackupDir"
+            $readOnlyDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "ReadOnlyBackupDir"
             New-Item -ItemType Directory -Path $readOnlyDir -Force | Out-Null
             
             # Mock New-Item to simulate permission failure
@@ -819,7 +821,7 @@ Describe "New-ACLBackup" -Tag "Unit", "Backup", "ACLBackup" {
         It "Should handle directory creation failures" {
             Mock New-Item { throw "Cannot create directory" } -ParameterFilter { $ItemType -eq 'Directory' }
             
-            $nonExistentDir = Join-Path $env:TEMP "NonCreatableDir"
+            $nonExistentDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "NonCreatableDir"
             { New-ACLBackup -ObjectDN $script:TestObjectDN -ACL $script:TestACL -BackupPath $nonExistentDir } | Should -Throw
         }
     }

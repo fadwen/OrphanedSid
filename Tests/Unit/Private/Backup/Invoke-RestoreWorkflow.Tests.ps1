@@ -111,7 +111,9 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         
         # Test data setup
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        $script:TestBackupDir = Join-Path $env:TEMP "RestoreWorkflowTests"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "RestoreWorkflowTests"
         $script:TestTargetDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
         $script:TestSearchBaseDN = 'OU=Users,DC=company,DC=com'
         $script:SingleBackupFile = Join-Path $script:TestBackupDir "TestUser_20240702_103631.xml"
@@ -257,7 +259,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
         
         It "Should validate BackupPath exists when specified" {
-            $nonExistentPath = Join-Path $env:TEMP "NonExistentBackupDir"
+            $nonExistentPath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "NonExistentBackupDir"
             { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupPath $nonExistentPath } | Should -Throw "*Backup directory not found*"
         }
         
@@ -322,7 +324,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
         
         It "Should handle empty backup directory" {
-            $emptyDir = Join-Path $env:TEMP "EmptyBackupDir"
+            $emptyDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "EmptyBackupDir"
             New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
             
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupPath $emptyDir

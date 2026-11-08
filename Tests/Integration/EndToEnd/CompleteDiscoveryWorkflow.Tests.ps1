@@ -55,9 +55,17 @@ BeforeAll {
 }
 
 Describe "Complete Discovery Workflow" {
+    # Scenario behaviour set by one test must not reach the next; under a shuffled run the edge-case
+    # tests, which register behaviour, can run before the basic ones, which expect the default output
+    BeforeEach {
+        Clear-MockBehavior
+    }
+
     BeforeAll {
         # Create test directory
-        $script:TestOutputPath = Join-Path $env:TEMP "DiscoveryWorkflowTest_$(Get-Date -Format 'yyyyMMddHHmmss')"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestOutputPath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "DiscoveryWorkflowTest_$(Get-Date -Format 'yyyyMMddHHmmss')"
         New-Item -Path $script:TestOutputPath -ItemType Directory -Force | Out-Null
         
         Clear-MockBehavior

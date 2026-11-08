@@ -17,7 +17,9 @@ BeforeAll {
 Describe "Test-DirectoryAccess" {
     BeforeEach {
         # Create test directory for each test
-        $script:TestTempDir = Join-Path $env:TEMP "Test-DirectoryAccess-$(Get-Random)"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestTempDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "Test-DirectoryAccess-$(Get-Random)"
         $script:TestNonExistentDir = Join-Path $script:TestTempDir "NonExistent"
         $script:TestInvalidPath = "C:\Windows\System32\config\invalid"
         

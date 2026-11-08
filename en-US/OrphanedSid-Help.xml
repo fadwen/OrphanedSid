@@ -274,9 +274,9 @@ LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 Requires the RSAT ActiveDirectory module and read access to the objects under -SearchBase.
 
 TROUBLESHOOTING:
-- Common issues: .\Troubleshooting\Common\Find-UnknownSID-Issues.md
-- Security descriptors: .\Troubleshooting\Security\Security-Descriptor-Issues.md
-- Memory: .\Troubleshooting\Performance\Memory-Management.md</maml:para>
+- Common issues: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Common-Issues.md
+- Security descriptors: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Descriptor-Issues.md
+- Memory: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Performance/Memory-Management.md</maml:para>
       </maml:alert>
     </maml:alertSet>
     <command:examples>
@@ -339,7 +339,7 @@ USE CASE: Deciding which deleted principals left the widest footprint</maml:para
       </maml:navigationLink>
       <maml:navigationLink>
         <maml:linkText>Common issues</maml:linkText>
-        <maml:uri>https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Find-UnknownSID-Issues.md</maml:uri>
+        <maml:uri>https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Common-Issues.md</maml:uri>
       </maml:navigationLink>
       <maml:navigationLink>
         <maml:linkText>Security descriptor issues</maml:linkText>
@@ -694,8 +694,8 @@ SIDs in ProtectedSIDs and SIDs that
 match WellKnownSIDPatterns are never removed.
 
 TROUBLESHOOTING:
-- Backups: .\Troubleshooting\Common\Backup-Restore-Issues.md
-- Security validation: .\Troubleshooting\Security\Security-Validation-Guide.md</maml:para>
+- Backups: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Backup-Restore-Issues.md
+- Security validation: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Validation-Guide.md</maml:para>
       </maml:alert>
     </maml:alertSet>
     <command:examples>
@@ -1013,7 +1013,7 @@ Requires the RSAT ActiveDirectory module and write access to the security descri
 each target object.
 
 TROUBLESHOOTING:
-- Backups and restores: .\Troubleshooting\Common\Backup-Restore-Issues.md</maml:para>
+- Backups and restores: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Backup-Restore-Issues.md</maml:para>
       </maml:alert>
     </maml:alertSet>
     <command:examples>

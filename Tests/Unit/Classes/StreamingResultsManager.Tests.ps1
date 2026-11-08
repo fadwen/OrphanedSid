@@ -10,7 +10,9 @@ BeforeAll {
 Describe "StreamingResultsManager Tests" {
     Context "Basic Tests" {
         It "Should create instance with 3-argument constructor" {
-            $testDir = Join-Path $env:TEMP "StreamingResultsManagerTest_$(Get-Random)"
+            # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+            # paths the functions return, which are long, compare equal to the ones built here
+            $testDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "StreamingResultsManagerTest_$(Get-Random)"
             $manager = [StreamingResultsManager]::new($testDir, 100, $true)
 
             $manager | Should -Not -BeNullOrEmpty
@@ -22,7 +24,7 @@ Describe "StreamingResultsManager Tests" {
         }
 
         It "Should add result successfully" {
-            $testDir = Join-Path $env:TEMP "StreamingResultsManagerTest_$(Get-Random)"
+            $testDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "StreamingResultsManagerTest_$(Get-Random)"
             $manager = [StreamingResultsManager]::new($testDir, 50, $true)
             $result = [PSCustomObject]@{ Name = "Test"; Value = 123 }
 
@@ -33,7 +35,7 @@ Describe "StreamingResultsManager Tests" {
         }
 
         It "Should dispose properly" {
-            $testDir = Join-Path $env:TEMP "StreamingResultsManagerTest_$(Get-Random)"
+            $testDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "StreamingResultsManagerTest_$(Get-Random)"
             $manager = [StreamingResultsManager]::new($testDir, 50, $true)
 
             $manager.Dispose()

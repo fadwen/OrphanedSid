@@ -58,7 +58,9 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
         
         # Test data setup
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        $script:TestBackupDir = Join-Path $env:TEMP "BackupMetadataTests"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "BackupMetadataTests"
         $script:ValidBackupPath = Join-Path $script:TestBackupDir "valid_backup.xml"
         $script:InvalidBackupPath = Join-Path $script:TestBackupDir "invalid_backup.xml"
         $script:NonExistentPath = Join-Path $script:TestBackupDir "missing_backup.xml"

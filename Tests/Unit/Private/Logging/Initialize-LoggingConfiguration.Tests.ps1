@@ -18,6 +18,12 @@ Describe "Initialize-LoggingConfiguration" -Tag @('Unit', 'Logging', 'Configurat
     }
 
     Context "Shared Logging State Variables" {
+        # These tests describe the state the file leaves behind when it loads. Other tests in this file
+        # change that state, and a shuffled run may put them first, so the file is loaded again.
+        BeforeEach {
+            . $modulePath
+        }
+
         
         It "Should initialize LogPath as null" {
             $script:LogPath | Should -BeNullOrEmpty
@@ -77,6 +83,12 @@ Describe "Initialize-LoggingConfiguration" -Tag @('Unit', 'Logging', 'Configurat
     }
 
     Context "Logging System Metadata" {
+        # These tests describe the state the file leaves behind when it loads. Other tests in this file
+        # change that state, and a shuffled run may put them first, so the file is loaded again.
+        BeforeEach {
+            . $modulePath
+        }
+
         
         It "Should initialize LoggingSystemInfo with version" {
             $script:LoggingSystemInfo | Should -Not -BeNullOrEmpty
@@ -99,6 +111,12 @@ Describe "Initialize-LoggingConfiguration" -Tag @('Unit', 'Logging', 'Configurat
     }
 
     Context "Performance Tracking Metrics" {
+        # These tests describe the state the file leaves behind when it loads. Other tests in this file
+        # change that state, and a shuffled run may put them first, so the file is loaded again.
+        BeforeEach {
+            . $modulePath
+        }
+
         
         It "Should initialize LoggingMetrics structure" {
             $script:LoggingMetrics | Should -Not -BeNullOrEmpty
@@ -154,6 +172,12 @@ Describe "Initialize-LoggingConfiguration" -Tag @('Unit', 'Logging', 'Configurat
 Describe "Get-LoggingState" -Tag @('Unit', 'Logging', 'State') {
 
     Context "State Retrieval" {
+        # These tests describe the state the file leaves behind when it loads. Other tests in this file
+        # change that state, and a shuffled run may put them first, so the file is loaded again.
+        BeforeEach {
+            . $modulePath
+        }
+
         
         It "Should return PSCustomObject with current state" {
             $state = Get-LoggingState

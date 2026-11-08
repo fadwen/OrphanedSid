@@ -98,6 +98,14 @@ if ($invalid) {
     $names = ($invalid.Path | Split-Path -Leaf) -join ', '
     throw "Help Markdown failed structure validation: $names"
 }
+# Measure-PlatyPSMarkdown classifies an empty or unrecognisable file as nothing at all, so a folder of
+# zero-byte files passes every check above and compiles to nothing. Four files were committed that
+# way once; count what was measured against what is exported.
+$exportedCount = @((Get-Module $moduleName).ExportedFunctions.Keys).Count
+if (@($structure).Count -lt $exportedCount) {
+    $empty = @(Get-ChildItem $markdown | Where-Object { $_.Length -eq 0 }).Name -join ', '
+    throw "Only $(@($structure).Count) of $exportedCount command help files were recognised as PlatyPS Markdown. Empty files: $(if ($empty) { $empty } else { 'none' })."
+}
 Write-Verbose "Structure: $(@($structure).Count) file(s) valid."
 
 # --- 2. Unfilled templates --------------------------------------------------------
@@ -149,6 +157,12 @@ if ($ValidateOnly) {
 }
 
 # --- Compile ----------------------------------------------------------------------
+# A maml/ left by an earlier run would be copied below as if this run had produced it, hiding a
+# compile that produced nothing. Start from nothing every time.
+if (Test-Path $mamlRoot) {
+    Remove-Item -LiteralPath $mamlRoot -Recurse -Force
+}
+
 Measure-PlatyPSMarkdown -Path $markdown |
     Where-Object Filetype -match 'CommandHelp' |
     Import-MarkdownCommandHelp -Path { $_.FilePath } |

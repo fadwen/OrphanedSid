@@ -3,6 +3,12 @@
 # Import the main script and dependencies
 # Source the MemoryManager class and Get-MemoryStatistics function
 BeforeAll {
+    # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
+    # this placeholder is what the Mock below replaces when the file runs on its own.
+    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
+        function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
+    }
+
     $ScriptPath = $PSScriptRoot
 
     $ModulePath = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $ScriptPath)))

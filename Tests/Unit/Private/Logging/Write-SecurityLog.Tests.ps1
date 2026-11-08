@@ -13,6 +13,8 @@ BeforeAll {
     . "$here\..\..\..\..\Private\Logging\Initialize-LoggingConfiguration.ps1"
 
     . "$here\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1"
+    # Mocked below; Pester can only mock a command that exists
+    . "$here\..\..\..\..\Private\Logging\Write-SecurityStructuredLogEntry.ps1"
 }
 
 Describe "Write-SecurityLog" -Tag @('Unit', 'Logging', 'Security') {

@@ -38,9 +38,11 @@ BeforeAll {
 
     $script:TestCorrelationId = "TEST-REMOVAL-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
-    $script:TestOutputPath = Join-Path $env:TEMP "test-output-removal-$script:TestCorrelationId.csv"
+    # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+    # paths the functions return, which are long, compare equal to the ones built here
+    $script:TestOutputPath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "test-output-removal-$script:TestCorrelationId.csv"
 
-    $script:TestBackupPath = Join-Path $env:TEMP "test-backup-removal-$script:TestCorrelationId.json"
+    $script:TestBackupPath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "test-backup-removal-$script:TestCorrelationId.json"
 
     function Invoke-FindUnknownSIDScript {
         param(

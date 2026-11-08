@@ -5,6 +5,12 @@
 # Import the function under test
 # Import dependency functions
 BeforeAll {
+    # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
+    # this placeholder is what the Mock below replaces when the file runs on its own.
+    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
+        function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
+    }
+
     . "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
 
     . "$PSScriptRoot\..\..\..\..\Classes\MemoryManager.ps1"

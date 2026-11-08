@@ -59,6 +59,20 @@ its history is carried over in this repository.
 - A restore applied the ACL and then reported `Success = False` with `The term 'if' is not
   recognized`. The per-object result built its entry count with `[int](if ...)`, which is not an
   expression; it is `[int]$(if ...)` now, and `Restore-IndividualObject` has its own tests.
+- The four help Markdown files under `docs/OrphanedSid/` were committed empty: a path-fixing script
+  wrote `$null` back after its regex threw. `Build-Help.ps1` still passed, because PlatyPS classifies
+  an empty file as nothing and a `maml/` left by an earlier build was copied as if freshly compiled;
+  on a clean Linux checkout the help job failed. The Markdown is regenerated from the functions'
+  original help, and the build now deletes `maml/` first and fails when fewer command help files
+  are recognised than commands are exported.
+- `ScriptConfiguration.ValidateConfiguration()` reported findings with `Write-Error` while returning
+  `$false`; under an inherited `-ErrorAction Stop` the caller got an exception instead. Findings
+  are warnings now.
+- Tests that built paths from `$env:TEMP` compared them against the long paths the functions
+  return and failed on the GitHub runners, where `TEMP` is an 8.3 short path; eight test files
+  mocked a command no file had defined, asserted a file-load state another test had changed, or
+  reused a per-test object from a previous context, so they passed only in declaration order.
+  Every test file now passes alone in a fresh process with a shuffled order.
 - `Write-SecurityLogEvent` and `Export-DiagnosticData` passed `-Data` and `-ErrorRecord` to
   `Write-StructuredLogEntry`, whose parameter is `-Details`.
 

@@ -157,7 +157,9 @@ Describe 'ScriptConfiguration Class Tests' {
     Context 'LoadFromFile Static Method Tests' {
         It 'Should load configuration from valid file' {
             # Create a temporary config file
-            $tempConfigFile = Join-Path $env:TEMP "test-config-$(Get-Random).json"
+            # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+            # paths the functions return, which are long, compare equal to the ones built here
+            $tempConfigFile = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "test-config-$(Get-Random).json"
             $validConfig = @{
                 WellKnownSIDPatterns = @('^S-1-1-0$', '^S-1-5-18$')
                 ProtectedSIDs = @('S-1-5-32-544', 'S-1-5-18')
@@ -187,7 +189,7 @@ Describe 'ScriptConfiguration Class Tests' {
         }
 
         It 'Should -throw error for invalid JSON file' {
-            $invalidConfigFile = Join-Path $env:TEMP "invalid-config-$(Get-Random).json"
+            $invalidConfigFile = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "invalid-config-$(Get-Random).json"
             '{ invalid json }' | Out-File $invalidConfigFile -Encoding UTF8
             
             try {

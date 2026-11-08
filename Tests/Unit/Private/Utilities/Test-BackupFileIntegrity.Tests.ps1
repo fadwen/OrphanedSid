@@ -44,7 +44,9 @@ Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
         
         # Test data setup
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        $script:TestBackupDir = Join-Path $env:TEMP "IntegrityTests"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "IntegrityTests"
         $script:TestObjectDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
         
         # Create test directory
