@@ -114,9 +114,9 @@ than a second definition.
 module inherited measures 62%, because many of its files test a stub of the function rather than
 the function (`Set-ModifiedACL.Tests.ps1` defines its own `Set-ModifiedACL`). When a file is
 replaced with tests of the real function, raise the number in the workflow to what the run then
-measures. Never lower it. The workflow also leaves `$ErrorActionPreference` at its default around
-`Invoke-Pester`: a Stop preference reaches the functions under test and turns a per-item
-`Write-Error` into a termination the tests do not expect.
+measures. Never lower it. The workflow also sets `$ErrorActionPreference = 'Continue'` before `Invoke-Pester`, because the
+GitHub shells prepend a Stop preference to every step: it reaches the functions under test and
+turns a per-item `Write-Error` into a termination the tests do not expect.
 
 ### The analyzer gate is strict on shipping code and relaxed on tests
 

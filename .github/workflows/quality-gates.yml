@@ -80,9 +80,11 @@ jobs:
       - name: Pester with coverage
         shell: pwsh
         run: |
-          # Not $ErrorActionPreference = 'Stop': the tests inherit it, and a function under test that
-          # reports a per-item problem with Write-Error then terminates instead of continuing, which
-          # fails tests that pass everywhere else. The gates below throw explicitly.
+          # The pwsh and powershell shells on GitHub Actions prepend $ErrorActionPreference = 'stop' to
+          # every step. The tests inherit it, and a function under test that reports a per-item
+          # problem with Write-Error then terminates instead of continuing, which fails tests that
+          # pass everywhere else. Set it back before the suite runs; the gates below throw explicitly.
+          $ErrorActionPreference = 'Continue'
           Import-Module Pester -MinimumVersion 6.1.0 -ErrorAction Stop
           $cfg = New-PesterConfiguration
           $cfg.Run.Path = './Tests'
@@ -162,7 +164,8 @@ jobs:
       - name: Pester under Windows PowerShell 5.1
         shell: powershell
         run: |
-          # Same as the PowerShell 7 job: no inherited Stop preference for the tests
+          # Same as the PowerShell 7 job: the shell's Stop preference must not reach the tests
+          $ErrorActionPreference = 'Continue'
           Import-Module Pester -RequiredVersion 6.1.0 -ErrorAction Stop
           $cfg = New-PesterConfiguration
           $cfg.Run.Path = './Tests'
