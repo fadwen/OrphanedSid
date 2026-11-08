@@ -271,7 +271,8 @@ function Initialize-ScriptExecution {
 
             # Initialize memory manager using centralized memory management module
             Write-StructuredLog "Initializing memory manager (Limit: $MaxMemoryUsageMB MB)..." -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
-            $script:MemoryManager = Initialize-MemoryManager -MaxMemoryMB $MaxMemoryUsageMB -CheckInterval $script:Config.MemoryCheckInterval -CorrelationId $CorrelationId
+            # Pinned: creating the manager is setup, not the operation -WhatIf rehearses
+            $script:MemoryManager = Initialize-MemoryManager -MaxMemoryMB $MaxMemoryUsageMB -CheckInterval $script:Config.MemoryCheckInterval -CorrelationId $CorrelationId -WhatIf:$false
 
             # Initialize statistics
             Write-StructuredLog "Initializing performance statistics..." -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId

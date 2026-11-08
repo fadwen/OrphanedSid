@@ -216,55 +216,6 @@ Describe "Get-LoggingState" -Tag @('Unit', 'Logging', 'State') {
     }
 }
 
-Describe "Test-LogLevel" -Tag @('Unit', 'Logging', 'Validation') {
-
-    Context "Log Level Testing" {
-        
-        BeforeEach {
-            # Set known log level for testing
-            $script:LogLevel = 'Information'
-        }
-
-        It "Should return true for Critical level when LogLevel is Information" {
-            Test-LogLevel -Level 'Critical' | Should -Be $true
-        }
-
-        It "Should return true for Error level when LogLevel is Information" {
-            Test-LogLevel -Level 'Error' | Should -Be $true
-        }
-
-        It "Should return true for Warning level when LogLevel is Information" {
-            Test-LogLevel -Level 'Warning' | Should -Be $true
-        }
-
-        It "Should return true for Information level when LogLevel is Information" {
-            Test-LogLevel -Level 'Information' | Should -Be $true
-        }
-
-        It "Should return false for Debug level when LogLevel is Information" {
-            Test-LogLevel -Level 'Debug' | Should -Be $false
-        }
-
-        It "Should return false for Verbose level when LogLevel is Information" {
-            Test-LogLevel -Level 'Verbose' | Should -Be $false
-        }
-
-        It "Should handle Debug log level correctly" {
-            $script:LogLevel = 'Debug'
-            Test-LogLevel -Level 'Debug' | Should -Be $true
-            Test-LogLevel -Level 'Verbose' | Should -Be $false
-            Test-LogLevel -Level 'Information' | Should -Be $true
-        }
-
-        It "Should handle Critical log level correctly" {
-            $script:LogLevel = 'Critical'
-            Test-LogLevel -Level 'Critical' | Should -Be $true
-            Test-LogLevel -Level 'Error' | Should -Be $false
-            Test-LogLevel -Level 'Warning' | Should -Be $false
-        }
-    }
-}
-
 Describe "Update-LoggingMetrics" -Tag @('Unit', 'Logging', 'Metrics') {
 
     Context "Metrics Updates" {

@@ -1,4 +1,4 @@
-# Get-ADObjectsSequential         'OU=Users,DC=contoso,DC=com' = @(
+﻿# Get-ADObjectsSequential         'OU=Users,DC=contoso,DC=com' = @(
 # Get-ADObjectsSequential Function Tests - Comprehensive Pester 3.4.x Compatible
 
 # Import the function under test
@@ -148,6 +148,9 @@ BeforeAll {
         # Track function calls for verification
         $Global:GetADObjectFromSearchBaseCalls += @{
             SearchBase = $searchBaseKey
+            # The real Get-ADObjectFromSearchBase declares [string]$SearchBase; a one-element array does
+            # not bind to it, so the type the caller passed is recorded for the regression test below
+            SearchBaseIsString = $SearchBase -is [string]
             IncludeInherited = $IncludeInherited
             CorrelationId = $CorrelationId
             Timestamp = Get-Date
@@ -207,6 +210,9 @@ BeforeAll {
         # Track function calls for verification  
         $Global:GetADObjectFromSearchBaseCalls += @{
             SearchBase = $searchBaseKey
+            # The real Get-ADObjectFromSearchBase declares [string]$SearchBase; a one-element array does
+            # not bind to it, so the type the caller passed is recorded for the regression test below
+            SearchBaseIsString = $SearchBase -is [string]
             IncludeInherited = $IncludeInherited
             CorrelationId = $CorrelationId
             Timestamp = Get-Date
@@ -429,6 +435,17 @@ Describe "Get-ADObjectsSequential" {
             $results.Count | Should -Be 5  # 3 users + 1 group + 1 computer
         }
         
+        It "Should pass each search base to Get-ADObjectFromSearchBase as a string, not a one-element array" {
+            # Regression: a loop variable named like the [string[]] parameter in another letter case is the
+            # same variable, so every element came back wrapped as [string[]] and failed to bind downstream
+            Get-ADObjectsSequential -SearchBase $Global:TestConfig.ValidSearchBases[0..2]
+
+            $Global:GetADObjectFromSearchBaseCalls.Count | Should -Be 3
+            foreach ($call in $Global:GetADObjectFromSearchBaseCalls) {
+                $call.SearchBaseIsString | Should -BeTrue
+            }
+        }
+
         It "Should call Get-ADObjectFromSearchBase for each search base" {
             $searchBases = $Global:TestConfig.ValidSearchBases[0..2]  # First 3 search bases
             Get-ADObjectsSequential -SearchBase $searchBases

@@ -1,4 +1,4 @@
-function Write-SecurityStructuredLogEntry {
+﻿function Write-SecurityStructuredLogEntry {
     <#
     .SYNOPSIS
         Writes security log entries directly to file with mandatory audit trail
@@ -123,7 +123,7 @@ function Write-SecurityStructuredLogEntry {
                 # Fallback 2: Write to temp directory as last resort
                 try {
                     $emergencyEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') [SECURITY-EMERGENCY] [$Level] $Message (CorrelationId: $effectiveCorrelationId)"
-                    $emergencyEntry | Out-File -FilePath "$env:TEMP\OrphanedSid-Security-Emergency.log" -Append -Encoding UTF8 -ErrorAction Stop
+                    $emergencyEntry | Out-File -FilePath "$env:TEMP\OrphanedSid-Security-Emergency.log" -Append -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
                     Write-Warning "Security log written to emergency file: $env:TEMP\OrphanedSid-Security-Emergency.log"
                 }
                 catch {
@@ -277,7 +277,7 @@ function Write-SecurityFileEntryDirect {
     # Fallback to temp directory
     try {
         $tempLogPath = Join-Path $env:TEMP "OrphanedSid-Security-$(Get-Date -Format 'yyyyMMdd').log"
-        Add-Content -Path $tempLogPath -Value $Message -Encoding UTF8 -ErrorAction Stop
+        Add-Content -Path $tempLogPath -Value $Message -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
         Write-Warning "Security log written to emergency location: $tempLogPath"
     }
     catch {

@@ -98,6 +98,16 @@ Each unit test file loads the class and private files it needs inside `BeforeAll
 `Tests/TestHelpers/ADCmdletStubs.ps1`, which defines global placeholders when RSAT is absent;
 Pester can only mock a command that exists. Add to that list when a new test mocks a new cmdlet.
 
+### One scope, so one definition per name and real parameter names at every call
+
+The root module dot-sources every file into one scope, and the last definition of a name wins
+with no warning. The unit tests cannot see this: each dot-sources one file, and a mock built with
+loose parameters accepts any `-Name`. `Tests/Unit/OrphanedSid.Contract.Tests.ps1` parses
+`Classes`, `Private` and `Public` and fails on a function defined twice or a call that names a
+parameter its callee lacks. When a helper needs a sibling that works on a file path instead of the
+loaded data, give it a distinct name (`Test-BackupFileIntegrity`, `Get-BackupFileMetadata`) rather
+than a second definition.
+
 ### The analyzer gate is strict on shipping code and relaxed on tests
 
 `quality-gates.yml` runs PSScriptAnalyzer with every Error and Warning rule over `Classes`,

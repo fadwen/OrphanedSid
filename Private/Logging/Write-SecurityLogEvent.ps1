@@ -139,7 +139,7 @@ function Write-SecurityLogEvent {
             $logLevel = Get-SecurityLogLevel -Outcome $Outcome -Severity $Severity
 
             # Write to structured logging system with security component
-            Write-StructuredLogEntry -Message $sanitizedMessage -Level $logLevel -Component 'Security' -Data $securityData -CorrelationId $CorrelationId
+            Write-StructuredLogEntry -Message $sanitizedMessage -Level $logLevel -Component 'Security' -Details $securityData -CorrelationId $CorrelationId
 
             # Write additional audit trail entry for critical events
             if ($Outcome -eq 'Critical' -or $Severity -eq 'Critical') {
@@ -452,7 +452,7 @@ function Write-CriticalSecurityEvent {
         $criticalContext['IncidentResponse'] = 'REQUIRED'
 
         # Write with Critical level for maximum visibility
-        Write-StructuredLogEntry -Message $criticalMessage -Level 'Critical' -Component 'SecurityAlert' -Data $criticalContext -CorrelationId $CorrelationId
+        Write-StructuredLogEntry -Message $criticalMessage -Level 'Critical' -Component 'SecurityAlert' -Details $criticalContext -CorrelationId $CorrelationId
 
         # Additional console warning for critical events
         Write-Warning "CRITICAL SECURITY EVENT: $SecurityEventType - $Message (CorrelationId: $CorrelationId)"

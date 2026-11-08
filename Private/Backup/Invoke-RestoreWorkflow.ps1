@@ -621,7 +621,7 @@ function Restore-IndividualObject {
             Success = $true
             TargetObjectDN = $TargetObjectDN
             BackupFile = $BackupFile
-            EntriesRestored = [int](if ($aclOperation.ModificationsApplied) { $aclOperation.ModificationsApplied } else { 0 })
+            EntriesRestored = [int]$(if ($aclOperation.ModificationsApplied) { $aclOperation.ModificationsApplied } else { 0 })
             BackupValidation = $backupValidation
             TargetValidation = $targetValidation
             ACLOperation = $aclOperation

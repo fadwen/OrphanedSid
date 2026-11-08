@@ -29,12 +29,48 @@ its history is carried over in this repository.
   accepted but ignored by the script.
 - Restores verify the applied ACL against the backup and export a CSV when `-OutputPath` is given.
 
+### Fixed
+
+- Discovery enumerated no objects. `Get-ADObjectsSequential` looped with a variable named like
+  its `[string[]]` parameter in another letter case, which is the same variable, so every search
+  base reached `Get-ADObjectFromSearchBase` as a one-element array, failed to bind, and was logged
+  as a failed search base. Found by running against a domain controller; the unit test's mock had
+  accepted the array.
+- `-SuppressConsoleOutput` was recorded but not honoured: every log entry still reached the
+  console streams.
+- `-WhatIf` reached the log writer and the housekeeping helpers through `$WhatIfPreference`, so a
+  rehearsal wrote no log file and printed `What if:` lines for appending log entries, creating the
+  memory manager and disposing resources. Those steps are pinned; only the ACL changes and the
+  backup folder honour `-WhatIf`.
+
+- Every restore failed with `A parameter cannot be found that matches parameter name
+  'BackupData'`. Two files defined `Test-BackupIntegrity`: the one in
+  `Private/Backup/Test-BackupValidation.ps1` validates backup data and is what the restore path
+  calls; the one in `Private/Utilities/` validated a file path and, loading later, replaced it. The
+  file-path check is now `Test-BackupFileIntegrity`. `Get-BackupMetadata` had the same clash with
+  `Find-BackupFile`'s file-path reader, now `Get-BackupFileMetadata`; `Test-LogLevel` was defined
+  in two logging files and `Test-BackupFormat` and `Get-BackupMetadata` twice in one file. Each
+  name is now defined once.
+- Every removal logged `ACL backup failed: A parameter cannot be found that matches parameter name
+  'DistinguishedName'`. `Set-ModifiedACL` attempted a second backup with the wrong parameter name
+  and without the mandatory ACL and folder; the backup `Invoke-RemovalWorkflow` writes before
+  calling it was always the one on disk. The second attempt is gone, and the result object no
+  longer carries `BackupCreated`, `BackupPath`, `BackupError` or `BackupCorrelationId`.
+- A restore applied the ACL and then reported `Success = False` with `The term 'if' is not
+  recognized`. The per-object result built its entry count with `[int](if ...)`, which is not an
+  expression; it is `[int]$(if ...)` now, and `Restore-IndividualObject` has its own tests.
+- `Write-SecurityLogEvent` and `Export-DiagnosticData` passed `-Data` and `-ErrorRecord` to
+  `Write-StructuredLogEntry`, whose parameter is `-Details`.
+
 ### Changed
 
 - Logs default to `.\Logs\<Command>_<timestamp>.log` and backups to `.\Backup\<timestamp>\`
   under the current directory, not under the module folder.
 - The private `Remove-OrphanedSID` helper is `Remove-OrphanedSidEntry`, to make room for the
   public command.
+- `Tests/Unit/OrphanedSid.Contract.Tests.ps1` fails the suite when two files define the same
+  function or a call between module functions names a parameter the callee does not declare.
+  Both defects above passed the unit tests, whose mocks accept any parameter name.
 - The test suite runs on Pester 6 and needs no RSAT: `Tests/TestHelpers/ADCmdletStubs.ps1`
   defines placeholder Active Directory cmdlets so they can be mocked.
 

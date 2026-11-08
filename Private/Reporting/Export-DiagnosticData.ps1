@@ -240,7 +240,7 @@ function Export-DiagnosticData {
 
                 # Log successful export
                 if (Get-Command Write-StructuredLogEntry -ErrorAction SilentlyContinue) {
-                    Write-StructuredLogEntry -Level Information -Message "Diagnostic data exported successfully" -Component 'Diagnostics' -Data @{
+                    Write-StructuredLogEntry -Level Information -Message "Diagnostic data exported successfully" -Component 'Diagnostics' -Details @{
                         ExportPath = $diagnosticPath
                         FilesExported = $packageSummary.FilesIncluded.Count
                         TotalSizeMB = $packageSummary.TotalSizeMB
@@ -255,7 +255,7 @@ function Export-DiagnosticData {
         catch {
             # Log export failure
             if (Get-Command Write-StructuredLogEntry -ErrorAction SilentlyContinue) {
-                Write-StructuredLogEntry -Level Error -Message "Failed to export diagnostic data" -Component 'Diagnostics' -ErrorRecord $_ -CorrelationId $CorrelationId
+                Write-StructuredLogEntry -Level Error -Message "Failed to export diagnostic data" -Component 'Diagnostics' -Details @{ ErrorMessage = $_.Exception.Message } -CorrelationId $CorrelationId
             }
 
             Write-Error "Diagnostic export failed: $($_.Exception.Message)"

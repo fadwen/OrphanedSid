@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -150,7 +150,8 @@ function Test-DirectoryAccess {
 
                 try {
                     # Try to create the directory
-                    $null = New-Item -Path $Path -ItemType Directory -Force -ErrorAction Stop
+                    # Pinned: the probe must run under -WhatIf or the log folder is reported inaccessible
+                    $null = New-Item -Path $Path -ItemType Directory -Force -ErrorAction Stop -WhatIf:$false
                     Write-StructuredLog "Successfully created directory: $Path" -Level Information -Component 'FileSystem-Utilities' -CorrelationId $CorrelationId
                 }
                 catch {
@@ -165,7 +166,7 @@ function Test-DirectoryAccess {
 
             try {
                 # Attempt to write a test file
-                "Directory access test - $([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" | Out-File -FilePath $testFilePath -ErrorAction Stop
+                "Directory access test - $([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" | Out-File -FilePath $testFilePath -ErrorAction Stop -WhatIf:$false
 
                 # Verify file was created and is readable
                 if (Test-Path $testFilePath) {
@@ -184,7 +185,7 @@ function Test-DirectoryAccess {
                 # Clean up test file
                 if (Test-Path $testFilePath) {
                     try {
-                        Remove-Item $testFilePath -Force -ErrorAction SilentlyContinue
+                        Remove-Item $testFilePath -Force -ErrorAction SilentlyContinue -WhatIf:$false
                         Write-StructuredLog "Cleaned up test file: $testFilePath" -Level Debug -Component 'FileSystem-Utilities' -CorrelationId $CorrelationId
                     }
                     catch {

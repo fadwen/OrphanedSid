@@ -1,4 +1,4 @@
-function Stop-OrphanedSidSession {
+﻿function Stop-OrphanedSidSession {
     <#
     .SYNOPSIS
         Releases the per-run state created by Start-OrphanedSidSession.
@@ -57,7 +57,8 @@ function Stop-OrphanedSidSession {
             }
         }
 
-        Invoke-ResourceCleanup -MemoryManager $script:MemoryManager -AdditionalResources $additionalResources -CorrelationId $CorrelationId
+        # Pinned: cleanup is not the operation -WhatIf rehearses, and its own ShouldProcess gates only logging
+        Invoke-ResourceCleanup -MemoryManager $script:MemoryManager -AdditionalResources $additionalResources -CorrelationId $CorrelationId -WhatIf:$false
         Write-StructuredLog 'All resources cleaned up' -Level Information -Component 'Main' -CorrelationId $CorrelationId
     }
     catch {

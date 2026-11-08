@@ -2,10 +2,10 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Test-BackupIntegrity function
+    Comprehensive Pester tests for Test-BackupFileIntegrity function
 
 .DESCRIPTION
-    This test suite provides comprehensive validation of the Test-BackupIntegrity function,
+    This test suite provides comprehensive validation of the Test-BackupFileIntegrity function,
     including parameter validation, integrity checking, file validation, corruption detection,
     security verification, performance testing, and cross-platform compatibility.
 
@@ -30,7 +30,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\BackupTestHelpers.ps1"
 }
 
-Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
+Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
     
     BeforeAll {
         # Import required dependencies
@@ -40,7 +40,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         . (Join-Path $script:ProjectRoot 'Private\Logging\Write-StructuredLog.ps1')
         
         # Source the target function
-        . (Join-Path $script:ProjectRoot 'Private\Utilities\Test-BackupIntegrity.ps1')
+        . (Join-Path $script:ProjectRoot 'Private\Utilities\Test-BackupFileIntegrity.ps1')
         
         # Test data setup
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
@@ -139,56 +139,56 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
     
     Context "Parameter Validation" {
         It "Should accept valid BackupFilePath parameter" {
-            { Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile } | Should -Not -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile } | Should -Not -Throw
         }
         
         It "Should reject null BackupFilePath" {
-            { Test-BackupIntegrity -BackupFilePath $null } | Should -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $null } | Should -Throw
         }
         
         It "Should reject empty BackupFilePath" {
-            { Test-BackupIntegrity -BackupFilePath "" } | Should -Throw
+            { Test-BackupFileIntegrity -BackupFilePath "" } | Should -Throw
         }
         
         It "Should accept absolute file paths" {
-            { Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile } | Should -Not -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile } | Should -Not -Throw
         }
         
         It "Should accept relative file paths" {
             $relativePath = "..\IntegrityTests\valid_backup.xml"
-            { Test-BackupIntegrity -BackupFilePath $relativePath } | Should -Not -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $relativePath } | Should -Not -Throw
         }
         
         It "Should accept custom CorrelationId" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            { Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile -CorrelationId $customCorrelationId } | Should -Not -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile -CorrelationId $customCorrelationId } | Should -Not -Throw
         }
         
         It "Should auto-generate CorrelationId when not provided" {
-            { Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile } | Should -Not -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile } | Should -Not -Throw
         }
         
         It "Should handle Windows path formats" {
             $windowsPath = "C:\Temp\backup.xml"
-            { Test-BackupIntegrity -BackupFilePath $windowsPath } | Should -Not -Throw -Because "Should accept Windows path format even if file doesn't exist"
+            { Test-BackupFileIntegrity -BackupFilePath $windowsPath } | Should -Not -Throw -Because "Should accept Windows path format even if file doesn't exist"
         }
         
         It "Should handle UNC path formats" {
             $uncPath = "\\server\share\backup.xml"
-            { Test-BackupIntegrity -BackupFilePath $uncPath } | Should -Not -Throw -Because "Should accept UNC path format even if file doesn't exist"
+            { Test-BackupFileIntegrity -BackupFilePath $uncPath } | Should -Not -Throw -Because "Should accept UNC path format even if file doesn't exist"
         }
     }
     
     Context "File Existence and Accessibility Validation" {
         It "Should return valid result for existing backup file" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
             $result.ErrorMessage | Should -BeNullOrEmpty
         }
         
         It "Should return invalid result for non-existent file" {
             $nonExistentFile = Join-Path $script:TestBackupDir "nonexistent.xml"
-            $result = Test-BackupIntegrity -BackupFilePath $nonExistentFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $nonExistentFile
             
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "Backup file not found:"
@@ -198,7 +198,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         
         It "Should validate file path type correctly" {
             # Test with directory path instead of file
-            $result = Test-BackupIntegrity -BackupFilePath $script:TestBackupDir
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:TestBackupDir
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "Backup file not found"
         }
@@ -207,7 +207,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             # Mock Test-Path to simulate access denied
             Mock Test-Path { $false } -ParameterFilter { $PathType -eq 'Leaf' }
             
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "Backup file not found"
         }
@@ -219,7 +219,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $Level -eq 'Warning' -and $Message -match "Backup file not found"
             }
             
-            Test-BackupIntegrity -BackupFilePath $nonExistentFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $nonExistentFile | Out-Null
             
             Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Level -eq 'Warning' -and $Message -match "Backup file not found"
@@ -229,13 +229,13 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
     
     Context "SHA256 Hash Integrity Verification" {
         It "Should validate correct SHA256 hash" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
             $result.BackupData | Should -Not -Be $null
         }
         
         It "Should detect hash mismatch and reject backup" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:CorruptBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:CorruptBackupFile
             
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "SHA256 hash verification failed"
@@ -263,7 +263,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $testBackupFile = Join-Path $script:TestBackupDir "hash_test_backup.xml"
             $testBackupData | Export-Clixml -Path $testBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $testBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $testBackupFile
             $result.IsValid | Should -Be $true
             $result.ErrorMessage | Should -BeNullOrEmpty
             
@@ -286,7 +286,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $emptySDDLBackupFile = Join-Path $script:TestBackupDir "empty_sddl_backup.xml"
             $emptySDDLBackupData | Export-Clixml -Path $emptySDDLBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $emptySDDLBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $emptySDDLBackupFile
             $result.IsValid | Should -Be $false  # Should fail SDDL format validation
             $result.ValidationDetails -join " " | Should -Match "Invalid SDDL format"
             
@@ -298,7 +298,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $Level -eq 'Error' -and $Message -match "SHA256 hash verification failed"
             }
             
-            Test-BackupIntegrity -BackupFilePath $script:CorruptBackupFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:CorruptBackupFile | Out-Null
             
             Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Level -eq 'Error' -and $Message -match "SHA256 hash verification failed"
@@ -310,24 +310,24 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $iterations = 10
             
             1..$iterations | ForEach-Object {
-                Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+                Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             }
             
             # If there were resource leaks, this would likely cause issues
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
         }
     }
     
     Context "SDDL Format Validation" {
         It "Should validate correct SDDL format" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
             $result.ValidationDetails.Count | Should -Be 0
         }
         
         It "Should detect invalid SDDL format" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:InvalidSDDLBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:InvalidSDDLBackupFile
             
             $result.IsValid | Should -Be $false
             $result.ValidationDetails | Should -Match "Invalid SDDL format"
@@ -353,7 +353,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $malformedBackupFile = Join-Path $script:TestBackupDir "malformed_sddl_backup.xml"
             $malformedBackupData | Export-Clixml -Path $malformedBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $malformedBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $malformedBackupFile
             $result.IsValid | Should -Be $false
             $result.ValidationDetails | Should -Match "Invalid SDDL format"
             
@@ -380,7 +380,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $complexBackupFile = Join-Path $script:TestBackupDir "complex_sddl_backup.xml"
             $complexBackupData | Export-Clixml -Path $complexBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $complexBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $complexBackupFile
             $result.IsValid | Should -Be $true
             
             Remove-Item $complexBackupFile -Force -ErrorAction SilentlyContinue
@@ -389,13 +389,13 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
     
     Context "Metadata Structure Validation" {
         It "Should validate all required properties are present" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
             $result.BackupData | Should -Not -Be $null
         }
         
         It "Should detect missing required properties" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:IncompleteBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:IncompleteBackupFile
             
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "Backup file structure validation failed"
@@ -404,7 +404,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         }
         
         It "Should validate backup version compatibility" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:UnsupportedVersionBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:UnsupportedVersionBackupFile
             
             $result.IsValid | Should -Be $false
             $result.ValidationDetails | Should -Match "Unsupported backup version: 99.0"
@@ -417,7 +417,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $v1BackupFile = Join-Path $script:TestBackupDir "v1_backup.xml"
             $v1BackupData | Export-Clixml -Path $v1BackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $v1BackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $v1BackupFile
             $result.IsValid | Should -Be $true
             
             Remove-Item $v1BackupFile -Force -ErrorAction SilentlyContinue
@@ -430,7 +430,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $v2BackupFile = Join-Path $script:TestBackupDir "v2_backup.xml"
             $v2BackupData | Export-Clixml -Path $v2BackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $v2BackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $v2BackupFile
             $result.IsValid | Should -Be $true
             
             Remove-Item $v2BackupFile -Force -ErrorAction SilentlyContinue
@@ -443,7 +443,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $noVersionBackupFile = Join-Path $script:TestBackupDir "no_version_backup.xml"
             $noVersionBackupData | Export-Clixml -Path $noVersionBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $noVersionBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $noVersionBackupFile
             $result.IsValid | Should -Be $true  # Should pass if version property is missing
             
             Remove-Item $noVersionBackupFile -Force -ErrorAction SilentlyContinue
@@ -454,7 +454,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $Level -eq 'Warning' -and $Message -match "Backup structure validation failed"
             }
             
-            Test-BackupIntegrity -BackupFilePath $script:IncompleteBackupFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:IncompleteBackupFile | Out-Null
             
             Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Level -eq 'Warning' -and $Message -match "Backup structure validation failed"
@@ -464,7 +464,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
     
     Context "Result Structure and Properties" {
         It "Should return consistent result structure" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             
             $result.PSObject.Properties.Name -contains 'IsValid' | Should -Be $true
             $result.PSObject.Properties.Name -contains 'ErrorMessage' | Should -Be $true
@@ -473,48 +473,48 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         }
         
         It "Should set IsValid to true for valid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
             $result.IsValid.GetType() | Should -Be ([bool])
         }
         
         It "Should set IsValid to false for invalid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:CorruptBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:CorruptBackupFile
             $result.IsValid | Should -Be $false
             $result.IsValid.GetType() | Should -Be ([bool])
         }
         
         It "Should provide null ErrorMessage for valid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.ErrorMessage | Should -BeNullOrEmpty
         }
         
         It "Should provide descriptive ErrorMessage for invalid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:CorruptBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:CorruptBackupFile
             $result.ErrorMessage | Should -Not -BeNullOrEmpty
             $result.ErrorMessage.GetType() | Should -Be ([string])
         }
         
         It "Should provide empty ValidationDetails array for valid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.ValidationDetails | Should -BeNullOrEmpty
         }
         
         It "Should provide detailed ValidationDetails for invalid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:IncompleteBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:IncompleteBackupFile
             $result.ValidationDetails | Should -Not -BeNullOrEmpty
             $result.ValidationDetails.GetType().Name | Should -Match "Object\[\]|Array"
             $result.ValidationDetails.Count | Should -BeGreaterThan 0
         }
         
         It "Should include BackupData for valid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.BackupData | Should -Not -Be $null
             $result.BackupData.ObjectDN | Should -Be $script:TestObjectDN
         }
         
         It "Should set BackupData to null for invalid backups" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:CorruptBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:CorruptBackupFile
             $result.BackupData | Should -Be $null
         }
     }
@@ -525,7 +525,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $invalidXmlFile = Join-Path $script:TestBackupDir "invalid.xml"
             "This is not valid XML content" | Out-File $invalidXmlFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $invalidXmlFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $invalidXmlFile
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "Validation error"
             
@@ -545,7 +545,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $corruptHashFile = Join-Path $script:TestBackupDir "corrupt_hash_backup.xml"
             $corruptHashBackup | Export-Clixml -Path $corruptHashFile
             
-            $result = Test-BackupIntegrity -BackupFilePath $corruptHashFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $corruptHashFile
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "hash verification failed"
             
@@ -557,7 +557,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             # We'll mock Import-Clixml to simulate the failure
             Mock Import-Clixml { throw [System.IO.IOException]::new("File is locked") }
             
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $false
             $result.ErrorMessage | Should -Match "Validation error"
         }
@@ -569,7 +569,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $Level -eq 'Error' -and $Message -match "Error during backup integrity validation"
             }
             
-            Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             
             Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Level -eq 'Error' -and $Message -match "Error during backup integrity validation"
@@ -579,7 +579,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         It "Should handle null backup data gracefully" {
             Mock Import-Clixml { return $null }
             
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $false
         }
         
@@ -603,7 +603,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $largeBackupFile = Join-Path $script:TestBackupDir "large_backup.xml"
             $largeBackupData | Export-Clixml -Path $largeBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $largeBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $largeBackupFile
             # A repeated DACL is still well-formed SDDL and its hash matches, so a large backup validates;
             # the format check only rejects an empty, too-short, or DACL-less SDDL.
             $result.IsValid | Should -Be $true
@@ -616,7 +616,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         It "Should complete validation within performance baseline" {
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             
             $stopwatch.Stop()
             $stopwatch.ElapsedMilliseconds | Should -BeLessThan 500  # 500ms baseline
@@ -629,7 +629,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             
             1..$iterations | ForEach-Object {
                 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-                Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+                Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
                 $stopwatch.Stop()
                 $measurements += $stopwatch.ElapsedMilliseconds
             }
@@ -645,7 +645,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $initialMemory = [System.GC]::GetTotalMemory($false)
             
             1..10 | ForEach-Object {
-                Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+                Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             }
             
             [System.GC]::Collect()
@@ -662,7 +662,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         It "Should scale validation time linearly with file size" {
             # This test assumes file I/O is the primary factor in performance
             $startTime = Get-Date
-            Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             $smallFileTime = (Get-Date) - $startTime
             
             # Small file should complete quickly
@@ -680,7 +680,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             )
             
             foreach ($maliciousPath in $maliciousPaths) {
-                $result = Test-BackupIntegrity -BackupFilePath $maliciousPath
+                $result = Test-BackupFileIntegrity -BackupFilePath $maliciousPath
                 $result.IsValid | Should -Be $false
                 $result.ErrorMessage | Should -Match "Backup file not found|Validation error"
             }
@@ -689,7 +689,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         It "Should validate correlation ID format safely" {
             $maliciousCorrelationId = "<script>alert('xss')</script>"
             
-            { Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile -CorrelationId $maliciousCorrelationId } | Should -Not -Throw
+            { Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile -CorrelationId $maliciousCorrelationId } | Should -Not -Throw
         }
         
         It "Should handle malicious XML content safely" {
@@ -700,7 +700,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
 <root>&xxe;</root>
 "@ | Out-File $maliciousXmlFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $maliciousXmlFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $maliciousXmlFile
             $result.IsValid | Should -Be $false
             
             Remove-Item $maliciousXmlFile -Force -ErrorAction SilentlyContinue
@@ -726,7 +726,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $sensitiveBackupFile = Join-Path $script:TestBackupDir "sensitive_backup.xml"
             $sensitiveBackupData | Export-Clixml -Path $sensitiveBackupFile -Force
             
-            $result = Test-BackupIntegrity -BackupFilePath $sensitiveBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $sensitiveBackupFile
             $result.ErrorMessage | Should -Not -Match "PASSWORD123"
             $result.ErrorMessage | Should -Not -Match "PASSWORD456"
             
@@ -737,7 +737,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             # Ensure validation doesn't hang indefinitely
             $timeoutSeconds = 10
             $startTime = Get-Date
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $endTime = Get-Date
             $elapsed = ($endTime - $startTime).TotalSeconds
             
@@ -752,7 +752,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $Component -eq 'BackupValidation' -and $Message -match "Starting backup integrity validation"
             }
             
-            Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             
             Should -InvokeVerifiable
         }
@@ -764,7 +764,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $CorrelationId -eq $customCorrelationId
             }
             
-            Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile -CorrelationId $customCorrelationId | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile -CorrelationId $customCorrelationId | Out-Null
             
             Should -Invoke Write-StructuredLog -ParameterFilter {
                 $CorrelationId -eq $customCorrelationId
@@ -776,7 +776,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 $Component -eq 'BackupValidation' -and $Level -eq 'Information'
             }
             
-            Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
+            Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             
             Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Component -eq 'BackupValidation' -and $Level -eq 'Information'
@@ -784,7 +784,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
         }
         
         It "Should provide structured data for compliance reporting" {
-            $result = Test-BackupIntegrity -BackupFilePath $script:ValidBackupFile
+            $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             
             # Verify result can be serialized for reporting
             { $result | ConvertTo-Json -Depth 10 } | Should -Not -Throw
@@ -798,7 +798,7 @@ Describe "Test-BackupIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $results = @()
             
             foreach ($backupFile in $allBackupFiles) {
-                $results += Test-BackupIntegrity -BackupFilePath $backupFile
+                $results += Test-BackupFileIntegrity -BackupFilePath $backupFile
             }
             
             $results.Count | Should -Be 3

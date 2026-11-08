@@ -1,4 +1,4 @@
-function Test-BackupIntegrity {
+function Test-BackupFileIntegrity {
     <#
     .SYNOPSIS
         Validates the integrity of backup files with comprehensive security and data validation
@@ -25,7 +25,7 @@ function Test-BackupIntegrity {
         - BackupData: The validated backup data object (null if invalid)
     
     .EXAMPLE
-        Test-BackupIntegrity -BackupFilePath "C:\Backups\backup_20240702.xml"
+        Test-BackupFileIntegrity -BackupFilePath "C:\Backups\backup_20240702.xml"
         
         Validates the specified backup file and returns validation results.
     

@@ -153,29 +153,8 @@ function Set-ModifiedACL {
         $startTime = Get-Date
         $success = $false
         $errorMessage = $null
-        $backupResult = $null
-
-        # Create backup if New-ACLBackup function is available
-        if ($null -ne (Get-Command -Name "New-ACLBackup" -ErrorAction SilentlyContinue)) {
-            try {
-                Write-StructuredLog "Creating ACL backup for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
-                $backupResult = New-ACLBackup -DistinguishedName $ObjectDN -CorrelationId $CorrelationId
-                Write-StructuredLog "ACL backup completed successfully" -Level Debug -CorrelationId $CorrelationId
-            }
-            catch {
-                Write-StructuredLog "ACL backup failed: $($_.Exception.Message)" -Level Warning -CorrelationId $CorrelationId
-                $backupResult = [PSCustomObject]@{
-                    Success = $false
-                    ErrorMessage = $_.Exception.Message
-                }
-            }
-        } else {
-            Write-StructuredLog "ACL backup not available - New-ACLBackup command not found" -Level Debug -CorrelationId $CorrelationId
-            $backupResult = [PSCustomObject]@{
-                Success = $false
-                ErrorMessage = "ACL backup functionality not available - New-ACLBackup command not found"
-            }
-        }
+        # The backup is the caller's job: Invoke-RemovalWorkflow writes it with New-ACLBackup before
+        # calling this function, so nothing here touches the backup folder.
 
         if ($PSCmdlet.ShouldProcess($ObjectDN, "Apply modified ACL")) {
             try {
@@ -230,10 +209,6 @@ function Set-ModifiedACL {
             Timestamp = $endTime
             ErrorMessage = $errorMessage
             # Additional properties for enterprise functionality
-            BackupCreated = if ($backupResult) { $backupResult.Success } else { $false }
-            BackupPath = if ($backupResult -and $backupResult.Success) { $backupResult.BackupPath } else { $null }
-            BackupError = if ($backupResult -and -not $backupResult.Success) { $backupResult.ErrorMessage } else { $null }
-            BackupCorrelationId = if ($backupResult) { $CorrelationId } else { $CorrelationId }  # Always use current correlation ID
             Verified = $verified
             VerificationError = $verificationError
             RulesApplied = if ($success -and $ACL.Access) { $ACL.Access.Count } else { 0 }

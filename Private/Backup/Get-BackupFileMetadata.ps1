@@ -51,7 +51,7 @@
     - For performance optimization: .\Troubleshooting\Performance\Backup-Optimization.md
 #>
 
-function Get-BackupMetadata {
+function Get-BackupFileMetadata {
     <#
     .SYNOPSIS
         Extracts comprehensive metadata from backup files
@@ -74,14 +74,14 @@ function Get-BackupMetadata {
         systems and audit logs. Auto-generated if not provided.
 
     .EXAMPLE
-        PS> Get-BackupMetadata -BackupFilePath "C:\Backups\User1_20250702_103631.xml"
+        PS> Get-BackupFileMetadata -BackupFilePath "C:\Backups\User1_20250702_103631.xml"
 
         DESCRIPTION: Extracts comprehensive metadata from backup file
         OUTPUT: Detailed metadata object with all backup information
         USE CASE: Backup inventory management and audit reporting
 
     .EXAMPLE
-        PS> $metadata = Get-BackupMetadata -BackupFilePath $backupFile -CorrelationId $correlationId
+        PS> $metadata = Get-BackupFileMetadata -BackupFilePath $backupFile -CorrelationId $correlationId
         PS> Write-Output "Backup for $($metadata.ObjectDN) created on $($metadata.BackupDate)"
 
         DESCRIPTION: Extract metadata with correlation tracking

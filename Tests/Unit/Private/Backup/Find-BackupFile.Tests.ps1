@@ -21,7 +21,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         $PrivatePath = Join-Path $RootPath 'Private'
         
         # Import backup-related functions
-        . (Join-Path $PrivatePath 'Backup\Get-BackupMetadata.ps1')
+        . (Join-Path $PrivatePath 'Backup\Get-BackupFileMetadata.ps1')
         . (Join-Path $PrivatePath 'Backup\Find-BackupFile.ps1')
 
         # Import test helpers if available
@@ -42,7 +42,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
 
         # Let Pester handle mock cleanup automatically
         
-        function Get-BackupMetadata {
+        function Get-BackupFileMetadata {
             param(
                 [string]$BackupFilePath,
                 [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
@@ -226,8 +226,8 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             return @()
         }
 
-        # Override Get-BackupMetadata 
-        function Get-BackupMetadata {
+        # Override Get-BackupFileMetadata 
+        function Get-BackupFileMetadata {
             param($BackupFilePath, $CorrelationId)
             
             $script:GetBackupMetadataCalls += @{
@@ -426,10 +426,10 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $script:GetChildItemCalls[0].File | Should -Be $true
         }
 
-        It "Should call Get-BackupMetadata for each discovered file" {
+        It "Should call Get-BackupFileMetadata for each discovered file" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
-            # Check that Get-BackupMetadata was called for each file
+            # Check that Get-BackupFileMetadata was called for each file
             $script:GetBackupMetadataCalls.Count | Should -Be 3
             $script:GetBackupMetadataCalls[0].BackupFilePath | Should -Match '\.xml$'
         }
@@ -530,8 +530,8 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         }
 
         It "Should continue processing when individual files fail" {
-            # Mock Get-BackupMetadata to fail for one file
-            Mock Get-BackupMetadata {
+            # Mock Get-BackupFileMetadata to fail for one file
+            Mock Get-BackupFileMetadata {
                 param($BackupFilePath, $CorrelationId)
                 if ($BackupFilePath -eq 'C:\ValidBackupPath\backup2.xml') {
                     throw "Metadata extraction failed"
@@ -564,8 +564,8 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         }
 
         It "Should handle malformed date parsing gracefully" {
-            # Mock Get-BackupMetadata to return invalid date
-            Mock Get-BackupMetadata {
+            # Mock Get-BackupFileMetadata to return invalid date
+            Mock Get-BackupFileMetadata {
                 return [PSCustomObject]@{
                     ObjectDN = 'CN=TestObject,DC=company,DC=com'
                     BackupDate = 'invalid-date-format'

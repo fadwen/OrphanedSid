@@ -108,36 +108,6 @@ function Get-LoggingState {
     }
 }
 
-function Test-LogLevel {
-    <#
-    .SYNOPSIS
-        Tests if a log level should be written based on current configuration
-
-    .DESCRIPTION
-        Compares the provided log level against the current logging threshold
-        to determine if the message should be written to the log file.
-
-    .PARAMETER Level
-        The log level to test
-
-    .OUTPUTS
-        Boolean indicating whether the level should be logged
-    #>
-
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateSet('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')]
-        [string]$Level
-    )
-
-    $currentLevelValue = $script:LogLevels[$script:LogLevel]
-    $testLevelValue = $script:LogLevels[$Level]
-
-    return $testLevelValue -le $currentLevelValue
-}
-
 function Update-LoggingMetrics {
     <#
     .SYNOPSIS

@@ -208,6 +208,7 @@ function Test-LogLevel {
     param(
         [Parameter(Mandatory)]
         [ValidateSet('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')]
+        [Alias('Level')]
         [string]$MessageLevel
     )
 
