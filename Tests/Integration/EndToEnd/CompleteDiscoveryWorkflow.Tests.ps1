@@ -1,57 +1,71 @@
 ﻿# Import required modules and helpers
-. "$PSScriptRoot\..\..\TestHelpers\SecurityTestHelpers.ps1"
-. "$PSScriptRoot\..\..\TestHelpers\ADMockFactory.ps1"
-
 # Global configuration
 # Configuration for test execution
-$script:TestConfig = Get-Content "$PSScriptRoot\..\..\TestData\Configurations\test-config.json" | ConvertFrom-Json
-$script:MockBehavior = @{}
-
-function Set-MockBehavior { 
-    param([string]$Scenario, [hashtable]$Output)
-    $script:MockBehavior[$Scenario] = $Output
-}
-function Get-MockBehavior { 
-    param([string]$Scenario)
-    return $script:MockBehavior[$Scenario]
-}
-function Clear-MockBehavior { $script:MockBehavior = @{} }
-
 # Mock wrapper for the script
-function Invoke-FindUnknownSIDScript {
-    param(
-        [string]$SearchBase,
-        [string]$OutputPath,
-        [switch]$Computers,
-        [switch]$WhatIf
-    )
-    
-    # Check for scenario-specific behavior
-    foreach ($scenario in $script:MockBehavior.Keys) {
-        $mockOutput = $script:MockBehavior[$scenario]
-        if ($mockOutput) {
-            return $mockOutput
-        }
+BeforeAll {
+    . "$PSScriptRoot\..\..\TestHelpers\SecurityTestHelpers.ps1"
+
+    . "$PSScriptRoot\..\..\TestHelpers\ADMockFactory.ps1"
+
+    $script:TestConfig = Get-Content "$PSScriptRoot\..\..\TestData\Configurations\test-config.json" | ConvertFrom-Json
+
+    $script:MockBehavior = @{}
+
+    function Set-MockBehavior { 
+        param([string]$Scenario, [hashtable]$Output)
+        $script:MockBehavior[$Scenario] = $Output
     }
-    
-    # Default mock output
-    return @{
-        SearchBase = $SearchBase
-        OutputPath = $OutputPath
-        OrphanedSIDsFound = 3
-        ProcessingTime = '00:02:15'
-        OutputFiles = @("$OutputPath\orphaned-sids-report.html", "$OutputPath\orphaned-sids-data.json")
-        Success = $true
-        TotalObjectsProcessed = 150
-        MemoryUsed = "45MB"
-        ExitCode = 0
+
+    function Get-MockBehavior { 
+        param([string]$Scenario)
+        return $script:MockBehavior[$Scenario]
+    }
+
+    function Clear-MockBehavior { $script:MockBehavior = @{} }
+
+    function Invoke-FindUnknownSIDScript {
+        param(
+            [string]$SearchBase,
+            [string]$OutputPath,
+            [switch]$Computers,
+            [switch]$WhatIf
+        )
+        
+        # Check for scenario-specific behavior
+        foreach ($scenario in $script:MockBehavior.Keys) {
+            $mockOutput = $script:MockBehavior[$scenario]
+            if ($mockOutput) {
+                return $mockOutput
+            }
+        }
+        
+        # Default mock output
+        return @{
+            SearchBase = $SearchBase
+            OutputPath = $OutputPath
+            OrphanedSIDsFound = 3
+            ProcessingTime = '00:02:15'
+            OutputFiles = @("$OutputPath\orphaned-sids-report.html", "$OutputPath\orphaned-sids-data.json")
+            Success = $true
+            TotalObjectsProcessed = 150
+            MemoryUsed = "45MB"
+            ExitCode = 0
+        }
     }
 }
 
 Describe "Complete Discovery Workflow" {
+    # Scenario behaviour set by one test must not reach the next; under a shuffled run the edge-case
+    # tests, which register behaviour, can run before the basic ones, which expect the default output
+    BeforeEach {
+        Clear-MockBehavior
+    }
+
     BeforeAll {
         # Create test directory
-        $script:TestOutputPath = Join-Path $env:TEMP "DiscoveryWorkflowTest_$(Get-Date -Format 'yyyyMMddHHmmss')"
+        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
+        # paths the functions return, which are long, compare equal to the ones built here
+        $script:TestOutputPath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "DiscoveryWorkflowTest_$(Get-Date -Format 'yyyyMMddHHmmss')"
         New-Item -Path $script:TestOutputPath -ItemType Directory -Force | Out-Null
         
         Clear-MockBehavior
@@ -69,54 +83,54 @@ Describe "Complete Discovery Workflow" {
         It "Should complete discovery workflow for Users OU" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.SearchBase | Should Be "OU=Users,DC=contoso,DC=com"
-            $result.OrphanedSIDsFound | Should Be 3
-            $result.Success | Should Be $true
+            $result | Should -Not -Be $null
+            $result.SearchBase | Should -Be "OU=Users,DC=contoso,DC=com"
+            $result.OrphanedSIDsFound | Should -Be 3
+            $result.Success | Should -Be $true
         }
         
         It "Should complete discovery workflow for Computers OU" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Computers,DC=contoso,DC=com" -OutputPath $script:TestOutputPath -Computers
             
-            $result | Should Not Be $null
-            $result.SearchBase | Should Be "OU=Computers,DC=contoso,DC=com"
-            $result.Success | Should Be $true
+            $result | Should -Not -Be $null
+            $result.SearchBase | Should -Be "OU=Computers,DC=contoso,DC=com"
+            $result.Success | Should -Be $true
         }
         
         It "Should complete discovery workflow for domain root" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.SearchBase | Should Be "DC=contoso,DC=com"
-            $result.Success | Should Be $true
+            $result | Should -Not -Be $null
+            $result.SearchBase | Should -Be "DC=contoso,DC=com"
+            $result.Success | Should -Be $true
         }
         
         It "Should generate required output files" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result.OutputFiles | Should Not Be $null
-            $result.OutputFiles.Count | Should BeGreaterThan 0
+            $result.OutputFiles | Should -Not -Be $null
+            $result.OutputFiles.Count | Should -BeGreaterThan 0
         }
         
         It "Should track processing time within acceptable limits" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result.ProcessingTime | Should Not Be $null
+            $result.ProcessingTime | Should -Not -Be $null
             $processingTimeSpan = [TimeSpan]::Parse($result.ProcessingTime)
-            $processingTimeSpan.TotalSeconds | Should BeLessThan $script:TestConfig.performance.baselines.largeDataset.maxExecutionTimeSeconds
+            $processingTimeSpan.TotalSeconds | Should -BeLessThan $script:TestConfig.performance.baselines.largeDataset.maxExecutionTimeSeconds
         }
         
         It "Should use memory within acceptable limits" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result.MemoryUsed | Should Not Be $null
+            $result.MemoryUsed | Should -Not -Be $null
             # Extract numeric value from string like "45MB"
             if ($result.MemoryUsed -match '(\d+)MB') {
                 $memoryMB = [int]$matches[1]
             } else {
                 $memoryMB = [int]($result.MemoryUsed -replace 'MB', '')
             }
-            $memoryMB | Should BeLessThan $script:TestConfig.performance.baselines.largeDataset.maxMemoryMB
+            $memoryMB | Should -BeLessThan $script:TestConfig.performance.baselines.largeDataset.maxMemoryMB
         }
     }
     
@@ -125,20 +139,20 @@ Describe "Complete Discovery Workflow" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=NonExistent,DC=invalid,DC=com" -OutputPath $script:TestOutputPath
             
             # Should still return a result object even for invalid search base
-            $result | Should Not Be $null
+            $result | Should -Not -Be $null
         }
         
         It "Should validate output path accessibility" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result.OutputPath | Should Be $script:TestOutputPath
+            $result.OutputPath | Should -Be $script:TestOutputPath
         }
         
         It "Should handle WhatIf parameter correctly" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath -WhatIf
             
-            $result | Should Not Be $null
-            $result.SearchBase | Should Be "OU=Users,DC=contoso,DC=com"
+            $result | Should -Not -Be $null
+            $result.SearchBase | Should -Be "OU=Users,DC=contoso,DC=com"
         }
     }
     
@@ -146,22 +160,22 @@ Describe "Complete Discovery Workflow" {
         It "Should process objects efficiently" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result.TotalObjectsProcessed | Should BeGreaterThan 0
-            $result.Success | Should Be $true
+            $result.TotalObjectsProcessed | Should -BeGreaterThan 0
+            $result.Success | Should -Be $true
         }
         
         It "Should integrate with logging framework" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
             # Should complete without logging errors
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
         
         It "Should maintain data integrity" {
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result.OrphanedSIDsFound | Should BeOfType [int]
-            $result.TotalObjectsProcessed | Should BeOfType [int]
+            $result.OrphanedSIDsFound | Should -BeOfType [int]
+            $result.TotalObjectsProcessed | Should -BeOfType [int]
         }
     }
     
@@ -185,11 +199,11 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Empty,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.OrphanedSIDsFound | Should Be 0
-            $result.TotalObjectsProcessed | Should Be 0
-            $result.Success | Should Be $true
-            $result.Message | Should Match "No objects found"
+            $result | Should -Not -Be $null
+            $result.OrphanedSIDsFound | Should -Be 0
+            $result.TotalObjectsProcessed | Should -Be 0
+            $result.Success | Should -Be $true
+            $result.Message | Should -Match "No objects found"
         }
         
         It "Should handle extremely large OU with memory optimization" {
@@ -209,12 +223,12 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=LargeOU,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.TotalObjectsProcessed | Should Be 50000
-            $result.MemoryUsed | Should Be 895MB
-            $result.Success | Should Be $true
-            $result.MemoryOptimizationUsed | Should Be $true
-            $result.BatchProcessingMode | Should Be $true
+            $result | Should -Not -Be $null
+            $result.TotalObjectsProcessed | Should -Be 50000
+            $result.MemoryUsed | Should -Be 895MB
+            $result.Success | Should -Be $true
+            $result.MemoryOptimizationUsed | Should -Be $true
+            $result.BatchProcessingMode | Should -Be $true
         }
         
         It "Should handle malformed SIDs in AD objects" {
@@ -233,10 +247,10 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Corrupted,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.SkippedObjects | Should Be 3
-            $result.Warnings.Count | Should Be 2
-            $result.Success | Should Be $true
+            $result | Should -Not -Be $null
+            $result.SkippedObjects | Should -Be 3
+            $result.Warnings.Count | Should -Be 2
+            $result.Success | Should -Be $true
         }
         
         It "Should handle network timeout conditions gracefully" {
@@ -255,11 +269,11 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Remote,DC=branch,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $false
-            $result.Error | Should Match "Network timeout"
-            $result.RetryAttempts | Should Be 3
-            $result.LastError | Should Match "timed out"
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $false
+            $result.Error | Should -Match "Network timeout"
+            $result.RetryAttempts | Should -Be 3
+            $result.LastError | Should -Match "timed out"
         }
         
         It "Should handle cross-domain trust scenarios" {
@@ -279,11 +293,11 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=External,DC=partner,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.ExternalSIDsFound | Should Be 5
-            $result.TrustRelationships.Count | Should Be 2
-            $result.Success | Should Be $true
-            $result.TrustValidationPerformed | Should Be $true
+            $result | Should -Not -Be $null
+            $result.ExternalSIDsFound | Should -Be 5
+            $result.TrustRelationships.Count | Should -Be 2
+            $result.Success | Should -Be $true
+            $result.TrustValidationPerformed | Should -Be $true
         }
         
         It "Should handle file permission errors on output path" {
@@ -301,11 +315,11 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath "C:\Windows\System32\RestrictedPath"
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $false
-            $result.Error | Should Match "Access denied"
-            $result.ExitCode | Should Be 2
-            $result.PermissionCheckFailed | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $false
+            $result.Error | Should -Match "Access denied"
+            $result.ExitCode | Should -Be 2
+            $result.PermissionCheckFailed | Should -Be $true
         }
         
         It "Should handle schema corruption scenarios" {
@@ -324,10 +338,10 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $false
-            $result.SchemaValidationFailed | Should Be $true
-            $result.CorruptedAttributes.Count | Should Be 2
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $false
+            $result.SchemaValidationFailed | Should -Be $true
+            $result.CorruptedAttributes.Count | Should -Be 2
         }
         
         It "Should handle file locking scenarios" {
@@ -346,10 +360,10 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $false
-            $result.Error | Should Match "locked by another process"
-            $result.FileAccessErrors.Count | Should Be 2
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $false
+            $result.Error | Should -Match "locked by another process"
+            $result.FileAccessErrors.Count | Should -Be 2
         }
         
         It "Should handle extremely long distinguished names" {
@@ -368,10 +382,10 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase $longDN -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $true
-            $result.DNLengthOptimizationUsed | Should Be $true
-            $result.MaxDNLength | Should BeGreaterThan 200
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $true
+            $result.DNLengthOptimizationUsed | Should -Be $true
+            $result.MaxDNLength | Should -BeGreaterThan 200
         }
         
         It "Should handle Unicode characters in object names" {
@@ -389,10 +403,10 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=International,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $true
-            $result.UnicodeObjectsProcessed | Should Be 15
-            $result.EncodingMethod | Should Be "UTF-8"
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $true
+            $result.UnicodeObjectsProcessed | Should -Be 15
+            $result.EncodingMethod | Should -Be "UTF-8"
         }
         
         It "Should handle insufficient disk space scenarios" {
@@ -411,11 +425,11 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $false
-            $result.Error | Should Match "Insufficient disk space"
-            $result.RequiredSpace | Should Be "500MB"
-            $result.AvailableSpace | Should Be "50MB"
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $false
+            $result.Error | Should -Match "Insufficient disk space"
+            $result.RequiredSpace | Should -Be "500MB"
+            $result.AvailableSpace | Should -Be "50MB"
         }
         
         It "Should handle XML character escaping in output" {
@@ -434,10 +448,10 @@ Describe "Complete Discovery Workflow" {
             
             $result = Invoke-FindUnknownSIDScript -SearchBase "OU=Users,DC=contoso,DC=com" -OutputPath $script:TestOutputPath
             
-            $result | Should Not Be $null
-            $result.Success | Should Be $true
-            $result.XMLEscapingRequired | Should Be $true
-            $result.SpecialCharactersFound.Count | Should Be 5
+            $result | Should -Not -Be $null
+            $result.Success | Should -Be $true
+            $result.XMLEscapingRequired | Should -Be $true
+            $result.SpecialCharactersFound.Count | Should -Be 5
         }
     }
 }

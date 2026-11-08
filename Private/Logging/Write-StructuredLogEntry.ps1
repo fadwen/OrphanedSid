@@ -89,7 +89,9 @@
         # Also write to file if log path is available
         if ($effectiveLogPath -and $writeToFile) {
             try {
-                Add-Content -Path $effectiveLogPath -Value $formattedEntryForFile -Encoding UTF8
+                # -WhatIf on the public command reaches here through $WhatIfPreference; the log is not
+                # what is being rehearsed, so the write is pinned
+                Add-Content -Path $effectiveLogPath -Value $formattedEntryForFile -Encoding UTF8 -WhatIf:$false
             } catch {
                 Write-Warning "Failed to write log entry to file: $($_.Exception.Message)"
             }
@@ -109,6 +111,11 @@ function Write-ConsoleLogEntry {
         [string]$Level
     )
 
+    # -SuppressConsoleOutput on the public commands sets this; the file still receives every entry
+    if ($script:SuppressConsoleOutput) {
+        return
+    }
+
     switch ($Level) {
         'Critical' { Write-Error $FormattedMessage }
         'Error' { Write-Error $FormattedMessage }
@@ -116,6 +123,6 @@ function Write-ConsoleLogEntry {
         'Information' { Write-Information $FormattedMessage -InformationAction Continue }
         'Debug' { Write-Debug $FormattedMessage }
         'Verbose' { Write-Verbose $FormattedMessage }
-        default { Write-Host $FormattedMessage }
+        default { Write-Information $FormattedMessage -InformationAction Continue }
     }
 }

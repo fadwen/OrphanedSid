@@ -331,7 +331,7 @@ function Get-RestorationTarget {
             $aclReadable = $null
             if ($objectExists) {
                 try {
-                    $currentAcl = Get-Acl -Path "AD:$TargetObjectDN" -ErrorAction Stop
+                    $null = Get-Acl -Path "AD:$TargetObjectDN" -ErrorAction Stop
                     $aclReadable = $true
                     Write-Verbose "ACL is readable for target object: $TargetObjectDN"
                 }
@@ -658,6 +658,5 @@ function ConvertFrom-BackupToACL {
     }
 }
 
-Write-Verbose "Restore-ACLOperation module loaded successfully"
 
 #endregion

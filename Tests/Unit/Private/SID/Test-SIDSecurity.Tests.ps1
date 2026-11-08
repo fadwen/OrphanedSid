@@ -1,5 +1,4 @@
-#Requires -Module Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Test-SIDSecurity Enterprise Security Testing" {
     BeforeAll {
         # Import the module containing the functions to test
@@ -231,18 +230,18 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
 
     Context "Function Existence and Parameter Validation" {
         It "Should have Test-SIDSecurity function available" {
-            { Get-Command Test-SIDSecurity -ErrorAction Stop } | Should Not Throw
+            { Get-Command Test-SIDSecurity -ErrorAction Stop } | Should -Not -Throw
         }
 
         It "Should accept mandatory SIDString parameter" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-            { Test-SIDSecurity -SIDString $testSID } | Should Not Throw
+            { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
         }
 
         It "Should accept optional ObjectDN parameter" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $objectDN = "CN=TestUser,OU=Users,DC=contoso,DC=com"
-            { Test-SIDSecurity -SIDString $testSID -ObjectDN $objectDN } | Should Not Throw
+            { Test-SIDSecurity -SIDString $testSID -ObjectDN $objectDN } | Should -Not -Throw
         }
 
         It "Should accept ValidationLevel parameter with valid values" {
@@ -250,7 +249,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $validLevels = @('Basic', 'Standard', 'Strict')
             
             foreach ($level in $validLevels) {
-                { Test-SIDSecurity -SIDString $testSID -ValidationLevel $level } | Should Not Throw
+                { Test-SIDSecurity -SIDString $testSID -ValidationLevel $level } | Should -Not -Throw
             }
         }
 
@@ -259,26 +258,26 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $invalidLevels = @('Invalid', 'Custom', 'Enterprise')
             
             foreach ($level in $invalidLevels) {
-                { Test-SIDSecurity -SIDString $testSID -ValidationLevel $level } | Should Throw
+                { Test-SIDSecurity -SIDString $testSID -ValidationLevel $level } | Should -Throw
             }
         }
 
         It "Should accept CorrelationId parameter" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Test-SIDSecurity -SIDString $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Test-SIDSecurity -SIDString $testSID -CorrelationId $correlationId } | Should -Not -Throw
         }
 
         It "Should generate CorrelationId when not provided" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-            { Test-SIDSecurity -SIDString $testSID } | Should Not Throw
-            # CorrelationId should be auto-generated
+            { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
+            # CorrelationId Should -be auto-generated
         }
 
         It "Should reject null or empty SIDString" {
-            { Test-SIDSecurity -SIDString $null } | Should Throw
-            { Test-SIDSecurity -SIDString "" } | Should Throw
-            { Test-SIDSecurity -SIDString "   " } | Should Throw
+            { Test-SIDSecurity -SIDString $null } | Should -Throw
+            { Test-SIDSecurity -SIDString "" } | Should -Throw
+            { Test-SIDSecurity -SIDString "   " } | Should -Throw
         }
     }
 
@@ -292,19 +291,19 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $systemSID = "S-1-5-18"
             $result = Test-SIDSecurity -SIDString $systemSID
             
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "Critical"
-            ($result.BlockedSIDs -contains $systemSID) | Should Be $true
-            ($result.Issues -contains "SID is in protected SIDs list - removal blocked by security policy") | Should Be $true
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "Critical"
+            ($result.BlockedSIDs -contains $systemSID) | Should -Be $true
+            ($result.Issues -contains "SID is in protected SIDs list - removal blocked by security policy") | Should -Be $true
         }
 
         It "Should block Administrators group SID (S-1-5-32-544)" {
             $adminSID = "S-1-5-32-544"
             $result = Test-SIDSecurity -SIDString $adminSID
             
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "Critical"
-            ($result.BlockedSIDs -contains $adminSID) | Should Be $true
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "Critical"
+            ($result.BlockedSIDs -contains $adminSID) | Should -Be $true
         }
 
         It "Should block all configured protected SIDs" {
@@ -312,9 +311,9 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             foreach ($sid in $protectedSIDs) {
                 $result = Test-SIDSecurity -SIDString $sid
-                $result.IsValid | Should Be $false
-                $result.RiskLevel | Should Be "Critical"
-                ($result.BlockedSIDs -contains $sid) | Should Be $true
+                $result.IsValid | Should -Be $false
+                $result.RiskLevel | Should -Be "Critical"
+                ($result.BlockedSIDs -contains $sid) | Should -Be $true
             }
         }
 
@@ -323,15 +322,15 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $protectedSID = "S-1-5-18"
             $result = Test-SIDSecurity -SIDString $protectedSID
             
-            # Protected SIDs should be blocked
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "Critical"
+            # Protected SIDs Should -be blocked
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "Critical"
             
             # Should have security logs for the protected SID validation
             $securityLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation'
             }
-            $securityLogs.Count | Should BeGreaterThan 0
+            $securityLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should maintain audit trail for blocked SIDs" {
@@ -339,16 +338,16 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             $result = Test-SIDSecurity -SIDString $protectedSID -CorrelationId $correlationId
             
-            # Protected SID should be blocked
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "Critical"
+            # Protected SID Should -be blocked
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "Critical"
             
             # Should have audit logs with correlation ID
             $auditLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.CorrelationId -eq $correlationId -and 
                 $_.SecurityEventType -eq 'DataValidation'
             }
-            $auditLogs.Count | Should BeGreaterThan 0
+            $auditLogs.Count | Should -BeGreaterThan 0
         }
     }
 
@@ -378,19 +377,19 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $wellKnownSID = "S-1-5-21-123456789-123456789-123456789-512"  # Domain Admins pattern
             $result = Test-SIDSecurity -SIDString $wellKnownSID -ValidationLevel 'Standard'
             
-            # Should be blocked due to well-known status - but risk level should be High, not Critical
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "High"
-            ($result.Issues -contains "Well-known SID detected - removal may impact system security") | Should Be $true
+            # Should -be blocked due to well-known status - but risk level Should -be High, not Critical
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "High"
+            ($result.Issues -contains "Well-known SID detected - removal may impact system security") | Should -Be $true
         }
 
         It "Should detect and handle well-known SIDs with Strict validation" {
             $wellKnownSID = "S-1-5-21-123456789-123456789-123456789-519"  # Enterprise Admins pattern
             $result = Test-SIDSecurity -SIDString $wellKnownSID -ValidationLevel 'Strict'
             
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "High"
-            ($result.BlockedSIDs -contains $wellKnownSID) | Should Be $true
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "High"
+            ($result.BlockedSIDs -contains $wellKnownSID) | Should -Be $true
         }
 
         It "Should allow well-known SIDs with Basic validation" {
@@ -399,7 +398,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             # Basic validation might allow well-known SIDs if not in protected list
             # Behavior depends on specific implementation
-            $result | Should Not Be $null
+            $result | Should -Not -Be $null
         }
 
         It "Should log well-known SID detection events" {
@@ -411,7 +410,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $_.Outcome -eq 'Failure' -and
                 $_.SecurityContext.BlockedReason -eq 'WellKnownSID' 
             }
-            $securityLogs.Count | Should BeGreaterThan 0
+            $securityLogs.Count | Should -BeGreaterThan 0
         }
     }
 
@@ -425,16 +424,16 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Test-SIDSecurity -SIDString $highRiskSID -ValidationLevel 'Strict'
             
             # Updated expectations based on actual function behavior
-            $result.RiskLevel | Should Be "High"
+            $result.RiskLevel | Should -Be "High"
             # Note: RequiresElevatedConfirmation depends on actual implementation
-            ($result.Issues -contains "High-risk SID requires elevated confirmation for removal") | Should Be $true
+            ($result.Issues -contains "High-risk SID requires elevated confirmation for removal") | Should -Be $true
         }
 
         It "Should handle Medium risk SIDs appropriately" {
             $mediumRiskSID = "S-1-5-21-123456789-123456789-123456789-1001"  # Regular user
             $result = Test-SIDSecurity -SIDString $mediumRiskSID -ValidationLevel 'Strict'
             
-            $result.RiskLevel | Should Be "Medium"
+            $result.RiskLevel | Should -Be "Medium"
             # RequiresElevatedConfirmation behavior may vary based on implementation
         }
 
@@ -442,9 +441,9 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $lowRiskSID = "S-1-5-80-123456789-123456789-123456789-123456789-123456789"  # Service SID
             $result = Test-SIDSecurity -SIDString $lowRiskSID
             
-            $result.RiskLevel | Should Be "Low"
-            ($result.AllowedSIDs -contains $lowRiskSID) | Should Be $true
-            $result.IsValid | Should Be $true
+            $result.RiskLevel | Should -Be "Low"
+            ($result.AllowedSIDs -contains $lowRiskSID) | Should -Be $true
+            $result.IsValid | Should -Be $true
         }
 
         It "Should log high-risk SID validation events" {
@@ -455,7 +454,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $riskLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation'
             }
-            $riskLogs.Count | Should BeGreaterThan 0
+            $riskLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should track SID analysis context in risk assessment" {
@@ -466,7 +465,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $analysisLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation'
             }
-            $analysisLogs.Count | Should BeGreaterThan 0
+            $analysisLogs.Count | Should -BeGreaterThan 0
         }
     }
 
@@ -480,9 +479,9 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $criticalObjectDN = "CN=Domain Controllers,CN=System,DC=contoso,DC=com"
             $result = Test-SIDSecurity -SIDString $testSID -ObjectDN $criticalObjectDN
             
-            $result.RequiresElevatedConfirmation | Should Be $true
-            ($result.Issues -contains "SID is on critical object: $criticalObjectDN") | Should Be $true
-            $result.RiskLevel | Should Be "High"
+            $result.RequiresElevatedConfirmation | Should -Be $true
+            ($result.Issues -contains "SID is on critical object: $criticalObjectDN") | Should -Be $true
+            $result.RiskLevel | Should -Be "High"
         }
 
         It "Should handle Enterprise Admins container objects" {
@@ -490,8 +489,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $enterpriseAdminsDN = "CN=Enterprise Admins,CN=Users,DC=contoso,DC=com"
             $result = Test-SIDSecurity -SIDString $testSID -ObjectDN $enterpriseAdminsDN
             
-            $result.RequiresElevatedConfirmation | Should Be $true
-            $result.RiskLevel | Should Be "High"
+            $result.RequiresElevatedConfirmation | Should -Be $true
+            $result.RiskLevel | Should -Be "High"
         }
 
         It "Should handle Schema Admins container objects" {
@@ -499,7 +498,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $schemaAdminsDN = "CN=Schema Admins,CN=Users,DC=contoso,DC=com"
             $result = Test-SIDSecurity -SIDString $testSID -ObjectDN $schemaAdminsDN
             
-            $result.RequiresElevatedConfirmation | Should Be $true
+            $result.RequiresElevatedConfirmation | Should -Be $true
         }
 
         It "Should allow SIDs on non-critical objects" {
@@ -518,7 +517,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             foreach ($pattern in $criticalPatterns) {
                 $mockDN = $pattern.Replace('*', 'CN=TestObject,DC=contoso,DC=com')
                 $result = Test-SIDSecurity -SIDString $testSID -ObjectDN $mockDN
-                $result.RequiresElevatedConfirmation | Should Be $true
+                $result.RequiresElevatedConfirmation | Should -Be $true
             }
         }
     }
@@ -538,7 +537,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $_.SecurityEventType -eq 'DataValidation' -and 
                 $_.Outcome -eq 'Attempt' 
             }
-            $initiationLogs.Count | Should BeGreaterThan 0
+            $initiationLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should log successful validation completion" {
@@ -549,7 +548,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $_.SecurityEventType -eq 'DataValidation' -and 
                 $_.Outcome -eq 'Success' 
             }
-            $successLogs.Count | Should BeGreaterThan 0
+            $successLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should maintain comprehensive security context in logs" {
@@ -560,13 +559,13 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             Test-SIDSecurity -SIDString $testSID -CorrelationId $correlationId -ObjectDN $objectDN -ValidationLevel 'Strict'
             
             $contextLogs = $global:SecurityLogCalls | Where-Object { $_.CorrelationId -eq $correlationId }
-            $contextLogs.Count | Should BeGreaterThan 0
+            $contextLogs.Count | Should -BeGreaterThan 0
             
             $context = $contextLogs[0].SecurityContext
-            $context.SIDString | Should Be $testSID
-            $context.ValidationLevel | Should Be 'Strict'
-            $context.ObjectDN | Should Be $objectDN
-            $context.Component | Should Be 'SIDSecurity'
+            $context.SIDString | Should -Be $testSID
+            $context.ValidationLevel | Should -Be 'Strict'
+            $context.ObjectDN | Should -Be $objectDN
+            $context.Component | Should -Be 'SIDSecurity'
         }
 
         It "Should include correlation ID in all log entries" {
@@ -576,10 +575,10 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             Test-SIDSecurity -SIDString $testSID -CorrelationId $correlationId
             
             $correlatedLogs = $global:SecurityLogCalls | Where-Object { $_.CorrelationId -eq $correlationId }
-            $correlatedLogs.Count | Should BeGreaterThan 0
+            $correlatedLogs.Count | Should -BeGreaterThan 0
             
             # All logs should have the same correlation ID
-            $correlatedLogs | ForEach-Object { $_.CorrelationId | Should Be $correlationId }
+            $correlatedLogs | ForEach-Object { $_.CorrelationId | Should -Be $correlationId }
         }
 
         It "Should log structured debug information" {
@@ -590,7 +589,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $_.Component -eq 'SIDSecurity' -and 
                 $_.Level -eq 'Debug' 
             }
-            $debugLogs.Count | Should BeGreaterThan 0
+            $debugLogs.Count | Should -BeGreaterThan 0
         }
     }
 
@@ -598,7 +597,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
         It "Should return SecurityValidationResult object" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $result = Test-SIDSecurity -SIDString $testSID
-            $result.GetType().Name | Should Be "SecurityValidationResult"
+            $result.GetType().Name | Should -Be "SecurityValidationResult"
         }
 
         It "Should include all required properties" {
@@ -606,14 +605,14 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Test-SIDSecurity -SIDString $testSID
             
             # Required properties based on SecurityValidationResult class
-            ($result.PSObject.Properties.Name -contains 'IsValid') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'RiskLevel') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'Issues') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'RequiresElevatedConfirmation') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'BlockedSIDs') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'AllowedSIDs') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'ValidatedAt') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'ValidatorVersion') | Should Be $true
+            ($result.PSObject.Properties.Name -contains 'IsValid') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'RiskLevel') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'Issues') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'RequiresElevatedConfirmation') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'BlockedSIDs') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'AllowedSIDs') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'ValidatedAt') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'ValidatorVersion') | Should -Be $true
         }
 
         It "Should have valid RiskLevel values" {
@@ -628,7 +627,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             foreach ($sid in $testSIDs) {
                 $result = Test-SIDSecurity -SIDString $sid
-                ($validRiskLevels -contains $result.RiskLevel) | Should Be $true
+                ($validRiskLevels -contains $result.RiskLevel) | Should -Be $true
             }
         }
 
@@ -638,17 +637,17 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Test-SIDSecurity -SIDString $testSID
             $afterValidation = Get-Date
             
-            $result.ValidatedAt | Should Not BeNullOrEmpty
-            $result.ValidatedAt | Should BeGreaterThan $beforeValidation.AddSeconds(-2)
-            $result.ValidatedAt | Should BeLessThan $afterValidation.AddSeconds(2)
+            $result.ValidatedAt | Should -Not -BeNullOrEmpty
+            $result.ValidatedAt | Should -BeGreaterThan $beforeValidation.AddSeconds(-2)
+            $result.ValidatedAt | Should -BeLessThan $afterValidation.AddSeconds(2)
         }
 
         It "Should include ValidatorVersion" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $result = Test-SIDSecurity -SIDString $testSID
             
-            $result.ValidatorVersion | Should Not BeNullOrEmpty
-            $result.ValidatorVersion | Should Match '^\d+\.\d+\.\d+$'  # Version format
+            $result.ValidatorVersion | Should -Not -BeNullOrEmpty
+            $result.ValidatorVersion | Should -Match '^\d+\.\d+\.\d+$'  # Version format
         }
 
         It "Should initialize collections properly" {
@@ -656,14 +655,14 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Test-SIDSecurity -SIDString $testSID
             
             # Use more explicit checks
-            $result.Issues.Count | Should BeGreaterThan -1
-            $result.BlockedSIDs.Count | Should BeGreaterThan -1
-            $result.AllowedSIDs.Count | Should BeGreaterThan -1
+            $result.Issues.Count | Should -BeGreaterThan -1
+            $result.BlockedSIDs.Count | Should -BeGreaterThan -1
+            $result.AllowedSIDs.Count | Should -BeGreaterThan -1
             
-            # Collections should be arrays (check if they support array operations)
-            ($result.Issues -is [Array]) | Should Be $true
-            ($result.BlockedSIDs -is [Array]) | Should Be $true
-            ($result.AllowedSIDs -is [Array]) | Should Be $true
+            # Collections Should -be arrays (check if they support array operations)
+            ($result.Issues -is [Array]) | Should -Be $true
+            ($result.BlockedSIDs -is [Array]) | Should -Be $true
+            ($result.AllowedSIDs -is [Array]) | Should -Be $true
         }
     }
 
@@ -677,12 +676,12 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             Mock Get-SIDAnalysis { throw "Analysis service unavailable" } -ModuleName $null
             
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-            { Test-SIDSecurity -SIDString $testSID } | Should Not Throw
+            { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
             
             $result = Test-SIDSecurity -SIDString $testSID
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "Critical"
-            $result.Issues -join ' ' | Should Match "Analysis service unavailable"
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "Critical"
+            $result.Issues -join ' ' | Should -Match "Analysis service unavailable"
         }
 
         It "Should log errors for audit trail" {
@@ -692,14 +691,14 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Test-SIDSecurity -SIDString $testSID
             
             # Verify the function handled the error gracefully
-            $result.IsValid | Should Be $false
-            $result.RiskLevel | Should Be "Critical"
+            $result.IsValid | Should -Be $false
+            $result.RiskLevel | Should -Be "Critical"
             
             # Should have security logs even during errors
             $errorLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation'
             }
-            $errorLogs.Count | Should BeGreaterThan 0
+            $errorLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should handle malformed SID input safely" {
@@ -711,10 +710,10 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             )
             
             foreach ($maliciousSID in $maliciousSIDs) {
-                { Test-SIDSecurity -SIDString $maliciousSID } | Should Not Throw
+                { Test-SIDSecurity -SIDString $maliciousSID } | Should -Not -Throw
                 $result = Test-SIDSecurity -SIDString $maliciousSID
-                $result | Should Not Be $null
-                $result.RiskLevel | Should Be "Critical"
+                $result | Should -Not -Be $null
+                $result.RiskLevel | Should -Be "Critical"
             }
         }
 
@@ -724,10 +723,10 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             try {
                 $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-                { Test-SIDSecurity -SIDString $testSID } | Should Not Throw
+                { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
                 
                 $result = Test-SIDSecurity -SIDString $testSID
-                $result | Should Not Be $null
+                $result | Should -Not -Be $null
             }
             finally {
                 $script:Config = $originalConfig
@@ -738,12 +737,12 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             Mock Write-StructuredLog { throw "Logging service down" } -ModuleName $null
             
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-            { Test-SIDSecurity -SIDString $testSID } | Should Not Throw
+            { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
             
             # Function should still return a valid result even if logging fails
             $result = Test-SIDSecurity -SIDString $testSID
-            $result | Should Not Be $null
-            $result.IsValid | Should Not Be $null  # SID validation should still work
+            $result | Should -Not -Be $null
+            $result.IsValid | Should -Not -Be $null  # SID validation should still work
         }
     }
 
@@ -756,7 +755,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             }
             
             # Should complete within 2 seconds for single SID
-            $executionTime.TotalSeconds | Should BeLessThan 2
+            $executionTime.TotalSeconds | Should -BeLessThan 2
         }
 
         It "Should handle batch validation efficiently" {
@@ -769,7 +768,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             }
             
             # Should complete 10 validations within 10 seconds
-            $executionTime.TotalSeconds | Should BeLessThan 10
+            $executionTime.TotalSeconds | Should -BeLessThan 10
         }
 
         It "Should maintain consistent performance across validation levels" {
@@ -784,8 +783,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $executionTimes += $time.TotalMilliseconds
             }
             
-            # Strict should not be more than 5x slower than Basic
-            $executionTimes[2] | Should BeLessThan ($executionTimes[0] * 5)
+            # Strict Should -Not -be more than 5x slower than Basic
+            $executionTimes[2] | Should -BeLessThan ($executionTimes[0] * 5)
         }
 
         It "Should handle memory efficiently" {
@@ -810,7 +809,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
         }
 
         It "Should have Get-SIDRiskAssessment function available" {
-            { Get-Command Get-SIDRiskAssessment -ErrorAction Stop } | Should Not Throw
+            { Get-Command Get-SIDRiskAssessment -ErrorAction Stop } | Should -Not -Throw
         }
 
         It "Should accept SIDList parameter" {
@@ -818,7 +817,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 "S-1-5-21-123456789-123456789-123456789-1001",
                 "S-1-5-21-123456789-123456789-123456789-1002"
             )
-            { Get-SIDRiskAssessment -SIDList $testSIDs } | Should Not Throw
+            { Get-SIDRiskAssessment -SIDList $testSIDs } | Should -Not -Throw
         }
 
         It "Should return comprehensive risk assessment object" {
@@ -828,11 +827,11 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             )
             $result = Get-SIDRiskAssessment -SIDList $testSIDs
             
-            $result | Should Not Be $null
-            $result.PSObject.TypeNames[0] | Should Be 'SIDRiskAssessment'
-            $result.TotalSIDs | Should Be 2
-            $result.AssessmentId | Should Not BeNullOrEmpty
-            $result.AssessedAt | Should Not BeNullOrEmpty
+            $result | Should -Not -Be $null
+            $result.PSObject.TypeNames[0] | Should -Be 'SIDRiskAssessment'
+            $result.TotalSIDs | Should -Be 2
+            $result.AssessmentId | Should -Not -BeNullOrEmpty
+            $result.AssessedAt | Should -Not -BeNullOrEmpty
         }
 
         It "Should categorize risk levels correctly" {
@@ -845,37 +844,37 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             $result = Get-SIDRiskAssessment -SIDList $mixedSIDs
             
-            $result.RiskBreakdown.Critical | Should BeGreaterThan 0
-            $result.RiskBreakdown.High | Should BeGreaterThan 0
-            $result.RiskBreakdown.Medium | Should BeGreaterThan 0
-            $result.RiskBreakdown.Low | Should BeGreaterThan 0
+            $result.RiskBreakdown.Critical | Should -BeGreaterThan 0
+            $result.RiskBreakdown.High | Should -BeGreaterThan 0
+            $result.RiskBreakdown.Medium | Should -BeGreaterThan 0
+            $result.RiskBreakdown.Low | Should -BeGreaterThan 0
         }
 
         It "Should determine overall risk level appropriately" {
             $criticalSIDs = @("S-1-5-18", "S-1-5-19")  # System SIDs
             $result = Get-SIDRiskAssessment -SIDList $criticalSIDs
-            $result.OverallRisk | Should Be "Critical"
+            $result.OverallRisk | Should -Be "Critical"
             
             $highSIDs = @("S-1-5-21-123456789-123456789-123456789-512")  # Domain Admins
             $result = Get-SIDRiskAssessment -SIDList $highSIDs
-            $result.OverallRisk | Should Be "High"
+            $result.OverallRisk | Should -Be "High"
             
             $lowSIDs = @("S-1-5-80-123456789-123456789-123456789-123456789-123456789")  # Service
             $result = Get-SIDRiskAssessment -SIDList $lowSIDs
-            $result.OverallRisk | Should Be "Low"
+            $result.OverallRisk | Should -Be "Low"
         }
 
         It "Should categorize SIDs correctly into blocked, allowed, and requires approval" {
             $mixedSIDs = @(
-                "S-1-5-18",                                           # Should be blocked (protected)
+                "S-1-5-18",                                           # Should -be blocked (protected)
                 "S-1-5-21-123456789-123456789-123456789-512",       # May require approval (high risk)
-                "S-1-5-80-123456789-123456789-123456789-123456789-123456789"  # Should be allowed (low risk)
+                "S-1-5-80-123456789-123456789-123456789-123456789-123456789"  # Should -be allowed (low risk)
             )
             
             $result = Get-SIDRiskAssessment -SIDList $mixedSIDs
             
-            $result.BlockedSIDs.Count | Should BeGreaterThan 0
-            $result.AllowedSIDs.Count | Should BeGreaterThan 0
+            $result.BlockedSIDs.Count | Should -BeGreaterThan 0
+            $result.AllowedSIDs.Count | Should -BeGreaterThan 0
             # RequiresApproval count may vary based on validation level
         }
 
@@ -887,28 +886,28 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             $result = Get-SIDRiskAssessment -SIDList $testSIDs
             
-            $result.Recommendations | Should Not BeNullOrEmpty
-            $result.Recommendations.Count | Should BeGreaterThan 0
-            $result.Recommendations -join ' ' | Should Match 'blocked|approval|automatic'
+            $result.Recommendations | Should -Not -BeNullOrEmpty
+            $result.Recommendations.Count | Should -BeGreaterThan 0
+            $result.Recommendations -join ' ' | Should -Match 'blocked|approval|automatic'
         }
 
         It "Should determine SafeForAutomation flag correctly" {
             $safeSIDs = @("S-1-5-80-123456789-123456789-123456789-123456789-123456789")
             $result = Get-SIDRiskAssessment -SIDList $safeSIDs
-            $result.SafeForAutomation | Should Be $true
+            $result.SafeForAutomation | Should -Be $true
             
             $unsafeSIDs = @("S-1-5-18")  # Protected SID
             $result = Get-SIDRiskAssessment -SIDList $unsafeSIDs
-            $result.SafeForAutomation | Should Be $false
+            $result.SafeForAutomation | Should -Be $false
         }
 
         It "Should handle empty SID list gracefully" {
             $emptySIDs = @()
             $result = Get-SIDRiskAssessment -SIDList $emptySIDs
             
-            $result.TotalSIDs | Should Be 0
-            $result.OverallRisk | Should Be "Low"
-            $result.SafeForAutomation | Should Be $true
+            $result.TotalSIDs | Should -Be 0
+            $result.OverallRisk | Should -Be "Low"
+            $result.SafeForAutomation | Should -Be $true
         }
 
         It "Should support object context parameter" {
@@ -916,7 +915,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $objectContext = "Critical Infrastructure"
             
             $result = Get-SIDRiskAssessment -SIDList $testSIDs -ObjectContext $objectContext
-            $result.ObjectContext | Should Be $objectContext
+            $result.ObjectContext | Should -Be $objectContext
         }
 
         It "Should support correlation ID tracking" {
@@ -924,7 +923,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             
             $result = Get-SIDRiskAssessment -SIDList $testSIDs -CorrelationId $correlationId
-            $result.AssessmentId | Should Be $correlationId
+            $result.AssessmentId | Should -Be $correlationId
         }
 
         It "Should log comprehensive risk assessment events" {
@@ -936,15 +935,15 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Get-SIDRiskAssessment -SIDList $testSIDs
             
             # Verify the function works correctly (primary concern)
-            $result | Should Not Be $null
-            $result.TotalSIDs | Should Be 2
+            $result | Should -Not -Be $null
+            $result.TotalSIDs | Should -Be 2
             
             # Should have some security logs (at least one for risk assessment)
             $riskLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'RiskAssessment' -and 
                 $_.Outcome -eq 'Success' 
             }
-            $riskLogs.Count | Should BeGreaterThan 0
+            $riskLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should handle large SID lists efficiently" {
@@ -954,8 +953,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $result = Get-SIDRiskAssessment -SIDList $largeSIDList
             }
             
-            $executionTime.TotalSeconds | Should BeLessThan 5  # Should complete within 5 seconds
-            $result.TotalSIDs | Should Be 25
+            $executionTime.TotalSeconds | Should -BeLessThan 5  # Should complete within 5 seconds
+            $result.TotalSIDs | Should -Be 25
         }
     }
 
@@ -974,11 +973,11 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $auditLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation' 
             }
-            $auditLogs.Count | Should BeGreaterThan 0
+            $auditLogs.Count | Should -BeGreaterThan 0
             
             # SOX requires detailed audit trails
-            $auditLogs[0].SecurityContext.ValidationLevel | Should Not BeNullOrEmpty
-            $auditLogs[0].CorrelationId | Should Not BeNullOrEmpty
+            $auditLogs[0].SecurityContext.ValidationLevel | Should -Not -BeNullOrEmpty
+            $auditLogs[0].CorrelationId | Should -Not -BeNullOrEmpty
         }
 
         It "Should support HIPAA compliance requirements" {
@@ -989,7 +988,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $securityLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation' 
             }
-            $securityLogs.Count | Should BeGreaterThan 0
+            $securityLogs.Count | Should -BeGreaterThan 0
         }
 
         It "Should maintain detailed audit context for compliance" {
@@ -999,23 +998,23 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             Test-SIDSecurity -SIDString $testSID -CorrelationId $correlationId
             
             $auditLogs = $global:SecurityLogCalls | Where-Object { $_.CorrelationId -eq $correlationId }
-            $auditLogs.Count | Should BeGreaterThan 0
+            $auditLogs.Count | Should -BeGreaterThan 0
             
             # Compliance requires comprehensive context
             $context = $auditLogs[0].SecurityContext
-            $context.SIDString | Should Be $testSID
-            $context.Component | Should Be 'SIDSecurity'
-            $auditLogs[0].Timestamp | Should Not BeNullOrEmpty
+            $context.SIDString | Should -Be $testSID
+            $context.Component | Should -Be 'SIDSecurity'
+            $auditLogs[0].Timestamp | Should -Not -BeNullOrEmpty
         }
 
         It "Should support custom compliance frameworks" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             # Test that the logging framework can support custom compliance
-            { Test-SIDSecurity -SIDString $testSID -ValidationLevel 'Strict' } | Should Not Throw
+            { Test-SIDSecurity -SIDString $testSID -ValidationLevel 'Strict' } | Should -Not -Throw
             
             # Verify extensible logging supports custom frameworks
             $logs = $global:SecurityLogCalls
-            $logs.Count | Should BeGreaterThan 0
+            $logs.Count | Should -BeGreaterThan 0
         }
     }
 
@@ -1025,9 +1024,9 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             foreach ($sid in $enterpriseProtectedSIDs) {
                 $result = Test-SIDSecurity -SIDString $sid
-                $result.IsValid | Should Be $false
-                $result.RiskLevel | Should Be "Critical"
-                ($result.BlockedSIDs -contains $sid) | Should Be $true
+                $result.IsValid | Should -Be $false
+                $result.RiskLevel | Should -Be "Critical"
+                ($result.BlockedSIDs -contains $sid) | Should -Be $true
             }
         }
 
@@ -1038,7 +1037,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             foreach ($pattern in $criticalPatterns) {
                 $mockDN = $pattern.Replace('*', 'CN=TestObject,DC=contoso,DC=com')
                 $result = Test-SIDSecurity -SIDString $testSID -ObjectDN $mockDN
-                $result.RequiresElevatedConfirmation | Should Be $true
+                $result.RequiresElevatedConfirmation | Should -Be $true
             }
         }
 
@@ -1046,18 +1045,18 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $securitySettings = $script:Config.SecurityValidation
             
             # Verify configuration is being used
-            $securitySettings.RequireElevatedConfirmation | Should Be $true
-            $securitySettings.AllowWellKnownSIDRemoval | Should Be $false
-            $securitySettings.ComplianceFrameworks | Should Not BeNullOrEmpty
-            ($securitySettings.ComplianceFrameworks -contains 'SOX') | Should Be $true
+            $securitySettings.RequireElevatedConfirmation | Should -Be $true
+            $securitySettings.AllowWellKnownSIDRemoval | Should -Be $false
+            $securitySettings.ComplianceFrameworks | Should -Not -BeNullOrEmpty
+            ($securitySettings.ComplianceFrameworks -contains 'SOX') | Should -Be $true
         }
 
         It "Should integrate with enterprise compliance frameworks" {
             $complianceFrameworks = $script:Config.SecurityValidation.ComplianceFrameworks
             
-            $complianceFrameworks -contains 'SOX' | Should Be $true
-            $complianceFrameworks -contains 'HIPAA' | Should Be $true
-            $complianceFrameworks -contains 'PCI-DSS' | Should Be $true
+            $complianceFrameworks -contains 'SOX' | Should -Be $true
+            $complianceFrameworks -contains 'HIPAA' | Should -Be $true
+            $complianceFrameworks -contains 'PCI-DSS' | Should -Be $true
         }
     }
 
@@ -1083,7 +1082,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $results = $jobs | Wait-Job | Receive-Job
             $jobs | Remove-Job
             
-            $results.Count | Should Be 5
+            $results.Count | Should -Be 5
         }
 
         It "Should handle malicious input patterns safely" {
@@ -1096,9 +1095,9 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             )
             
             foreach ($maliciousInput in $maliciousInputs) {
-                { Test-SIDSecurity -SIDString $maliciousInput } | Should Not Throw
+                { Test-SIDSecurity -SIDString $maliciousInput } | Should -Not -Throw
                 $result = Test-SIDSecurity -SIDString $maliciousInput
-                $result.RiskLevel | Should Be "Critical"
+                $result.RiskLevel | Should -Be "Critical"
             }
         }
 
@@ -1108,8 +1107,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             foreach ($level in $validationLevels) {
                 $result = Test-SIDSecurity -SIDString $testSID -ValidationLevel $level
-                $result | Should Not Be $null
-                $result.GetType().Name | Should Be "SecurityValidationResult"
+                $result | Should -Not -Be $null
+                $result.GetType().Name | Should -Be "SecurityValidationResult"
             }
         }
 
@@ -1121,7 +1120,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             # Verify no external processes were started
             # (This is a conceptual test - actual implementation would depend on security controls)
-            $result | Should Not Be $null
+            $result | Should -Not -Be $null
         }
 
         It "Should support enterprise-scale batch operations" {
@@ -1132,7 +1131,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             }
             
             # Should handle enterprise scale efficiently
-            $executionTime.TotalSeconds | Should BeLessThan 30
+            $executionTime.TotalSeconds | Should -BeLessThan 30
         }
     }
 }

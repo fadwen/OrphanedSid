@@ -58,7 +58,8 @@ function Invoke-OperationWithRetry {
     )
 
     begin {
-        Write-Verbose "Starting retry operation: $OperationName (Max Retries: $MaxRetries)"
+        $startMessage = "Starting retry operation: $OperationName (Max Retries: $MaxRetries)"
+        Write-Verbose "$startMessage - CorrelationId: $CorrelationId"
     }
 
     process {

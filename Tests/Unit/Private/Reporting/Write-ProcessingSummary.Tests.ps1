@@ -1,9 +1,10 @@
-#Requires -Module Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 # Import the function under test directly
-. "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
-
 # Test suite for Write-ProcessingSummary function
+BeforeAll {
+    . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
+}
+
 Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
     BeforeAll {
         # Robust mocking approach - Mock the core logging functions
@@ -111,19 +112,19 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
     
     Context "Parameter Validation" {
         It "Should accept valid ProcessingResults parameter" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics } | Should Not Throw
+            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics } | Should -Not -Throw
         }
 
         It "Should accept valid OutputPath parameter" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -OutputPath "C:\temp\test.csv" } | Should Not Throw
+            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -OutputPath "C:\temp\test.csv" } | Should -Not -Throw
         }
 
         It "Should accept AutomationMode switch" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode } | Should Not Throw
+            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode } | Should -Not -Throw
         }
 
         It "Should accept CorrelationId parameter" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -CorrelationId "test-123" } | Should Not Throw
+            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -CorrelationId "test-123" } | Should -Not -Throw
         }
     }
     
@@ -131,19 +132,19 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
         It "Should display processing summary to console" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics
             
-            Assert-MockCalled Write-StructuredLog -Scope It
+            Should -Invoke Write-StructuredLog -Scope It
         }
         
         It "Should display orphaned SIDs summary when provided" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics
             
-            Assert-MockCalled Write-StructuredLog -Scope It
+            Should -Invoke Write-StructuredLog -Scope It
         }
         
         It "Should display error summary when errors provided" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics
             
-            Assert-MockCalled Write-StructuredLog -Scope It
+            Should -Invoke Write-StructuredLog -Scope It
         }
     }
     
@@ -151,13 +152,13 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
         It "Should export to CSV when OutputPath specified" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatisticsWithStreaming -OutputPath "C:\temp\test.csv"
             
-            Assert-MockCalled Export-Csv -Times 1 -Exactly -Scope It
+            Should -Invoke Export-Csv -Times 1 -Exactly -Scope It
         }
         
         It "Should not export to CSV when OutputPath not specified" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics
             
-            Assert-MockCalled Export-Csv -Times 0 -Exactly -Scope It
+            Should -Invoke Export-Csv -Times 0 -Exactly -Scope It
         }
     }
     
@@ -167,13 +168,13 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
             
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode
             
-            Assert-MockCalled Write-Information -Times 1
+            Should -Invoke Write-Information -Times 1
         }
         
         It "Should not display console output in automation mode" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode
             
-            Assert-MockCalled Write-StructuredLog -Scope It
+            Should -Invoke Write-StructuredLog -Scope It
         }
     }
     
@@ -181,19 +182,19 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
         It "Should log processing summary" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics
             
-            Assert-MockCalled Write-StructuredLog -Scope It
+            Should -Invoke Write-StructuredLog -Scope It
         }
         
         It "Should log with correct parameters" {
             Write-ProcessingSummary -ProcessingResults $script:TestStatistics
             
-            Assert-MockCalled Write-StructuredLog -Scope It
+            Should -Invoke Write-StructuredLog -Scope It
         }
     }
     
     Context "Error Handling" {
         It "Should handle missing ProcessingResults gracefully" {
-            { Write-ProcessingSummary -ProcessingResults $null } | Should Throw
+            { Write-ProcessingSummary -ProcessingResults $null } | Should -Throw
         }
         
         It "Should handle invalid OutputPath gracefully" {
@@ -204,7 +205,7 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
                 throw "Access denied"
             } -Force
             
-            { Write-ProcessingSummary -ProcessingResults $TestDataWithError -OutputPath "Z:\invalid\path.csv" } | Should Not Throw
+            { Write-ProcessingSummary -ProcessingResults $TestDataWithError -OutputPath "Z:\invalid\path.csv" } | Should -Not -Throw
         }
         
         It "Should log errors during CSV export" {
@@ -217,7 +218,7 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
             
             Write-ProcessingSummary -ProcessingResults $TestDataWithError -OutputPath "Z:\invalid\path.csv"
             
-            Assert-MockCalled Write-StructuredLog -ParameterFilter {
+            Should -Invoke Write-StructuredLog -ParameterFilter {
                 $Level -eq 'Error'
             } -Scope It
         }

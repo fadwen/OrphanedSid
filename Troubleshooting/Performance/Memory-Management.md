@@ -2,7 +2,7 @@
 
 ## Overview
 
-`Find-UnknownSID.ps1` keeps memory flat on large Active Directory scans by streaming results to
+`Find-OrphanedSid` keeps memory flat on large Active Directory scans by streaming results to
 disk in small batches and by monitoring the process working set against a configurable threshold.
 This document describes those two mechanisms as implemented, the log messages they produce, and
 how to diagnose them.
@@ -19,7 +19,7 @@ Defined in `Classes\StreamingResultsManager.ps1`, created once per run by
   cleared.
 - **Batch size**: the `BatchSize` configuration key (1-1000, default 50), read from `-ConfigPath`
   and passed to the constructor by `Invoke-MainProcessingLogic`.
-- **Storage**: `<TEMP>\Find-UnknownSID-<CorrelationId>\`, where `<TEMP>` is
+- **Storage**: `<TEMP>\OrphanedSid-<CorrelationId>\`, where `<TEMP>` is
   `[System.IO.Path]::GetTempPath()`. Batches are `batch_1.json`, `batch_2.json`, ... (compressed
   JSON arrays); a `summary_<yyyyMMdd_HHmmss>.json` records totals and the batch file list.
 - **Garbage collection**: `GC.Collect()` after every flush.
@@ -96,12 +96,12 @@ set belongs to the session (loaded modules, the AD provider drive). Start large 
 process:
 
 ```powershell
-powershell.exe -NoProfile -File .\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
+powershell.exe -NoProfile -File .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
 ```
 
 ### Issue: Temporary file accumulation
 
-**Symptoms**: `Find-UnknownSID-<guid>` folders left under the temp directory.
+**Symptoms**: `OrphanedSid-<guid>` folders left under the temp directory.
 
 **Cause**: a run ended before `Dispose()` could execute (process killed, host crash), or runs were
 made with `-PreserveTempFiles`.
@@ -110,13 +110,13 @@ made with `-PreserveTempFiles`.
 
 ```powershell
 # List leftover streaming folders with their size
-Get-ChildItem ([System.IO.Path]::GetTempPath()) -Filter 'Find-UnknownSID-*' -Directory | ForEach-Object {
+Get-ChildItem ([System.IO.Path]::GetTempPath()) -Filter 'OrphanedSid-*' -Directory | ForEach-Object {
     $sizeMB = (Get-ChildItem $_.FullName -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
     "{0}: {1:N2} MB" -f $_.Name, $sizeMB
 }
 
 # Remove them (drop -WhatIf to execute)
-Get-ChildItem ([System.IO.Path]::GetTempPath()) -Filter 'Find-UnknownSID-*' -Directory |
+Get-ChildItem ([System.IO.Path]::GetTempPath()) -Filter 'OrphanedSid-*' -Directory |
     Remove-Item -Recurse -Force -WhatIf
 ```
 
@@ -140,7 +140,7 @@ Memory events use the `MemoryManagement` component. Debug-level lines reach the 
 `-LogLevel Debug`.
 
 ```powershell
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 Select-String -Path $log.FullName -Pattern 'MemoryManagement|threshold exceeded|Peak memory usage|Memory usage at'
 ```
 
@@ -157,9 +157,9 @@ Messages written at Information level and above:
 
 ```powershell
 # Keep the batch files and inspect them afterwards
-.\Find-UnknownSID.ps1 -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'mem-check-01'
+.\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'mem-check-01'
 
-$dir = Join-Path ([System.IO.Path]::GetTempPath()) 'Find-UnknownSID-mem-check-01'
+$dir = Join-Path ([System.IO.Path]::GetTempPath()) 'OrphanedSid-mem-check-01'
 Get-ChildItem $dir
 (Get-Content (Join-Path $dir 'batch_1.json') -Raw | ConvertFrom-Json).Count   # 50 for a full batch
 Get-Content (Get-ChildItem $dir -Filter 'summary_*.json').FullName -Raw | ConvertFrom-Json
@@ -169,14 +169,14 @@ Get-Content (Get-ChildItem $dir -Filter 'summary_*.json').FullName -Raw | Conver
 
 ```powershell
 # Threshold is a parameter
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
 
 # Check interval is a configuration key (1-100)
 @{ MemoryCheckInterval = 25 } | ConvertTo-Json | Set-Content .\config.json
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 
 # Keep streaming files for analysis
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -PreserveTempFiles
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -PreserveTempFiles
 ```
 
 Suggested thresholds by object count; adjust to the host's free memory:
@@ -215,4 +215,4 @@ Suggested thresholds by object count; adjust to the host's free memory:
 - [Performance Tuning](./Performance-Tuning.md)
 - [Security Validation Guide](../Security/Security-Validation-Guide.md)
 - [Enterprise Integration Guide](../Integration/Enterprise-Integration-Guide.md)
-- [Find-UnknownSID Issues](../Common/Find-UnknownSID-Issues.md)
+- [Common Issues](../Common/Common-Issues.md)

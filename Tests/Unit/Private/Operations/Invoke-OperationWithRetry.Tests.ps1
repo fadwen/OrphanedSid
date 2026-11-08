@@ -1,18 +1,20 @@
 #Requires -Version 5.1
 
 # Import the function under test
-. "$PSScriptRoot\..\..\..\..\Private\Operations\Invoke-OperationWithRetry.ps1"
+BeforeAll {
+    . "$PSScriptRoot\..\..\..\..\Private\Operations\Invoke-OperationWithRetry.ps1"
+}
 
 Describe "Invoke-OperationWithRetry" -Tag "Unit", "Operations" {
     
     Context "Parameter Validation" {
         It "Should accept valid parameters" {
-            { Invoke-OperationWithRetry -ScriptBlock { "test" } -MaxRetries 1 } | Should Not Throw
+            { Invoke-OperationWithRetry -ScriptBlock { "test" } -MaxRetries 1 } | Should -Not -Throw
         }
         
         It "Should use default MaxRetries when not specified" {
             $result = Invoke-OperationWithRetry -ScriptBlock { "test" }
-            $result | Should Be "test"
+            $result | Should -Be "test"
         }
     }
     
@@ -25,8 +27,8 @@ Describe "Invoke-OperationWithRetry" -Tag "Unit", "Operations" {
                 }
             }
             
-            $result.Success | Should Be $true
-            $result.Result | Should Be "Operation completed"
+            $result.Success | Should -Be $true
+            $result.Result | Should -Be "Operation completed"
         }
         
         It "Should return ScriptBlock result" {
@@ -35,7 +37,7 @@ Describe "Invoke-OperationWithRetry" -Tag "Unit", "Operations" {
                 return $expectedResult 
             }
             
-            $result | Should Be $expectedResult
+            $result | Should -Be $expectedResult
         }
     }
     
@@ -45,7 +47,7 @@ Describe "Invoke-OperationWithRetry" -Tag "Unit", "Operations" {
                 Get-Date | Select-Object -ExpandProperty DayOfWeek
             }
             
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
     }
 }

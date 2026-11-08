@@ -469,4 +469,3 @@ function Get-SIDValidationCacheStat {
     }
 }
 
-Write-StructuredLog "Test-OrphanedSID module loaded successfully" -Level Debug -Component 'SIDDetection' -CorrelationId $([System.Guid]::NewGuid().ToString())

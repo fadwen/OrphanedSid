@@ -30,7 +30,7 @@
 
     DEPENDENCIES:
     - Requires PowerShell 5.1 or later
-    - Depends on Get-BackupMetadata for metadata extraction
+    - Depends on Get-BackupFileMetadata for metadata extraction
     - Integrates with Write-StructuredLog for audit logging
 
     SECURITY CONSIDERATIONS:
@@ -106,7 +106,7 @@ function Find-BackupFile {
 
     .OUTPUTS
         [PSCustomObject[]] Array of backup file information objects containing:
-        - Complete metadata from Get-BackupMetadata
+        - Complete metadata from Get-BackupFileMetadata
         - File system information and accessibility status
         - Integrity validation results
         - Discovery context and correlation tracking
@@ -237,7 +237,7 @@ function Find-BackupFile {
                     Write-Progress -Activity "Processing backup files" -Status "Processing file $processedCount of $($backupFiles.Count)" -PercentComplete (($processedCount / $backupFiles.Count) * 100)
 
                     # Extract metadata using the dedicated function
-                    $metadata = Get-BackupMetadata -BackupFilePath $file.FullName -CorrelationId $CorrelationId
+                    $metadata = Get-BackupFileMetadata -BackupFilePath $file.FullName -CorrelationId $CorrelationId
 
                     # Apply ObjectDN filter if specified
                     if ($ObjectDN -and $metadata.ObjectDN -notlike $ObjectDN) {
@@ -320,7 +320,7 @@ function Find-BackupFile {
                 DateRangeFilter = $DateRange
             }
 
-            Write-StructuredLog "Error during backup file discovery" -Level Error -Details $errorDetails -CorrelationId $CorrelationId
+            Write-StructuredLog "Error during backup file discovery" -Level Error -Data $errorDetails -CorrelationId $CorrelationId
 
             Write-Error "Failed to discover backup files: $($_.Exception.Message)" -ErrorAction Stop
         }
@@ -331,5 +331,4 @@ function Find-BackupFile {
     }
 }
 
-Write-StructuredLog "Find-BackupFile module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

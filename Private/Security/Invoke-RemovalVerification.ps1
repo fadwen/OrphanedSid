@@ -175,5 +175,4 @@ function Invoke-RemovalVerification {
     }
 }
 
-Write-StructuredLog "Removal verification module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

@@ -1,5 +1,4 @@
-#Requires -Module Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
     
     BeforeAll {
@@ -74,25 +73,25 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
 
     Context "Parameter Validation" {
         It "Should accept valid Distinguished Name for Users OU" {
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' } | Should Not Throw
+            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' } | Should -Not -Throw
         }
         
         It "Should accept valid Distinguished Name for Groups OU" {
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Groups,DC=contoso,DC=com' } | Should Not Throw
+            { Get-ADObjectFromSearchBase -SearchBase 'OU=Groups,DC=contoso,DC=com' } | Should -Not -Throw
         }
         
         It "Should accept pipeline input" {
-            { 'OU=Users,DC=contoso,DC=com' | Get-ADObjectFromSearchBase } | Should Not Throw
+            { 'OU=Users,DC=contoso,DC=com' | Get-ADObjectFromSearchBase } | Should -Not -Throw
         }
         
         It "Should accept Properties parameter" {
             $properties = @('Name', 'Description', 'mail')
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -Properties $properties } | Should Not Throw
+            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -Properties $properties } | Should -Not -Throw
         }
         
         It "Should accept CorrelationId parameter" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -CorrelationId $correlationId } | Should Not Throw
+            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -CorrelationId $correlationId } | Should -Not -Throw
         }
     }
 
@@ -100,39 +99,39 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         It "Should return AD objects from Users OU" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 2
-            $result[0].Name | Should Be 'User1'
-            $result[1].Name | Should Be 'User2'
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 2
+            $result[0].Name | Should -Be 'User1'
+            $result[1].Name | Should -Be 'User2'
         }
         
         It "Should return AD objects from Groups OU" {
             $result = @(Get-ADObjectFromSearchBase -SearchBase 'OU=Groups,DC=contoso,DC=com')
             
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 1
-            $result[0].Name | Should Be 'Group1'
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 1
+            $result[0].Name | Should -Be 'Group1'
         }
         
         It "Should include nTSecurityDescriptor in results" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
-            $result[0].nTSecurityDescriptor | Should Not BeNullOrEmpty
-            $result[0].nTSecurityDescriptor | Should Be 'MockSecurityDescriptor1'
+            $result[0].nTSecurityDescriptor | Should -Not -BeNullOrEmpty
+            $result[0].nTSecurityDescriptor | Should -Be 'MockSecurityDescriptor1'
         }
         
         It "Should handle empty result set" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'OU=Empty,DC=contoso,DC=com'
             
-            $result | Should BeNullOrEmpty
+            $result | Should -BeNullOrEmpty
         }
         
         It "Should process multiple search bases via pipeline" {
             $searchBases = @('OU=Users,DC=contoso,DC=com', 'OU=Groups,DC=contoso,DC=com')
             $result = $searchBases | Get-ADObjectFromSearchBase
             
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 3  # 2 users + 1 group
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 3  # 2 users + 1 group
         }
     }
 
@@ -140,28 +139,28 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         It "Should handle invalid Distinguished Name gracefully" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'InvalidDN'
             
-            # Function should not throw but should warn
-            Assert-MockCalled Write-Warning -Exactly 1 -ParameterFilter {
+            # Function Should -Not -throw but should warn
+            Should -Invoke Write-Warning -Exactly 1 -ParameterFilter {
                 $Message -match "Failed to retrieve objects"
             }
         }
         
         It "Should handle access denied errors gracefully" {
-            # Function should not throw and should return null/empty
-            { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=AccessDenied,DC=contoso,DC=com' } | Should Not Throw
+            # Function Should -Not -throw and should return null/empty
+            { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=AccessDenied,DC=contoso,DC=com' } | Should -Not -Throw
             
             # Verify warning was called (without exact count due to Pester 3.x limitations)
-            Assert-MockCalled Write-Warning -ParameterFilter {
+            Should -Invoke Write-Warning -ParameterFilter {
                 $Message -match "Failed to retrieve objects"
             }
         }
         
         It "Should handle server unavailable errors gracefully" {
-            # Function should not throw and should return null/empty
-            { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=ServerError,DC=contoso,DC=com' } | Should Not Throw
+            # Function Should -Not -throw and should return null/empty
+            { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=ServerError,DC=contoso,DC=com' } | Should -Not -Throw
             
             # Verify warning was called (without exact count due to Pester 3.x limitations)
-            Assert-MockCalled Write-Warning -ParameterFilter {
+            Should -Invoke Write-Warning -ParameterFilter {
                 $Message -match "Failed to retrieve objects"
             }
         }
@@ -171,8 +170,8 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
             $result = $searchBases | Get-ADObjectFromSearchBase
             
             # Should get results from valid search bases despite error in middle
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 3  # 2 users + 1 group (InvalidDN produces no output)
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 3  # 2 users + 1 group (InvalidDN produces no output)
         }
     }
 
@@ -180,7 +179,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         It "Should call Get-ADObject with correct SearchBase" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
-            Assert-MockCalled Get-ADObject -Exactly 1 -ParameterFilter {
+            Should -Invoke Get-ADObject -Exactly 1 -ParameterFilter {
                 $SearchBase -eq 'OU=Users,DC=contoso,DC=com'
             }
         }
@@ -189,7 +188,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
             # The function passes -Filter * so every object class under the search base is returned
-            Assert-MockCalled Get-ADObject -ParameterFilter {
+            Should -Invoke Get-ADObject -ParameterFilter {
                 $Filter -eq '*'
             }
         }
@@ -197,7 +196,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         It "Should call Get-ADObject with nTSecurityDescriptor property" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
-            Assert-MockCalled Get-ADObject -ParameterFilter {
+            Should -Invoke Get-ADObject -ParameterFilter {
                 $Properties -contains 'nTSecurityDescriptor'
             }
         }
@@ -206,7 +205,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
             $customProperties = @('Name', 'Description', 'mail')
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -Properties $customProperties
             
-            Assert-MockCalled Get-ADObject -Exactly 1 -ParameterFilter {
+            Should -Invoke Get-ADObject -Exactly 1 -ParameterFilter {
                 $Properties -contains 'nTSecurityDescriptor' -and
                 $Properties -contains 'Name' -and
                 $Properties -contains 'Description' -and
@@ -231,7 +230,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
             $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 1000  # 1 second max
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000  # 1 second max
         }
         
         It "Should handle pipeline input efficiently" {
@@ -241,7 +240,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
             $searchBases | Get-ADObjectFromSearchBase
             $stopwatch.Stop()
             
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 5000  # 5 seconds max for 10 items
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 5000  # 5 seconds max for 10 items
         }
     }
 }

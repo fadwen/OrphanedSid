@@ -401,6 +401,14 @@ function Invoke-RestoreWorkflow {
                     $backupData = Import-Clixml -Path $backupFile -ErrorAction Stop
                     $actualTargetDN = $backupData.ObjectDN
 
+                    # Set-ObjectACL honours $WhatIfPreference and prints the preview itself, so under
+                    # -WhatIf the restore still runs through validation; this guard only answers -Confirm.
+                    if (-not $WhatIfPreference -and
+                        -not $PSCmdlet.ShouldProcess($actualTargetDN, "Restore ACL from backup $backupFile")) {
+                        Write-Verbose "Restore declined at the confirmation prompt: $actualTargetDN"
+                        continue
+                    }
+
                     # Restore this individual object
                     $individualResult = Restore-IndividualObject -TargetObjectDN $actualTargetDN -BackupData $backupData -BackupFile $backupFile -ValidationLevel $ValidationLevel -VerifyRestoration:$VerifyRestoration -CorrelationId $CorrelationId
                     
@@ -613,7 +621,7 @@ function Restore-IndividualObject {
             Success = $true
             TargetObjectDN = $TargetObjectDN
             BackupFile = $BackupFile
-            EntriesRestored = [int](if ($aclOperation.ModificationsApplied) { $aclOperation.ModificationsApplied } else { 0 })
+            EntriesRestored = [int]$(if ($aclOperation.ModificationsApplied) { $aclOperation.ModificationsApplied } else { 0 })
             BackupValidation = $backupValidation
             TargetValidation = $targetValidation
             ACLOperation = $aclOperation
@@ -670,6 +678,8 @@ function Start-RestoreOperation {
 
     [CmdletBinding()]
     [OutputType('RestoreOperationContext')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Builds an in-memory operation context; nothing on the system changes')]
     param(
         [Parameter()]
         [ValidateSet('Single', 'Multiple', 'Bulk')]
@@ -819,6 +829,5 @@ function Complete-RestoreOperation {
     }
 }
 
-Write-Verbose "Invoke-RestoreWorkflow module loaded successfully"
 
 #endregion

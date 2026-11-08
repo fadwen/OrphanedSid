@@ -185,10 +185,12 @@ function Invoke-MainProcessingLogic {
         if (-not ([System.Management.Automation.PSTypeName]'StreamingResultsManager').Type) {
             throw "StreamingResultsManager class not available - ensure SecureClassImporter loaded all classes successfully"
         }        # Initialize streaming results manager instead of in-memory arrays
-        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "Find-UnknownSID-$CorrelationId"
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "OrphanedSid-$CorrelationId"
 
-        # Determine WhatIf mode by checking if any ShouldProcess call would be skipped
-        $whatIfMode = -not $PSCmdlet.ShouldProcess("StreamingResultsManager", "Initialize temp directory")
+        # -WhatIf on the public command arrives here as $WhatIfPreference. Read it directly: asking
+        # ShouldProcess would print a "What if" line about the temp directory, which is not what the
+        # caller is rehearsing.
+        $whatIfMode = [bool]$WhatIfPreference
 
         # Batch size comes from the BatchSize configuration key (default 50)
         $batchSize = 50
@@ -290,9 +292,10 @@ function Invoke-MainProcessingLogic {
                 # Process objects for orphaned SIDs - this always happens regardless of WhatIf
                 $processedCount = 0
                 $orphanedFoundCount = 0
-                $results = $objectArray | ForEach-Object {
+                $null = $objectArray | ForEach-Object {
                     try {
-                        Invoke-MemoryCheck -MemoryManager $script:MemoryManager
+                        # Pinned: housekeeping, not the operation -WhatIf rehearses
+                        Invoke-MemoryCheck -MemoryManager $script:MemoryManager -WhatIf:$false
                         $script:Statistics.ProcessedObjects++
                         $processedCount++
 
@@ -342,7 +345,7 @@ function Invoke-MainProcessingLogic {
                                             ObjectDN = $orphanedResult.ObjectDN
                                             OrphanedSID = $orphanedResult.OrphanedSID
                                             BackupPath = $BackupPath
-                                            Operation = 'Remove-OrphanedSID'
+                                            Operation = 'Remove-OrphanedSidEntry'
                                         } -CorrelationId $CorrelationId
 
                                         $removalParams = @{
@@ -355,7 +358,7 @@ function Invoke-MainProcessingLogic {
                                         }
 
                                         try {
-                                            $removalResult = Remove-OrphanedSID @removalParams
+                                            $removalResult = Remove-OrphanedSidEntry @removalParams
                                             $script:RemovalResults += $removalResult
 
                                             # Log successful SID removal

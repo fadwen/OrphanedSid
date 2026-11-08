@@ -4,90 +4,95 @@
 param()
 
 # Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-. "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
-
 # Import test helpers
-$testHelpersPath = Join-Path $PSScriptRoot "..\..\TestHelpers"
-. (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
-. (Join-Path $testHelpersPath "BackupTestHelpers.ps1")
-
 # Load test configuration
-$testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
-$script:TestConfig = Get-Content $testConfigPath | ConvertFrom-Json
-
 # Track mock behavior state
-$script:MockBehaviorConfig = $null
-
 # Enhanced mock wrapper with scenario support
-function Invoke-FindUnknownSIDScript {
-    param(
-        [string]$BackupPath,
-        [string]$SelectiveSIDs,
-        [string]$TargetOU,
-        [string]$CorrelationId,
-        [string]$LogLevel = "Information",
-        [switch]$WhatIf,
-        [switch]$Force,
-        [switch]$SkipACLRestore,
-        [switch]$SkipGroupRestore,
-        [string]$BatchSize,
-        [string]$Mode
-    )
+BeforeAll {
+    . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
-    # Get current mock behavior or use default
-    $behavior = Get-MockBehavior
-    if ($behavior -and $behavior.Count -gt 0) {
-        return [PSCustomObject]$behavior
-    }
+    $testHelpersPath = Join-Path $PSScriptRoot "..\..\TestHelpers"
 
-    # Default restore workflow behavior
-    return [PSCustomObject]@{
-        Status = "Completed"
-        RestoredObjects = 3
-        SkippedObjects = 0
-        FailedObjects = 0
-        ACLsRestored = if (-not $SkipACLRestore) { 3 } else { 0 }
-        GroupMembershipsRestored = if (-not $SkipGroupRestore) { 2 } else { 0 }
-        BackupValidated = $true
-        BackupPath = $BackupPath
-        ProcessingTimeMinutes = 2.5
-        CorrelationId = $CorrelationId
-        WhatIfMode = $WhatIf.IsPresent
-        ObjectsProcessed = @("User1", "User2", "Group1")
-        RestoreReport = @{
-            TotalObjects = 3
+    . (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
+
+    . (Join-Path $testHelpersPath "BackupTestHelpers.ps1")
+
+    $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
+
+    $script:TestConfig = Get-Content $testConfigPath | ConvertFrom-Json
+
+    $script:MockBehaviorConfig = $null
+
+    function Invoke-FindUnknownSIDScript {
+        param(
+            [string]$BackupPath,
+            [string]$SelectiveSIDs,
+            [string]$TargetOU,
+            [string]$CorrelationId,
+            [string]$LogLevel = "Information",
+            [switch]$WhatIf,
+            [switch]$Force,
+            [switch]$SkipACLRestore,
+            [switch]$SkipGroupRestore,
+            [string]$BatchSize,
+            [string]$Mode
+        )
+
+        # Get current mock behavior or use default
+        $behavior = Get-MockBehavior
+        if ($behavior -and $behavior.Count -gt 0) {
+            return [PSCustomObject]$behavior
+        }
+
+        # Default restore workflow behavior
+        return [PSCustomObject]@{
+            Status = "Completed"
+            RestoredObjects = 3
+            SkippedObjects = 0
+            FailedObjects = 0
+            ACLsRestored = if (-not $SkipACLRestore) { 3 } else { 0 }
+            GroupMembershipsRestored = if (-not $SkipGroupRestore) { 2 } else { 0 }
+            BackupValidated = $true
+            BackupPath = $BackupPath
+            ProcessingTimeMinutes = 2.5
+            CorrelationId = $CorrelationId
+            WhatIfMode = $WhatIf.IsPresent
+            ObjectsProcessed = @("User1", "User2", "Group1")
+            RestoreReport = @{
+                TotalObjects = 3
+                SuccessfulRestores = 3
+                FailedRestores = 0
+                ACLsProcessed = if (-not $SkipACLRestore) { 3 } else { 0 }
+                GroupMembershipsProcessed = if (-not $SkipGroupRestore) { 2 } else { 0 }
+            }
+            LogPath = "C:\Logs\FindUnknownSID_Restore.log"
+            ExecutionTime = "00:00:02.145"
+            Timestamp = Get-Date
+            ProcessingComplete = $true
+            ObjectsRestored = 3
             SuccessfulRestores = 3
             FailedRestores = 0
-            ACLsProcessed = if (-not $SkipACLRestore) { 3 } else { 0 }
-            GroupMembershipsProcessed = if (-not $SkipGroupRestore) { 2 } else { 0 }
+            SelectiveMode = if ($SelectiveSIDs) { $true } else { $false }
+            TargetOUUsed = if ($TargetOU) { $true } else { $false }
+            Mode = $Mode
         }
-        LogPath = "C:\Logs\FindUnknownSID_Restore.log"
-        ExecutionTime = "00:00:02.145"
-        Timestamp = Get-Date
-        ProcessingComplete = $true
-        ObjectsRestored = 3
-        SuccessfulRestores = 3
-        FailedRestores = 0
-        SelectiveMode = if ($SelectiveSIDs) { $true } else { $false }
-        TargetOUUsed = if ($TargetOU) { $true } else { $false }
-        Mode = $Mode
     }
-}
 
-function Set-MockBehavior {
-    param(
-        [string]$Scenario,
-        [hashtable]$Properties
-    )
-    $script:MockBehaviorConfig = $Properties
-}
+    function Set-MockBehavior {
+        param(
+            [string]$Scenario,
+            [hashtable]$Properties
+        )
+        $script:MockBehaviorConfig = $Properties
+    }
 
-function Get-MockBehavior {
-    return $script:MockBehaviorConfig
-}
+    function Get-MockBehavior {
+        return $script:MockBehaviorConfig
+    }
 
-function Clear-MockBehavior {
-    $script:MockBehaviorConfig = $null
+    function Clear-MockBehavior {
+        $script:MockBehaviorConfig = $null
+    }
 }
 
 Describe "Complete Restore Workflow Integration Tests" {
@@ -133,9 +138,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.BackupValidated | Should Be $true
-            $result.BackupPath | Should Be $script:TestBackupPath
+            $result | Should -Not -Be $null
+            $result.BackupValidated | Should -Be $true
+            $result.BackupPath | Should -Be $script:TestBackupPath
         }
         
         It "Should validate backup file format and content structure" {
@@ -143,9 +148,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.BackupValidated | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.BackupValidated | Should -Be $true
         }
     }
 
@@ -155,9 +160,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -WhatIf -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.WhatIfMode | Should Be $true
-            $result.Status | Should Be "Completed"
+            $result | Should -Not -Be $null
+            $result.WhatIfMode | Should -Be $true
+            $result.Status | Should -Be "Completed"
         }
         
         It "Should provide detailed preview of restore operations in WhatIf mode" {
@@ -165,9 +170,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -WhatIf -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.WhatIfMode | Should Be $true
-            $result.ObjectsProcessed | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.WhatIfMode | Should -Be $true
+            $result.ObjectsProcessed | Should -Not -Be $null
         }
     }
 
@@ -180,9 +185,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -SelectiveSIDs $selectiveSIDs -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.RestoredObjects | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.RestoredObjects | Should -BeGreaterThan 0
         }
         
         It "Should restore to specific OU when TargetOU parameter is provided" {
@@ -193,9 +198,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -TargetOU $targetOU -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.RestoredObjects | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.RestoredObjects | Should -BeGreaterThan 0
         }
     }
 
@@ -205,10 +210,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.RestoredObjects | Should BeGreaterThan 0
-            $result.FailedObjects | Should Be 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.RestoredObjects | Should -BeGreaterThan 0
+            $result.FailedObjects | Should -Be 0
         }
         
         It "Should restore objects with proper error handling for failed items" {
@@ -216,9 +221,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -Force -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.RestoredObjects | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.RestoredObjects | Should -BeGreaterThan 0
         }
     }
 
@@ -228,8 +233,8 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.ACLsRestored | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.ACLsRestored | Should -BeGreaterThan 0
         }
         
         It "Should skip ACL restore when SkipACLRestore switch is specified" {
@@ -246,9 +251,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -SkipACLRestore -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.ACLsRestored | Should Be 0
-            $result.ACLRestoreSkipped | Should Be $true
+            $result | Should -Not -Be $null
+            $result.ACLsRestored | Should -Be 0
+            $result.ACLRestoreSkipped | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -261,8 +266,8 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.GroupMembershipsRestored | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.GroupMembershipsRestored | Should -BeGreaterThan 0
         }
         
         It "Should skip group membership restore when SkipGroupRestore switch is specified" {
@@ -279,9 +284,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -SkipGroupRestore -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.GroupMembershipsRestored | Should Be 0
-            $result.GroupRestoreSkipped | Should Be $true
+            $result | Should -Not -Be $null
+            $result.GroupMembershipsRestored | Should -Be 0
+            $result.GroupRestoreSkipped | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -296,9 +301,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $stopwatch.Stop()
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-                        $stopwatch.ElapsedSeconds | Should BeLessThan $script:TestConfig.performance.baselines.mediumDataset.maxExecutionTimeSeconds
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+                        $stopwatch.ElapsedSeconds | Should -BeLessThan $script:TestConfig.performance.baselines.mediumDataset.maxExecutionTimeSeconds
         }
         
         It "Should handle large backup files efficiently with batch processing" {
@@ -316,10 +321,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -BatchSize "100" -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.BatchesProcessed | Should BeGreaterThan 5
-            $result.MemoryUsageMB | Should BeLessThan 100
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.BatchesProcessed | Should -BeGreaterThan 5
+            $result.MemoryUsageMB | Should -BeLessThan 100
             
             # Clean up
             Clear-MockBehavior
@@ -341,10 +346,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Failed"
-            $result.FailedObjects | Should BeGreaterThan 0
-            $result.RestoreErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Failed"
+            $result.FailedObjects | Should -BeGreaterThan 0
+            $result.RestoreErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -365,11 +370,11 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -Force -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.RestoredObjects | Should BeGreaterThan 0
-            $result.FailedObjects | Should BeGreaterThan 0
-            $result.ContinuedProcessing | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.RestoredObjects | Should -BeGreaterThan 0
+            $result.FailedObjects | Should -BeGreaterThan 0
+            $result.ContinuedProcessing | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -382,9 +387,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.RestoreReport | Should Not Be $null
-            $result.LogPath | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.RestoreReport | Should -Not -Be $null
+            $result.LogPath | Should -Not -Be $null
         }
         
         It "Should include detailed correlation tracking in logs" {
@@ -392,8 +397,8 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.CorrelationId | Should Be $script:TestCorrelationId
+            $result | Should -Not -Be $null
+            $result.CorrelationId | Should -Be $script:TestCorrelationId
         }
     }
 
@@ -403,9 +408,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.RestoredObjects | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.RestoredObjects | Should -BeGreaterThan 0
         }
         
         It "Should handle domain controller availability during restore operations" {
@@ -413,8 +418,8 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
         }
     }
 
@@ -435,9 +440,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.RestoredObjects | Should Be 0
-            $result.EmptyBackupHandled | Should Be $true
+            $result | Should -Not -Be $null
+            $result.RestoredObjects | Should -Be 0
+            $result.EmptyBackupHandled | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -471,10 +476,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -BatchSize "100" -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.RestoredObjects | Should Be 10000
-            $result.BatchesProcessed | Should BeGreaterThan 50
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.RestoredObjects | Should -Be 10000
+            $result.BatchesProcessed | Should -BeGreaterThan 50
             
             # Clean up
             Clear-MockBehavior
@@ -507,11 +512,11 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.RestoredObjects | Should Be 2
-            $result.SkippedObjects | Should Be 3
-            $result.SIDValidationErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.RestoredObjects | Should -Be 2
+            $result.SkippedObjects | Should -Be 3
+            $result.SIDValidationErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -534,10 +539,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Failed"
-            $result.NetworkErrors | Should Not Be $null
-            $result.RetryAttempts | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Failed"
+            $result.NetworkErrors | Should -Not -Be $null
+            $result.RetryAttempts | Should -BeGreaterThan 0
             
             # Clean up
             Clear-MockBehavior
@@ -570,10 +575,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.CrossDomainObjects | Should BeGreaterThan 0
-            $result.TrustValidation | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.CrossDomainObjects | Should -BeGreaterThan 0
+            $result.TrustValidation | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -595,9 +600,9 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Error"
-            $result.FilePermissionError | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Error"
+            $result.FilePermissionError | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -620,10 +625,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Failed"
-            $result.SchemaErrors | Should Not Be $null
-            $result.SchemaValidation | Should Be $false
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Failed"
+            $result.SchemaErrors | Should -Not -Be $null
+            $result.SchemaValidation | Should -Be $false
             
             # Clean up
             Clear-MockBehavior
@@ -646,10 +651,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Error"
-            $result.FileLockError | Should Be $true
-            $result.RetryAttempts | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Error"
+            $result.FileLockError | Should -Be $true
+            $result.RetryAttempts | Should -BeGreaterThan 0
             
             # Clean up
             Clear-MockBehavior
@@ -688,10 +693,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.LongDNsProcessed | Should BeGreaterThan 0
-            $result.DNLengthValidation | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.LongDNsProcessed | Should -BeGreaterThan 0
+            $result.DNLengthValidation | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -722,10 +727,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.UnicodeObjectsProcessed | Should BeGreaterThan 0
-            $result.EncodingValidation | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.UnicodeObjectsProcessed | Should -BeGreaterThan 0
+            $result.EncodingValidation | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -749,10 +754,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Error"
-            $result.DiskSpaceError | Should Be $true
-            $result.RequiredSpaceMB | Should BeGreaterThan $result.AvailableSpaceMB
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Error"
+            $result.DiskSpaceError | Should -Be $true
+            $result.RequiredSpaceMB | Should -BeGreaterThan $result.AvailableSpaceMB
             
             # Clean up
             Clear-MockBehavior
@@ -783,10 +788,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.XMLCharactersEscaped | Should BeGreaterThan 0
-            $result.XMLValidation | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.XMLCharactersEscaped | Should -BeGreaterThan 0
+            $result.XMLValidation | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -809,10 +814,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Error"
-            $result.BackupCorruptionErrors | Should Not Be $null
-            $result.BackupValidation | Should Be $false
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Error"
+            $result.BackupCorruptionErrors | Should -Not -Be $null
+            $result.BackupValidation | Should -Be $false
             
             # Clean up
             Clear-MockBehavior
@@ -856,11 +861,11 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.NestedGroupsProcessed | Should BeGreaterThan 0
-            $result.ACLsRestored | Should BeGreaterThan 0
-            $result.InheritanceChainLength | Should BeGreaterThan 3
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.NestedGroupsProcessed | Should -BeGreaterThan 0
+            $result.ACLsRestored | Should -BeGreaterThan 0
+            $result.InheritanceChainLength | Should -BeGreaterThan 3
             
             # Clean up
             Clear-MockBehavior
@@ -891,10 +896,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.CircularReferencesDetected | Should BeGreaterThan 0
-            $result.GroupValidationErrors | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.CircularReferencesDetected | Should -BeGreaterThan 0
+            $result.GroupValidationErrors | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -925,10 +930,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.DCFailoverEvents | Should BeGreaterThan 0
-            $result.AlternateDCUsed | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.DCFailoverEvents | Should -BeGreaterThan 0
+            $result.AlternateDCUsed | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -955,10 +960,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.InheritanceBlocksDetected | Should BeGreaterThan 0
-            $result.PermissionConflicts | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.InheritanceBlocksDetected | Should -BeGreaterThan 0
+            $result.PermissionConflicts | Should -BeGreaterThan 0
             
             # Clean up
             Clear-MockBehavior
@@ -981,10 +986,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Failed"
-            $result.PrivilegeErrors | Should Not Be $null
-            $result.RequiredPrivileges | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Failed"
+            $result.PrivilegeErrors | Should -Not -Be $null
+            $result.RequiredPrivileges | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -1019,10 +1024,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -Force -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.PartialFailures | Should Not Be $null
-            $result.DetailedErrorTracking | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.PartialFailures | Should -Not -Be $null
+            $result.DetailedErrorTracking | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -1051,10 +1056,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.ProtectedOUErrors | Should BeGreaterThan 0
-            $result.ProtectedOUs | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.ProtectedOUErrors | Should -BeGreaterThan 0
+            $result.ProtectedOUs | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -1078,10 +1083,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.BackupWindowConflict | Should Be $true
-            $result.CleanupPostponed | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.BackupWindowConflict | Should -Be $true
+            $result.CleanupPostponed | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -1110,10 +1115,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.InterruptionPoint | Should Not Be $null
-            $result.InterruptionRecovery | Should Be $true
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.InterruptionPoint | Should -Not -Be $null
+            $result.InterruptionRecovery | Should -Be $true
             
             # Clean up
             Clear-MockBehavior
@@ -1149,11 +1154,11 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -BatchSize "100" -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.MemoryOptimizationsApplied | Should BeGreaterThan 0
-            $result.BatchProcessingUsed | Should Be $true
-            $result.PeakMemoryUsageMB | Should BeLessThan 100
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.MemoryOptimizationsApplied | Should -BeGreaterThan 0
+            $result.BatchProcessingUsed | Should -Be $true
+            $result.PeakMemoryUsageMB | Should -BeLessThan 100
             
             # Clean up
             Clear-MockBehavior
@@ -1181,10 +1186,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "PartialSuccess"
-            $result.AttributeValidationErrors | Should BeGreaterThan 0
-            $result.ValidationFailures | Should Not Be $null
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "PartialSuccess"
+            $result.AttributeValidationErrors | Should -BeGreaterThan 0
+            $result.ValidationFailures | Should -Not -Be $null
             
             # Clean up
             Clear-MockBehavior
@@ -1221,10 +1226,10 @@ Describe "Complete Restore Workflow Integration Tests" {
             $result = Invoke-FindUnknownSIDScript -BackupPath $script:TestBackupPath -CorrelationId $script:TestCorrelationId -Mode "Restore"
             
             # Assert
-            $result | Should Not Be $null
-            $result.Status | Should Be "Completed"
-            $result.DateFormatConversions | Should BeGreaterThan 0
-            $result.TimeZoneAdjustments | Should BeGreaterThan 0
+            $result | Should -Not -Be $null
+            $result.Status | Should -Be "Completed"
+            $result.DateFormatConversions | Should -BeGreaterThan 0
+            $result.TimeZoneAdjustments | Should -BeGreaterThan 0
             
             # Clean up
             Clear-MockBehavior

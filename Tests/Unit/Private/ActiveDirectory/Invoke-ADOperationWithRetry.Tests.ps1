@@ -1,99 +1,100 @@
-#Requires -Module Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 # Define mock functions first to prevent parameter prompting
-function Write-StructuredLog {
-    param($Level, $Message, $Data)
-    # Mock implementation - do nothing  
-}
-
-function Invoke-OperationWithRetry {
-    param(
-        [Parameter(Mandatory)]
-        [scriptblock]$ScriptBlock,
-        [int]$MaxRetries = 3,
-        [string]$OperationName = 'Operation',
-        [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
-    )
-    
-    # Implement proper retry logic for testing
-    $attempt = 0
-    $lastError = $null
-    
-    while ($attempt -le $MaxRetries) {
-        try {
-            return & $ScriptBlock
-        }
-        catch {
-            $lastError = $_
-            $attempt++
-            
-            # Check if this is a retryable exception
-            $retryableExceptions = @(
-                'ActiveDirectoryServerDownException',
-                'RuntimeException'
-            )
-            
-            $isRetryable = $false
-            foreach ($exceptionType in $retryableExceptions) {
-                if ($_.Exception.GetType().Name -match $exceptionType -or $_.Exception.Message -match 'Temporary') {
-                    $isRetryable = $true
-                    break
-                }
-            }
-            
-            # If not retryable or max retries reached, throw immediately
-            if (-not $isRetryable -or $attempt -gt $MaxRetries) {
-                throw
-            }
-            
-            # Brief delay before retry
-            Start-Sleep -Milliseconds 10
-        }
-    }
-    
-    # Should not reach here, but throw last error if we do
-    throw $lastError
-}
-
 # Import the function to test AFTER defining mocks
-. "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Invoke-ADOperationWithRetry.ps1"
-
 # Import required logging function
-. "$PSScriptRoot\..\..\..\..\Private\Logging\Write-ADOperationSecurityLog.ps1"
-
 # Test configuration for various operation types
-$testConfig = @{
-    SuccessOperation = {
-        return @{
-            Success = $true
-            Result = "Operation completed successfully"
-            Data = @{ ProcessedItems = 5; Duration = "00:00:01" }
+BeforeAll {
+    function Write-StructuredLog {
+        param($Level, $Message, $Data)
+        # Mock implementation - do nothing  
+    }
+
+    function Invoke-OperationWithRetry {
+        param(
+            [Parameter(Mandatory)]
+            [scriptblock]$ScriptBlock,
+            [int]$MaxRetries = 3,
+            [string]$OperationName = 'Operation',
+            [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
+        )
+        
+        # Implement proper retry logic for testing
+        $attempt = 0
+        $lastError = $null
+        
+        while ($attempt -le $MaxRetries) {
+            try {
+                return & $ScriptBlock
+            }
+            catch {
+                $lastError = $_
+                $attempt++
+                
+                # Check if this is a retryable exception
+                $retryableExceptions = @(
+                    'ActiveDirectoryServerDownException',
+                    'RuntimeException'
+                )
+                
+                $isRetryable = $false
+                foreach ($exceptionType in $retryableExceptions) {
+                    if ($_.Exception.GetType().Name -match $exceptionType -or $_.Exception.Message -match 'Temporary') {
+                        $isRetryable = $true
+                        break
+                    }
+                }
+                
+                # If not retryable or max retries reached, throw immediately
+                if (-not $isRetryable -or $attempt -gt $MaxRetries) {
+                    throw
+                }
+                
+                # Brief delay before retry
+                Start-Sleep -Milliseconds 10
+            }
         }
+        
+        # Should not reach here, but throw last error if we do
+        throw $lastError
     }
-    
-    TransientFailureOperation = {
-        if ($script:AttemptCount -eq 0) {
-            $script:AttemptCount++
-            throw [System.DirectoryServices.ActiveDirectory.ActiveDirectoryServerDownException]::new("Temporary server unavailable")
+
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Invoke-ADOperationWithRetry.ps1"
+
+    . "$PSScriptRoot\..\..\..\..\Private\Logging\Write-ADOperationSecurityLog.ps1"
+
+    $testConfig = @{
+        SuccessOperation = {
+            return @{
+                Success = $true
+                Result = "Operation completed successfully"
+                Data = @{ ProcessedItems = 5; Duration = "00:00:01" }
+            }
         }
-        return @{ Success = $true; Result = "Success after retry" }
-    }
-    
-    PersistentFailureOperation = {
-        throw [System.DirectoryServices.ActiveDirectory.ActiveDirectoryObjectNotFoundException]::new("Object not found")
-    }
-    
-    TimeoutOperation = {
-        Start-Sleep -Milliseconds 200
-        return @{ Success = $true; Result = "Delayed operation" }
-    }
-    
-    SlowOperation = {
-        Start-Sleep -Milliseconds 100
-        return @{
-            Success = $true
-            Result = "Slow operation completed"
-            Duration = 100
+        
+        TransientFailureOperation = {
+            if ($script:AttemptCount -eq 0) {
+                $script:AttemptCount++
+                throw [System.DirectoryServices.ActiveDirectory.ActiveDirectoryServerDownException]::new("Temporary server unavailable")
+            }
+            return @{ Success = $true; Result = "Success after retry" }
+        }
+        
+        PersistentFailureOperation = {
+            throw [System.DirectoryServices.ActiveDirectory.ActiveDirectoryObjectNotFoundException]::new("Object not found")
+        }
+        
+        TimeoutOperation = {
+            Start-Sleep -Milliseconds 200
+            return @{ Success = $true; Result = "Delayed operation" }
+        }
+        
+        SlowOperation = {
+            Start-Sleep -Milliseconds 100
+            return @{
+                Success = $true
+                Result = "Slow operation completed"
+                Duration = 100
+            }
         }
     }
 }
@@ -101,8 +102,10 @@ $testConfig = @{
 Describe "Invoke-ADOperationWithRetry" {
     
     # Set up Pester 3.4.x mocks for logging functions
+    BeforeAll {
     Mock Write-ADOperationSecurityLog { }
-    Mock Write-StructuredLog { }
+        Mock Write-StructuredLog { }
+    }
     
     BeforeEach {
         # Reset attempt counter for each test
@@ -118,85 +121,85 @@ Describe "Invoke-ADOperationWithRetry" {
             try {
                 $result = Invoke-ADOperationWithRetry -ScriptBlock $null
                 # If we get here without error, the test should fail
-                $false | Should Be $true
+                $false | Should -Be $true
             }
             catch {
-                $_.Exception.Message | Should Match "ScriptBlock|null"
+                $_.Exception.Message | Should -Match "ScriptBlock|null"
             }
         }
         
         It "Should accept valid script block for ScriptBlock parameter" {
             $scriptBlock = { return "Test Result" }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
         
         It "Should validate MaxRetries parameter range" {
             $scriptBlock = { return "Test" }
-            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 0 } | Should Throw
-            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 11 } | Should Throw
-            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 5 } | Should Not Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 0 } | Should -Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 11 } | Should -Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 5 } | Should -Not -Throw
         }
         
         It "Should accept valid OperationName parameter" {
             $scriptBlock = { return "Test" }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -OperationName "Test Operation"
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
         
         It "Should support ObjectContext parameter" {
             $scriptBlock = { return "Test" }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -ObjectContext "Test Object"
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
         
         It "Should support all parameters together" {
             $scriptBlock = { return "Complete Test" }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 2 -OperationName "Test Op" -ObjectContext "Test Context"
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
     }
     
     Context "Basic Operation Execution" {
         It "Should execute simple operations successfully" {
             $result = Invoke-ADOperationWithRetry -ScriptBlock $testConfig.SuccessOperation
-            $result | Should Not BeNullOrEmpty
-            $result.Success | Should Be $true
+            $result | Should -Not -BeNullOrEmpty
+            $result.Success | Should -Be $true
         }
         
         It "Should return operation results correctly" {
             $result = Invoke-ADOperationWithRetry -ScriptBlock $testConfig.SuccessOperation
-            $result.Result | Should Be "Operation completed successfully"
-            $result.Data.ProcessedItems | Should Be 5
+            $result.Result | Should -Be "Operation completed successfully"
+            $result.Data.ProcessedItems | Should -Be 5
         }
         
         It "Should handle operations with return values" {
             $scriptBlock = { return @{Status = "Complete"; Items = @(1,2,3)} }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock
-            $result.Status | Should Be "Complete"
-            $result.Items.Count | Should Be 3
+            $result.Status | Should -Be "Complete"
+            $result.Items.Count | Should -Be 3
         }
         
         It "Should handle operations with simple return values" {
             $scriptBlock = { return "Simple string result" }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock
-            $result | Should Be "Simple string result"
+            $result | Should -Be "Simple string result"
         }
         
         It "Should handle operations that return arrays" {
             $scriptBlock = { return @("Item1", "Item2", "Item3") }
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock
-            $result.Count | Should Be 3
-            $result[0] | Should Be "Item1"
+            $result.Count | Should -Be 3
+            $result[0] | Should -Be "Item1"
         }
     }
     
     Context "Retry Logic and Resilience" {
         It "Should retry on transient failures" {
             $result = Invoke-ADOperationWithRetry -ScriptBlock $testConfig.TransientFailureOperation -MaxRetries 2
-            $result | Should Not BeNullOrEmpty
-            $result.Success | Should Be $true
-            $result.Result | Should Be "Success after retry"
+            $result | Should -Not -BeNullOrEmpty
+            $result.Success | Should -Be $true
+            $result.Result | Should -Be "Success after retry"
         }
         
         It "Should respect MaxRetries parameter" {
@@ -219,34 +222,34 @@ Describe "Invoke-ADOperationWithRetry" {
             }
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 3
-            $result | Should Be "Success after multiple retries"
+            $result | Should -Be "Success after multiple retries"
         }
     }
     
     Context "Error Classification and Handling" {
         It "Should propagate non-retryable errors immediately" {
-            { Invoke-ADOperationWithRetry -ScriptBlock $testConfig.PersistentFailureOperation -MaxRetries 3 } | Should Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $testConfig.PersistentFailureOperation -MaxRetries 3 } | Should -Throw
         }
         
         It "Should handle specific Active Directory exceptions" {
             $adException = {
                 throw [System.DirectoryServices.ActiveDirectory.ActiveDirectoryObjectNotFoundException]::new("AD object not found")
             }
-            { Invoke-ADOperationWithRetry -ScriptBlock $adException } | Should Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $adException } | Should -Throw
         }
         
         It "Should handle authentication exceptions" {
             $authException = {
                 throw [System.Security.Authentication.AuthenticationException]::new("Authentication failed")
             }
-            { Invoke-ADOperationWithRetry -ScriptBlock $authException } | Should Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $authException } | Should -Throw
         }
         
         It "Should handle network-related exceptions" {
             $networkException = {
                 throw [System.Net.NetworkInformation.NetworkInformationException]::new()
             }
-            { Invoke-ADOperationWithRetry -ScriptBlock $networkException } | Should Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $networkException } | Should -Throw
         }
         
         It "Should include error context in exception propagation" {
@@ -254,7 +257,7 @@ Describe "Invoke-ADOperationWithRetry" {
                 Invoke-ADOperationWithRetry -ScriptBlock $testConfig.PersistentFailureOperation -MaxRetries 1 -OperationName "Error Context Test"
             }
             catch {
-                $_.Exception | Should Not BeNullOrEmpty
+                $_.Exception | Should -Not -BeNullOrEmpty
             }
         }
     }
@@ -265,21 +268,21 @@ Describe "Invoke-ADOperationWithRetry" {
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             Invoke-ADOperationWithRetry -ScriptBlock $fastOperation
             $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 1000
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
         }
         
         It "Should handle slow operations within reasonable time" {
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             Invoke-ADOperationWithRetry -ScriptBlock $testConfig.SlowOperation
             $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should BeGreaterThan 50
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 1000
+            $stopwatch.ElapsedMilliseconds | Should -BeGreaterThan 50
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
         }
         
         It "Should track execution time for operations" {
             $result = Invoke-ADOperationWithRetry -ScriptBlock $testConfig.SuccessOperation
             # Basic execution should complete successfully
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle operations with varying execution times" {
@@ -290,8 +293,8 @@ Describe "Invoke-ADOperationWithRetry" {
             }
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $variableTimeOperation
-            $result.Success | Should Be $true
-            $result.Delay | Should BeGreaterThan 0
+            $result.Success | Should -Be $true
+            $result.Delay | Should -BeGreaterThan 0
         }
     }
     
@@ -300,7 +303,7 @@ Describe "Invoke-ADOperationWithRetry" {
             $scriptBlock = { return "Logged operation" }
             Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock
             
-            Assert-MockCalled Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
                 $OperationName -eq 'AD Operation' -and
                 $Outcome -eq 'Attempt'
             }
@@ -313,7 +316,7 @@ Describe "Invoke-ADOperationWithRetry" {
             }
             catch { }
             
-            Assert-MockCalled Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
                 $Outcome -eq 'Attempt'
             }
         }
@@ -322,7 +325,7 @@ Describe "Invoke-ADOperationWithRetry" {
             $scriptBlock = { return @{ Status = "Complete" } }
             Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock
             
-            Assert-MockCalled Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
                 $Outcome -eq 'Success'
             }
         }
@@ -333,7 +336,7 @@ Describe "Invoke-ADOperationWithRetry" {
             }
             catch { }
             
-            Assert-MockCalled Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
                 $Outcome -eq 'Failure'
             }
         }
@@ -342,7 +345,7 @@ Describe "Invoke-ADOperationWithRetry" {
             $scriptBlock = { return "Security logged" }
             Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -ObjectContext "Test Object"
             
-            Assert-MockCalled Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
                 $SecurityContext.ContainsKey('ObjectContext') -and
                 $SecurityContext.ObjectContext -eq 'Test Object'
             }
@@ -354,7 +357,7 @@ Describe "Invoke-ADOperationWithRetry" {
             
             Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -CorrelationId $testCorrelationId
             
-            Assert-MockCalled Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -ParameterFilter {
                 $CorrelationId -eq $testCorrelationId
             }
         }
@@ -379,9 +382,9 @@ Describe "Invoke-ADOperationWithRetry" {
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $complexOperation -MaxRetries 2 -OperationName "Complex AD Query"
             
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 2
-            $result.Results.Count | Should Be 2
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 2
+            $result.Results.Count | Should -Be 2
         }
         
         It "Should support operations with authentication context" {
@@ -395,9 +398,9 @@ Describe "Invoke-ADOperationWithRetry" {
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -ObjectContext "Authentication Test"
             
-            $result.AuthenticatedUser | Should Be "testuser"
-            $result.Domain | Should Be "testdomain.com"
-            $result.Success | Should Be $true
+            $result.AuthenticatedUser | Should -Be "testuser"
+            $result.Domain | Should -Be "testdomain.com"
+            $result.Success | Should -Be $true
         }
         
         It "Should handle operations with large result sets efficiently" {
@@ -418,9 +421,9 @@ Describe "Invoke-ADOperationWithRetry" {
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -OperationName "Large Result Set"
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalCount | Should Be 1000
-            $result.Results.Count | Should Be 1000
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalCount | Should -Be 1000
+            $result.Results.Count | Should -Be 1000
         }
         
         It "Should maintain data consistency across retry attempts" {
@@ -434,8 +437,8 @@ Describe "Invoke-ADOperationWithRetry" {
             }
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 3
-            $result.ConsistencyCheck | Should Be "Passed"
-            $result.Counter | Should Be 2
+            $result.ConsistencyCheck | Should -Be "Passed"
+            $result.Counter | Should -Be 2
         }
     }
     
@@ -446,7 +449,7 @@ Describe "Invoke-ADOperationWithRetry" {
             }
             
             # Should eventually stop retrying and fail fast
-            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 5 } | Should Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 5 } | Should -Throw
         }
         
         It "Should handle cascading failures gracefully" {
@@ -454,7 +457,7 @@ Describe "Invoke-ADOperationWithRetry" {
                 throw [System.Net.NetworkInformation.NetworkInformationException]::new()
             }
             
-            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 1 } | Should Throw
+            { Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 1 } | Should -Throw
         }
         
         It "Should provide detailed failure diagnostics" {
@@ -467,7 +470,7 @@ Describe "Invoke-ADOperationWithRetry" {
                 Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 1
             }
             catch {
-                $_.Exception | Should Not BeNullOrEmpty
+                $_.Exception | Should -Not -BeNullOrEmpty
             }
         }
         
@@ -483,7 +486,7 @@ Describe "Invoke-ADOperationWithRetry" {
             
             $result = Invoke-ADOperationWithRetry -ScriptBlock $scriptBlock -MaxRetries 3
             
-            $result | Should Be "Success after retry"
+            $result | Should -Be "Success after retry"
         }
     }
 }

@@ -62,8 +62,8 @@ function by hand with an account name or an `ORPHANED_ACCOUNT:<name>` marker ins
 **Resolution:**
 
 ```powershell
-. .\Private\Core\Import-LoggingSystem.ps1
-. .\Private\SID\Test-SIDFormat.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 Test-SIDFormat -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001'   # $true
 Test-SIDFormat -SID 'CONTOSO\OldGroup'                                  # $false
 ```
@@ -83,11 +83,10 @@ in `Classes\` after hash validation; a diagnostic session must do so explicitly.
 **Resolution:**
 
 ```powershell
-Set-Location 'C:\Scripts\Find-UnknownSID'
+Import-Module OrphanedSid
 Get-ChildItem .\Classes\*.ps1 | ForEach-Object { . $_.FullName }
-. .\Private\Core\Import-LoggingSystem.ps1
-. .\Private\SID\Test-SIDFormat.ps1
-. .\Private\SID\New-SIDResult.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
 $rule = [PSCustomObject]@{
     IdentityReference     = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
@@ -135,7 +134,7 @@ fails `Test-SIDFormat`, so no `OrphanedSIDResult` is created and the entry does 
 CSV. Search the log for these entries when the CSV seems short:
 
 ```powershell
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern 'ORPHANED ACCOUNT DETECTED'
+Select-String -Path .\Logs\<Command>_*.log -Pattern 'ORPHANED ACCOUNT DETECTED'
 ```
 
 ### 4. Performance

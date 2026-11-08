@@ -259,6 +259,8 @@ function Add-ProcessingMetadata {
     #>
 
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Metadata is a mass noun; the name is shared with the tests and docs')]
     param(
         [Parameter(Mandatory)]
         [OrphanedSIDResult]$Result,
@@ -333,6 +335,10 @@ function Set-ACLMetadata {
     #>
 
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Metadata is a mass noun; the name is shared with the tests and docs')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Populates properties on the result object passed in, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [OrphanedSIDResult]$Result,
@@ -625,5 +631,4 @@ function ConvertTo-ResultSummary {
 
 #endregion
 
-Write-StructuredLog "New-SIDResult module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

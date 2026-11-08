@@ -122,6 +122,12 @@ class ScriptConfiguration {
         }
     }
 
+    # Findings are warnings, not errors: the method answers with $false and the caller decides. A
+
+    # Write-Error here becomes terminating under an inherited -ErrorAction Stop, so the caller would
+
+    # see an exception instead of the $false it tests for.
+
     [bool] ValidateConfiguration() {
         try {
             Write-Verbose "Starting configuration validation"
@@ -132,7 +138,7 @@ class ScriptConfiguration {
                     $null = [regex]::new($pattern)
                     Write-Verbose "Validated SID pattern: $pattern"
                 } catch {
-                    Write-Error "Invalid regex pattern in WellKnownSIDPatterns: $pattern - $($_.Exception.Message)"
+                    Write-Warning "Invalid regex pattern in WellKnownSIDPatterns: $pattern - $($_.Exception.Message)"
                     return $false
                 }
             }
@@ -140,7 +146,7 @@ class ScriptConfiguration {
             # Validate protected SIDs format and accessibility
             foreach ($sid in $this.ProtectedSIDs) {
                 if (-not ($sid -match '^S-1-\d+(-\d+)*$')) {
-                    Write-Error "Invalid protected SID format: $sid"
+                    Write-Warning "Invalid protected SID format: $sid"
                     return $false
                 }
 
@@ -149,7 +155,7 @@ class ScriptConfiguration {
                     $null = [System.Security.Principal.SecurityIdentifier]::new($sid)
                     Write-Verbose "Validated protected SID: $sid"
                 } catch {
-                    Write-Error "Protected SID failed .NET validation: $sid - $($_.Exception.Message)"
+                    Write-Warning "Protected SID failed .NET validation: $sid - $($_.Exception.Message)"
                     return $false
                 }
             }
@@ -157,13 +163,13 @@ class ScriptConfiguration {
             # Validate critical object patterns for proper wildcard usage
             foreach ($pattern in $this.CriticalObjectPatterns) {
                 if ([string]::IsNullOrWhiteSpace($pattern)) {
-                    Write-Error "Empty critical object pattern detected"
+                    Write-Warning "Empty critical object pattern detected"
                     return $false
                 }
 
                 # Ensure patterns have reasonable structure
                 if ($pattern.Length -lt 3 -or $pattern.Length -gt 500) {
-                    Write-Error "Critical object pattern has invalid length: $pattern"
+                    Write-Warning "Critical object pattern has invalid length: $pattern"
                     return $false
                 }
 
@@ -172,19 +178,19 @@ class ScriptConfiguration {
 
             # Validate numeric ranges with business logic
             if ($this.BatchSize -lt 1 -or $this.BatchSize -gt 1000) {
-                Write-Error "BatchSize out of valid range (1-1000): $($this.BatchSize)"
+                Write-Warning "BatchSize out of valid range (1-1000): $($this.BatchSize)"
                 return $false
             }
 
             if ($this.MemoryCheckInterval -lt 1 -or $this.MemoryCheckInterval -gt 1000) {
-                Write-Error "MemoryCheckInterval out of valid range (1-1000): $($this.MemoryCheckInterval)"
+                Write-Warning "MemoryCheckInterval out of valid range (1-1000): $($this.MemoryCheckInterval)"
                 return $false
             }
 
             # Validate log level against known values
             $validLogLevels = @('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')
             if ($this.LogLevel -notin $validLogLevels) {
-                Write-Error "Invalid LogLevel specified: $($this.LogLevel). Valid values: $($validLogLevels -join ', ')"
+                Write-Warning "Invalid LogLevel specified: $($this.LogLevel). Valid values: $($validLogLevels -join ', ')"
                 return $false
             }
 
@@ -192,7 +198,7 @@ class ScriptConfiguration {
             return $true
 
         } catch {
-            Write-Error "Configuration validation failed: $($_.Exception.Message)"
+            Write-Warning "Configuration validation failed: $($_.Exception.Message)"
             return $false
         }
     }

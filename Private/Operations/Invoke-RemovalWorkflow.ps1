@@ -299,6 +299,5 @@ function Invoke-RemovalWorkflow {
     }
 }
 
-Write-StructuredLog "Removal workflow orchestration module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 
 

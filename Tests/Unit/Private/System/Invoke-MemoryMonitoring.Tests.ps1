@@ -1,16 +1,24 @@
 #Requires -Version 5.1
 
 # Import test helpers
-. "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
-
 # Import the module classes
-. "$PSScriptRoot\..\..\..\..\Classes\MemoryManager.ps1"
-
 # Import the function under test
-. "$PSScriptRoot\..\..\..\..\Private\System\Invoke-MemoryMonitoring.ps1"
-
 # Import dependency functions
-. "$PSScriptRoot\..\..\..\..\Private\System\Get-MemoryStatistics.ps1"
+BeforeAll {
+    # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
+    # this placeholder is what the Mock below replaces when the file runs on its own.
+    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
+        function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
+    }
+
+    . "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
+
+    . "$PSScriptRoot\..\..\..\..\Classes\MemoryManager.ps1"
+
+    . "$PSScriptRoot\..\..\..\..\Private\System\Invoke-MemoryMonitoring.ps1"
+
+    . "$PSScriptRoot\..\..\..\..\Private\System\Get-MemoryStatistics.ps1"
+}
 
 Describe "Invoke-MemoryCheck" {
     BeforeEach {
@@ -27,25 +35,25 @@ Describe "Invoke-MemoryCheck" {
             # Use reflection to check parameter definition instead of calling function
             $command = Get-Command Invoke-MemoryCheck
             $memoryManagerParam = $command.Parameters['MemoryManager']
-            $memoryManagerParam.Attributes | Where-Object { $_ -is [Parameter] } | ForEach-Object { $_.Mandatory | Should Be $true }
+            $memoryManagerParam.Attributes | Where-Object { $_ -is [Parameter] } | ForEach-Object { $_.Mandatory | Should -Be $true }
         }
 
         It "Should accept MemoryManager object" {
-            { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager } | Should Not Throw
+            { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager } | Should -Not -Throw
         }
 
         It "Should accept optional CorrelationId parameter" {
-            { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager -CorrelationId 'test-id' } | Should Not Throw
+            { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager -CorrelationId 'test-id' } | Should -Not -Throw
         }
 
         It "Should use MemoryManager CorrelationId when parameter not provided" {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
-            $result.CorrelationId | Should Be $script:mockMemoryManager.CorrelationId
+            $result.CorrelationId | Should -Be $script:mockMemoryManager.CorrelationId
         }
 
         It "Should validate MemoryManager object type" {
             $invalidObject = [PSCustomObject]@{ Name = 'Invalid' }
-            { Invoke-MemoryCheck -MemoryManager $invalidObject } | Should Throw
+            { Invoke-MemoryCheck -MemoryManager $invalidObject } | Should -Throw
         }
     }
 
@@ -55,8 +63,8 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.ThresholdExceeded | Should Be $false
-            $result.CurrentMemoryMB | Should Be 200
+            $result.ThresholdExceeded | Should -Be $false
+            $result.CurrentMemoryMB | Should -Be 200
         }
 
         It "Should detect when memory usage exceeds threshold" {
@@ -64,8 +72,8 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.ThresholdExceeded | Should Be $true
-            $result.CurrentMemoryMB | Should Be 2048
+            $result.ThresholdExceeded | Should -Be $true
+            $result.CurrentMemoryMB | Should -Be 2048
         }
 
         It "Should detect when memory usage is at threshold boundary" {
@@ -73,8 +81,8 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.ThresholdExceeded | Should Be $false
-            $result.CurrentMemoryMB | Should Be 1024
+            $result.ThresholdExceeded | Should -Be $false
+            $result.CurrentMemoryMB | Should -Be 1024
         }
 
         It "Should calculate memory usage percentage" {
@@ -82,7 +90,7 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.MemoryUsagePercent | Should Be 50
+            $result.MemoryUsagePercent | Should -Be 50
         }
 
         It "Should handle very high memory usage" {
@@ -90,8 +98,8 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.ThresholdExceeded | Should Be $true
-            $result.MemoryUsagePercent | Should BeGreaterThan 100
+            $result.ThresholdExceeded | Should -Be $true
+            $result.MemoryUsagePercent | Should -BeGreaterThan 100
         }
     }
 
@@ -101,7 +109,7 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.MemoryStatus | Should Be 'Normal'
+            $result.MemoryStatus | Should -Be 'Normal'
         }
 
         It "Should classify moderate memory usage as Normal" {
@@ -109,7 +117,7 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.MemoryStatus | Should Be 'Normal'
+            $result.MemoryStatus | Should -Be 'Normal'
         }
 
         It "Should classify high memory usage as High" {
@@ -117,7 +125,7 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.MemoryStatus | Should Be 'High'
+            $result.MemoryStatus | Should -Be 'High'
         }
 
         It "Should classify critical memory usage as Critical" {
@@ -125,7 +133,7 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.MemoryStatus | Should Be 'Critical'
+            $result.MemoryStatus | Should -Be 'Critical'
         }
 
         It "Should provide memory recommendations based on status" {
@@ -133,8 +141,8 @@ Describe "Invoke-MemoryCheck" {
             
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.Recommendations.Count | Should BeGreaterThan 0
-            ($result.Recommendations -contains 'Immediate action required: Stop processing and run garbage collection') | Should Be $true
+            $result.Recommendations.Count | Should -BeGreaterThan 0
+            ($result.Recommendations -contains 'Immediate action required: Stop processing and run garbage collection') | Should -Be $true
         }
     }
 
@@ -142,9 +150,9 @@ Describe "Invoke-MemoryCheck" {
         It "Should force memory check when Force parameter is used" {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager -Force
             
-            $result.CurrentMemoryMB | Should Be 500
+            $result.CurrentMemoryMB | Should -Be 500
             # After Force sets counter to interval and CheckMemoryUsage() is called, it resets to 0
-            $script:mockMemoryManager.CheckCounter | Should Be 0
+            $script:mockMemoryManager.CheckCounter | Should -Be 0
         }
 
         It "Should reset check counter when forced" {
@@ -153,7 +161,7 @@ Describe "Invoke-MemoryCheck" {
             Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager -Force
             
             # Force sets to interval, then CheckMemoryUsage() increments and resets to 0
-            $script:mockMemoryManager.CheckCounter | Should Be 0
+            $script:mockMemoryManager.CheckCounter | Should -Be 0
         }
     }
 
@@ -161,23 +169,23 @@ Describe "Invoke-MemoryCheck" {
         It "Should return all expected properties" {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            ($result.PSObject.Properties.Name -contains 'CurrentMemoryMB') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'MaxMemoryMB') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'ThresholdExceeded') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'MemoryUsagePercent') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'MemoryStatus') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'Recommendations') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'MonitoringTime') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'SystemMemoryTotal') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'CorrelationId') | Should Be $true
+            ($result.PSObject.Properties.Name -contains 'CurrentMemoryMB') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'MaxMemoryMB') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'ThresholdExceeded') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'MemoryUsagePercent') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'MemoryStatus') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'Recommendations') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'MonitoringTime') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'SystemMemoryTotal') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'CorrelationId') | Should -Be $true
         }
 
         It "Should include garbage collection statistics" {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            ($result.PSObject.Properties.Name -contains 'Gen0Collections') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'Gen1Collections') | Should Be $true
-            ($result.PSObject.Properties.Name -contains 'Gen2Collections') | Should Be $true
+            ($result.PSObject.Properties.Name -contains 'Gen0Collections') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'Gen1Collections') | Should -Be $true
+            ($result.PSObject.Properties.Name -contains 'Gen2Collections') | Should -Be $true
         }
 
         It "Should set monitoring time to current time" {
@@ -185,8 +193,8 @@ Describe "Invoke-MemoryCheck" {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             $afterTime = Get-Date
             
-            $result.MonitoringTime | Should BeGreaterThan $beforeTime.AddSeconds(-1)
-            $result.MonitoringTime | Should BeLessThan $afterTime.AddSeconds(1)
+            $result.MonitoringTime | Should -BeGreaterThan $beforeTime.AddSeconds(-1)
+            $result.MonitoringTime | Should -BeLessThan $afterTime.AddSeconds(1)
         }
     }
 
@@ -194,11 +202,11 @@ Describe "Invoke-MemoryCheck" {
         It "Should handle memory measurement failure" {
             Mock Get-SystemGCTotalMemory { throw "Memory measurement failed" }
             
-            { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager } | Should Throw
+            { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager } | Should -Throw
         }
 
         It "Should handle null MemoryManager gracefully" {
-            { Invoke-MemoryCheck -MemoryManager $null } | Should Throw
+            { Invoke-MemoryCheck -MemoryManager $null } | Should -Throw
         }
 
         It "Should provide meaningful error messages" {
@@ -207,10 +215,10 @@ Describe "Invoke-MemoryCheck" {
             try {
                 Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
                 # Should not reach here
-                $false | Should Be $true
+                $false | Should -Be $true
             }
             catch {
-                $_.Exception.Message | Should Not BeNullOrEmpty
+                $_.Exception.Message | Should -Not -BeNullOrEmpty
             }
         }
     }
@@ -218,18 +226,18 @@ Describe "Invoke-MemoryCheck" {
     Context "WhatIf Support" {
         It "Should support ShouldProcess" {
             $command = Get-Command Invoke-MemoryCheck
-            $command.Parameters.ContainsKey('WhatIf') | Should Be $true
+            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
         }
 
         It "Should still perform monitoring in WhatIf mode" {
             # Test WhatIf parameter availability instead of execution
             $command = Get-Command Invoke-MemoryCheck
-            $command.Parameters.ContainsKey('WhatIf') | Should Be $true
+            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
             
             # Test normal execution
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
-            $result.CurrentMemoryMB | Should Be 500
+            $result.CurrentMemoryMB | Should -Be 500
         }
     }
 }
@@ -246,8 +254,8 @@ Describe "Test-MemoryThreshold" {
             
             $result = Test-MemoryThreshold -ThresholdMB 1024
             
-            $result.ThresholdExceeded | Should Be $false
-            $result.CurrentMemoryMB | Should Be 500
+            $result.ThresholdExceeded | Should -Be $false
+            $result.CurrentMemoryMB | Should -Be 500
         }
 
         It "Should detect when threshold is exceeded" {
@@ -255,8 +263,8 @@ Describe "Test-MemoryThreshold" {
             
             $result = Test-MemoryThreshold -ThresholdMB 1024
             
-            $result.ThresholdExceeded | Should Be $true
-            $result.CurrentMemoryMB | Should Be 2048
+            $result.ThresholdExceeded | Should -Be $true
+            $result.CurrentMemoryMB | Should -Be 2048
         }
     }
 }

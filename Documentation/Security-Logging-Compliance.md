@@ -2,7 +2,7 @@
 
 ## Overview
 
-Find-UnknownSID keeps two logging paths. Ordinary entries go through `Write-StructuredLog` /
+OrphanedSid keeps two logging paths. Ordinary entries go through `Write-StructuredLog` /
 `Write-StructuredLogEntry`, and their file output honours `-LogLevel`. Security audit entries go
 through `Write-SecurityStructuredLogEntry`, which writes to the log file regardless of `-LogLevel`,
 so an operator who lowers the file verbosity to `Error` still gets a complete record of Active
@@ -43,9 +43,9 @@ run time.
 3. Appends the entry to the log file with `Add-Content`, without consulting `Test-LogLevel`.
 
 If the log file is not initialised or the write fails, the entry is retried directly against the
-configured log path and then written to `%TEMP%\Find-UnknownSID-Security-<yyyyMMdd>.log` with a
+configured log path and then written to `%TEMP%\OrphanedSid-Security-<yyyyMMdd>.log` with a
 warning naming that file. If formatting itself fails, a plain-text line is written to the log path,
-and as a last resort to `%TEMP%\Find-UnknownSID-Security-Emergency.log`. Only when every location
+and as a last resort to `%TEMP%\OrphanedSid-Security-Emergency.log`. Only when every location
 fails does the function raise `CRITICAL SECURITY LOGGING FAILURE`.
 
 ### Write-SecurityLog
@@ -62,7 +62,7 @@ ID, correlation ID, plus every `SecurityContext` key prefixed `Security_`), maps
 level (`Attempt` and `Success` to `Information`, `Failure` to `Warning`), and calls
 `Write-SecurityStructuredLogEntry` with the component `SecurityAudit` and the message
 `[<SecurityEventType>] [<Outcome>] <Message>`. If that call throws, the line is appended to
-`%TEMP%\Find-UnknownSID-Security-Fallback.log`.
+`%TEMP%\OrphanedSid-Security-Fallback.log`.
 
 ### Write-ADOperationSecurityLog
 
@@ -91,12 +91,10 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
 
 ### Load Order
 
-`Private/Core/Import-LoggingSystem.ps1` loads the logging files in a fixed order:
-`Initialize-LoggingConfiguration`, `Initialize-LogDirectory`, `Initialize-LoggingSystem`,
-`Format-LogMessage`, `Protect-LogMessage`, `Write-StructuredLogEntry`,
-`Write-SecurityStructuredLogEntry`, `Write-SecurityLogEvent`, `Get-LogFileSummary`,
-`Export-DiagnosticData`. The security writer is therefore available before any function that
-calls it.
+`OrphanedSid.psm1` dot-sources `Private/Logging/` before every other `Private/` folder, so the
+logging functions, including the security writer, exist before any function that calls them is
+defined. Nothing in `Private/` runs code at load time; the shared logging state is created by
+`Initialize-LoggingConfiguration` and configured per run by `Start-OrphanedSidSession`.
 
 ## What This Provides
 
@@ -117,10 +115,10 @@ and forward the file to a central log store if the audit trail must survive the 
 
 ```powershell
 # Only Error and Critical operational entries reach the file; all security entries still do
-.\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -LogLevel Error
+.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Error
 
 # Read back the security entries for a run
-Select-String -Path ".\Logs\Find-UnknownSID_*.log" -Pattern "\[SecurityAudit\]" |
+Select-String -Path ".\Logs\<Command>_*.log" -Pattern "\[SecurityAudit\]" |
     Where-Object { $_.Line -match "12345678-1234-1234-1234-123456789012" }
 ```
 

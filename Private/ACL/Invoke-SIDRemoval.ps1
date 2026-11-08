@@ -252,5 +252,4 @@ function Invoke-SIDRemoval {
     }
 }
 
-Write-StructuredLog "ACL manipulation module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

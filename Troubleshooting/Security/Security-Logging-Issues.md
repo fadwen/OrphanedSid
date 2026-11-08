@@ -2,8 +2,8 @@
 
 ## Overview
 
-`Find-UnknownSID.ps1` writes two kinds of entries to the same log file
-(`.\Logs\Find-UnknownSID_<yyyyMMdd_HHmmss>.log` by default, or `-LogPath`):
+`Find-OrphanedSid` writes two kinds of entries to the same log file
+(`.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` by default, or `-LogPath`):
 
 | Kind | Written by | File format | Filtered by `-LogLevel`? |
 |---|---|---|---|
@@ -21,8 +21,8 @@ are written at `Information`, `Failure` at `Warning`. On the console only `Warni
 `Critical` security entries appear, prefixed `[SECURITY]`; `Information` security entries go to the
 file only.
 
-The logging modules live in `Private\Logging\` and are loaded by
-`Private\Core\Import-LoggingSystem.ps1`.
+The logging functions live in `Private\Logging\` and are the first folder `OrphanedSid.psm1`
+loads.
 
 ## Reading Security Entries
 
@@ -37,7 +37,7 @@ function Get-SecurityLogEntry {
         Where-Object { $_.Component -eq 'SecurityAudit' }
 }
 
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 $security = Get-SecurityLogEntry -LogPath $log.FullName
 $security | Group-Object SecurityEventType, Outcome | Select-Object Name, Count
 $security | Where-Object Outcome -eq 'Failure' | Select-Object Timestamp, Message
@@ -79,7 +79,8 @@ otherwise it falls back to `Write-SecurityFileEntryDirect`.
 1. Load the logging system from its real location when working interactively:
 
    ```powershell
-   . .\Private\Core\Import-LoggingSystem.ps1
+   Import-Module OrphanedSid
+   # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
    Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Information
    Initialize-LogDirectory -LogPath .\Logs\manual-test.log
    ```
@@ -111,7 +112,8 @@ filtered.
 **Verification**
 
 ```powershell
-. .\Private\Core\Import-LoggingSystem.ps1
+Import-Module OrphanedSid
+# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Error
 Initialize-LogDirectory -LogPath .\Logs\filter-test.log
 
@@ -151,10 +153,10 @@ clean domain the security log is small. The entries cannot be suppressed; they a
 
 **Symptoms**
 
-- Files matching `$env:TEMP\Find-UnknownSID-Security-*.log`:
-  - `Find-UnknownSID-Security-Emergency.log`: written when formatting or the direct write threw.
-  - `Find-UnknownSID-Security-<yyyyMMdd>.log`: written when the main log path was unavailable.
-  - `Find-UnknownSID-Security-Fallback.log`: written by `Write-SecurityLog` when
+- Files matching `$env:TEMP\OrphanedSid-Security-*.log`:
+  - `OrphanedSid-Security-Emergency.log`: written when formatting or the direct write threw.
+  - `OrphanedSid-Security-<yyyyMMdd>.log`: written when the main log path was unavailable.
+  - `OrphanedSid-Security-Fallback.log`: written by `Write-SecurityLog` when
     `Write-SecurityStructuredLogEntry` itself failed.
 
 **Root cause**
@@ -168,7 +170,7 @@ system not initialised when the security function ran.
 $state = Get-LoggingSystemState
 "Main log path: $($state.LogPath)"
 "File exists: $(Test-Path $state.LogPath)"
-Get-ChildItem "$env:TEMP\Find-UnknownSID-Security-*.log" -ErrorAction SilentlyContinue | Select-Object Name, Length, LastWriteTime
+Get-ChildItem "$env:TEMP\OrphanedSid-Security-*.log" -ErrorAction SilentlyContinue | Select-Object Name, Length, LastWriteTime
 ```
 
 **Solutions**
@@ -179,7 +181,7 @@ $logDir = Split-Path $state.LogPath -Parent
 if (-not (Test-Path $logDir)) { New-Item -Path $logDir -ItemType Directory -Force | Out-Null }
 
 # Merge emergency entries into the main log and remove them
-Get-ChildItem "$env:TEMP\Find-UnknownSID-Security-*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+Get-ChildItem "$env:TEMP\OrphanedSid-Security-*.log" -ErrorAction SilentlyContinue | ForEach-Object {
     Add-Content -Path $state.LogPath -Value (Get-Content $_.FullName) -Encoding UTF8
     Remove-Item $_.FullName
 }
@@ -219,9 +221,9 @@ Context keys are stored in the JSON object prefixed `Security_`.
 ### Confirm security entries survive a restrictive log level
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase "OU=Users,DC=contoso,DC=com" -LogLevel Error -WhatIf
+.\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -LogLevel Error -WhatIf
 
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 $security = Get-Content $log.FullName | Where-Object { $_.StartsWith('{') -and $_ -match '"Component":"SecurityAudit"' }
 if ($security.Count -gt 0) {
     "Security logging verified: $($security.Count) entries"
@@ -234,7 +236,7 @@ if ($security.Count -gt 0) {
 
 ```powershell
 function Test-EmergencySecurityLogs {
-    $files = Get-ChildItem "$env:TEMP\Find-UnknownSID-Security-*.log" -ErrorAction SilentlyContinue
+    $files = Get-ChildItem "$env:TEMP\OrphanedSid-Security-*.log" -ErrorAction SilentlyContinue
     if ($files) {
         Write-Warning "Emergency security logs present - the main log was unavailable at some point"
         $files | Select-Object FullName, Length, LastWriteTime
@@ -262,5 +264,5 @@ function Test-SecurityLoggingHealth {
 ## Related Documentation
 
 - [Security Validation Guide](./Security-Validation-Guide.md)
-- [Find-UnknownSID Issues](../Common/Find-UnknownSID-Issues.md)
+- [Common Issues](../Common/Common-Issues.md)
 - [Enterprise Integration Guide](../Integration/Enterprise-Integration-Guide.md)

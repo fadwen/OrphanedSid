@@ -314,6 +314,8 @@ function Get-SIDProcessingStatistics {
 
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Statistics is a mass noun for the aggregate counters')]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [OrphanedSIDResult[]]$OrphanedSIDResults,
@@ -422,5 +424,4 @@ function Get-SIDProcessingStatistics {
 
 #endregion
 
-Write-StructuredLog "Invoke-SIDProcessing module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 

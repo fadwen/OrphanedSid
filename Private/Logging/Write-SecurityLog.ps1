@@ -1,4 +1,4 @@
-function Write-SecurityLog {
+﻿function Write-SecurityLog {
     <#
     .SYNOPSIS
         Writes security audit log entries for compliance and monitoring
@@ -103,7 +103,7 @@ function Write-SecurityLog {
             # Try direct file append as last resort for critical security events
             try {
                 $fallbackEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') [SecurityAudit] [$logLevel] $auditMessage (CorrelationId: $CorrelationId)"
-                $fallbackEntry | Out-File -FilePath "$env:TEMP\Find-UnknownSID-Security-Fallback.log" -Append -Encoding UTF8
+                $fallbackEntry | Out-File -FilePath "$env:TEMP\OrphanedSid-Security-Fallback.log" -Append -Encoding UTF8 -WhatIf:$false
             } catch {
                 Write-Error "Critical: Unable to write security audit log entry: $auditMessage"
             }

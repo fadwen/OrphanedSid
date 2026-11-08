@@ -1,5 +1,4 @@
-﻿#Requires -Module Pester
-
+﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
     
     BeforeAll {
@@ -22,7 +21,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         $PrivatePath = Join-Path $RootPath 'Private'
         
         # Import backup-related functions
-        . (Join-Path $PrivatePath 'Backup\Get-BackupMetadata.ps1')
+        . (Join-Path $PrivatePath 'Backup\Get-BackupFileMetadata.ps1')
         . (Join-Path $PrivatePath 'Backup\Find-BackupFile.ps1')
 
         # Import test helpers if available
@@ -43,7 +42,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
 
         # Let Pester handle mock cleanup automatically
         
-        function Get-BackupMetadata {
+        function Get-BackupFileMetadata {
             param(
                 [string]$BackupFilePath,
                 [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
@@ -227,8 +226,8 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             return @()
         }
 
-        # Override Get-BackupMetadata 
-        function Get-BackupMetadata {
+        # Override Get-BackupFileMetadata 
+        function Get-BackupFileMetadata {
             param($BackupFilePath, $CorrelationId)
             
             $script:GetBackupMetadataCalls += @{
@@ -330,21 +329,21 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
 
     Context "Parameter Validation" {
         It "Should accept valid backup path" {
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' } | Should Not Throw
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' } | Should -Not -Throw
         }
 
         It "Should reject null or empty backup path" {
-            { Find-BackupFile -BackupPath $null } | Should Throw "Failed to discover backup files: BackupPath cannot be empty or whitespace"
-            { Find-BackupFile -BackupPath '' } | Should Throw "Failed to discover backup files: BackupPath cannot be empty or whitespace"
-            { Find-BackupFile -BackupPath '   ' } | Should Throw "Failed to discover backup files: BackupPath cannot be empty or whitespace"
+            { Find-BackupFile -BackupPath $null } | Should -Throw "*Failed to discover backup files: BackupPath cannot be empty or whitespace*"
+            { Find-BackupFile -BackupPath '' } | Should -Throw "*Failed to discover backup files: BackupPath cannot be empty or whitespace*"
+            { Find-BackupFile -BackupPath '   ' } | Should -Throw "*Failed to discover backup files: BackupPath cannot be empty or whitespace*"
         }
 
         It "Should reject non-existent backup path" {
-            { Find-BackupFile -BackupPath 'C:\InvalidBackupPath' } | Should Throw "Failed to discover backup files: Backup directory not found or inaccessible: C:\InvalidBackupPath"
+            { Find-BackupFile -BackupPath 'C:\InvalidBackupPath' } | Should -Throw "*Failed to discover backup files: Backup directory not found or inaccessible: C:\InvalidBackupPath*"
         }
 
         It "Should accept optional ObjectDN filter parameter" {
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*Sales*' } | Should Not Throw
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*Sales*' } | Should -Not -Throw
         }
 
         It "Should accept optional DateRange filter parameter" {
@@ -352,12 +351,12 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
                 StartDate = (Get-Date).AddDays(-30)
                 EndDate = Get-Date 
             }
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange } | Should Not Throw
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange } | Should -Not -Throw
         }
 
         It "Should validate DateRange parameter format" {
             $invalidDateRange = @{ StartDate = 'invalid'; EndDate = 'invalid' }
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should Throw "Failed to discover backup files: DateRange.StartDate must be a DateTime object"
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should -Throw "*Failed to discover backup files: DateRange.StartDate must be a DateTime object*"
         }
 
         It "Should validate DateRange start before end" {
@@ -365,13 +364,13 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
                 StartDate = Get-Date
                 EndDate = (Get-Date).AddDays(-1)
             }
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should Throw "Failed to discover backup files: DateRange.StartDate cannot be later than DateRange.EndDate"
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should -Throw "*Failed to discover backup files: DateRange.StartDate cannot be later than DateRange.EndDate*"
         }
 
         It "Should generate correlation ID if not provided" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            $result[0].DiscoveryCorrelationId | Should Not BeNullOrEmpty
-            $result[0].DiscoveryCorrelationId | Should Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            $result[0].DiscoveryCorrelationId | Should -Not -BeNullOrEmpty
+            $result[0].DiscoveryCorrelationId | Should -Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         }
     }
 
@@ -379,21 +378,21 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         It "Should discover all backup files in valid directory" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 3
-            $result[0].PSObject.TypeNames[0] | Should Be 'BackupInventoryResult'
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 3
+            $result[0].PSObject.TypeNames[0] | Should -Be 'BackupInventoryResult'
         }
 
         It "Should include comprehensive metadata for each backup" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
             foreach ($backup in $result) {
-                $backup.ObjectDN | Should Not BeNullOrEmpty
-                $backup.BackupDate | Should Not BeNullOrEmpty
-                $backup.BackupVersion | Should Not BeNullOrEmpty
-                $backup.IntegrityStatus | Should Not BeNullOrEmpty
-                $backup.BackupSize | Should BeGreaterThan 0
-                $backup.ChecksumValid | Should Be $true
+                $backup.ObjectDN | Should -Not -BeNullOrEmpty
+                $backup.BackupDate | Should -Not -BeNullOrEmpty
+                $backup.BackupVersion | Should -Not -BeNullOrEmpty
+                $backup.IntegrityStatus | Should -Not -BeNullOrEmpty
+                $backup.BackupSize | Should -BeGreaterThan 0
+                $backup.ChecksumValid | Should -Be $true
             }
         }
 
@@ -402,37 +401,37 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -CorrelationId $correlationId
             
             foreach ($backup in $result) {
-                $backup.DiscoveryCorrelationId | Should Be $correlationId
-                $backup.DiscoveryTime | Should Not BeNullOrEmpty
-                $backup.FilteredByObjectDN | Should Be $false
-                $backup.FilteredByDateRange | Should Be $false
+                $backup.DiscoveryCorrelationId | Should -Be $correlationId
+                $backup.DiscoveryTime | Should -Not -BeNullOrEmpty
+                $backup.FilteredByObjectDN | Should -Be $false
+                $backup.FilteredByDateRange | Should -Be $false
             }
         }
 
         It "Should handle empty backup directory gracefully" {
             $result = Find-BackupFile -BackupPath 'C:\EmptyBackupPath'
             
-            $result | Should BeNullOrEmpty
-            @($result).Count | Should Be 0
+            $result | Should -BeNullOrEmpty
+            @($result).Count | Should -Be 0
         }
 
         It "Should call Get-ChildItem with correct parameters" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
-            # Check our tracking variable instead of Assert-MockCalled
-            $script:GetChildItemCalls.Count | Should BeGreaterThan 0
-            $script:GetChildItemCalls[0].Path | Should Be 'C:\ValidBackupPath'
-            $script:GetChildItemCalls[0].Filter | Should Be '*.xml'
-            $script:GetChildItemCalls[0].Recurse | Should Be $true
-            $script:GetChildItemCalls[0].File | Should Be $true
+            # Check our tracking variable instead of Should -Invoke
+            $script:GetChildItemCalls.Count | Should -BeGreaterThan 0
+            $script:GetChildItemCalls[0].Path | Should -Be 'C:\ValidBackupPath'
+            $script:GetChildItemCalls[0].Filter | Should -Be '*.xml'
+            $script:GetChildItemCalls[0].Recurse | Should -Be $true
+            $script:GetChildItemCalls[0].File | Should -Be $true
         }
 
-        It "Should call Get-BackupMetadata for each discovered file" {
+        It "Should call Get-BackupFileMetadata for each discovered file" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
-            # Check that Get-BackupMetadata was called for each file
-            $script:GetBackupMetadataCalls.Count | Should Be 3
-            $script:GetBackupMetadataCalls[0].BackupFilePath | Should Match '\.xml$'
+            # Check that Get-BackupFileMetadata was called for each file
+            $script:GetBackupMetadataCalls.Count | Should -Be 3
+            $script:GetBackupMetadataCalls[0].BackupFilePath | Should -Match '\.xml$'
         }
     }
 
@@ -440,30 +439,30 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         It "Should filter backups by ObjectDN pattern" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*Sales*'
             
-            $result.Count | Should Be 1
-            $result[0].ObjectDN | Should Be 'CN=TestUser2,OU=Sales,DC=company,DC=com'
-            $result[0].FilteredByObjectDN | Should Be $true
+            $result.Count | Should -Be 1
+            $result[0].ObjectDN | Should -Be 'CN=TestUser2,OU=Sales,DC=company,DC=com'
+            $result[0].FilteredByObjectDN | Should -Be $true
         }
 
         It "Should handle wildcard patterns correctly" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User*'
             
-            $result.Count | Should Be 2
-            $result[0].ObjectDN | Should Match 'TestUser'
-            $result[1].ObjectDN | Should Match 'TestUser'
+            $result.Count | Should -Be 2
+            $result[0].ObjectDN | Should -Match 'TestUser'
+            $result[1].ObjectDN | Should -Match 'TestUser'
         }
 
         It "Should return empty results when no matches found" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*NonExistent*'
             
-            $result.Count | Should Be 0
+            $result.Count | Should -Be 0
         }
 
         It "Should handle exact DN matches" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN 'CN=TestUser1,OU=Users,DC=company,DC=com'
             
-            $result.Count | Should Be 1
-            $result[0].ObjectDN | Should Be 'CN=TestUser1,OU=Users,DC=company,DC=com'
+            $result.Count | Should -Be 1
+            $result[0].ObjectDN | Should -Be 'CN=TestUser1,OU=Users,DC=company,DC=com'
         }
     }
 
@@ -472,16 +471,16 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $dateRange = @{ StartDate = [DateTime]::Parse('2025-07-12T00:00:00Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
             
-            $result.Count | Should Be 2
-            $result[0].FilteredByDateRange | Should Be $true
+            $result.Count | Should -Be 2
+            $result[0].FilteredByDateRange | Should -Be $true
         }
 
         It "Should filter backups by end date" {
             $dateRange = @{ EndDate = [DateTime]::Parse('2025-07-11T23:59:59Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
             
-            $result.Count | Should Be 1
-            $result[0].BackupDate | Should Be '2025-07-10T10:00:00Z'
+            $result.Count | Should -Be 1
+            $result[0].BackupDate | Should -Be '2025-07-10T10:00:00Z'
         }
 
         It "Should filter backups by date range" {
@@ -491,8 +490,8 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
             
-            $result.Count | Should Be 1
-            $result[0].BackupDate | Should Be '2025-07-12T14:30:00Z'
+            $result.Count | Should -Be 1
+            $result[0].BackupDate | Should -Be '2025-07-12T14:30:00Z'
         }
 
         It "Should handle date range with no matches" {
@@ -502,7 +501,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
             
-            $result.Count | Should Be 0
+            $result.Count | Should -Be 0
         }
     }
 
@@ -511,28 +510,28 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $dateRange = @{ StartDate = [DateTime]::Parse('2025-07-11T00:00:00Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User*' -DateRange $dateRange
             
-            $result.Count | Should Be 1
-            $result[0].ObjectDN | Should Be 'CN=TestUser2,OU=Sales,DC=company,DC=com'
-            $result[0].FilteredByObjectDN | Should Be $true
-            $result[0].FilteredByDateRange | Should Be $true
+            $result.Count | Should -Be 1
+            $result[0].ObjectDN | Should -Be 'CN=TestUser2,OU=Sales,DC=company,DC=com'
+            $result[0].FilteredByObjectDN | Should -Be $true
+            $result[0].FilteredByDateRange | Should -Be $true
         }
 
         It "Should return empty when filters exclude all results" {
             $dateRange = @{ EndDate = [DateTime]::Parse('2025-07-01T00:00:00Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User*' -DateRange $dateRange
             
-            $result.Count | Should Be 0
+            $result.Count | Should -Be 0
         }
     }
 
     Context "Error Handling" {
         It "Should handle directory access denied gracefully" {
-            { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should Throw "Failed to discover backup files: Failed to scan backup directory C:\AccessDeniedPath : Access denied to backup directory"
+            { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should -Throw "*Failed to discover backup files: Failed to scan backup directory C:\AccessDeniedPath : Access denied to backup directory*"
         }
 
         It "Should continue processing when individual files fail" {
-            # Mock Get-BackupMetadata to fail for one file
-            Mock Get-BackupMetadata {
+            # Mock Get-BackupFileMetadata to fail for one file
+            Mock Get-BackupFileMetadata {
                 param($BackupFilePath, $CorrelationId)
                 if ($BackupFilePath -eq 'C:\ValidBackupPath\backup2.xml') {
                     throw "Metadata extraction failed"
@@ -551,22 +550,22 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
             # Should continue processing and return results for successful files
-            $result.Count | Should Be 2
+            $result.Count | Should -Be 2
         }
 
         It "Should log structured error information" {
-            { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should Throw
+            { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should -Throw
             
             # Check our tracking variable for error logs
             $errorLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.Level -eq 'Error' -and $_.Message -match 'Failed to scan backup directory'
             }
-            $errorLogs | Should Not BeNullOrEmpty
+            $errorLogs | Should -Not -BeNullOrEmpty
         }
 
         It "Should handle malformed date parsing gracefully" {
-            # Mock Get-BackupMetadata to return invalid date
-            Mock Get-BackupMetadata {
+            # Mock Get-BackupFileMetadata to return invalid date
+            Mock Get-BackupFileMetadata {
                 return [PSCustomObject]@{
                     ObjectDN = 'CN=TestObject,DC=company,DC=com'
                     BackupDate = 'invalid-date-format'
@@ -581,7 +580,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
             
             # Should skip files with invalid dates
-            $result.Count | Should Be 0
+            $result.Count | Should -Be 0
         }
     }
 
@@ -592,14 +591,14 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
             $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 5000
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 5000
         }
 
         It "Should use Write-Progress for user feedback" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
             # Check our tracking variable
-            $script:WriteProgressCalls.Count | Should BeGreaterThan 0
+            $script:WriteProgressCalls.Count | Should -BeGreaterThan 0
         }
 
         It "Should complete Write-Progress when finished" {
@@ -607,7 +606,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             
             # Check for completion call in our tracking
             $completionCall = $script:WriteProgressCalls | Where-Object { $_.Completed -eq $true }
-            $completionCall | Should Not BeNullOrEmpty
+            $completionCall | Should -Not -BeNullOrEmpty
         }
     }
 
@@ -620,7 +619,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $correlationLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.CorrelationId -eq $correlationId
             }
-            $correlationLogs | Should Not BeNullOrEmpty
+            $correlationLogs | Should -Not -BeNullOrEmpty
         }
 
         It "Should log discovery start and completion" {
@@ -630,13 +629,13 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $startLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.Message -match 'Starting backup file discovery' -and $_.Level -eq 'Debug'
             }
-            $startLogs | Should Not BeNullOrEmpty
+            $startLogs | Should -Not -BeNullOrEmpty
             
             # Check for completion log
             $completionLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.Message -match 'completed' -and $_.Level -eq 'Debug'
             }
-            $completionLogs | Should Not BeNullOrEmpty
+            $completionLogs | Should -Not -BeNullOrEmpty
         }
 
         It "Should provide comprehensive discovery results logging" {
@@ -646,7 +645,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             $discoveryLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.Message -match 'Backup discovery completed' -and $_.Level -eq 'Verbose'
             }
-            $discoveryLogs | Should Not BeNullOrEmpty
+            $discoveryLogs | Should -Not -BeNullOrEmpty
         }
     }
 
@@ -655,17 +654,17 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             # Test with path containing extra whitespace
             $result = Find-BackupFile -BackupPath '  C:\ValidBackupPath  '
             
-            $result | Should Not BeNullOrEmpty
-            $result.Count | Should Be 3
+            $result | Should -Not -BeNullOrEmpty
+            $result.Count | Should -Be 3
         }
 
         It "Should prevent path traversal in backup path" {
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath\..\..\..\Windows\System32' } | Should Throw "Failed to discover backup files: Backup directory not found or inaccessible: C:\ValidBackupPath\..\..\..\Windows\System32"
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath\..\..\..\Windows\System32' } | Should -Throw "*Failed to discover backup files: Backup directory not found or inaccessible: C:\ValidBackupPath\..\..\..\Windows\System32*"
         }
 
         It "Should validate ObjectDN filter for malicious patterns" {
-            # ObjectDN filter should be safe as it's used with -like operator
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '$(Get-Process)' } | Should Not Throw
+            # ObjectDN filter Should -be safe as it's used with -like operator
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '$(Get-Process)' } | Should -Not -Throw
         }
     }
 }

@@ -150,6 +150,5 @@ function Get-ACLForRemoval {
     }
 }
 
-Write-StructuredLog "ACL retrieval module loaded successfully" -Level Debug -CorrelationId $([System.Guid]::NewGuid().ToString())
 
 

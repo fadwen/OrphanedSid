@@ -1,89 +1,80 @@
-﻿# Find-UnknownSID
+﻿# OrphanedSid
 
+[![PowerShell Gallery](https://img.shields.io/powershellgallery/v/OrphanedSid?label=PowerShell%20Gallery)](https://www.powershellgallery.com/packages/OrphanedSid)
+[![Gallery downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fadwen/OrphanedSid/badges/gallery-downloads.json)](https://www.powershellgallery.com/packages/OrphanedSid)
+[![Quality Gates](https://github.com/fadwen/OrphanedSid/actions/workflows/quality-gates.yml/badge.svg)](https://github.com/fadwen/OrphanedSid/actions/workflows/quality-gates.yml)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207.x%20(Windows)-blue)](https://github.com/PowerShell/PowerShell)
-[![Active Directory](https://img.shields.io/badge/dependency-RSAT%20ActiveDirectory-orange)](https://learn.microsoft.com/powershell/module/activedirectory/)
-[![Tests](https://img.shields.io/badge/tests-Pester%203.4-blue)](./Documentation/Quick-Test-Reference.md)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
+Finds access control entries in Active Directory that still grant rights to principals that no
+longer exist, removes them with a backup of every ACL it touches, and restores an ACL from that
+backup.
 
 ## Overview
 
-**Business value:** Orphaned Security Identifiers (SIDs) are access control entries that still grant
-rights to accounts that no longer exist. They accumulate on every Active Directory object as users,
-groups and computers are deleted, and they clutter security reviews. Find-UnknownSID finds them,
-removes them with a backup of every ACL it touches, and can put an ACL back from that backup.
+**Business value:** Orphaned SIDs are access control entries whose trustee was deleted. They
+accumulate on every object as users, groups and computers are retired, they grant nothing to
+anyone, and they are the first thing an auditor asks about when reviewing delegated permissions.
+This module finds them, removes them safely, and can put an ACL back if a removal turns out to be
+wrong.
 
-**Technical summary:** A single PowerShell script, `Find-UnknownSID.ps1`, that dot-sources its
-components from `Private/` and `Classes/`. It walks the objects under one or more search bases,
-reads each security descriptor, resolves every identity reference, and records the ones that do not
-resolve. Results stream to batch files on disk so memory stays flat on large OUs.
+**Technical summary:** Three commands over a shared engine. Discovery walks the objects under a
+search base, reads each security descriptor, resolves every identity reference and reports the
+ones that do not resolve. Removal validates each SID against protected and well-known lists, backs
+the ACL up as Clixml, then strips the orphaned entries. Restore validates the backup's hash and
+applies it. Results stream to batch files on disk so memory stays flat on large OUs.
 
 ### Key features
 
-- **Three modes.** Discovery (default, read-only), `-Remove` (backup then strip the orphaned ACEs),
-  and `-Restore` (apply a backed-up ACL to an object).
-- **Backup before change.** Every `-Remove` run writes one Clixml file per modified object into a
-  timestamped folder. `-Restore` validates the backup's SHA256 hash before applying it.
-- **Protected SID checks.** Well-known SIDs (BUILTIN groups, SYSTEM, LOCAL SERVICE, NETWORK SERVICE,
-  Domain Admins, Enterprise Admins, Schema Admins) are never treated as orphaned.
-- **Confirmation gate.** `-Remove` and `-Restore` prompt once in an interactive console. In an
-  unattended session they stop unless `-Force` is given. `-WhatIf` previews either mode.
-- **Correlation tracking.** One correlation ID per run, carried through every log line, backup file
-  and result row. Pass your own with `-CorrelationId` to tie a run to a ticket or pipeline job.
-- **Audit log that survives log-level filtering.** Security events are written to the log file
-  regardless of `-LogLevel`.
-- **Memory management.** Results are flushed to disk in batches (`BatchSize`, default 50); memory is
-  checked against `-MaxMemoryUsageMB` and garbage collection runs when the threshold is exceeded.
+- **Objects on the pipeline.** One `OrphanedSIDResult` per orphaned entry, one
+  `RemovalOperationResult` per modified object, one restore result per target. `-OutputPath` also
+  writes CSV.
+- **Backup before change.** Every `Remove-OrphanedSid` run writes one Clixml file per modified
+  object into a timestamped folder; `Restore-OrphanedSidBackup` validates the SHA256 hash before
+  applying it.
+- **Protected SIDs.** The BUILTIN groups, SYSTEM, LOCAL SERVICE, NETWORK SERVICE, and the domain
+  admin groups are never reported as orphaned and never removed. Both lists can be extended.
+- **Confirmation gate.** `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` have
+  `ConfirmImpact = 'High'`: they prompt once, `-WhatIf` previews, and an unattended run needs
+  `-Force`.
+- **Correlation tracking.** One correlation ID per run, carried through every log line, backup
+  file and result row. Pass your own with `-CorrelationId` to tie a run to a change record.
+- **Audit log that survives filtering.** Security events are written to the log file at every
+  `-LogLevel`.
 
 ### Target audience
 
-- **Active Directory administrators** cleaning up delegated permissions on OUs.
+- **Active Directory administrators** cleaning up delegated permissions.
 - **Security teams** auditing which objects carry rights for deleted principals.
-- **Compliance teams** who need a CSV and a log with a correlation ID per run.
-
-## Project status
-
-The script and its components are complete for the three modes above. The Pester suite under
-`Tests/` targets Pester 3.4 on Windows PowerShell 5.1; see
-[Quick Test Reference](./Documentation/Quick-Test-Reference.md) for how to run it and the
-current pass counts.
-
-Known gaps:
-
-- Objects are processed sequentially. There is no parallel processing and no thread count to tune.
-- The script writes nothing to the pipeline. Automation reads the CSV from `-OutputPath` or the
-  summary block in the log.
-- Class file hashes are recorded in `Private/ClassManagement/Get-ApprovedClassList.ps1` but are not
-  verified at load time; only the class name is checked against the approved list.
-- The script runs as the caller. There is no `-Credential` parameter.
+- **Compliance teams** who need a CSV and a correlated log per run.
 
 ## Quick start
 
 ```powershell
-# Discovery: list orphaned SIDs under an OU, no changes made
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Users,DC=contoso,DC=com' -OutputPath '.\Reports\audit.csv' -Verbose
+Install-PSResource -Name OrphanedSid -Scope CurrentUser -TrustRepository
 
-# Preview a removal
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Computers,DC=contoso,DC=com' -Remove -WhatIf
+# Discovery: nothing is changed
+Find-OrphanedSid -SearchBase 'OU=Users,DC=contoso,DC=com' -OutputPath '.\Reports\audit.csv'
 
-# Remove, unattended, with the backup in the default .\Backup\<timestamp>\ folder
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Computers,DC=contoso,DC=com' -Remove -Force -OutputPath '.\Reports\cleanup.csv'
+# Preview a removal, then do it
+Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf
+Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'
 
-# Restore one object from a backup folder
-.\Find-UnknownSID.ps1 -Restore -SearchBase 'CN=SRV01,OU=Computers,DC=contoso,DC=com' -BackupPath '.\Backup\20250703_104232' -Force
+# Undo it from the run's backup folder
+Restore-OrphanedSidBackup -TargetObjectDN 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups\20260703_104232'
 ```
 
 The console shows progress and a summary block. The same lines, with timestamps and the correlation
-ID, go to `.\Logs\Find-UnknownSID_<yyyyMMdd_HHmmss>.log`.
+ID, go to `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory.
 
 ## Prerequisites
 
 | Component | Requirement | Notes |
 | --- | --- | --- |
 | PowerShell | Windows PowerShell 5.1, or PowerShell 7.x on Windows | The ActiveDirectory module is Windows-only |
-| ActiveDirectory module | RSAT: Active Directory PowerShell | Not on the PowerShell Gallery; install RSAT (below) |
+| ActiveDirectory module | RSAT: Active Directory PowerShell | Not on the Gallery; install RSAT |
 | Domain | Domain-joined machine with line of sight to a domain controller | |
-| Disk | Space for backups and logs | One Clixml file per modified object |
-
-Install the module from RSAT:
+| Rights | Read for discovery; Modify Permissions on the target objects for removal and restore | Commands run as the caller |
 
 ```powershell
 # Windows 10 / 11
@@ -91,262 +82,144 @@ Add-WindowsCapability -Online -Name 'Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.
 
 # Windows Server
 Install-WindowsFeature -Name RSAT-AD-PowerShell
-
-# Verify
-Get-Module -ListAvailable ActiveDirectory
 ```
-
-### Permissions
-
-| Mode | Active Directory right needed |
-| --- | --- |
-| Discovery | Read on the objects under `-SearchBase` |
-| `-Remove` | Write to the security descriptor (Modify Permissions) on the target objects |
-| `-Restore` | Same as `-Remove` |
-
-Backups and logs are written as the running user, so the account also needs write access to
-`-BackupPath` and `-LogPath`.
 
 ## Installation
 
 ```powershell
-git clone https://github.com/fadwen/TechbyJeff.git
-Set-Location 'TechbyJeff\Powershell\Active Directory\Find-UnknownSID'
-Get-Help .\Find-UnknownSID.ps1 -Full
+# PowerShell Gallery
+Install-PSResource -Name OrphanedSid -Scope CurrentUser -TrustRepository
+
+# From a clone
+git clone https://github.com/fadwen/OrphanedSid.git
+Import-Module .\OrphanedSid\OrphanedSid.psd1
 ```
 
-Keep the folder structure intact. The script dot-sources `Classes/` and `Private/` relative to its
-own location.
-
-## Configuration
-
-Most runs need no configuration file. `-ConfigPath` accepts a JSON file whose top-level keys override
-the defaults in `Classes/ScriptConfiguration.ps1`. Only these keys are read; anything else is
-ignored without a warning:
-
-```json
-{
-  "WellKnownSIDPatterns": ["^S-1-5-32-", "^S-1-5-18$"],
-  "ProtectedSIDs": ["S-1-5-32-544", "S-1-5-32-545", "S-1-5-32-546", "S-1-5-18", "S-1-5-19", "S-1-5-20"],
-  "BatchSize": 50,
-  "MemoryCheckInterval": 50,
-  "EnableDetailedLogging": false,
-  "LogLevel": "Information",
-  "LogFilePath": null,
-  "EnableLogFileRotation": false,
-  "MaxLogFileSizeMB": 50
-}
-```
-
-| Key | Range | Effect |
-| --- | --- | --- |
-| `WellKnownSIDPatterns` | regex list | Identity references matching any pattern are never reported as orphaned |
-| `ProtectedSIDs` | SID list | Never removed, even if unresolvable |
-| `BatchSize` | 1-1000 | Results per streaming batch file in `%TEMP%` (default 50) |
-| `MemoryCheckInterval` | 1-1000 | Operations between memory checks |
-| `LogLevel` | Critical, Error, Warning, Information, Debug, Verbose | Default file log level; `-LogLevel` on the command line wins |
-
-Everything else is a command-line parameter: `-MaxMemoryUsageMB` (100-16384, default 1024),
-`-MaxRetries` (1-10, default 3), `-IncludeInherited`, `-LogPath`, `-LogLevel`,
-`-SuppressConsoleOutput`, `-PreserveTempFiles`, `-CorrelationId`. There are no environment variables.
+On Windows PowerShell 5.1 without PSResourceGet, use `Install-Module -Name OrphanedSid`.
 
 ## Usage
 
 ### Discovery across several OUs
 
 ```powershell
-'OU=Users,DC=contoso,DC=com', 'OU=Computers,DC=contoso,DC=com' |
-    .\Find-UnknownSID.ps1 -IncludeInherited -OutputPath '.\Reports\audit.csv'
+Get-ADOrganizationalUnit -Filter * -SearchScope OneLevel |
+    Find-OrphanedSid -IncludeInherited |
+    Group-Object OrphanedSID |
+    Sort-Object Count -Descending
 ```
 
-`-SearchBase` accepts pipeline input and an array. `-IncludeInherited` also reports ACEs inherited
-from parent containers; expect more rows and a longer run.
+`-SearchBase` accepts pipeline input by value or from the `DistinguishedName` property.
+`-IncludeInherited` also reports entries inherited from parent containers.
 
-### Removal with a custom backup location
+### Removal, unattended, tagged with a change number
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -Remove -Force `
-    -BackupPath 'D:\ADBackups' -OutputPath '.\Reports\cleanup.csv' -CorrelationId 'CHG0012345'
+Remove-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -Force `
+    -BackupPath 'D:\ADBackups' -OutputPath '.\Reports\CHG0012345.csv' -CorrelationId 'CHG0012345'
 ```
 
-Backups land in `D:\ADBackups\<yyyyMMdd_HHmmss>\`, one `.xml` per modified object, named from the
-object's distinguished name with path-unsafe characters replaced by `_`.
+Backups land in `D:\ADBackups\<yyyyMMdd_HHmmss>\`, one `.xml` per modified object, named from
+the object's distinguished name with path-unsafe characters replaced by `_`.
 
-### Restore every object in an OU from a backup set
+### Targeted rollback from a removal's own CSV
 
 ```powershell
-.\Find-UnknownSID.ps1 -Restore -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' `
-    -BackupPath 'D:\ADBackups\20250703_104232' -WhatIf
+Import-Csv .\Reports\CHG0012345.csv |
+    Select-Object -ExpandProperty ObjectDN -Unique |
+    Restore-OrphanedSidBackup -BackupPath 'D:\ADBackups\20260703_104232' -Force
 ```
-
-When `-SearchBase` is an OU or domain, every backup file under `-BackupPath` whose object sits
-under that container is restored. For a single object the most recent matching backup is used.
-Drop `-WhatIf` and add `-Force` to apply.
 
 ### Scheduled task
 
 ```powershell
 $report = "C:\Reports\orphaned-sids-$(Get-Date -Format yyyyMMdd).csv"
-$correlationId = "SCHED-$(Get-Date -Format yyyyMMddHHmm)"
-
-& 'C:\Scripts\Find-UnknownSID\Find-UnknownSID.ps1' -SearchBase 'DC=contoso,DC=com' `
-    -OutputPath $report -SuppressConsoleOutput -CorrelationId $correlationId
-
-# The script emits nothing to the pipeline; read the CSV it wrote
-$found = if (Test-Path $report) { @(Import-Csv $report).Count } else { 0 }
-if ($found -gt 0) {
+$found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $report -SuppressConsoleOutput)
+if ($found.Count -gt 0) {
     Send-MailMessage -To 'security-alerts@contoso.com' -From 'ad-hygiene@contoso.com' `
-        -SmtpServer 'smtp.contoso.com' -Subject "Orphaned SIDs found: $found" `
-        -Body "Report: $report`nCorrelationId: $correlationId"
+        -SmtpServer 'smtp.contoso.com' -Subject "Orphaned SIDs found: $($found.Count)" -Body "Report: $report"
 }
 ```
 
-Exit code is 0 on success and 1 when the end block hits a critical error. There are no other codes.
+### Configuration file
 
-### CSV columns
+`-ConfigPath` accepts a JSON file. Only these top-level keys are read:
 
-One row per orphaned ACE: `ObjectDN`, `ObjectClass`, `OrphanedSID`, `LikelySource`, `Confidence`,
-`AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`, `InheritanceType`, `ObjectType`,
-`InheritedObjectType`, `IsInherited`, `ProcessingMethod`, `ActionTaken`, `CorrelationId`,
-`Timestamp`. A `-Restore` run exports one row per object instead.
+| Key | Range | Effect |
+| --- | --- | --- |
+| `WellKnownSIDPatterns` | regex list | Matching identity references are never reported |
+| `ProtectedSIDs` | SID list | Never removed, even if unresolvable |
+| `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
+| `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
+| `LogLevel` | Critical to Verbose | Default file log level; `-LogLevel` wins |
+| `EnableDetailedLogging`, `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+
+Everything else is a command parameter. See `Get-Help Find-OrphanedSid -Full` and
+`Get-Help about_OrphanedSid`.
 
 ## Architecture
 
 ```text
-Find-UnknownSID/
-├── Find-UnknownSID.ps1          # Entry point: parameters, confirmation gate, load order, summary
-├── Classes/                     # Loaded first, by name from Get-ApprovedClassList
-│   ├── ScriptConfiguration.ps1      # Defaults, protected SIDs, JSON override loader
-│   ├── MemoryManager.ps1            # Threshold checks and garbage collection
-│   ├── StreamingResultsManager.ps1  # Batch files in %TEMP%, CSV export, cleanup
-│   ├── ProcessingStatistics.ps1     # Counters and timing for the summary
-│   ├── OrphanedSIDResult.ps1        # One row of output
-│   ├── SIDAnalysisResult.ps1
-│   ├── SecurityValidationResult.ps1
-│   ├── RemovalOperationResult.ps1
-│   └── RestoreOperationResult.ps1
+OrphanedSid/
+├── OrphanedSid.psd1 / .psm1     # Manifest and loader (Classes, then Private by area, then Public)
+├── Public/                      # Find-OrphanedSid, Remove-OrphanedSid, Restore-OrphanedSidBackup
 ├── Private/                     # One function per file, grouped by area
-│   ├── ACL/                         # Get-ACLForRemoval, Invoke-SIDRemoval, Set-ModifiedACL
-│   ├── ActiveDirectory/             # Get-ADObjectFromSearchBase, Get-ADObjectsSequential,
-│   │                                #   Invoke-ADOperationWithRetry, Test-ValidDistinguishedName
-│   ├── Backup/                      # New-ACLBackup, Find-BackupFile, Get-BackupMetadata,
-│   │                                #   Test-BackupValidation, Invoke-RestoreWorkflow, Restore-ACLOperation
-│   ├── ClassManagement/             # Get-ApprovedClassList, Resolve-ClassPath, Import-SecureClasses
-│   ├── Core/                        # Initialize-ScriptExecution, Start-OrchestrationWorkflow,
-│   │                                #   Invoke-MainProcessingLogic, Remove-OrphanedSID, Import-LoggingSystem
-│   ├── FileSystem/                  # Get-SafeFileName, Initialize-LogDirectory, Test-DirectoryAccess
-│   ├── Logging/                     # Write-StructuredLog, Write-SecurityLog, Test-LogLevel, ...
-│   ├── Operations/                  # Invoke-RemovalWorkflow, Invoke-OperationWithRetry
-│   ├── Reporting/                   # Write-ProcessingSummary, Get-LogFileSummary, Export-DiagnosticData
-│   ├── Security/                    # Get-SecurityDescriptor (Get-ObjectAccessRule), Invoke-SecurityValidation,
-│   │                                #   Invoke-RemovalVerification, Test-ClassIntegrity, Test-PathTraversal
-│   ├── SID/                         # Test-SIDFormat, Test-OrphanedSID, Resolve-SIDIdentity,
-│   │                                #   Get-SIDAnalysis, Test-SIDSecurity, New-SIDResult, Invoke-SIDProcessing
-│   ├── System/                      # Initialize-MemoryManager, Invoke-MemoryMonitoring,
-│   │                                #   Invoke-GarbageCollection, Invoke-ResourceDisposal, Get-MemoryStatistics
-│   └── Utilities/                   # Get-StringHash, Test-BackupIntegrity, Validate-BackupSignature
-├── Tests/                       # Pester 3.4 suite: Unit, Integration, Performance
-├── Tools/                       # Generate-ClassHashes, Generate-OrphanedSIDs (lab seeding), Invoke-GitWorkflow
-├── Documentation/               # Guides listed below, plus Archive/ with development history
-├── Troubleshooting/             # Common, Security, Performance, Integration
-├── Backup/                      # Created on first -Remove (git-ignored)
-└── Logs/                        # Created on first run (git-ignored)
+│   ├── Core/                        # Session start/stop, Invoke-MainProcessingLogic, orchestration
+│   ├── SID/                         # Format, orphan test, identity resolution, analysis, security
+│   ├── Security/                    # Security descriptor retrieval, validation, verification
+│   ├── ACL/                         # Read, modify and write ACLs
+│   ├── Backup/                      # New-ACLBackup, backup discovery, validation, restore workflow
+│   ├── ActiveDirectory/             # Object enumeration with retry
+│   ├── Logging/                     # Structured and security logging
+│   └── FileSystem/, System/, Operations/, Reporting/, Utilities/
+├── Classes/                     # Configuration, memory manager, streaming results, result types
+├── Tests/                       # Pester 6; runs without RSAT (Tests/TestHelpers/ADCmdletStubs.ps1)
+├── docs/OrphanedSid/            # PlatyPS Markdown, the source of the command help
+├── en-US/                       # Compiled MAML and about_OrphanedSid
+├── Build/                       # Build-Help.ps1, Publish-Module.ps1
+├── Documentation/, Troubleshooting/
+└── Tools/Generate-OrphanedSIDs.ps1   # Seeds a lab domain with orphaned SIDs for testing
 ```
-
-### Processing flow
-
-1. `begin`: import the ActiveDirectory module, load the approved classes, dot-source `Private/`,
-   initialise logging, configuration and the memory manager.
-2. `process`: apply the confirmation gate for `-Remove` and `-Restore`, then either run
-   `Invoke-MainProcessingLogic` (discovery and removal) or `Start-OrchestrationWorkflow -OperationType Restore`
-   once per `-SearchBase` value.
-3. `end`: print the summary, export the CSV, dispose the streaming manager and memory manager.
-
-For each object, `Get-ObjectAccessRule` reads the security descriptor (trying `Get-Acl` on the
-`AD:` drive, then the binary `nTSecurityDescriptor`, then a fresh query), `Test-OrphanedSID`
-resolves each identity reference with a per-run cache, and `New-OrphanedSIDResult` builds the
-output row. In `-Remove` mode `Test-SIDSecurity` and `Invoke-SecurityValidation` run before
-`New-ACLBackup` and `Invoke-SIDRemoval`.
 
 ## Troubleshooting
 
-Start with the log file. Every line carries the correlation ID, so one run can be isolated with:
+Start with the log file. Every line carries the correlation ID:
 
 ```powershell
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern '<correlation id>'
+Select-String -Path .\Logs\*.log -Pattern '<correlation id>'
 ```
 
-| Symptom | Cause | Where to look |
-| --- | --- | --- |
-| `Active Directory PowerShell module is not available` | RSAT not installed | [Prerequisites](#prerequisites) |
-| `Refusing to remove orphaned SIDs from ACLs without confirmation` | Unattended `-Remove` without `-Force` | [Confirmation gate](#key-features) |
-| `BackupPath parameter is required when using -Restore` | `-Restore` without `-BackupPath` | [Backup and Restore Guide](./Documentation/Backup-and-Restore-Guide.md) |
-| `All security descriptor retrieval methods failed for <DN>` | No read access to the descriptor, or the object vanished mid-run | [Security Descriptor Issues](./Troubleshooting/Security/Security-Descriptor-Issues.md) |
-| `Memory usage threshold exceeded` warnings | `-MaxMemoryUsageMB` lower than the working set | [Memory Management](./Troubleshooting/Performance/Memory-Management.md) |
-| Restore reports `Backup validation failed` | File edited, truncated or from another object | [Backup-Restore Issues](./Troubleshooting/Common/Backup-Restore-Issues.md) |
+| Symptom | Where to look |
+| --- | --- |
+| `The ActiveDirectory PowerShell module is not available` | [Prerequisites](#prerequisites) |
+| A prompt appears in a scheduled task, or a `-Confirm` error in a non-interactive session | Pass `-Force` to `Remove-OrphanedSid` or `Restore-OrphanedSidBackup` |
+| `All security descriptor retrieval methods failed for <DN>` | [Security descriptor issues](./Troubleshooting/Security/Security-Descriptor-Issues.md) |
+| `Memory usage threshold exceeded` warnings | [Memory management](./Troubleshooting/Performance/Memory-Management.md) |
+| `Backup validation failed` on restore | [Backup and restore issues](./Troubleshooting/Common/Backup-Restore-Issues.md) |
 
-Guides by area:
+Guides by area: [Common](./Troubleshooting/Common/), [Security](./Troubleshooting/Security/),
+[Performance](./Troubleshooting/Performance/), [Integration](./Troubleshooting/Integration/).
+Longer references: [Backup and Restore Guide](./Documentation/Backup-and-Restore-Guide.md),
+[Automation Guide](./Documentation/Automation.md),
+[Security Logging](./Documentation/Security-Logging-Compliance.md).
 
-- [Common](./Troubleshooting/Common/): startup, backup and restore, result objects, orchestration
-- [Security](./Troubleshooting/Security/): SID format and resolution, security descriptors, security logging
-- [Performance](./Troubleshooting/Performance/): memory management, WhatIf behaviour, tuning
-- [Integration](./Troubleshooting/Integration/): scheduling and pipeline use
-
-## Performance
-
-Run time is dominated by one LDAP read per object plus one identity lookup per distinct SID. The
-SID lookup is cached for the run, so the second object carrying the same orphaned SID costs
-nothing extra. Measure in your own environment: the summary block in the log reports objects
-processed, duration, objects per second and peak memory.
-
-Levers, in order of effect:
-
-- Narrow `-SearchBase`, or run one OU at a time.
-- Leave `-IncludeInherited` off unless the audit needs inherited ACEs.
-- Raise `-MaxMemoryUsageMB` if the log shows repeated threshold warnings; lower it on a constrained
-  host.
-- Set `-LogLevel Warning` to shrink the log file on large runs. Security events are still written.
-- Use `-PreserveTempFiles` to keep the batch files in `%TEMP%\Find-UnknownSID-<CorrelationId>\`
-  for inspection after a run.
-
-## Security
-
-- `-Remove` and `-Restore` never run without a confirmation prompt, `-Force`, or `-WhatIf`.
-- Every modified ACL is backed up first as Clixml with the SDDL, a SHA256 hash of the SDDL, the
-  object DN, the correlation ID and the user and computer that made the change.
-- `ProtectedSIDs` and `WellKnownSIDPatterns` are checked before any removal. Objects matching
-  `CriticalObjectPatterns` (Domain Admins, Enterprise Admins, Schema Admins, BUILTIN, the default
-  Users and Computers containers) are flagged high risk in the results.
-- Security events are written to the log file at every `-LogLevel`, with a fallback file under
-  `%TEMP%` if the main log cannot be written.
-- The script runs as the caller; it stores no credentials.
-
-These controls produce evidence an audit can use. They do not by themselves make an environment
-compliant with any regulation.
-
-## Documentation
-
-- [Quick Test Reference](./Documentation/Quick-Test-Reference.md): running the Pester suite and current results
-- [Backup and Restore Guide](./Documentation/Backup-and-Restore-Guide.md): backup format, restore workflow, validation
-- [Automation Guide](./Documentation/Find-UnknownSID-Automation.md): scheduled and pipeline use, exit codes, reading results
-- [Memory and Security Notes](./Documentation/Find-UnknownSID-Memory-Security.md): memory behaviour and the security checks
-- [Class Loading Security Analysis](./Documentation/Class-Loading-Security-Analysis.md): how classes are loaded and what is and is not verified
-- [Security Logging Compliance](./Documentation/Security-Logging-Compliance.md): the always-on security log
-
-[Documentation/Archive](./Documentation/Archive/) holds 74 historical development, refactoring and
-testing documents. They describe the project as it was at the time; see
-[Archive README](./Documentation/Archive/README.md).
-
-## Testing
-
-The suite targets Pester 3.4 on Windows PowerShell 5.1 and does not need a domain. Tests that
-touch AD cmdlets mock them, and stub `Get-ADObject` when RSAT is absent.
+## Development
 
 ```powershell
-Import-Module Pester -RequiredVersion 3.4.0 -Force
-Invoke-Pester -Path .\Tests\Unit
-Invoke-Pester -Path .\Tests\Integration
-Invoke-Pester -Path .\Tests\Performance
+Invoke-ScriptAnalyzer -Path ./Private -Recurse -Severity Error, Warning   # and Public, Classes, Build
+Invoke-Pester ./Tests                                                      # Pester 6, no domain needed
+./Build/Build-Help.ps1                                                     # rebuild MAML after editing docs/
+./Build/Publish-Module.ps1 -WhatIf                                         # release rehearsal
 ```
 
-Current results are recorded in [Quick Test Reference](./Documentation/Quick-Test-Reference.md).
+Conventions come from [ai-powershell-standards](https://github.com/fadwen/ai-powershell-standards)
+and are mirrored into `.github/` and `.claude/` by a weekly workflow. See [CLAUDE.md](./CLAUDE.md)
+for the invariants specific to this module.
+
+## History
+
+The code began as `Find-UnknownSID.ps1` in [fadwen/TechbyJeff](https://github.com/fadwen/TechbyJeff)
+and is described in two posts on [techbyjeff.net](https://techbyjeff.net):
+[Understanding Orphaned SIDs in Active Directory](https://techbyjeff.net/posts/understanding-orphaned-sids-in-active-directory/)
+and
+[Testing Security Functions with Pester](https://techbyjeff.net/posts/testing-security-functions-with-pester-a-real-world-example/).
+`Documentation/Archive/` keeps the development history from that period.

@@ -218,7 +218,7 @@ function Test-BackupValidation {
 
                     # Validate SDDL format
                     try {
-                        $securityDescriptor = [System.Security.AccessControl.RawSecurityDescriptor]::new($BackupData.SDDL)
+                        $null = [System.Security.AccessControl.RawSecurityDescriptor]::new($BackupData.SDDL)
                         $backupInfo['SDDLValid'] = $true
                     }
                     catch {
@@ -606,188 +606,6 @@ function Test-BackupIntegrity {
 function Test-BackupFormat {
     <#
     .SYNOPSIS
-        Validates backup file format and version compatibility.
-
-    .DESCRIPTION
-        Performs focused validation of backup format structure and version
-        compatibility. This function is used when you specifically need to
-        verify format compliance without full integrity checking.
-
-    .PARAMETER BackupData
-        PSCustomObject containing backup data to validate format.
-
-    .PARAMETER RequiredVersion
-        Specific backup version to validate against (optional).
-
-    .PARAMETER CorrelationId
-        Unique identifier for tracking this operation.
-
-    .EXAMPLE
-        PS> Test-BackupFormat -BackupData $backup
-
-        Validates backup format compatibility with current system.
-
-    .OUTPUTS
-        [PSCustomObject] FormatValidationResult
-    #>
-
-    [CmdletBinding()]
-    [OutputType('FormatValidationResult')]
-    param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [ValidateNotNull()]
-        [PSCustomObject]$BackupData,
-
-        [Parameter()]
-        [ValidateSet('v1.0', 'v2.0', 'v2.1')]
-        [string]$RequiredVersion,
-
-        [Parameter()]
-        [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
-    )
-
-    process {
-        try {
-            $formatIssues = @()
-
-            # Check validation signature exists
-            if (-not $BackupData.PSObject.Properties['ValidationSignature']) {
-                $formatIssues += "Missing ValidationSignature property"
-            } else {
-                # Parse version from signature
-                if ($BackupData.ValidationSignature -match 'PSSecurityBackup_v(\d+\.\d+)') {
-                    $detectedVersion = "v$($Matches[1])"
-
-                    # Check specific version if required
-                    if ($RequiredVersion -and $detectedVersion -ne $RequiredVersion) {
-                        $formatIssues += "Version mismatch: Required $RequiredVersion, found $detectedVersion"
-                    }
-                } else {
-                    $formatIssues += "Invalid validation signature format: $($BackupData.ValidationSignature)"
-                }
-            }
-
-            # Check core structure properties
-            $coreProperties = @('ObjectDN', 'BackupDate', 'SDDL')
-            foreach ($prop in $coreProperties) {
-                if (-not $BackupData.PSObject.Properties[$prop]) {
-                    $formatIssues += "Missing core property: $prop"
-                }
-            }
-
-            return [PSCustomObject]@{
-                PSTypeName = 'FormatValidationResult'
-                IsValid = $formatIssues.Count -eq 0
-                Issues = $formatIssues
-                DetectedVersion = $detectedVersion
-                CorrelationId = $CorrelationId
-            }
-        }
-        catch {
-            return [PSCustomObject]@{
-                PSTypeName = 'FormatValidationResult'
-                IsValid = $false
-                Issues = @("Format validation error: $($_.Exception.Message)")
-                DetectedVersion = $null
-                CorrelationId = $CorrelationId
-            }
-        }
-    }
-}
-
-
-function Get-BackupMetadata {
-    <#
-    .SYNOPSIS
-        Extracts and validates backup metadata information.
-
-    .DESCRIPTION
-        Extracts comprehensive metadata from backup files including creation
-        information, version details, and statistical data. Useful for backup
-        management and reporting operations.
-
-    .PARAMETER BackupData
-        PSCustomObject containing backup data to analyze.
-
-    .PARAMETER IncludeStatistics
-        Whether to include statistical analysis of the backup data.
-
-    .PARAMETER CorrelationId
-        Unique identifier for tracking this operation.
-
-    .EXAMPLE
-        PS> Get-BackupMetadata -BackupData $backup -IncludeStatistics
-
-        Extracts comprehensive metadata including statistics.
-
-    .OUTPUTS
-        [PSCustomObject] BackupMetadata
-    #>
-
-    [CmdletBinding()]
-    [OutputType('BackupMetadata')]
-    param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [ValidateNotNull()]
-        [PSCustomObject]$BackupData,
-
-        [Parameter()]
-        [switch]$IncludeStatistics,
-
-        [Parameter()]
-        [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
-    )
-
-    process {
-        try {
-            $metadata = @{
-                ObjectDN = $BackupData.ObjectDN
-                BackupDate = $BackupData.BackupDate
-                ValidationSignature = $BackupData.ValidationSignature
-                HasIntegrityHash = [bool]$BackupData.SDDLHash
-                CorrelationId = $CorrelationId
-                ExtractedAt = Get-Date
-            }
-
-            # Parse version information
-            if ($BackupData.ValidationSignature -match 'PSSecurityBackup_v(\d+\.\d+)') {
-                $metadata.Version = "v$($Matches[1])"
-            }
-
-            # Include statistics if requested
-            if ($IncludeStatistics -and $BackupData.SDDL) {
-                $sddlLength = $BackupData.SDDL.Length
-                $aceCount = ($BackupData.SDDL -split '\(').Count - 1
-
-                $metadata.Statistics = @{
-                    SDDLLength = $sddlLength
-                    EstimatedACECount = $aceCount
-                    DataSize = [System.Text.Encoding]::UTF8.GetByteCount($BackupData.SDDL)
-                }
-            }
-
-            return [PSCustomObject]@{
-                PSTypeName = 'BackupMetadata'
-                Metadata = $metadata
-                IsValid = $true
-                CorrelationId = $CorrelationId
-            }
-        }
-        catch {
-            return [PSCustomObject]@{
-                PSTypeName = 'BackupMetadata'
-                Metadata = @{}
-                IsValid = $false
-                Error = $_.Exception.Message
-                CorrelationId = $CorrelationId
-            }
-        }
-    }
-}
-
-function Test-BackupFormat {
-    <#
-    .SYNOPSIS
         Tests the format and structure of backup data for compliance with security standards
     
     .PARAMETER BackupData
@@ -811,76 +629,79 @@ function Test-BackupFormat {
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
     
-    Write-Verbose "Starting Test-BackupFormat - CorrelationId: $CorrelationId"
+    process {
+        Write-Verbose "Starting Test-BackupFormat - CorrelationId: $CorrelationId"
     
-    # Parameter validation that should throw immediately
-    if ($RequiredVersion -and $RequiredVersion -notin @('v1.0', 'v2.0', 'v2.1')) {
-        throw "Invalid RequiredVersion: $RequiredVersion"
-    }
-    
-    $result = [PSCustomObject]@{
-        IsValid = $true
-        ValidationLevel = 'Format'
-        Issues = @()
-        ErrorMessage = ''
-        FormatInfo = @{}
-        DetectedVersion = ''
-        CorrelationId = $CorrelationId
-        ValidatedAt = Get-Date
-    }
-    
-    # Add PSTypeName for type validation
-    $result.PSObject.TypeNames.Insert(0, 'FormatValidationResult')
-    
-    try {
-        if ($null -eq $BackupData) {
-            throw "BackupData parameter cannot be null"
+        # Parameter validation that should throw immediately
+        if ($RequiredVersion -and $RequiredVersion -notin @('v1.0', 'v2.0', 'v2.1')) {
+            throw "Invalid RequiredVersion: $RequiredVersion"
         }
-        
-        # Check for required core properties
-        $requiredProperties = @('ValidationSignature', 'SDDL', 'ObjectDN', 'BackupDate')
-        foreach ($property in $requiredProperties) {
-            if (-not ($BackupData.PSObject.Properties.Name -contains $property)) {
-                $result.Issues += "Missing core property: $property"
-                $result.IsValid = $false
+    
+        $result = [PSCustomObject]@{
+            IsValid = $true
+            ValidationLevel = 'Format'
+            Issues = @()
+            ErrorMessage = ''
+            FormatInfo = @{}
+            DetectedVersion = ''
+            CorrelationId = $CorrelationId
+            ValidatedAt = Get-Date
+        }
+    
+        # Add PSTypeName for type validation
+        $result.PSObject.TypeNames.Insert(0, 'FormatValidationResult')
+    
+        try {
+            if ($null -eq $BackupData) {
+                throw "BackupData parameter cannot be null"
             }
-        }
         
-        # Validate signature format and detect version
-        if ($BackupData.ValidationSignature) {
-            $validSignatures = @(
-                'PSSecurityBackup_v1.0', 'PSSecurityBackup_v2.0', 'PSSecurityBackup_v2.1'
-            )
-            if ($BackupData.ValidationSignature -notin $validSignatures) {
-                $result.Issues += "Invalid validation signature format: $($BackupData.ValidationSignature)"
-                $result.IsValid = $false
-            } else {
-                # Extract version from signature
-                if ($BackupData.ValidationSignature -match '_v(\d+\.\d+)$') {
-                    $result.DetectedVersion = "v$($matches[1])"
+            # Check for required core properties
+            $requiredProperties = @('ValidationSignature', 'SDDL', 'ObjectDN', 'BackupDate')
+            foreach ($property in $requiredProperties) {
+                if (-not ($BackupData.PSObject.Properties.Name -contains $property)) {
+                    $result.Issues += "Missing core property: $property"
+                    $result.IsValid = $false
                 }
             }
-        }
         
-        if ($RequiredVersion -and $BackupData.BackupVersion -ne $RequiredVersion.TrimStart('v')) {
-            $result.Issues += "Version mismatch: Required $RequiredVersion, found v$($BackupData.BackupVersion)"
+            # Validate signature format and detect version
+            if ($BackupData.ValidationSignature) {
+                $validSignatures = @(
+                    'PSSecurityBackup_v1.0', 'PSSecurityBackup_v2.0', 'PSSecurityBackup_v2.1'
+                )
+                if ($BackupData.ValidationSignature -notin $validSignatures) {
+                    $result.Issues += "Invalid validation signature format: $($BackupData.ValidationSignature)"
+                    $result.IsValid = $false
+                } else {
+                    # Extract version from signature
+                    if ($BackupData.ValidationSignature -match '_v(\d+\.\d+)$') {
+                        $result.DetectedVersion = "v$($matches[1])"
+                    }
+                }
+            }
+        
+            if ($RequiredVersion -and $BackupData.BackupVersion -ne $RequiredVersion.TrimStart('v')) {
+                $foundVersion = "v$($BackupData.BackupVersion)"
+                $result.Issues += "Version mismatch: Required $RequiredVersion, found $foundVersion"
+                $result.IsValid = $false
+            }
+        
+            if ($result.Issues.Count -gt 0) {
+                $result.ErrorMessage = "Format validation error: $($result.Issues -join '; ')"
+            }
+        
+            return $result
+        }
+        catch {
+            Write-Verbose "Error in Test-BackupFormat: $($_.Exception.Message) - CorrelationId: $CorrelationId"
+        
             $result.IsValid = $false
+            $result.ErrorMessage = $_.Exception.Message
+            $result.Issues = @("Format validation failed: $($_.Exception.Message)")
+        
+            return $result
         }
-        
-        if ($result.Issues.Count -gt 0) {
-            $result.ErrorMessage = "Format validation error: $($result.Issues -join '; ')"
-        }
-        
-        return $result
-    }
-    catch {
-        Write-Verbose "Error in Test-BackupFormat: $($_.Exception.Message) - CorrelationId: $CorrelationId"
-        
-        $result.IsValid = $false
-        $result.ErrorMessage = $_.Exception.Message
-        $result.Issues = @("Format validation failed: $($_.Exception.Message)")
-        
-        return $result
     }
 }
 
@@ -899,6 +720,8 @@ function Get-BackupMetadata {
         Optional correlation ID for tracking this operation
     #>
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'Metadata is a mass noun; the name is shared with the tests and docs')]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [object]$BackupData,
@@ -910,78 +733,80 @@ function Get-BackupMetadata {
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
     
-    Write-Verbose "Starting Get-BackupMetadata - CorrelationId: $CorrelationId"
+    process {
+        Write-Verbose "Starting Get-BackupMetadata - CorrelationId: $CorrelationId"
     
-    $result = [PSCustomObject]@{
-        IsValid = $true
-        Metadata = @{
-            ExtractedAt = Get-Date
-        }
-        Statistics = $null
-        ErrorMessage = $null
-        CorrelationId = $CorrelationId
-    }
-    
-    # Add PSTypeName for type validation
-    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-    
-    try {
-        if ($null -eq $BackupData) {
-            throw "BackupData parameter cannot be null"
-        }
-        
-        # Check for basic required properties for metadata extraction
-        $requiredProps = @('ObjectDN', 'BackupDate', 'ValidationSignature')
-        $missingProps = @()
-        foreach ($prop in $requiredProps) {
-            if (-not $BackupData.PSObject.Properties[$prop] -or [string]::IsNullOrEmpty($BackupData.$prop)) {
-                $missingProps += $prop
+        $result = [PSCustomObject]@{
+            IsValid = $true
+            Metadata = @{
+                ExtractedAt = Get-Date
             }
+            Statistics = $null
+            ErrorMessage = $null
+            CorrelationId = $CorrelationId
         }
+    
+        # Add PSTypeName for type validation
+        $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
+    
+        try {
+            if ($null -eq $BackupData) {
+                throw "BackupData parameter cannot be null"
+            }
         
-        if ($missingProps.Count -gt 0) {
-            $result.IsValid = $false
-            $result.ErrorMessage = "Missing required properties for metadata extraction: $($missingProps -join ', ')"
+            # Check for basic required properties for metadata extraction
+            $requiredProps = @('ObjectDN', 'BackupDate', 'ValidationSignature')
+            $missingProps = @()
+            foreach ($prop in $requiredProps) {
+                if (-not $BackupData.PSObject.Properties[$prop] -or [string]::IsNullOrEmpty($BackupData.$prop)) {
+                    $missingProps += $prop
+                }
+            }
+        
+            if ($missingProps.Count -gt 0) {
+                $result.IsValid = $false
+                $missingList = $missingProps -join ', '
+                $result.ErrorMessage = "Missing required properties for metadata extraction: $missingList"
+                return $result
+            }
+        
+            # Extract metadata (preserve existing properties)
+            $extractedAt = $result.Metadata.ExtractedAt
+            $result.Metadata = @{
+                ExtractedAt = $extractedAt
+                ObjectDN = $BackupData.ObjectDN
+                BackupDate = $BackupData.BackupDate
+                ValidationSignature = $BackupData.ValidationSignature
+                Version = "v$($BackupData.BackupVersion)"
+                HasIntegrityHash = -not [string]::IsNullOrEmpty($BackupData.SDDLHash)
+                UserContext = $BackupData.UserContext
+                ComputerName = $BackupData.ComputerName
+                DomainContext = $BackupData.DomainContext
+            }
+        
+            if ($IncludeStatistics) {
+                $result.Statistics = @{
+                    EstimatedACECount = if ($BackupData.ACLEntryCount) { $BackupData.ACLEntryCount } else { 
+                        # Estimate based on SDDL length if ACLEntryCount not available
+                        [Math]::Max(1, [Math]::Floor($BackupData.SDDL.Length / 50))
+                    }
+                    SDDLLength = $BackupData.SDDL.Length
+                    DataSize = ($BackupData | ConvertTo-Json -Depth 10).Length
+                }
+            }
+        
             return $result
         }
+        catch {
+            Write-Verbose "Error in Get-BackupMetadata: $($_.Exception.Message) - CorrelationId: $CorrelationId"
         
-        # Extract metadata (preserve existing properties)
-        $extractedAt = $result.Metadata.ExtractedAt
-        $result.Metadata = @{
-            ExtractedAt = $extractedAt
-            ObjectDN = $BackupData.ObjectDN
-            BackupDate = $BackupData.BackupDate
-            ValidationSignature = $BackupData.ValidationSignature
-            Version = "v$($BackupData.BackupVersion)"
-            HasIntegrityHash = -not [string]::IsNullOrEmpty($BackupData.SDDLHash)
-            UserContext = $BackupData.UserContext
-            ComputerName = $BackupData.ComputerName
-            DomainContext = $BackupData.DomainContext
+            $result.IsValid = $false
+            $result.ErrorMessage = $_.Exception.Message
+        
+            return $result
         }
-        
-        if ($IncludeStatistics) {
-            $result.Statistics = @{
-                EstimatedACECount = if ($BackupData.ACLEntryCount) { $BackupData.ACLEntryCount } else { 
-                    # Estimate based on SDDL length if ACLEntryCount not available
-                    [Math]::Max(1, [Math]::Floor($BackupData.SDDL.Length / 50))
-                }
-                SDDLLength = $BackupData.SDDL.Length
-                DataSize = ($BackupData | ConvertTo-Json -Depth 10).Length
-            }
-        }
-        
-        return $result
-    }
-    catch {
-        Write-Verbose "Error in Get-BackupMetadata: $($_.Exception.Message) - CorrelationId: $CorrelationId"
-        
-        $result.IsValid = $false
-        $result.ErrorMessage = $_.Exception.Message
-        
-        return $result
     }
 }
 
-Write-Verbose "Test-BackupValidation module loaded successfully"
 
 #endregion

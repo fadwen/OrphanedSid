@@ -1,56 +1,76 @@
 # Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-. "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
-
 # Test-OrphanedSID.Tests.ps1 - Pester 3.4.x Compatible
 # Tests for Test-OrphanedSID private function
 
 # Create minimal stubs for missing dependencies FIRST
-function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
-
 # Load required classes and functions
-$ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
-if (Test-Path $ClassPath) {
-    Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
-}
-
 # Load SID functions
-$SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
-if (Test-Path $SIDPath) {
-    Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+BeforeAll {
+    . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
+
+    # Test-OrphanedSID has catch clauses typed [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException].
+    # Without RSAT that type cannot be resolved, so the first AD lookup failure escapes to the outer catch and
+    # every SID is reported orphaned. A stand-in type lets the catch clauses resolve without the AD module.
+    if (-not ('Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException' -as [type])) {
+        Add-Type -TypeDefinition @'
+namespace Microsoft.ActiveDirectory.Management
+{
+    public class ADIdentityNotFoundException : System.Exception
+    {
+        public ADIdentityNotFoundException() : base() { }
+        public ADIdentityNotFoundException(string message) : base(message) { }
+    }
+}
+'@
+    }
+
+    function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
+
+    $ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
+
+    if (Test-Path $ClassPath) {
+        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+    }
+
+    $SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
+
+    if (Test-Path $SIDPath) {
+        Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+    }
 }
 
 Describe "Test-OrphanedSID Function Tests" {
     
     Context "Function Existence and Basic Functionality" {
         It "Should have Test-OrphanedSID function available" {
-            Get-Command Test-OrphanedSID -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
+            Get-Command Test-OrphanedSID -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
         }
         
         It "Should accept SID parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            { Test-OrphanedSID -SID $testSID } | Should Not Throw
+            { Test-OrphanedSID -SID $testSID } | Should -Not -Throw
         }
         
         It "Should accept CorrelationId parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Test-OrphanedSID -SID $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Test-OrphanedSID -SID $testSID -CorrelationId $correlationId } | Should -Not -Throw
         }
         
         It "Should return an object when given valid SID" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $result = Test-OrphanedSID -SID $testSID
-            $result | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
         }
     }
     
     Context "Parameter Validation" {
         It "Should validate SID parameter is not null" {
-            { Test-OrphanedSID -SID $null } | Should Throw
+            { Test-OrphanedSID -SID $null } | Should -Throw
         }
         
         It "Should validate SID parameter is not empty" {
-            { Test-OrphanedSID -SID '' } | Should Throw
+            { Test-OrphanedSID -SID '' } | Should -Throw
         }
         
         It "Should handle valid SID formats" {
@@ -61,7 +81,7 @@ Describe "Test-OrphanedSID Function Tests" {
             )
             
             foreach ($sid in $validSIDs) {
-                { Test-OrphanedSID -SID $sid } | Should Not Throw
+                { Test-OrphanedSID -SID $sid } | Should -Not -Throw
             }
         }
     }
@@ -71,8 +91,8 @@ Describe "Test-OrphanedSID Function Tests" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $result = Test-OrphanedSID -SID $testSID
             
-            $result | Should Not BeNullOrEmpty
-            $result | Should BeOfType [bool]
+            $result | Should -Not -BeNullOrEmpty
+            $result | Should -BeOfType [bool]
         }
         
         It "Should return boolean value for well-known SID" {
@@ -81,10 +101,10 @@ Describe "Test-OrphanedSID Function Tests" {
             $wellKnownSID = 'S-1-5-32-544'  # Administrators group
             $result = Test-OrphanedSID -SID $wellKnownSID
             
-            $result | Should Not BeNullOrEmpty
-            $result | Should BeOfType [bool]
+            $result | Should -Not -BeNullOrEmpty
+            $result | Should -BeOfType [bool]
             # Function behavior: well-known SIDs return false (not orphaned)
-            $result | Should Be $false
+            $result | Should -Be $false
         }
     }
     
@@ -94,7 +114,7 @@ Describe "Test-OrphanedSID Function Tests" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             
             # Function should accept correlation ID without throwing
-            { Test-OrphanedSID -SID $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Test-OrphanedSID -SID $testSID -CorrelationId $correlationId } | Should -Not -Throw
         }
         
         It "Should provide meaningful error information" {
@@ -102,7 +122,7 @@ Describe "Test-OrphanedSID Function Tests" {
                 Test-OrphanedSID -SID 'invalid-sid-format' -ErrorAction Stop
             }
             catch {
-                $_.Exception.Message | Should Not BeNullOrEmpty
+                $_.Exception.Message | Should -Not -BeNullOrEmpty
             }
         }
         
@@ -118,13 +138,13 @@ Describe "Test-OrphanedSID Function Tests" {
             foreach ($sid in $invalidSIDs) {
                 # Invalid SIDs should return $true (treated as orphaned)
                 $result = Test-OrphanedSID -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
         
         It "Should handle null correlation ID gracefully" {
             $testSID = 'S-1-5-32-544'
-            { Test-OrphanedSID -SID $testSID -CorrelationId $null } | Should Not Throw
+            { Test-OrphanedSID -SID $testSID -CorrelationId $null } | Should -Not -Throw
         }
     }
     
@@ -141,10 +161,10 @@ Describe "Test-OrphanedSID Function Tests" {
             
             foreach ($sid in $wellKnownSIDs) {
                 $result = Test-OrphanedSID -SID $sid
-                $result | Should BeOfType [bool]
+                $result | Should -BeOfType [bool]
                 # Function behavior: well-known Windows SIDs are not orphaned
                 # they should translate successfully
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
         
@@ -157,24 +177,24 @@ Describe "Test-OrphanedSID Function Tests" {
             
             foreach ($sid in $builtInSIDs) {
                 $result = Test-OrphanedSID -SID $sid
-                $result | Should BeOfType [bool]
+                $result | Should -BeOfType [bool]
             }
         }
     }
     
     Context "Cache Management Integration" {
         It "Should work with Clear-SIDValidationCache function" {
-            # Clear cache should be available
-            Get-Command Clear-SIDValidationCache -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
-            { Clear-SIDValidationCache } | Should Not Throw
+            # Clear cache Should -be available
+            Get-Command Clear-SIDValidationCache -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+            { Clear-SIDValidationCache } | Should -Not -Throw
         }
         
         It "Should work with Get-SIDValidationCacheStat function" {
-            # Cache statistics should be available
-            Get-Command Get-SIDValidationCacheStat -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
+            # Cache statistics Should -be available
+            Get-Command Get-SIDValidationCacheStat -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
             $stats = Get-SIDValidationCacheStat
-            $stats | Should Not BeNullOrEmpty
-            $stats.TotalEntries | Should BeOfType [int]
+            $stats | Should -Not -BeNullOrEmpty
+            $stats.TotalEntries | Should -BeOfType [int]
         }
         
         It "Should benefit from caching on repeated calls" {
@@ -183,15 +203,15 @@ Describe "Test-OrphanedSID Function Tests" {
             # First call
             $time1 = Measure-Command { $result1 = Test-OrphanedSID -SID $testSID }
             
-            # Second call should be faster due to caching
+            # Second call Should -be faster due to caching
             $time2 = Measure-Command { $result2 = Test-OrphanedSID -SID $testSID }
             
-            # Results should be consistent
-            $result1 | Should Be $result2
+            # Results Should -be consistent
+            $result1 | Should -Be $result2
             
             # Second call should generally be faster (cached)
             # Note: This may not always be true due to AD variability
-            $result2 | Should BeOfType [bool]
+            $result2 | Should -BeOfType [bool]
         }
     }
     
@@ -204,8 +224,8 @@ Describe "Test-OrphanedSID Function Tests" {
             )
             
             $results = $testSIDs | Test-OrphanedSID
-            $results.Count | Should Be 3
-            $results | ForEach-Object { $_ | Should BeOfType [bool] }
+            $results.Count | Should -Be 3
+            $results | ForEach-Object { $_ | Should -BeOfType [bool] }
         }
         
         It "Should process mixed valid and invalid SIDs" {
@@ -216,11 +236,11 @@ Describe "Test-OrphanedSID Function Tests" {
             )
             
             $results = $mixedSIDs | Test-OrphanedSID
-            $results.Count | Should Be 3
-            $results | ForEach-Object { $_ | Should BeOfType [bool] }
+            $results.Count | Should -Be 3
+            $results | ForEach-Object { $_ | Should -BeOfType [bool] }
             
             # Invalid SID should return true (orphaned)
-            $results[1] | Should Be $true
+            $results[1] | Should -Be $true
         }
     }
     
@@ -233,8 +253,8 @@ Describe "Test-OrphanedSID Function Tests" {
             }
             
             # Should complete within 5 seconds for well-known SIDs
-            $executionTime.TotalSeconds | Should BeLessThan 5
-            $result | Should BeOfType [bool]
+            $executionTime.TotalSeconds | Should -BeLessThan 5
+            $result | Should -BeOfType [bool]
         }
         
         It "Should handle batch processing efficiently" {
@@ -251,9 +271,9 @@ Describe "Test-OrphanedSID Function Tests" {
             }
             
             # Should process 5 SIDs within 10 seconds
-            $executionTime.TotalSeconds | Should BeLessThan 10
-            $results.Count | Should Be 5
-            $results | ForEach-Object { $_ | Should BeOfType [bool] }
+            $executionTime.TotalSeconds | Should -BeLessThan 10
+            $results.Count | Should -Be 5
+            $results | ForEach-Object { $_ | Should -BeOfType [bool] }
         }
         
         It "Should maintain consistent results across multiple calls" {
@@ -264,10 +284,10 @@ Describe "Test-OrphanedSID Function Tests" {
                 $results += Test-OrphanedSID -SID $testSID
             }
             
-            # All results should be the same
-            $results.Count | Should Be 3
-            $results[0] | Should Be $results[1]
-            $results[1] | Should Be $results[2]
+            # All results Should -be the same
+            $results.Count | Should -Be 3
+            $results[0] | Should -Be $results[1]
+            $results[1] | Should -Be $results[2]
         }
     }
 }

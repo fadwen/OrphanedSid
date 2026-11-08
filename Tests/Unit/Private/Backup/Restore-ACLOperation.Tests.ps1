@@ -1,7 +1,5 @@
-#Requires -Module Pester
-
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 # Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-. "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 #Re#Requires -Module Pester
 
 <#
@@ -31,10 +29,14 @@
 #>
 
 # Import the functions under test
-. "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
-
 # Import test helpers
-. "$PSScriptRoot\..\..\..\TestHelpers\BackupTestHelpers.ps1"
+BeforeAll {
+    . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
+
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
+
+    . "$PSScriptRoot\..\..\..\TestHelpers\BackupTestHelpers.ps1"
+}
 
 Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
     
@@ -48,6 +50,11 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
         Mock Write-Verbose { }
         Mock Write-Error { }
         Mock Write-Warning { }
+
+        # Set-ObjectACL writes to the AD: drive, which does not exist on a test machine. Pester 3
+        # leaked the per-test Set-Acl mocks to the whole Describe; Pester 6 scopes them to their
+        # It, so the default success path needs its own mock here.
+        Mock Set-Acl { }
         
         # Create comprehensive test backup data
         $script:TestBackupData = [PSCustomObject]@{
@@ -90,7 +97,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
         
         # Default mock for Get-RestorationTarget that can be overridden in specific tests
         Mock Get-RestorationTarget {
-            # Check for basic DN format validation - should contain CN= or OU= and DC=
+            # Check for basic DN format validation - Should -contain CN= or OU= and DC=
             $isValidDNFormat = $TargetObjectDN -match '^(CN|OU)=.*,DC=' -and $TargetObjectDN -notmatch '[<>"|*?]'
             
             # Check if the DN looks malicious for security tests
@@ -226,54 +233,54 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
     
     Context "Set-ObjectACL - Parameter Validation" {
         It "Set-ObjectACL should accept valid TargetObjectDN parameter" {
-            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData } | Should Not Throw
+            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData } | Should -Not -Throw
         }
         
         It "Set-ObjectACL should reject null TargetObjectDN" {
-            { Set-ObjectACL -TargetObjectDN $null -BackupData $script:TestBackupData } | Should Throw
+            { Set-ObjectACL -TargetObjectDN $null -BackupData $script:TestBackupData } | Should -Throw
         }
         
         It "Set-ObjectACL should reject empty TargetObjectDN" {
-            { Set-ObjectACL -TargetObjectDN "" -BackupData $script:TestBackupData } | Should Throw
+            { Set-ObjectACL -TargetObjectDN "" -BackupData $script:TestBackupData } | Should -Throw
         }
         
         It "Set-ObjectACL should accept valid BackupData parameter" {
-            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData } | Should Not Throw
+            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData } | Should -Not -Throw
         }
         
         It "Set-ObjectACL should reject null BackupData" {
-            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $null } | Should Throw
+            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $null } | Should -Throw
         }
         
         It "Should validate required BackupData properties" {
-            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:InvalidBackupData } | Should Throw "Backup data missing required property:"
+            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:InvalidBackupData } | Should -Throw "*Backup data missing required property:*"
         }
         
         It "Set-ObjectACL should accept custom CorrelationId" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -CorrelationId $customCorrelationId
-            $result.CorrelationId | Should Be $customCorrelationId
+            $result.CorrelationId | Should -Be $customCorrelationId
         }
         
         It "Set-ObjectACL should auto-generate CorrelationId when not provided" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.CorrelationId | Should Match "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+            $result.CorrelationId | Should -Match "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
         }
         
         It "Set-ObjectACL should support pipeline input for TargetObjectDN" {
             $result = $script:TestObjectDN | Set-ObjectACL -BackupData $script:TestBackupData
-            $result.TargetObjectDN | Should Be $script:TestObjectDN
+            $result.TargetObjectDN | Should -Be $script:TestObjectDN
         }
         
         It "Should support VerifyApplication switch" {
-            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -VerifyApplication } | Should Not Throw
+            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -VerifyApplication } | Should -Not -Throw
         }
     }
     
     Context "Set-ObjectACL - Core Functionality" {
         It "Should return ACLOperationResult object" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.PSObject.TypeNames[0] | Should Be 'ACLOperationResult'
+            $result.PSObject.TypeNames[0] | Should -Be 'ACLOperationResult'
         }
         
         It "Should call target validation before ACL application" {
@@ -283,7 +290,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData | Out-Null
             
-            Assert-VerifiableMocks
+            Should -InvokeVerifiable
         }
         
         It "Should fail when target validation fails" {
@@ -292,8 +299,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "Target object validation failed"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "Target object validation failed"
         }
         
         It "Should apply ACL using Set-Acl cmdlet" {
@@ -329,35 +336,35 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
             
-            Assert-MockCalled Set-Acl -Times 1 -Scope It
-            Assert-MockCalled Get-RestorationTarget -Times 1 -Scope It
+            Should -Invoke Set-Acl -Times 1 -Scope It
+            Should -Invoke Get-RestorationTarget -Times 1 -Scope It
             
             # Verify the result shows success
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
         
         It "Should count modifications from SDDL" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.Success | Should Be $true
-            ($result.ModificationsApplied -gt -1) | Should Be $true
+            $result.Success | Should -Be $true
+            ($result.ModificationsApplied -gt -1) | Should -Be $true
         }
         
         It "Should set correct result properties on success" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
             
-            $result.Success | Should Be $true
-            $result.TargetObjectDN | Should Be $script:TestObjectDN
-            $result.Duration | Should BeOfType [TimeSpan]
-            $result.CompletedAt | Should BeOfType [DateTime]
-            $result.ErrorMessage | Should BeNullOrEmpty
+            $result.Success | Should -Be $true
+            $result.TargetObjectDN | Should -Be $script:TestObjectDN
+            $result.Duration | Should -BeOfType [TimeSpan]
+            $result.CompletedAt | Should -BeOfType [DateTime]
+            $result.ErrorMessage | Should -BeNullOrEmpty
         }
         
         It "Should handle ACL application failures gracefully" {
             Mock Set-Acl { throw "Access denied" }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "ACL application failed"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "ACL application failed"
         }
         
         It "Should perform verification when requested" {
@@ -375,7 +382,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             Mock ConvertFrom-BackupToACL {
                 return [PSCustomObject]@{
@@ -389,28 +396,28 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     ErrorMessage = $null
                     CorrelationId = $CorrelationId
                 }
-            } -Scope It
+            }
             
-            Mock Set-Acl { } -Scope It
+            Mock Set-Acl { }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -VerifyApplication
             
-            $result.VerificationResult | Should Not BeNullOrEmpty
+            $result.VerificationResult | Should -Not -BeNullOrEmpty
             
-            Assert-MockCalled Confirm-RestorationSuccess -Times 1 -Scope It
+            Should -Invoke Confirm-RestorationSuccess -Times 1 -Scope It
         }
         
         It "Should skip verification in WhatIf mode" {
             $null = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -VerifyApplication -WhatIf 6>&1
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -VerifyApplication -WhatIf 6>$null
-            $result.WhatIfMode | Should Be $true
+            $result.WhatIfMode | Should -Be $true
             
-            # In WhatIf mode, verification should be skipped
+            # In WhatIf mode, verification Should -be skipped
             try {
-                Assert-MockCalled Confirm-RestorationSuccess -Times 0 -Scope It
+                Should -Invoke Confirm-RestorationSuccess -Times 0 -Scope It
             } catch {
                 # If the above fails, let's just verify the WhatIf mode was set
-                $result.WhatIfMode | Should Be $true
+                $result.WhatIfMode | Should -Be $true
             }
         }
         
@@ -420,53 +427,53 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -WhatIf
             
-            $result.Success | Should Be $true
-            $result.WhatIfMode | Should Be $true
-            ($result.ModificationsApplied -gt -1) | Should Be $true
+            $result.Success | Should -Be $true
+            $result.WhatIfMode | Should -Be $true
+            ($result.ModificationsApplied -gt -1) | Should -Be $true
             
             # Should not call Set-Acl in WhatIf mode - check local scope only
             try {
-                Assert-MockCalled Set-Acl -Times 0 -Scope It
+                Should -Invoke Set-Acl -Times 0 -Scope It
             } catch {
                 # If the assertion fails, just verify WhatIf mode was set
-                $result.WhatIfMode | Should Be $true
+                $result.WhatIfMode | Should -Be $true
             }
         }
     }
     
     Context "Get-RestorationTarget - Parameter Validation" {
         It "Get-RestorationTarget should accept valid TargetObjectDN parameter" {
-            { Get-RestorationTarget -TargetObjectDN $script:TestObjectDN } | Should Not Throw
+            { Get-RestorationTarget -TargetObjectDN $script:TestObjectDN } | Should -Not -Throw
         }
         
         It "Get-RestorationTarget should reject null TargetObjectDN" {
-            { Get-RestorationTarget -TargetObjectDN $null } | Should Throw
+            { Get-RestorationTarget -TargetObjectDN $null } | Should -Throw
         }
         
         It "Get-RestorationTarget should reject empty TargetObjectDN" {
-            { Get-RestorationTarget -TargetObjectDN "" } | Should Throw
+            { Get-RestorationTarget -TargetObjectDN "" } | Should -Throw
         }
         
         It "Get-RestorationTarget should accept custom CorrelationId" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN -CorrelationId $customCorrelationId
-            $result.CorrelationId | Should Be $customCorrelationId
+            $result.CorrelationId | Should -Be $customCorrelationId
         }
         
         It "Get-RestorationTarget should support pipeline input for TargetObjectDN" {
             $result = $script:TestObjectDN | Get-RestorationTarget
-            $result.TargetObjectDN | Should Be $script:TestObjectDN
+            $result.TargetObjectDN | Should -Be $script:TestObjectDN
         }
         
         It "Should support CheckPermissions switch" {
-            { Get-RestorationTarget -TargetObjectDN $script:TestObjectDN -CheckPermissions } | Should Not Throw
+            { Get-RestorationTarget -TargetObjectDN $script:TestObjectDN -CheckPermissions } | Should -Not -Throw
         }
     }
     
     Context "Get-RestorationTarget - Core Functionality" {
         It "Should return TargetValidationResult object" {
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.PSObject.TypeNames[0] | Should Be 'TargetValidationResult'
+            $result.PSObject.TypeNames[0] | Should -Be 'TargetValidationResult'
         }
         
         It "Should validate DN format" {
@@ -474,8 +481,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             $result = Get-RestorationTarget -TargetObjectDN $invalidDN
             
-            $result.IsValid | Should Be $false
-            $result.Issues | Should Match "Invalid DN format"
+            $result.IsValid | Should -Be $false
+            $result.Issues | Should -Match "Invalid DN format"
         }
         
         It "Should check object existence" {
@@ -487,8 +494,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ObjectExists | Should Be $true
-            $result.ObjectType | Should Be 'user'
+            $result.ObjectExists | Should -Be $true
+            $result.ObjectType | Should -Be 'user'
         }
         
         It "Should handle non-existent objects" {
@@ -511,8 +518,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             } -ParameterFilter { $TargetObjectDN -eq $script:TestObjectDN }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ObjectExists | Should Be $false
-            $result.Issues | Should Match "Target object not found"
+            $result.ObjectExists | Should -Be $false
+            $result.Issues | Should -Match "Target object not found"
         }
         
         It "Should check ACL readability" {
@@ -538,7 +545,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     TargetObjectDN = $TargetObjectDN
                     ObjectExists = $true
                     ObjectType = 'user'
-                    ACLReadable = $true  # Should be true when Get-Acl succeeds
+                    ACLReadable = $true  # Should -be true when Get-Acl succeeds
                     AccessValidated = $true
                     Issues = @()
                     CheckedAt = Get-Date
@@ -548,8 +555,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             } -ParameterFilter { $TargetObjectDN -eq $script:TestObjectDN }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ACLReadable | Should Be $true
-            $result.IsValid | Should Be $true
+            $result.ACLReadable | Should -Be $true
+            $result.IsValid | Should -Be $true
         }
         
         It "Get-RestorationTarget should handle ACL read failures" {
@@ -572,8 +579,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             } -ParameterFilter { $TargetObjectDN -eq $script:TestObjectDN }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ACLReadable | Should Be $false
-            $result.Issues | Should Match "Cannot read current ACL"
+            $result.ACLReadable | Should -Be $false
+            $result.Issues | Should -Match "Cannot read current ACL"
         }
         
         It "Should check write permissions when requested" {
@@ -602,7 +609,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             } -ParameterFilter { $CheckPermissions -eq $true }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN -CheckPermissions
-            $result.WritePermissions | Should Be $true
+            $result.WritePermissions | Should -Be $true
         }
         
         It "Should set IsValid to true when no issues found" {
@@ -638,10 +645,10 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             } -ParameterFilter { $TargetObjectDN -eq $script:TestObjectDN }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.IsValid | Should Be $true
-            $result.Issues.Count | Should Be 0
-            $result.ObjectExists | Should Be $true
-            $result.ACLReadable | Should Be $true
+            $result.IsValid | Should -Be $true
+            $result.Issues.Count | Should -Be 0
+            $result.ObjectExists | Should -Be $true
+            $result.ACLReadable | Should -Be $true
         }
         
         It "Should include validation timestamp" {
@@ -682,53 +689,53 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ValidatedAt | Should Not BeNullOrEmpty
-            # ValidatedAt should be present and either a DateTime or reasonably close to current time
-            $result.ValidatedAt -is [DateTime] | Should Be $true
+            $result.ValidatedAt | Should -Not -BeNullOrEmpty
+            # ValidatedAt Should -be present and either a DateTime or reasonably close to current time
+            $result.ValidatedAt -is [DateTime] | Should -Be $true
         }
     }
     
     Context "Confirm-RestorationSuccess - Parameter Validation" {
         It "Confirm-RestorationSuccess should accept valid TargetObjectDN parameter" {
-            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData } | Should Not Throw
+            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData } | Should -Not -Throw
         }
         
         It "Confirm-RestorationSuccess should reject null TargetObjectDN" {
-            { Confirm-RestorationSuccess -TargetObjectDN $null -ExpectedData $script:TestBackupData } | Should Throw
+            { Confirm-RestorationSuccess -TargetObjectDN $null -ExpectedData $script:TestBackupData } | Should -Throw
         }
         
         It "Confirm-RestorationSuccess should reject empty TargetObjectDN" {
-            { Confirm-RestorationSuccess -TargetObjectDN "" -ExpectedData $script:TestBackupData } | Should Throw
+            { Confirm-RestorationSuccess -TargetObjectDN "" -ExpectedData $script:TestBackupData } | Should -Throw
         }
         
         It "Confirm-RestorationSuccess should accept valid ExpectedData parameter" {
-            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData } | Should Not Throw
+            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData } | Should -Not -Throw
         }
         
         It "Confirm-RestorationSuccess should reject null ExpectedData" {
-            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $null } | Should Throw
+            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $null } | Should -Throw
         }
         
         It "Should accept valid ToleranceLevel values" {
             @('Strict', 'Standard', 'Permissive') | ForEach-Object {
-                { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel $_ } | Should Not Throw
+                { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel $_ } | Should -Not -Throw
             }
         }
         
         It "Should reject invalid ToleranceLevel values" {
-            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel "Invalid" } | Should Throw
+            { Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel "Invalid" } | Should -Throw
         }
         
         It "Should use Standard tolerance by default" {
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData
-            $result.ToleranceLevel | Should Be 'Standard'
+            $result.ToleranceLevel | Should -Be 'Standard'
         }
     }
     
     Context "Confirm-RestorationSuccess - Core Functionality" {
         It "Should return RestorationVerificationResult object" {
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData
-            $result.PSObject.TypeNames[0] | Should Be 'RestorationVerificationResult'
+            $result.PSObject.TypeNames[0] | Should -Be 'RestorationVerificationResult'
         }
         
         It "Should read current ACL from target object" {
@@ -783,7 +790,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData | Out-Null
             
             # For Pester v3 compatibility, check mock was called
-            Assert-MockCalled Get-Acl -ParameterFilter { $Path -like "AD:*" } -Exactly 1
+            Should -Invoke Get-Acl -ParameterFilter { $Path -like "AD:*" } -Exactly 1
         }
         
         It "Confirm-RestorationSuccess should handle ACL read failures" {
@@ -791,21 +798,21 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $errorTestDN = "CN=TestUser-invalid-acl-read,OU=Users,DC=company,DC=com"
             
             $result = Confirm-RestorationSuccess -TargetObjectDN $errorTestDN -ExpectedData $script:TestBackupData
-            $result.Success | Should Be $false
-            $result.VerificationIssues -join ' ' | Should Match "Failed to read current ACL"
+            $result.Success | Should -Be $false
+            $result.VerificationIssues -join ' ' | Should -Match "Failed to read current ACL"
         }
         
         It "Should parse ACE entries from SDDL" {
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData
-            ($result.ExpectedEntries -gt -1) | Should Be $true
-            ($result.ActualEntries -gt -1) | Should Be $true
+            ($result.ExpectedEntries -gt -1) | Should -Be $true
+            ($result.ActualEntries -gt -1) | Should -Be $true
         }
         
         It "Should calculate match percentage correctly" {
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData
-            $result.MatchPercentage | Should BeOfType 'System.Double'
-            ($result.MatchPercentage -gt -1) | Should Be $true
-            ($result.MatchPercentage -le 100) | Should Be $true
+            $result.MatchPercentage | Should -BeOfType 'System.Double'
+            ($result.MatchPercentage -gt -1) | Should -Be $true
+            ($result.MatchPercentage -le 100) | Should -Be $true
         }
         
         It "Should apply tolerance levels correctly" {
@@ -830,14 +837,14 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     VerifiedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             $strictResult = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel 'Strict'
             $permissiveResult = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel 'Permissive'
             
-            # Permissive should be more likely to pass than strict
+            # Permissive Should -be more likely to pass than strict
             if (-not $strictResult.IsVerified) {
-                $permissiveResult.IsVerified | Should Be $true -Because "Permissive tolerance should be more lenient"
+                $permissiveResult.IsVerified | Should -Be $true -Because "Permissive tolerance Should -be more lenient"
             }
         }
         
@@ -858,74 +865,74 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     VerifiedAt = Get-Date
                 }
-            } -ParameterFilter { $ExpectedData.SDDL -eq "" } -Scope It
+            } -ParameterFilter { $ExpectedData.SDDL -eq "" }
             
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $emptyBackupData
-            $result.ExpectedEntries | Should Be 0
+            $result.ExpectedEntries | Should -Be 0
         }
         
         It "Should include verification timestamp" {
             $beforeTime = Get-Date
             Start-Sleep -Milliseconds 100  # Ensure some time passes
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData
-            ($result.VerifiedAt -ge $beforeTime) | Should Be $true
+            ($result.VerifiedAt -ge $beforeTime) | Should -Be $true
         }
     }
     
     Context "ConvertFrom-BackupToACL - Parameter Validation" {
         It "Should accept valid BackupData parameter" {
-            { ConvertFrom-BackupToACL -BackupData $script:TestBackupData } | Should Not Throw
+            { ConvertFrom-BackupToACL -BackupData $script:TestBackupData } | Should -Not -Throw
         }
         
         It "Should reject null BackupData" {
-            { ConvertFrom-BackupToACL -BackupData $null } | Should Throw
+            { ConvertFrom-BackupToACL -BackupData $null } | Should -Throw
         }
         
         It "Should require SDDL property in BackupData" {
             $invalidData = [PSCustomObject]@{ ObjectDN = $script:TestObjectDN }
             $result = ConvertFrom-BackupToACL -BackupData $invalidData
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "does not contain SDDL property"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "does not contain SDDL property"
         }
         
         It "Should accept custom CorrelationId" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData -CorrelationId $customCorrelationId
-            $result.CorrelationId | Should Be $customCorrelationId
+            $result.CorrelationId | Should -Be $customCorrelationId
         }
         
         It "Should support pipeline input for BackupData" {
             $result = $script:TestBackupData | ConvertFrom-BackupToACL
-            $result.SourceSDDL | Should Be $script:TestBackupData.SDDL
+            $result.SourceSDDL | Should -Be $script:TestBackupData.SDDL
         }
     }
     
     Context "ConvertFrom-BackupToACL - Core Functionality" {
         It "Should return ACLConversionResult object" {
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData
-            $result.PSObject.TypeNames[0] | Should Be 'ACLConversionResult'
+            $result.PSObject.TypeNames[0] | Should -Be 'ACLConversionResult'
         }
         
         It "Should convert SDDL to security descriptor successfully" {
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData
-            $result.Success | Should Be $true
-            $result.SecurityDescriptor | Should BeOfType [System.DirectoryServices.ActiveDirectorySecurity]
+            $result.Success | Should -Be $true
+            $result.SecurityDescriptor | Should -BeOfType [System.DirectoryServices.ActiveDirectorySecurity]
         }
         
         It "Should preserve source SDDL in result" {
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData
-            $result.SourceSDDL | Should Be $script:TestBackupData.SDDL
+            $result.SourceSDDL | Should -Be $script:TestBackupData.SDDL
         }
         
         It "Should calculate ACE count correctly" {
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData
-            ($result.ACECount -gt -1) | Should Be $true
-            $result.ACECount | Should Be $script:TestBackupData.ACLEntryCount
+            ($result.ACECount -gt -1) | Should -Be $true
+            $result.ACECount | Should -Be $script:TestBackupData.ACLEntryCount
         }
         
         It "Should calculate SDDL length" {
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData
-            $result.SDDLLength | Should Be $script:TestBackupData.SDDL.Length
+            $result.SDDLLength | Should -Be $script:TestBackupData.SDDL.Length
         }
         
         It "Should handle invalid SDDL gracefully" {
@@ -933,21 +940,21 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $invalidBackupData.SDDL = "InvalidSDDLString"
             
             $result = ConvertFrom-BackupToACL -BackupData $invalidBackupData
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "SDDL conversion failed"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "SDDL conversion failed"
         }
         
         It "Should include conversion timestamp" {
             $beforeTime = Get-Date
             Start-Sleep -Milliseconds 100  # Ensure some time passes
             $result = ConvertFrom-BackupToACL -BackupData $script:TestBackupData
-            ($result.ConvertedAt -ge $beforeTime) | Should Be $true
+            ($result.ConvertedAt -ge $beforeTime) | Should -Be $true
         }
     }
     
     Context "Error Handling and Edge Cases" {
         It "Should handle missing Active Directory module gracefully" {
-            Mock Get-ADObject { throw "Active Directory module not available" } -Scope It
+            Mock Get-ADObject { throw "Active Directory module not available" }
             Mock Get-RestorationTarget {
                 return [PSCustomObject]@{
                     PSTypeName = 'TargetValidationResult'
@@ -961,15 +968,15 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.IsValid | Should Be $false
-            $result.Issues | Should Match "Target object not found"
+            $result.IsValid | Should -Be $false
+            $result.Issues | Should -Match "Target object not found"
         }
         
         It "Should handle network connectivity issues" {
-            Mock Get-ADObject { throw "The server is not operational" } -Scope It
+            Mock Get-ADObject { throw "The server is not operational" }
             Mock Get-RestorationTarget {
                 return [PSCustomObject]@{
                     PSTypeName = 'TargetValidationResult'
@@ -983,18 +990,18 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ObjectExists | Should Be $false
+            $result.ObjectExists | Should -Be $false
         }
         
         It "Should handle insufficient permissions gracefully" {
-            Mock Set-Acl { throw "Access is denied" } -Scope It
+            Mock Set-Acl { throw "Access is denied" }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "ACL.*failed"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "ACL.*failed"
         }
         
         It "Should handle malformed SDDL in verification" {
@@ -1002,11 +1009,11 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $malformedBackupData.SDDL = "D:(A;;GA;;;WD"  # Incomplete SDDL
             
             $result = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $malformedBackupData
-            ($result.ExpectedEntries -gt -1) | Should Be $true  # Should handle gracefully
+            ($result.ExpectedEntries -gt -1) | Should -Be $true  # Should handle gracefully
         }
         
         It "Should handle domain controller unavailability" {
-            Mock Get-Acl { throw "The domain controller is unavailable" } -Scope It
+            Mock Get-Acl { throw "The domain controller is unavailable" }
             Mock Get-RestorationTarget {
                 return [PSCustomObject]@{
                     PSTypeName = 'TargetValidationResult'
@@ -1020,17 +1027,17 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ACLReadable | Should Be $false
+            $result.ACLReadable | Should -Be $false
         }
         
         It "Should provide detailed error information" {
-            Mock Set-Acl { throw "Detailed error message" } -Scope It
+            Mock Set-Acl { throw "Detailed error message" }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.ErrorMessage | Should Match "Detailed error message|ACL.*failed"
+            $result.ErrorMessage | Should -Match "Detailed error message|ACL.*failed"
         }
     }
     
@@ -1050,7 +1057,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             Mock ConvertFrom-BackupToACL {
                 return [PSCustomObject]@{
@@ -1064,23 +1071,23 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     ErrorMessage = $null
                     CorrelationId = $CorrelationId
                 }
-            } -Scope It
+            }
             
-            Mock Set-Acl { } -Scope It
+            Mock Set-Acl { }
             
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
             
             $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 1000  # 1 second baseline
-            $result.Success | Should Be $true
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000  # 1 second baseline
+            $result.Success | Should -Be $true
         }
         
         It "Should track operation duration accurately" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.Duration | Should BeOfType [TimeSpan]
-            ($result.Duration.TotalMilliseconds -gt -1) | Should Be $true
+            $result.Duration | Should -BeOfType [TimeSpan]
+            ($result.Duration.TotalMilliseconds -gt -1) | Should -Be $true
         }
         
         It "Should handle large SDDL strings efficiently" {
@@ -1092,7 +1099,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $result = ConvertFrom-BackupToACL -BackupData $largeBackupData
             $stopwatch.Stop()
             
-            $stopwatch.ElapsedMilliseconds | Should BeLessThan 2000  # 2 second baseline
+            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 2000  # 2 second baseline
         }
         
         It "Should maintain consistent performance across multiple operations" {
@@ -1109,8 +1116,8 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $averageTime = ($measurements | Measure-Object -Average).Average
             $maxTime = ($measurements | Measure-Object -Maximum).Maximum
             
-            $averageTime | Should BeLessThan 800   # 800ms average
-            $maxTime | Should BeLessThan 1500     # 1.5 second maximum
+            $averageTime | Should -BeLessThan 800   # 800ms average
+            $maxTime | Should -BeLessThan 1500     # 1.5 second maximum
         }
     }
     
@@ -1138,19 +1145,19 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                         CorrelationId = [System.Guid]::NewGuid().ToString()
                         ValidatedAt = Get-Date
                     }
-                } -ParameterFilter { $TargetObjectDN -eq $maliciousInput } -Scope It
+                } -ParameterFilter { $TargetObjectDN -eq $maliciousInput }
                 
                 $result = Get-RestorationTarget -TargetObjectDN $maliciousInput
-                $result.IsValid | Should Be $false
-                $result.Issues | Should Match "Invalid DN format"
+                $result.IsValid | Should -Be $false
+                $result.Issues | Should -Match "Invalid DN format"
             }
         }
         
         It "Should not expose sensitive information in error messages" {
-            Mock Set-Acl { throw "Sensitive error: PASSWORD123" } -Scope It
+            Mock Set-Acl { throw "Sensitive error: PASSWORD123" }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.ErrorMessage | Should Not Match "PASSWORD123"
+            $result.ErrorMessage | Should -Not -Match "PASSWORD123"
         }
         
         It "Should handle malicious SDDL safely" {
@@ -1170,17 +1177,17 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ConvertedAt = Get-Date
                 }
-            } -ParameterFilter { $BackupData.SDDL -like "*<script*" } -Scope It
+            } -ParameterFilter { $BackupData.SDDL -like "*<script*" }
             
             $result = ConvertFrom-BackupToACL -BackupData $maliciousBackupData
-            $result.Success | Should Be $false  # Should fail safely
+            $result.Success | Should -Be $false  # Should fail safely
         }
         
         It "Should validate correlation ID format" {
             $maliciousCorrelationId = "<script>alert('xss')</script>"
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -CorrelationId $maliciousCorrelationId
-            $result.CorrelationId | Should Be $maliciousCorrelationId
+            $result.CorrelationId | Should -Be $maliciousCorrelationId
             # Function should accept it but downstream should sanitize
         }
         
@@ -1188,7 +1195,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $oversizedBackupData = $script:TestBackupData.PSObject.Copy()
             $oversizedBackupData.SDDL = "A" * 1000000  # 1MB of data
             
-            { ConvertFrom-BackupToACL -BackupData $oversizedBackupData } | Should Not Throw
+            { ConvertFrom-BackupToACL -BackupData $oversizedBackupData } | Should -Not -Throw
             # Should handle but may fail conversion safely
         }
     }
@@ -1216,21 +1223,21 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
             
             # Verify essential properties for enterprise reporting
-            $result.PSObject.TypeNames[0] | Should Be 'ACLOperationResult'
-            $result.Success | Should BeOfType [bool]
-            $result.TargetObjectDN | Should Not BeNullOrEmpty
-            $result.Duration | Should BeOfType [TimeSpan]
-            $result.CorrelationId | Should Not BeNullOrEmpty
-            $result.CompletedAt | Should BeOfType [DateTime]
+            $result.PSObject.TypeNames[0] | Should -Be 'ACLOperationResult'
+            $result.Success | Should -BeOfType [bool]
+            $result.TargetObjectDN | Should -Not -BeNullOrEmpty
+            $result.Duration | Should -BeOfType [TimeSpan]
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
+            $result.CompletedAt | Should -BeOfType [DateTime]
         }
         
         It "Should support JSON serialization for API integration" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
             
-            { $result | ConvertTo-Json -Depth 10 } | Should Not Throw
+            { $result | ConvertTo-Json -Depth 10 } | Should -Not -Throw
             $jsonString = $result | ConvertTo-Json -Depth 10
-            $jsonString | Should Match '"Success"'
-            $jsonString | Should Match '"TargetObjectDN"'
+            $jsonString | Should -Match '"Success"'
+            $jsonString | Should -Match '"TargetObjectDN"'
         }
         
         It "Should integrate with monitoring systems" {
@@ -1258,7 +1265,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             Mock ConvertFrom-BackupToACL {
                 return [PSCustomObject]@{
@@ -1272,18 +1279,18 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     ErrorMessage = $null
                     CorrelationId = $CorrelationId
                 }
-            } -Scope It
+            }
             
-            Mock Set-Acl { } -Scope It
+            Mock Set-Acl { }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData
-            $result.TargetObjectDN | Should Not BeNullOrEmpty
-            $result.Success | Should Be $true
+            $result.TargetObjectDN | Should -Not -BeNullOrEmpty
+            $result.Success | Should -Be $true
         }
         
         It "Should maintain consistent timestamp formats" {
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
-            $result.ValidatedAt | Should BeOfType [DateTime]
+            $result.ValidatedAt | Should -BeOfType [DateTime]
         }
         
         It "Should support different Active Directory configurations" {
@@ -1293,7 +1300,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     DistinguishedName = $script:TestOUDN
                     ObjectClass = @('top', 'organizationalUnit')
                 }
-            } -Scope It
+            }
             
             Mock Get-RestorationTarget {
                 return [PSCustomObject]@{
@@ -1308,11 +1315,11 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     CorrelationId = $CorrelationId
                     ValidatedAt = Get-Date
                 }
-            } -Scope It
+            }
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestOUDN
-            $result.ObjectType | Should Be 'organizationalUnit'
-            $result.ObjectExists | Should Be $true
+            $result.ObjectType | Should -Be 'organizationalUnit'
+            $result.ObjectExists | Should -Be $true
         }
         
         It "Should handle different SDDL formats consistently" {
@@ -1320,7 +1327,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             # SDDL should work consistently across platforms
             
             $result = ConvertFrom-BackupToACL -BackupData $unixStyleBackupData
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
     }
 }

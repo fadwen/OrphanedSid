@@ -2,7 +2,7 @@
 
 ## Overview
 
-While `Find-UnknownSID.ps1` processes objects, the console may show lines such as:
+While `Find-OrphanedSid` processes objects, the console may show lines such as:
 
 ```text
 WARNING: [Warning] [General] All security descriptor retrieval methods failed for CN=Server01,OU=Servers,DC=contoso,DC=com
@@ -81,7 +81,7 @@ Messages that indicate an actual problem rather than an expected skip:
 ### Count affected objects
 
 ```powershell
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 Select-String -Path $log.FullName -Pattern 'All security descriptor retrieval methods failed for (.+)$' |
     ForEach-Object { $_.Matches[0].Groups[1].Value }
 ```
@@ -101,7 +101,7 @@ the problem; check that the `ActiveDirectory` module loaded in the same session.
 ### Make the cause visible
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Servers,DC=contoso,DC=com' -LogLevel Debug -WhatIf
+.\Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -LogLevel Debug -WhatIf
 ```
 
 With `-LogLevel Debug` the file receives the strategy-1 `Get-Acl failed for <DN>: <message>` line,
@@ -115,7 +115,7 @@ still print. `-SuppressConsoleOutput` silences only security-event console lines
 warning stream:
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'OU=Servers,DC=contoso,DC=com' 3> $null
+.\Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' 3> $null
 ```
 
 The warnings remain in the log file.

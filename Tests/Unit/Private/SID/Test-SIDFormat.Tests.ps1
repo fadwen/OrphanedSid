@@ -2,43 +2,47 @@
 # Tests for Test-SIDFormat private function
 
 # Create minimal stubs for missing dependencies FIRST
-function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
-
 # Load required classes and functions
-$ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
-if (Test-Path $ClassPath) {
-    Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
-}
-
 # Load SID functions
-$SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
-if (Test-Path $SIDPath) {
-    Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+BeforeAll {
+    function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
+
+    $ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
+
+    if (Test-Path $ClassPath) {
+        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+    }
+
+    $SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
+
+    if (Test-Path $SIDPath) {
+        Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+    }
 }
 
 Describe "Test-SIDFormat Function Tests" {
     
     Context "Function Existence and Basic Functionality" {
         It "Should have Test-SIDFormat function available" {
-            Get-Command Test-SIDFormat -ErrorAction SilentlyContinue | Should Not BeNullOrEmpty
+            Get-Command Test-SIDFormat -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
         }
         
         It "Should accept SID parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            { Test-SIDFormat -SID $testSID } | Should Not Throw
+            { Test-SIDFormat -SID $testSID } | Should -Not -Throw
         }
         
         It "Should accept CorrelationId parameter" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Test-SIDFormat -SID $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Test-SIDFormat -SID $testSID -CorrelationId $correlationId } | Should -Not -Throw
         }
         
         It "Should return a boolean when given valid SID" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $result = Test-SIDFormat -SID $testSID
-            $result | Should Not BeNullOrEmpty
-            $result | Should BeOfType [System.Boolean]
+            $result | Should -Not -BeNullOrEmpty
+            $result | Should -BeOfType [System.Boolean]
         }
     }
     
@@ -53,7 +57,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $validSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
         
@@ -68,18 +72,18 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $invalidSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
         
         It "Should handle null and empty inputs" {
             # Test parameter binding behavior for null/empty values
-            { Test-SIDFormat -SID $null } | Should Throw
-            { Test-SIDFormat -SID '' } | Should Throw
-            { Test-SIDFormat -SID '   ' } | Should Not Throw
+            { Test-SIDFormat -SID $null } | Should -Throw
+            { Test-SIDFormat -SID '' } | Should -Throw
+            { Test-SIDFormat -SID '   ' } | Should -Not -Throw
             
-            # Test actual whitespace handling (should be invalid SID format)
-            Test-SIDFormat -SID '   ' | Should Be $false
+            # Test actual whitespace handling (Should -be invalid SID format)
+            Test-SIDFormat -SID '   ' | Should -Be $false
         }
     }
     
@@ -96,7 +100,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $wellKnownSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
         
@@ -109,7 +113,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $domainSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
     }
@@ -120,13 +124,13 @@ Describe "Test-SIDFormat Function Tests" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             
             # Function should accept correlation ID without throwing
-            { Test-SIDFormat -SID $testSID -CorrelationId $correlationId } | Should Not Throw
+            { Test-SIDFormat -SID $testSID -CorrelationId $correlationId } | Should -Not -Throw
         }
         
         It "Should handle very long invalid SIDs" {
             $longInvalidSID = 'S-1-5-21-' + ('1234567890-' * 50) + '1001'
             $result = Test-SIDFormat -SID $longInvalidSID
-            $result | Should Be $false
+            $result | Should -Be $false
         }
         
         It "Should handle special characters in SID" {
@@ -138,7 +142,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $specialCharSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
     }
@@ -157,12 +161,12 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $builtinSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
                 
                 # Also verify well-known detection if Test-WellKnownSID is available
                 if (Get-Command Test-WellKnownSID -ErrorAction SilentlyContinue) {
                     $wellKnownResult = Test-WellKnownSID -SID $sid
-                    $wellKnownResult | Should Be $true
+                    $wellKnownResult | Should -Be $true
                 }
             }
         }
@@ -176,7 +180,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $serviceSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
         
@@ -189,12 +193,12 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $domainAdminGroups) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
                 
-                # These should be recognized as well-known if Test-WellKnownSID is available
+                # These Should -be recognized as well-known if Test-WellKnownSID is available
                 if (Get-Command Test-WellKnownSID -ErrorAction SilentlyContinue) {
                     $wellKnownResult = Test-WellKnownSID -SID $sid
-                    $wellKnownResult | Should Be $true
+                    $wellKnownResult | Should -Be $true
                 }
             }
         }
@@ -210,14 +214,14 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $invalidDomainAdminSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true  # Valid format
+                $result | Should -Be $true  # Valid format
                 
-                # But should NOT be recognized as well-known admin groups
+                # But Should -Not -be recognized as well-known admin groups
                 if (Get-Command Test-WellKnownSID -ErrorAction SilentlyContinue) {
                     $wellKnownResult = Test-WellKnownSID -SID $sid
-                    # These should be false for non-admin RIDs (except 500 which might be protected)
+                    # These Should -be false for non-admin RIDs (except 500 which might be protected)
                     if ($sid -notmatch '-(500)$') {
-                        $wellKnownResult | Should Be $false
+                        $wellKnownResult | Should -Be $false
                     }
                 }
             }
@@ -236,7 +240,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $validBasicPatterns) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
         
@@ -252,7 +256,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $invalidBasicPatterns) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
         
@@ -266,7 +270,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $domainAdminSIDs) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $true
+                $result | Should -Be $true
             }
         }
         
@@ -279,8 +283,8 @@ Describe "Test-SIDFormat Function Tests" {
             )
             
             foreach ($sid in $edgeCases) {
-                # Should not throw exceptions during regex processing
-                { Test-SIDFormat -SID $sid } | Should Not Throw
+                # Should -Not -throw exceptions during regex processing
+                { Test-SIDFormat -SID $sid } | Should -Not -Throw
             }
         }
         
@@ -296,12 +300,12 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $malformedPatterns) {
                 $result = Test-SIDFormat -SID $sid
-                $result | Should Be $false
+                $result | Should -Be $false
             }
         }
         
         It "Should handle case sensitivity in SID validation" {
-            # SID prefix should be case-insensitive according to Microsoft specs
+            # SID prefix Should -be case-insensitive according to Microsoft specs
             $caseSensitivityTests = @(
                 's-1-5-18',          # Lowercase
                 'S-1-5-18',          # Uppercase
@@ -310,7 +314,7 @@ Describe "Test-SIDFormat Function Tests" {
             
             foreach ($sid in $caseSensitivityTests) {
                 # .NET SecurityIdentifier handles case insensitivity
-                { Test-SIDFormat -SID $sid } | Should Not Throw
+                { Test-SIDFormat -SID $sid } | Should -Not -Throw
             }
         }
     }
@@ -323,7 +327,7 @@ Describe "Test-SIDFormat Function Tests" {
                 Test-SIDFormat -SID $testSID
             }
             
-            $executionTime.TotalMilliseconds | Should BeLessThan 1000  # 1 second max
+            $executionTime.TotalMilliseconds | Should -BeLessThan 1000  # 1 second max
         }
         
         It "Should handle multiple validations efficiently" {
@@ -342,8 +346,8 @@ Describe "Test-SIDFormat Function Tests" {
             }
             
             $duration = (Get-Date) - $startTime
-            $results.Count | Should Be 5
-            $duration.TotalSeconds | Should BeLessThan 5
+            $results.Count | Should -Be 5
+            $duration.TotalSeconds | Should -BeLessThan 5
         }
         
         It "Should handle regex performance with large inputs" {
@@ -355,7 +359,7 @@ Describe "Test-SIDFormat Function Tests" {
             }
             
             # Should still complete quickly even with large input
-            $executionTime.TotalMilliseconds | Should BeLessThan 2000  # 2 seconds max
+            $executionTime.TotalMilliseconds | Should -BeLessThan 2000  # 2 seconds max
         }
     }
 }

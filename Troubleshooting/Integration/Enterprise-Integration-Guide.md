@@ -1,8 +1,7 @@
-﻿# Enterprise Integration Guide - Find-UnknownSID
-
+﻿# Enterprise Integration Guide - OrphanedSid
 ## Overview
 
-This guide covers running `Find-UnknownSID.ps1` from schedulers, pipelines and monitoring systems,
+This guide covers running `Find-OrphanedSid` from schedulers, pipelines and monitoring systems,
 and the integration problems that follow from how the script actually behaves:
 
 - It writes **nothing to the pipeline**. Results are available only as the CSV named by
@@ -11,7 +10,7 @@ and the integration problems that follow from how the script actually behaves:
   `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`. Entries with
   extra data end with a space followed by `| Details: <json>`.
 - The correlation ID is in every line but **never in the file name**
-  (`Find-UnknownSID_<yyyyMMdd_HHmmss>.log` by default).
+  (`<Command>_<yyyyMMdd_HHmmss>.log` by default).
 - `-OutputPath` always produces **CSV**, whatever extension is given.
 - There is no parallel mode, no throttle parameter and no `-Credential`; the script runs as the
   invoking account.
@@ -26,8 +25,8 @@ and the integration problems that follow from how the script actually behaves:
 Point `-LogPath` at a folder the forwarder watches and parse the bracketed fields:
 
 ```powershell
-$logPath = 'C:\Program Files\SplunkUniversalForwarder\var\log\splunk\Find-UnknownSID.log'
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -LogPath $logPath -LogLevel Information `
+$logPath = 'C:\Program Files\SplunkUniversalForwarder\var\log\splunk\OrphanedSid.log'
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogPath $logPath -LogLevel Information `
     -CorrelationId ([guid]::NewGuid().ToString())
 ```
 
@@ -59,19 +58,19 @@ Read the summary from the log or the CSV; the script returns no object to test.
 ```powershell
 $id = [guid]::NewGuid().ToString()
 $csv = "D:\Reports\sid-audit-$(Get-Date -Format 'yyyyMMdd').csv"
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -OutputPath $csv -CorrelationId $id -MaxMemoryUsageMB 2048
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv -CorrelationId $id -MaxMemoryUsageMB 2048
 
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $found = [int](Select-String -Path $log.FullName -Pattern "\[$id\] Orphaned SIDs found: (\d+)" |
     ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -Last 1)
 
 if ($found -gt 100) {
-    Write-EventLog -LogName Application -Source 'Find-UnknownSID' -EventId 1001 -EntryType Warning `
+    Write-EventLog -LogName Application -Source 'OrphanedSid' -EventId 1001 -EntryType Warning `
         -Message "High orphaned SID count detected: $found (CorrelationId $id)"
 }
 ```
 
-Register the event source once with `New-EventLog -LogName Application -Source 'Find-UnknownSID'`.
+Register the event source once with `New-EventLog -LogName Application -Source 'OrphanedSid'`.
 `Write-EventLog` and `New-EventLog` exist in Windows PowerShell 5.1 only; on PowerShell 7 use
 `New-WinEvent` or load them through the `WindowsCompatibility` module. The CSV exists only when at
 least one orphaned SID was found; `Test-Path $csv` is a valid zero-result check.
@@ -83,21 +82,20 @@ The `Script` resource must read the CSV or the log, as above:
 ```powershell
 Configuration ADSecurityMaintenance {
     param(
-        [string]$ScriptPath = 'C:\Scripts\Find-UnknownSID\Find-UnknownSID.ps1',
         [string]$SearchBase = 'DC=contoso,DC=com',
         [int]$MaxOrphanedSIDs = 50
     )
 
     Script OrphanedSIDCheck {
         TestScript = {
+            Import-Module OrphanedSid
             $csv = Join-Path $env:TEMP 'dsc-sid-audit.csv'
             Remove-Item -Path $csv -ErrorAction SilentlyContinue
-            & $using:ScriptPath -SearchBase $using:SearchBase -OutputPath $csv -LogLevel Warning
-            $count = if (Test-Path $csv) { @(Import-Csv -Path $csv).Count } else { 0 }
-            return ($count -le $using:MaxOrphanedSIDs)
+            $found = @(Find-OrphanedSid -SearchBase $using:SearchBase -OutputPath $csv -LogLevel Warning)
+            return ($found.Count -le $using:MaxOrphanedSIDs)
         }
         SetScript = {
-            throw 'Orphaned SID count exceeds threshold; review the audit CSV before running -Remove'
+            throw 'Orphaned SID count exceeds threshold; review the audit CSV before running Remove-OrphanedSid'
         }
         GetScript = {
             $csv = Join-Path $env:TEMP 'dsc-sid-audit.csv'
@@ -113,7 +111,7 @@ Upload the CSV rows, not a script return value:
 
 ```powershell
 $csv = '.\Reports\sid-audit.csv'
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -OutputPath $csv
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv
 if (Test-Path $csv) {
     $body = Import-Csv -Path $csv | ConvertTo-Json -Depth 3
     # Send $body with the Log Analytics HTTP Data Collector API or a Logs Ingestion DCR endpoint
@@ -123,17 +121,16 @@ if (Test-Path $csv) {
 ### 5. Scheduled Tasks
 
 ```powershell
-$action  = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument @(
-    '-NoProfile', '-NonInteractive', '-File', '"C:\Scripts\Find-UnknownSID\Find-UnknownSID.ps1"',
-    '-SearchBase', '"DC=contoso,DC=com"', '-OutputPath', '"D:\Reports\sid-audit.csv"', '-LogLevel', 'Warning'
-) -join ' '
+$command = 'Import-Module OrphanedSid; Find-OrphanedSid -SearchBase ''DC=contoso,DC=com'' ' +
+    '-OutputPath ''D:\Reports\sid-audit.csv'' -LogLevel Warning'
+$action  = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -NonInteractive -Command `"$command`""
 $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 02:00
-Register-ScheduledTask -TaskName 'Find-UnknownSID Audit' -Action $action -Trigger $trigger -User 'CONTOSO\svc-adsecurity' -RunLevel Highest
+Register-ScheduledTask -TaskName 'OrphanedSid Audit' -Action $action -Trigger $trigger -User 'CONTOSO\svc-adsecurity' -RunLevel Highest
 ```
 
-The task's account needs Read permissions for discovery and Modify permissions for `-Remove`.
-Because the task is non-interactive, a `-Remove` run must include `-Force`; without it the run logs
-the `Refusing to remove orphaned SIDs from ACLs without confirmation` message and stops.
+The task's account needs Read permissions for discovery and Modify permissions for
+`Remove-OrphanedSid`. Because the task is non-interactive, a `Remove-OrphanedSid` run must include
+`-Force`; without it the command stops at the confirmation prompt the session cannot answer.
 
 ## Common Integration Issues
 
@@ -164,7 +161,7 @@ instead.
 #### Issue: Memory pressure on large domains
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096 -LogLevel Warning
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096 -LogLevel Warning
 ```
 
 `-MaxMemoryUsageMB` must be at least 256 (lower values fail `Initialize-MemoryManager`
@@ -174,7 +171,7 @@ validation). Splitting the domain by OU across several runs is the only way to s
 #### Issue: Network timeouts
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -MaxRetries 5
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxRetries 5
 ```
 
 `-MaxRetries` (1-10) controls the per-object retry loop: an object whose processing threw is
@@ -189,7 +186,7 @@ for a SID fails, that SID is reported as orphaned; do not run `-Remove` from a r
 #### Issue: Log growth
 
 ```powershell
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -LogLevel Warning -LogPath '\\fileserver\logs\ADSecurity\Find-UnknownSID.log'
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning -LogPath '\\fileserver\logs\ADSecurity\OrphanedSid.log'
 ```
 
 `-LogLevel` filters file output only; console output is unaffected. The folder part of `-LogPath`
@@ -201,8 +198,8 @@ Generate the ID once and pass it everywhere:
 
 ```powershell
 $id = [guid]::NewGuid().ToString()
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath ".\Reports\$id.csv"
-Select-String -Path .\Logs\Find-UnknownSID_*.log -Pattern "\[$id\]"
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath ".\Reports\$id.csv"
+Select-String -Path .\Logs\<Command>_*.log -Pattern "\[$id\]"
 ```
 
 Every row of the CSV carries a `CorrelationId` column, but that value is the per-object ID
@@ -226,9 +223,9 @@ pipeline {
                     \$id = [guid]::NewGuid().ToString()
                     \$csv = "\$env:WORKSPACE\\sid-audit-${env.BUILD_NUMBER}.csv"
                     if ('${params.OPERATION}' -eq 'Removal') {
-                        .\\Find-UnknownSID.ps1 -Remove -Force -SearchBase '${params.SEARCH_BASE}' -BackupPath "\$env:WORKSPACE\\ACLBackups" -CorrelationId \$id -OutputPath \$csv
+                        .\\Remove-OrphanedSid -Force -SearchBase '${params.SEARCH_BASE}' -BackupPath "\$env:WORKSPACE\\ACLBackups" -CorrelationId \$id -OutputPath \$csv
                     } else {
-                        .\\Find-UnknownSID.ps1 -SearchBase '${params.SEARCH_BASE}' -CorrelationId \$id -OutputPath \$csv
+                        .\\Find-OrphanedSid -SearchBase '${params.SEARCH_BASE}' -CorrelationId \$id -OutputPath \$csv
                     }
                 """
                 archiveArtifacts artifacts: 'sid-audit-*.csv, ACLBackups/**', allowEmptyArchive: true
@@ -257,9 +254,9 @@ pool:
 steps:
 - powershell: |
     $id = [guid]::NewGuid().ToString()
-    .\Find-UnknownSID.ps1 -SearchBase "DC=contoso,DC=com" -CorrelationId $id `
+    .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -CorrelationId $id `
         -OutputPath "$(Build.ArtifactStagingDirectory)\sid-audit-results.csv" `
-        -LogPath "$(Build.ArtifactStagingDirectory)\Find-UnknownSID.log"
+        -LogPath "$(Build.ArtifactStagingDirectory)\OrphanedSid.log"
   displayName: 'Execute AD Security Audit'
 
 - task: PublishBuildArtifacts@1
@@ -279,7 +276,7 @@ keys are ignored silently:
   "MemoryCheckInterval": 50,
   "EnableDetailedLogging": false,
   "LogLevel": "Information",
-  "LogFilePath": "\\\\fileserver\\logs\\ADSecurity\\Find-UnknownSID.log",
+  "LogFilePath": "\\\\fileserver\\logs\\ADSecurity\\OrphanedSid.log",
   "EnableLogFileRotation": true,
   "MaxLogFileSizeMB": 10,
   "ProtectedSIDs": ["S-1-5-32-544", "S-1-5-32-545", "S-1-5-32-546", "S-1-5-18", "S-1-5-19", "S-1-5-20"],
@@ -313,7 +310,7 @@ function Send-SecurityAlert {
         Message       = $Message
         CorrelationId = $CorrelationId
         Timestamp     = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-        Source        = 'Find-UnknownSID'
+        Source        = 'OrphanedSid'
     }
     Invoke-RestMethod -Uri 'https://monitoring.contoso.com/api/alerts' -Method Post `
         -Body ($alert | ConvertTo-Json) -ContentType 'application/json'
@@ -321,7 +318,7 @@ function Send-SecurityAlert {
 
 $id  = [guid]::NewGuid().ToString()
 $csv = ".\Reports\$id.csv"
-.\Find-UnknownSID.ps1 -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath $csv
+.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath $csv
 $count = if (Test-Path $csv) { @(Import-Csv -Path $csv).Count } else { 0 }
 if ($count -gt 100) {
     Send-SecurityAlert -AlertType 'HighOrphanedSIDCount' -Message "Found $count orphaned SIDs" -CorrelationId $id
@@ -372,18 +369,18 @@ $batchSize = 10
 for ($i = 0; $i -lt $ous.Count; $i += $batchSize) {
     $batch = $ous[$i..([Math]::Min($i + $batchSize - 1, $ous.Count - 1))]
     $id = [guid]::NewGuid().ToString()
-    .\Find-UnknownSID.ps1 -SearchBase $batch -CorrelationId $id -OutputPath ".\Reports\batch-$($i / $batchSize + 1)-$id.csv"
+    .\Find-OrphanedSid -SearchBase $batch -CorrelationId $id -OutputPath ".\Reports\batch-$($i / $batchSize + 1)-$id.csv"
 }
 ```
 
 `-SearchBase` accepts an array, and distinguished names can also be piped
-(`$ous | .\Find-UnknownSID.ps1`).
+(`$ous | .\Find-OrphanedSid`).
 
 ## Related Documentation
 
-- `.\Documentation\Find-UnknownSID-Automation.md`
+- `.\Documentation\Automation.md`
 - `.\Documentation\Security-Logging-Compliance.md`
-- `.\Troubleshooting\Common\Find-UnknownSID-Issues.md`
+- `.\Troubleshooting\Common\Common-Issues.md`
 - `.\Troubleshooting\Common\Backup-Restore-Issues.md`
 - `.\Troubleshooting\Performance\Performance-Tuning.md`
 - `.\Troubleshooting\Security\Security-Logging-Issues.md`

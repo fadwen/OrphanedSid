@@ -1,80 +1,78 @@
 # Quick Test Reference
 
-How to run the Find-UnknownSID Pester suite and what the latest run produced. The structure of
-the suite (one table per folder, with the function or class each file covers) is in
-[Tests/Pester-Test-Mapping.md](../Tests/Pester-Test-Mapping.md).
+How to run the OrphanedSid checks locally. The same checks run in
+[Quality Gates](https://github.com/fadwen/OrphanedSid/actions/workflows/quality-gates.yml) on every
+push and pull request, on PowerShell 7 and on Windows PowerShell 5.1, plus a help gate on Linux.
 
 ## Requirements
 
-- Windows PowerShell 5.1
-- Pester 3.4.0, the version that ships with Windows. The tests use Pester 3 syntax
-  (`Should Be`, `Assert-MockCalled`) and do not run under Pester 4 or later.
-- No Active Directory domain and no RSAT `ActiveDirectory` module. Every test that touches an
-  AD cmdlet mocks it. On a machine without RSAT, `Tests\TestHelpers\ADCmdletStubs.ps1` defines
-  placeholder cmdlets so that Pester has something to mock.
+- Windows PowerShell 5.1 or PowerShell 7.x.
+- Pester 6.1 or later. The suite uses the `Should -Be` operator form and `Should -Invoke`.
+- PSScriptAnalyzer 1.25 or later.
+- No Active Directory domain and no RSAT. Every Active Directory cmdlet a test touches is mocked;
+  `Tests/TestHelpers/ADCmdletStubs.ps1` defines placeholder cmdlets when the module is absent so
+  Pester has something to mock.
 
-Load Pester 3.4.0 explicitly first. A machine with a newer Pester installed for the current user
-would otherwise autoload that version and fail every assertion.
+```powershell
+Install-PSResource -Name Pester, PSScriptAnalyzer -Scope CurrentUser -TrustRepository
+```
 
 ## Run the suite
 
-Run from the project root, one suite folder per `Invoke-Pester` call. Pester 3.4 recurses a
-directory on its own; it has no `-Recurse` parameter, and passing several paths in one call is
-unreliable on that version.
+```powershell
+Set-Location <repository root>
+Invoke-Pester ./Tests
+```
+
+`Tests/Unit` covers the classes, the private functions and the three public commands;
+`Tests/Integration` runs the discovery, removal and restore workflows end to end against mocked
+directory responses; `Tests/Performance` holds the throughput, memory and scalability checks.
+See [Tests/Pester-Test-Mapping.md](../Tests/Pester-Test-Mapping.md) for what each folder covers.
+
+## Run one file
 
 ```powershell
-Import-Module Pester -RequiredVersion 3.4.0 -Force
-
-Invoke-Pester -Path .\Tests\Unit
-Invoke-Pester -Path .\Tests\Integration
-Invoke-Pester -Path .\Tests\Performance
+Invoke-Pester ./Tests/Unit/Private/SID/Test-OrphanedSID.Tests.ps1 -Output Detailed
 ```
 
-Run one file the same way:
+Each file loads what it needs inside `BeforeAll`, so a single file runs on its own. The public
+command tests import the module from `OrphanedSid.psd1` and mock the private engine with
+`Mock -ModuleName OrphanedSid`.
+
+## Static analysis
+
+The shipping code runs with every Error and Warning rule; tests and the lab tool run with the
+relaxed set in `Tests/PSScriptAnalyzerSettings.psd1`, which drops the rules that fire on every
+stub and mock.
 
 ```powershell
-Invoke-Pester -Path .\Tests\Unit\Private\Security\Test-PathTraversal.Tests.ps1
+foreach ($path in 'Classes', 'Private', 'Public', 'Build', 'OrphanedSid.psm1', 'OrphanedSid.psd1') {
+    Invoke-ScriptAnalyzer -Path $path -Recurse -Severity Error, Warning
+}
+foreach ($path in 'Tests', 'Tools') {
+    Invoke-ScriptAnalyzer -Path $path -Recurse -Settings ./Tests/PSScriptAnalyzerSettings.psd1
+}
 ```
 
-`-PassThru` returns the result object, with `PassedCount`, `FailedCount`, `SkippedCount`, and
-`PendingCount` properties, for scripted gates.
+Both loops are expected to return nothing.
 
-## Latest recorded run
+## Help and release rehearsal
 
-Windows 11, Windows PowerShell 5.1, Pester 3.4.0, no RSAT `ActiveDirectory` module, not elevated.
-
-| Suite | Run | Passed | Failed | Skipped | Inconclusive | Wall time |
-| --- | --- | --- | --- | --- | --- | --- |
-| `Tests\Unit` | 1940 | 1938 | 0 | 1 | 1 | about 3.5 minutes |
-| `Tests\Integration` | 216 | 216 | 0 | 0 | 0 | about 21 seconds |
-| `Tests\Performance` | 170 | 170 | 0 | 0 | 0 | about 9 seconds |
-| Total | 2326 | 2324 | 0 | 1 | 1 | about 4 minutes |
-
-The two results that are not passes depend on the environment, not on the code:
-
-- Skipped: `Get-BackupMetadata.Tests.ps1`, "Should not expose sensitive information in error
-  messages". The `It` carries `-Skip` in the file.
-- Inconclusive: `Initialize-LogDirectory.Tests.ps1`, the test that creates a log file in the
-  drive root. Writing to the root of the system drive needs elevation on a default Windows
-  install; the test reports `Set-TestInconclusive` when it cannot. Run the Unit suite from an
-  elevated prompt to exercise it.
-
-The executed count is lower than the number of `It` blocks in the files (2412 in `Tests\Unit`,
-see the mapping document) because some `It` blocks sit inside helper functions or inside guarded
-blocks that only run under certain conditions, and Pester 3.4 counts an `It` with `-TestCases`
-once in its totals regardless of how many cases it expands to. The executed numbers above are the
-status; the per-file `It` counts describe the structure.
-
-## Reading the output
-
-Pester 3.4 prints `[+]` for a pass, `[-]` for a failure, `[!]` for a skipped test, and `[?]`
-for a pending or inconclusive one. The run ends with two summary lines:
-
-```text
-Tests completed in 3.5m
-Passed: 1938 Failed: 0 Skipped: 1 Pending: 0 Inconclusive: 1
+```powershell
+./Build/Build-Help.ps1 -ValidateOnly     # structure, placeholders, links, drift, .EXTERNALHELP
+./Build/Build-Help.ps1                   # rebuild en-US/OrphanedSid-Help.xml after editing docs/
+./Build/Publish-Module.ps1 -WhatIf       # stage the allowlist and verify the staged module imports
 ```
 
-Tests that exercise failure paths mock the logging functions rather than letting them write.
-`Private\Security\Test-PathTraversal.ps1` and three test files also check the `PESTER_TESTING`
-environment variable, which the tests set, to hold back warnings that are expected during a run.
+## Writing a new test
+
+- Put every dot-source, stub function and variable in `BeforeAll`. Pester 6 runs nothing a file
+  defines at its top level.
+- Stub `Write-StructuredLog` with a `param` block that names the parameters the code passes
+  (`Message`, `Level`, `Component`, `CorrelationId`, `Data`) so `Should -Invoke -ParameterFilter`
+  can bind to them.
+- Dot-source `Tests/TestHelpers/ADCmdletStubs.ps1` before mocking an Active Directory cmdlet, and
+  add the cmdlet to its list when it is not there yet.
+- `Should -Invoke` counts calls from the current `It` only. Pass `-Scope Context` or
+  `-Scope Describe` when the call under test happens in a setup block.
+- `Should -Throw "*text*"` matches with `-like`; escape `[` and `]` as `[[]` and `[]]`.

@@ -129,7 +129,7 @@ function Protect-LogMessage {
             $sanitizedMessage = Remove-UnicodeControlCharacters -Message $sanitizedMessage
 
             # Normalize whitespace to prevent formatting attacks
-            $sanitizedMessage = Normalize-Whitespace -Message $sanitizedMessage
+            $sanitizedMessage = ConvertTo-NormalizedWhitespace -Message $sanitizedMessage
 
             # Enforce maximum length to prevent log flooding
             $sanitizedMessage = Limit-MessageLength -Message $sanitizedMessage -MaxLength $MaxLength
@@ -178,6 +178,10 @@ function Remove-ControlCharacters {
     #>
     [CmdletBinding()]
     [OutputType([string])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'The noun names a class of characters that is removed as a set')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Transforms a string, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [string]$Message,
@@ -234,6 +238,10 @@ function Remove-EscapeSequences {
     #>
     [CmdletBinding()]
     [OutputType([string])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'The noun names a class of characters that is removed as a set')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Transforms a string, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [string]$Message
@@ -279,6 +287,10 @@ function Remove-UnicodeControlCharacters {
     #>
     [CmdletBinding()]
     [OutputType([string])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'The noun names a class of characters that is removed as a set')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Transforms a string, nothing on the system')]
     param(
         [Parameter(Mandatory)]
         [string]$Message
@@ -293,7 +305,7 @@ function Remove-UnicodeControlCharacters {
 }
 
 
-function Normalize-Whitespace {
+function ConvertTo-NormalizedWhitespace {
     <#
     .SYNOPSIS
         Normalizes whitespace to prevent formatting-based attacks
@@ -306,7 +318,7 @@ function Normalize-Whitespace {
         Message to process
 
     .EXAMPLE
-        PS> Normalize-Whitespace -Message "Text  with    multiple   spaces"
+        PS> ConvertTo-NormalizedWhitespace -Message "Text  with    multiple   spaces"
 
         Returns: "Text with multiple spaces"
 

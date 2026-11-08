@@ -1,4 +1,4 @@
-#Requires -Module Pester
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
 <#
@@ -35,8 +35,11 @@
 #>
 
 # Import required test helpers
-. "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
-. "$PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1"
+BeforeAll {
+    . "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
+
+    . "$PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1"
+}
 
 Describe "Invoke-MainProcessingLogic Function Tests" {
     
@@ -163,7 +166,7 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             )
         }
         
-        function Remove-OrphanedSID { 
+        function Remove-OrphanedSidEntry { 
             param($ObjectDN, $OrphanedSIDs, $CorrelationId, $BackupPath)
             return @{
                 Success = $true
@@ -264,9 +267,9 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         It "Should execute complete processing workflow successfully" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
-            $result.CorrelationId | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle multiple search bases" {
@@ -274,29 +277,29 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             
             $result = Invoke-MainProcessingLogic -SearchBase $searchBases
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
         }
         
         It "Should orchestrate AD object discovery" {
             $result = Invoke-MainProcessingLogic -SearchBase "DC=test,DC=com"
             
-            $result.TotalObjectsProcessed | Should BeGreaterThan 0
-            $result.StreamingSummary | Should Not BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan 0
+            $result.StreamingSummary | Should -Not -BeNullOrEmpty
         }
         
         It "Should coordinate removal operations when enabled" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -Remove
             
-            $result.RemovalResults | Should Not BeNullOrEmpty
-            $result.RemovalResults.Count | Should BeGreaterThan 0
+            $result.RemovalResults | Should -Not -BeNullOrEmpty
+            $result.RemovalResults.Count | Should -BeGreaterThan 0
         }
         
         It "Should generate correlation ID for workflow tracking" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result.CorrelationId | Should Not BeNullOrEmpty
-            $result.CorrelationId | Should Match "^[A-Fa-f0-9\-]{36}$"
+            $result.CorrelationId | Should -Not -BeNullOrEmpty
+            $result.CorrelationId | Should -Match "^[A-Fa-f0-9\-]{36}$"
         }
     }
     
@@ -304,37 +307,37 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         It "Should analyze objects for orphaned SIDs" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result.OrphanedSIDsFound | Should BeGreaterThan 0
-            $result.StreamingSummary | Should Not BeNullOrEmpty
+            $result.OrphanedSIDsFound | Should -BeGreaterThan 0
+            $result.StreamingSummary | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle include inherited flag" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -IncludeInherited
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan 0
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan 0
         }
         
         It "Should support dry-run analysis mode using WhatIf" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -Remove -WhatIf
             
-            $result | Should Not BeNullOrEmpty
-            $result.RemovalResults | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
+            $result.RemovalResults | Should -Not -BeNullOrEmpty
         }
         
         It "Should process different object types" {
             $result = Invoke-MainProcessingLogic -SearchBase "DC=test,DC=com"
             
-            $result.TotalObjectsProcessed | Should BeGreaterThan 0
-            $result.ProcessingDuration | Should Not BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan 0
+            $result.ProcessingDuration | Should -Not -BeNullOrEmpty
         }
         
         It "Should track processing statistics" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Test,DC=test,DC=com"
             
-            $result.ObjectsPerSecond | Should BeGreaterThan 0
-            $result.ProcessingDuration | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
+            $result.ObjectsPerSecond | Should -BeGreaterThan 0
+            $result.ProcessingDuration | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
         }
     }
     
@@ -344,8 +347,8 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             
             $result = Invoke-MainProcessingLogic -SearchBase $searchBases
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan 0
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan 0
         }
         
         It "Should handle large object collections efficiently" {
@@ -359,22 +362,22 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             
             $result = Invoke-MainProcessingLogic -SearchBase "OU=LargeOU,DC=test,DC=com"
             
-            $result.TotalObjectsProcessed | Should Be 10
-            $result.ProcessingDuration | Should Not BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -Be 10
+            $result.ProcessingDuration | Should -Not -BeNullOrEmpty
         }
         
         It "Should provide processing progress feedback" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result.ProcessingDuration | Should Not BeNullOrEmpty
-            $result.ObjectsPerSecond | Should BeGreaterThan 0
+            $result.ProcessingDuration | Should -Not -BeNullOrEmpty
+            $result.ObjectsPerSecond | Should -BeGreaterThan 0
         }
         
         It "Should support retry logic with MaxRetries parameter" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -MaxRetries 5
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
         }
     }
     
@@ -382,10 +385,10 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         It "Should provide comprehensive processing results" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
-            $result.OrphanedSIDsFound | Should BeGreaterThan -1
-            $result.ProcessingErrors | Should BeGreaterThan -1
-            $result.ProcessingDuration | Should Not BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
+            $result.OrphanedSIDsFound | Should -BeGreaterThan -1
+            $result.ProcessingErrors | Should -BeGreaterThan -1
+            $result.ProcessingDuration | Should -Not -BeNullOrEmpty
         }
         
         It "Should include streaming results summary" {
@@ -393,31 +396,31 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             
             # The function creates a real StreamingResultsManager which may not have GetSummary properly implemented
             # Let's check what we actually get and ensure the structure is there
-            $result.StreamingSummary | Should Not BeNullOrEmpty
+            $result.StreamingSummary | Should -Not -BeNullOrEmpty
             
             # If the real StreamingResultsManager doesn't return Status, we need to mock differently
             # For now, let's verify what we actually get
             if ($result.StreamingSummary.PSObject.Properties.Name -contains 'Status') {
-                $result.StreamingSummary.Status | Should Be 'Complete'
+                $result.StreamingSummary.Status | Should -Be 'Complete'
             } else {
                 # The real implementation doesn't have Status, so let's adjust our expectations
-                $result.StreamingSummary | Should Not BeNullOrEmpty
+                $result.StreamingSummary | Should -Not -BeNullOrEmpty
             }
-            $result.StreamingManager | Should Not BeNullOrEmpty
+            $result.StreamingManager | Should -Not -BeNullOrEmpty
         }
         
         It "Should track processing performance metrics" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result.ObjectsPerSecond | Should BeGreaterThan 0
-            $result.PeakMemoryUsageMB | Should BeGreaterThan 0
+            $result.ObjectsPerSecond | Should -BeGreaterThan 0
+            $result.PeakMemoryUsageMB | Should -BeGreaterThan 0
         }
         
         It "Should support backup path for removal operations" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -Remove -BackupPath "C:\Backups"
             
-            $result.RemovalResults | Should Not BeNullOrEmpty
-            $result.RemovalResults[0].BackupPath | Should Be "C:\Backups"
+            $result.RemovalResults | Should -Not -BeNullOrEmpty
+            $result.RemovalResults[0].BackupPath | Should -Be "C:\Backups"
         }
     }
     
@@ -428,7 +431,7 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
                 throw 'AD connection failed'
             }
             
-            { Invoke-MainProcessingLogic -SearchBase "OU=Invalid,DC=test,DC=com" } | Should Throw
+            { Invoke-MainProcessingLogic -SearchBase "OU=Invalid,DC=test,DC=com" } | Should -Throw
         }
         
         It "Should continue processing after individual object failures" {
@@ -444,8 +447,8 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -MaxRetries 3
             
-            $result | Should Not BeNullOrEmpty
-            $result.ProcessingErrors | Should BeGreaterThan 0
+            $result | Should -Not -BeNullOrEmpty
+            $result.ProcessingErrors | Should -BeGreaterThan 0
         }
         
         It "Should track correlation ID through error conditions" {
@@ -453,19 +456,19 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             
             try {
                 $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -CorrelationId $customCorrelationId
-                $result.CorrelationId | Should Be $customCorrelationId
+                $result.CorrelationId | Should -Be $customCorrelationId
             }
             catch {
-                # Even in error conditions, correlation ID should be preserved
-                $_.Exception.Message | Should Not BeNullOrEmpty
+                # Even in error conditions, correlation ID Should -be preserved
+                $_.Exception.Message | Should -Not -BeNullOrEmpty
             }
         }
         
         It "Should implement retry logic with exponential backoff" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -MaxRetries 2
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
         }
     }
     
@@ -473,8 +476,8 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         It "Should efficiently process large datasets" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
         }
         
         It "Should complete processing within reasonable timeframe" {
@@ -483,21 +486,21 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             $endTime = Get-Date
             
             $duration = ($endTime - $startTime).TotalSeconds
-            $duration | Should BeLessThan 30  # Should complete in under 30 seconds for test data
+            $duration | Should -BeLessThan 30  # Should complete in under 30 seconds for test data
         }
         
         It "Should optimize memory usage during processing" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -Not -BeNullOrEmpty
         }
         
         It "Should provide performance metrics" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result | Should Not BeNullOrEmpty
-            $result.ProcessingDuration | Should BeOfType [TimeSpan]
+            $result | Should -Not -BeNullOrEmpty
+            $result.ProcessingDuration | Should -BeOfType [TimeSpan]
         }
     }
     
@@ -505,15 +508,15 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         It "Should manage memory efficiently during AD processing" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result | Should Not BeNullOrEmpty
-            $result.PeakMemoryUsageMB | Should Not BeNullOrEmpty
+            $result | Should -Not -BeNullOrEmpty
+            $result.PeakMemoryUsageMB | Should -Not -BeNullOrEmpty
         }
         
         It "Should handle large object collections without memory leaks" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            $result | Should Not BeNullOrEmpty
-            $result.TotalObjectsProcessed | Should BeGreaterThan -1
+            $result | Should -Not -BeNullOrEmpty
+            $result.TotalObjectsProcessed | Should -BeGreaterThan -1
         }
     }
 }

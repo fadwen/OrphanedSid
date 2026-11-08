@@ -231,7 +231,7 @@ $correlationId = [guid]::NewGuid().ToString()
 Test-OrphanedSID -SID "S-1-5-21-1234567890-1234567890-1234567890-1001" -CorrelationId $correlationId -Verbose
 
 # Then search the log for that ID
-$log = Get-ChildItem .\Logs\Find-UnknownSID_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 Select-String -Path $log.FullName -Pattern $correlationId
 ```
 
@@ -249,4 +249,4 @@ Select-String -Path $log.FullName -Pattern $correlationId
 - [SID Format Issues](./SID-Format-Issues.md)
 - [SID Analysis Issues](./SID-Analysis-Issues.md)
 - [Performance Tuning](../Performance/Performance-Tuning.md)
-- [Find-UnknownSID Issues](../Common/Find-UnknownSID-Issues.md)
+- [Common Issues](../Common/Common-Issues.md)

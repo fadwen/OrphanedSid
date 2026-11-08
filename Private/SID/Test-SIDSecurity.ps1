@@ -150,7 +150,12 @@ function Test-SIDSecurity {
 
     process {
         try {
-            try { Write-StructuredLog "Starting security validation for SID: $SIDString (Level: $ValidationLevel)" -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+            try {
+                $logMessage = "Starting security validation for SID: $SIDString (Level: $ValidationLevel)"
+                Write-StructuredLog $logMessage -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId
+            } catch {
+                Write-Debug "Logging unavailable: $($_.Exception.Message)"
+            }
 
             # Log security validation event
             try {
@@ -160,7 +165,9 @@ function Test-SIDSecurity {
                     ObjectDN = $ObjectDN
                     Component = 'SIDSecurity'
                 }
-            } catch { }
+            } catch {
+                Write-Debug "Logging unavailable: $($_.Exception.Message)"
+            }
 
             $validation = [SecurityValidationResult]::new()
             $validation.IsValid = $true
@@ -175,7 +182,15 @@ function Test-SIDSecurity {
                     $validation.Issues += "Critical security risk detected - potentially malicious input pattern: $pattern"
                     $validation.BlockedSIDs += $SIDString
 
-                    try { Write-StructuredLog "Malicious input pattern detected in SID: $SIDString" -Level Error -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                    try {
+                        $logMessage = "Malicious input pattern detected in SID: $SIDString"
+                        $logParams = @{
+                            Level = 'Error'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId
+                        }
+                        Write-StructuredLog $logMessage @logParams
+                    } catch {
+                        Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                    }
 
                     try {
                         Write-SecurityLog -SecurityEventType 'SecurityViolation' -Message "Malicious input pattern detected in SID validation" -Outcome 'Failure' -CorrelationId $CorrelationId -SecurityContext @{
@@ -187,17 +202,30 @@ function Test-SIDSecurity {
                             SecurityThreat = $true
                             ObjectDN = $ObjectDN
                         }
-                    } catch { }
+                    } catch {
+                        Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                    }
 
                     return $validation
                 }
             }
 
             # Check if SID is in protected list
-            try { Write-StructuredLog "Checking if SID '$SIDString' is in protected list" -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+            try {
+                $logMessage = "Checking if SID '$SIDString' is in protected list"
+                Write-StructuredLog $logMessage -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId
+            } catch {
+                Write-Debug "Logging unavailable: $($_.Exception.Message)"
+            }
             
             if ($script:Config -and $script:Config.ProtectedSIDs -contains $SIDString) {
-                try { Write-StructuredLog "SID $SIDString blocked - found in protected SIDs list" -Level Warning -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                try {
+                    $logMessage = "SID $SIDString blocked - found in protected SIDs list"
+                    $logParams = @{ Level = 'Warning'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId }
+                    Write-StructuredLog $logMessage @logParams
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
                 
                 $validation.IsValid = $false
                 $validation.RiskLevel = "Critical"
@@ -239,7 +267,15 @@ function Test-SIDSecurity {
                     $validation.Issues += "Well-known SID detected - removal may impact system security"
                     $validation.BlockedSIDs += $SIDString
 
-                    try { Write-StructuredLog "Well-known SID $SIDString blocked for removal" -Level Warning -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                    try {
+                        $logMessage = "Well-known SID $SIDString blocked for removal"
+                        $logParams = @{
+                            Level = 'Warning'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId
+                        }
+                        Write-StructuredLog $logMessage @logParams
+                    } catch {
+                        Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                    }
 
                     # Log well-known SID security blocking
                     $securityContext = @{
@@ -270,7 +306,13 @@ function Test-SIDSecurity {
                 $validation.Issues += "Critical security risk detected - potentially malicious input"
                 $validation.BlockedSIDs += $SIDString
 
-                try { Write-StructuredLog "Critical risk SID $SIDString blocked for security" -Level Error -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                try {
+                    $logMessage = "Critical risk SID $SIDString blocked for security"
+                    $logParams = @{ Level = 'Error'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId }
+                    Write-StructuredLog $logMessage @logParams
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
 
                 # Log critical security blocking
                 $securityContext = @{
@@ -322,7 +364,9 @@ function Test-SIDSecurity {
                             }
                             ObjectDN = $ObjectDN
                         }
-                    } catch { }
+                    } catch {
+                        Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                    }
                 }
                 'Medium' {
                     if ($ValidationLevel -eq 'Strict') {
@@ -364,14 +408,27 @@ function Test-SIDSecurity {
                         RequiresElevatedConfirmation = $validation.RequiresElevatedConfirmation
                         ObjectDN = $ObjectDN
                     }
-                } catch { }
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
             }
 
-            try { Write-StructuredLog "Security validation completed for $SIDString - Valid: $($validation.IsValid), Risk: $($validation.RiskLevel)" -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+            try {
+                $logMessage = "Security validation completed for $SIDString - Valid: $($validation.IsValid), " +
+                    "Risk: $($validation.RiskLevel)"
+                Write-StructuredLog $logMessage -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId
+            } catch {
+                Write-Debug "Logging unavailable: $($_.Exception.Message)"
+            }
             return $validation
         }
         catch {
-            try { Write-StructuredLog "Error in security validation for SID $SIDString : $($_.Exception.Message)" -Level Error -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+            try {
+                $logMessage = "Error in security validation for SID $SIDString : $($_.Exception.Message)"
+                Write-StructuredLog $logMessage -Level Error -Component 'SIDSecurity' -CorrelationId $CorrelationId
+            } catch {
+                Write-Debug "Logging unavailable: $($_.Exception.Message)"
+            }
 
             # Log security validation error
             $securityContext = @{
@@ -498,11 +555,23 @@ function Get-SIDRiskAssessment {
 
     process {
         try {
-                try { Write-StructuredLog "Starting risk assessment for $($SIDList.Count) SIDs" -Level Verbose -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                try {
+                    $logMessage = "Starting risk assessment for $($SIDList.Count) SIDs"
+                    $logParams = @{ Level = 'Verbose'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId }
+                    Write-StructuredLog $logMessage @logParams
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
 
             # Handle empty SID list
             if ($SIDList.Count -eq 0) {
-                try { Write-StructuredLog "Empty SID list provided - returning safe assessment" -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                try {
+                    $logMessage = "Empty SID list provided - returning safe assessment"
+                    $logParams = @{ Level = 'Debug'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId }
+                    Write-StructuredLog $logMessage @logParams
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
 
                 $assessment = [PSCustomObject]@{
                     AssessmentId = $CorrelationId
@@ -526,7 +595,9 @@ function Get-SIDRiskAssessment {
                         SafeForAutomation = $true
                         ObjectContext = $ObjectContext
                     }
-                } catch { }
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
 
                 return $assessment
             }
@@ -545,7 +616,13 @@ function Get-SIDRiskAssessment {
 
             # Analyze each SID using dependent modules
             foreach ($sid in $SIDList) {
-                try { Write-StructuredLog "Analyzing SID for risk assessment: $sid" -Level Debug -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+                try {
+                    $logMessage = "Analyzing SID for risk assessment: $sid"
+                    $logParams = @{ Level = 'Debug'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId }
+                    Write-StructuredLog $logMessage @logParams
+                } catch {
+                    Write-Debug "Logging unavailable: $($_.Exception.Message)"
+                }
 
                 $analysis = Get-SIDAnalysis -SIDString $sid -CorrelationId $CorrelationId
                 $validation = Test-SIDSecurity -SIDString $sid -ValidationLevel 'Standard' -CorrelationId $CorrelationId
@@ -617,7 +694,14 @@ function Get-SIDRiskAssessment {
                 $script:LastSecurityContext = $riskSecurityContext
             }
 
-            try { Write-StructuredLog "Risk assessment completed - Overall Risk: $overallRisk, Safe for Automation: $($assessment.SafeForAutomation)" -Level Verbose -Component 'SIDSecurity' -CorrelationId $CorrelationId } catch { }
+            try {
+                $logMessage = "Risk assessment completed - Overall Risk: $overallRisk, Safe for Automation: " +
+                    "$($assessment.SafeForAutomation)"
+                $logParams = @{ Level = 'Verbose'; Component = 'SIDSecurity'; CorrelationId = $CorrelationId }
+                Write-StructuredLog $logMessage @logParams
+            } catch {
+                Write-Debug "Logging unavailable: $($_.Exception.Message)"
+            }
             return $assessment
         }
         catch {

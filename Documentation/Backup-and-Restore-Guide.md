@@ -2,7 +2,7 @@
 
 ## Overview
 
-Find-UnknownSID backs up the full security descriptor of every Active Directory object it modifies
+OrphanedSid backs up the full security descriptor of every Active Directory object it modifies
 and can apply those backups again later. Backups are written before any access control entry is
 removed, and a removal is abandoned for an object whose backup could not be written. This document
 describes where backups land, what they contain, and how the `-Restore` mode reads them back.
@@ -16,11 +16,11 @@ its ACL. `-BackupPath` is optional:
 
 ```powershell
 # Backups written under C:\Backups\<yyyyMMdd_HHmmss>\
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups"
+.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups"
 
 # No -BackupPath: backups written under <script folder>\Backup\<yyyyMMdd_HHmmss>\
 # The script warns "No backup path specified. Using default: ..." when it creates that folder.
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Users,DC=contoso,DC=com"
+.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com"
 ```
 
 For `-Remove`, the parent of `-BackupPath` must already exist; the folder itself and the per-run
@@ -82,16 +82,16 @@ recursive. `-SearchBase` names the object or objects to restore.
 
 ```powershell
 # Restore one object from the backups in a specific run folder
-.\Find-UnknownSID.ps1 -Restore -SearchBase "CN=User1,CN=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022"
+.\Restore-OrphanedSidBackup -TargetObjectDN "CN=User1,CN=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022"
 
 # Preview the restore without changing anything
-.\Find-UnknownSID.ps1 -Restore -SearchBase "CN=User1,CN=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -WhatIf
+.\Restore-OrphanedSidBackup -TargetObjectDN "CN=User1,CN=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -WhatIf
 
 # Restore several objects in one run
-.\Find-UnknownSID.ps1 -Restore -SearchBase @("CN=User1,CN=Users,DC=contoso,DC=com", "CN=User2,CN=Users,DC=contoso,DC=com") -BackupPath "C:\Backups\20250127_143022"
+.\Restore-OrphanedSidBackup -TargetObjectDN @("CN=User1,CN=Users,DC=contoso,DC=com", "CN=User2,CN=Users,DC=contoso,DC=com") -BackupPath "C:\Backups\20250127_143022"
 
 # Restore every backed-up object under an OU
-.\Find-UnknownSID.ps1 -Restore -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022"
+.\Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022"
 ```
 
 The script processes each `-SearchBase` value in turn and selects backup files as follows:
@@ -117,7 +117,7 @@ Refusing to restore ACLs from backup without confirmation. Re-run with -Force to
 
 ```powershell
 # Unattended restore
-.\Find-UnknownSID.ps1 -Restore -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -Force
+.\Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -Force
 ```
 
 ### Restore Workflow Functions
@@ -165,14 +165,14 @@ fixed at `Standard` for script-driven restores.
 
 ```powershell
 # 1. Removal with backups
-.\Find-UnknownSID.ps1 -Remove -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups" -Force
+.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups" -Force
 
 # 2. Find the run folder that was created (named by the run timestamp)
 Get-ChildItem "C:\Backups" -Directory | Sort-Object Name -Descending | Select-Object -First 1
 
 # 3. Restore everything under the OU from that folder
-.\Find-UnknownSID.ps1 -Restore -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -WhatIf
-.\Find-UnknownSID.ps1 -Restore -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -Force
+.\Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -WhatIf
+.\Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022" -Force
 ```
 
 ### Selective Object Restoration
@@ -183,7 +183,7 @@ $problemObjects = @(
     "CN=User2,CN=Users,DC=contoso,DC=com"
 )
 
-.\Find-UnknownSID.ps1 -Restore -SearchBase $problemObjects -BackupPath "C:\Backups\20250127_143022"
+.\Restore-OrphanedSidBackup -TargetObjectDN $problemObjects -BackupPath "C:\Backups\20250127_143022"
 ```
 
 ## Best Practices
@@ -219,5 +219,5 @@ Every log line carries the correlation ID in its fourth bracketed field:
 
 ```powershell
 # All lines for one run (default log location)
-Select-String -Path ".\Logs\Find-UnknownSID_*.log" -Pattern "12345678-1234-1234-1234-123456789012"
+Select-String -Path ".\Logs\<Command>_*.log" -Pattern "12345678-1234-1234-1234-123456789012"
 ```

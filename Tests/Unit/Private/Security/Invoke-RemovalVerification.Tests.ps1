@@ -14,21 +14,23 @@
 #>
 
 # Define mock functions first to avoid dependency issues
-function Write-StructuredLog { 
-    param($Message, $Level, $CorrelationId) 
-    # Track log calls for verification
-    $script:LogCalls += @{ Message = $Message; Level = $Level; CorrelationId = $CorrelationId }
-}
-
-function Invoke-ADOperationWithRetry { 
-    param($ScriptBlock, $MaxRetries, $OperationName, $ObjectContext) 
-    # Track retry calls and execute script block
-    $script:RetryCalls += @{ MaxRetries = $MaxRetries; OperationName = $OperationName; ObjectContext = $ObjectContext }
-    & $ScriptBlock
-}
-
 # Now import the function under test
-. "$PSScriptRoot\..\..\..\..\Private\Security\Invoke-RemovalVerification.ps1"
+BeforeAll {
+    function Write-StructuredLog { 
+        param($Message, $Level, $CorrelationId) 
+        # Track log calls for verification
+        $script:LogCalls += @{ Message = $Message; Level = $Level; CorrelationId = $CorrelationId }
+    }
+
+    function Invoke-ADOperationWithRetry { 
+        param($ScriptBlock, $MaxRetries, $OperationName, $ObjectContext) 
+        # Track retry calls and execute script block
+        $script:RetryCalls += @{ MaxRetries = $MaxRetries; OperationName = $OperationName; ObjectContext = $ObjectContext }
+        & $ScriptBlock
+    }
+
+    . "$PSScriptRoot\..\..\..\..\Private\Security\Invoke-RemovalVerification.ps1"
+}
 
 Describe "Invoke-RemovalVerification" {
     
@@ -41,7 +43,7 @@ Describe "Invoke-RemovalVerification" {
     Context "Parameter Validation" {
         
         It "Should reject empty ObjectDN" {
-            { Invoke-RemovalVerification -ObjectDN "" -AllowedSIDs @("S-1-5-21-1001") } | Should Throw "argument is null or empty"
+            { Invoke-RemovalVerification -ObjectDN "" -AllowedSIDs @("S-1-5-21-1001") } | Should -Throw "*argument is null or empty*"
         }
         
         It "Should reject whitespace-only ObjectDN" {
@@ -50,8 +52,8 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "   " -AllowedSIDs @("S-1-5-21-1001")
             
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "ObjectDN parameter cannot be empty"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "ObjectDN parameter cannot be empty"
         }
         
         It "Should trim whitespace from ObjectDN" {
@@ -61,7 +63,7 @@ Describe "Invoke-RemovalVerification" {
             $result = Invoke-RemovalVerification -ObjectDN "  CN=Test,DC=contoso,DC=com  " -AllowedSIDs @("S-1-5-21-1001")
             
             # Verify Get-Acl was called with trimmed path
-            Assert-MockCalled Get-Acl -ParameterFilter { $Path -eq "AD:\CN=Test,DC=contoso,DC=com" }
+            Should -Invoke Get-Acl -ParameterFilter { $Path -eq "AD:\CN=Test,DC=contoso,DC=com" }
         }
         
         It "Should accept empty AllowedSIDs array" {
@@ -70,7 +72,7 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("placeholder") 
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
         }
         
         It "Should generate CorrelationId when not provided" {
@@ -80,8 +82,8 @@ Describe "Invoke-RemovalVerification" {
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001")
             
             # Should have logged with a generated CorrelationId
-            $script:LogCalls.Count | Should BeGreaterThan 0
-            $script:LogCalls[0].CorrelationId | Should Not BeNullOrEmpty
+            $script:LogCalls.Count | Should -BeGreaterThan 0
+            $script:LogCalls[0].CorrelationId | Should -Not -BeNullOrEmpty
         }
         
         It "Should use provided CorrelationId" {
@@ -92,7 +94,7 @@ Describe "Invoke-RemovalVerification" {
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001") -CorrelationId $testCorrelationId
             
             # Should have logged with the provided CorrelationId
-            $script:LogCalls[0].CorrelationId | Should Be $testCorrelationId
+            $script:LogCalls[0].CorrelationId | Should -Be $testCorrelationId
         }
     }
     
@@ -111,8 +113,8 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-REMOVED-SID")
             
-            $result.Success | Should Be $true
-            $result.RemainingOrphanedSIDs.Count | Should Be 0
+            $result.Success | Should -Be $true
+            $result.RemainingOrphanedSIDs.Count | Should -Be 0
         }
         
         It "Should detect single remaining SID" {
@@ -128,10 +130,10 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-123456789-1001")
             
-            $result.Success | Should Be $false
-            $result.RemainingOrphanedSIDs.Count | Should Be 1
-            $result.RemainingOrphanedSIDs[0] | Should Be "S-1-5-21-123456789-1001"
-            $result.ErrorMessage | Should Match "1 of 1 SIDs still present"
+            $result.Success | Should -Be $false
+            $result.RemainingOrphanedSIDs.Count | Should -Be 1
+            $result.RemainingOrphanedSIDs[0] | Should -Be "S-1-5-21-123456789-1001"
+            $result.ErrorMessage | Should -Match "1 of 1 SIDs still present"
         }
         
         It "Should detect multiple remaining SIDs" {
@@ -149,11 +151,11 @@ Describe "Invoke-RemovalVerification" {
             $targetSIDs = @("S-1-5-21-123456789-1001", "S-1-5-21-123456789-1002", "S-1-5-21-123456789-1003")
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs $targetSIDs
             
-            $result.Success | Should Be $false
-            $result.RemainingOrphanedSIDs.Count | Should Be 2
-            $result.RemainingOrphanedSIDs[0] | Should Be "S-1-5-21-123456789-1001"
-            $result.RemainingOrphanedSIDs[1] | Should Be "S-1-5-21-123456789-1002"
-            $result.ErrorMessage | Should Match "2 of 3 SIDs still present"
+            $result.Success | Should -Be $false
+            $result.RemainingOrphanedSIDs.Count | Should -Be 2
+            $result.RemainingOrphanedSIDs[0] | Should -Be "S-1-5-21-123456789-1001"
+            $result.RemainingOrphanedSIDs[1] | Should -Be "S-1-5-21-123456789-1002"
+            $result.ErrorMessage | Should -Match "2 of 3 SIDs still present"
         }
         
         It "Should handle partial removal success" {
@@ -169,9 +171,9 @@ Describe "Invoke-RemovalVerification" {
             $targetSIDs = @("S-1-5-21-123456789-1001", "S-1-5-21-123456789-1002")
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs $targetSIDs
             
-            $result.Success | Should Be $false
-            $result.RemainingOrphanedSIDs.Count | Should Be 1
-            $result.RemainingOrphanedSIDs[0] | Should Be "S-1-5-21-123456789-1002"
+            $result.Success | Should -Be $false
+            $result.RemainingOrphanedSIDs.Count | Should -Be 1
+            $result.RemainingOrphanedSIDs[0] | Should -Be "S-1-5-21-123456789-1002"
         }
     }
     
@@ -183,9 +185,9 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001")
             
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "Verification error.*Access denied"
-            $result.RemainingOrphanedSIDs.Count | Should Be 0
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "Verification error.*Access denied"
+            $result.RemainingOrphanedSIDs.Count | Should -Be 0
         }
         
         It "Should use retry logic for AD operations" {
@@ -195,9 +197,9 @@ Describe "Invoke-RemovalVerification" {
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001")
             
             # Verify retry logic was called
-            $script:RetryCalls.Count | Should Be 1
-            $script:RetryCalls[0].MaxRetries | Should Be 3
-            $script:RetryCalls[0].OperationName | Should Be "Get-ACL-Verification"
+            $script:RetryCalls.Count | Should -Be 1
+            $script:RetryCalls[0].MaxRetries | Should -Be 3
+            $script:RetryCalls[0].OperationName | Should -Be "Get-ACL-Verification"
         }
         
         It "Should handle network timeout errors" {
@@ -206,8 +208,8 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001")
             
-            $result.Success | Should Be $false
-            $result.ErrorMessage | Should Match "timed out"
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Match "timed out"
         }
     }
     
@@ -220,7 +222,7 @@ Describe "Invoke-RemovalVerification" {
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001")
             
             # Verify Sleep was called for replication delay
-            Assert-MockCalled Start-Sleep -ParameterFilter { $Milliseconds -eq 500 }
+            Should -Invoke Start-Sleep -ParameterFilter { $Milliseconds -eq 500 }
         }
     }
     
@@ -235,9 +237,9 @@ Describe "Invoke-RemovalVerification" {
             
             # Should log the start message with SID count
             $startLog = $script:LogCalls | Where-Object { $_.Message -like "*Starting removal verification*" }
-            $startLog | Should Not BeNullOrEmpty
-            $startLog.Message | Should Match "Verifying 3 SIDs"
-            $startLog.Level | Should Be "Debug"
+            $startLog | Should -Not -BeNullOrEmpty
+            $startLog.Message | Should -Match "Verifying 3 SIDs"
+            $startLog.Level | Should -Be "Debug"
         }
         
         It "Should log successful verification" {
@@ -248,8 +250,8 @@ Describe "Invoke-RemovalVerification" {
             
             # Should log success
             $successLog = $script:LogCalls | Where-Object { $_.Message -like "*Verification successful*" }
-            $successLog | Should Not BeNullOrEmpty
-            $successLog.Level | Should Be "Verbose"
+            $successLog | Should -Not -BeNullOrEmpty
+            $successLog.Level | Should -Be "Verbose"
         }
         
         It "Should log verification failures with warning level" {
@@ -266,8 +268,8 @@ Describe "Invoke-RemovalVerification" {
             
             # Should log failure as warning
             $failureLog = $script:LogCalls | Where-Object { $_.Message -like "*Verification failed*" }
-            $failureLog | Should Not BeNullOrEmpty
-            $failureLog.Level | Should Be "Warning"
+            $failureLog | Should -Not -BeNullOrEmpty
+            $failureLog.Level | Should -Be "Warning"
         }
         
         It "Should log errors with error level" {
@@ -278,8 +280,8 @@ Describe "Invoke-RemovalVerification" {
             
             # Should log error
             $errorLog = $script:LogCalls | Where-Object { $_.Message -like "*Verification error*" }
-            $errorLog | Should Not BeNullOrEmpty
-            $errorLog.Level | Should Be "Error"
+            $errorLog | Should -Not -BeNullOrEmpty
+            $errorLog.Level | Should -Be "Error"
         }
     }
     
@@ -291,9 +293,9 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs @("S-1-5-21-1001", "S-1-5-21-1002")
             
-            $result.Success | Should Be $true
-            $result.RemainingOrphanedSIDs.Count | Should Be 0
-            $result.ErrorMessage | Should BeNullOrEmpty
+            $result.Success | Should -Be $true
+            $result.RemainingOrphanedSIDs.Count | Should -Be 0
+            $result.ErrorMessage | Should -BeNullOrEmpty
         }
         
         It "Should handle large SID lists efficiently" {
@@ -305,10 +307,10 @@ Describe "Invoke-RemovalVerification" {
             
             $result = Invoke-RemovalVerification -ObjectDN "CN=Test,DC=contoso,DC=com" -AllowedSIDs $largeSIDList
             
-            $result.Success | Should Be $true
+            $result.Success | Should -Be $true
             # Should log with correct count
             $startLog = $script:LogCalls | Where-Object { $_.Message -like "*Starting removal verification*" }
-            $startLog.Message | Should Match "Verifying 50 SIDs"
+            $startLog.Message | Should -Match "Verifying 50 SIDs"
         }
         
         It "Should maintain correlation ID across all log entries" {
@@ -320,7 +322,7 @@ Describe "Invoke-RemovalVerification" {
             
             # All log entries should have the same correlation ID
             foreach ($logEntry in $script:LogCalls) {
-                $logEntry.CorrelationId | Should Be $testCorrelationId
+                $logEntry.CorrelationId | Should -Be $testCorrelationId
             }
         }
     }

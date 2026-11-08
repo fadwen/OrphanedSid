@@ -1,4 +1,4 @@
-function Get-ADObjectsSequential {
+﻿function Get-ADObjectsSequential {
     <#
     .SYNOPSIS
         Retrieves Active Directory objects from multiple search bases sequentially
@@ -70,27 +70,31 @@ function Get-ADObjectsSequential {
         # Process each search base sequentially and track results
         $allResults = @()
         
-        foreach ($searchBase in $SearchBase) {
+        # The loop variable must not share the parameter's name in any letter case: variable names are
+        # case-insensitive, so a $searchBase loop variable is the [string[]]-constrained $SearchBase
+        # parameter, each element is re-wrapped as a one-element array, and the call below fails to
+        # bind it to a [string] parameter. Discovery then returns nothing and logs one failure per base.
+        foreach ($currentSearchBase in $SearchBase) {
             try {
-                Write-Verbose "Processing search base: $searchBase"
-                $searchResults = Get-ADObjectFromSearchBase -SearchBase $searchBase -IncludeInherited:$IncludeInherited -CorrelationId $CorrelationId
+                Write-Verbose "Processing search base: $currentSearchBase"
+                $searchResults = Get-ADObjectFromSearchBase -SearchBase $currentSearchBase -IncludeInherited:$IncludeInherited -CorrelationId $CorrelationId
                 
                 if ($searchResults) {
                     $allResults += $searchResults
                     $script:successfulBases++
-                    Write-Verbose "Successfully retrieved $(@($searchResults).Count) objects from $searchBase"
+                    Write-Verbose "Successfully retrieved $(@($searchResults).Count) objects from $currentSearchBase"
                 } else {
                     $script:successfulBases++  # No objects but no error
-                    Write-Verbose "No objects found in $searchBase (not an error)"
+                    Write-Verbose "No objects found in $currentSearchBase (not an error)"
                 }
             }
             catch {
                 $script:failedBases++
-                Write-Warning "Failed to process search base $searchBase : $($_.Exception.Message)"
+                Write-Warning "Failed to process search base $currentSearchBase : $($_.Exception.Message)"
                 
                 # Log the failure but continue processing
                 Write-ADOperationSecurityLog -OperationName 'Get-ADObjectsSequential' -Outcome 'Failure' -SecurityContext @{
-                    FailedSearchBase = $searchBase
+                    FailedSearchBase = $currentSearchBase
                     ErrorMessage = $_.Exception.Message
                     ContinueProcessing = $true
                 } -CorrelationId $CorrelationId
