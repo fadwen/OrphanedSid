@@ -3,458 +3,198 @@
 
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Initialize-ScriptExecution function
+    Unit tests for Initialize-ScriptExecution, which builds a run's configuration, memory manager,
+    statistics and log file.
 
 .DESCRIPTION
-    Enterprise-grade test suite for the Initialize-ScriptExecution function that provides comprehensive
-    validation of script initialization, configuration loading, memory manager setup, logging system
-    initialization, parameter validation, and error recovery mechanisms.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-10
-    Version: 1.0.0
-    PowerShell Version: 5.1+ (Compatible with Pester 3.4.x)
-
-    Test Count: 25 tests covering core initialization functionality
-    Coverage Areas:
-    - Configuration loading and validation
-    - Memory manager initialization
-    - Logging system setup
-    - Default parameter handling
-    - Error recovery mechanisms
-    - Security validation
-    - Resource management
-
-    TROUBLESHOOTING:
-    - Configuration issues: .\Troubleshooting\Core\Configuration-Loading.md
-    - Memory initialization: .\Troubleshooting\Core\Memory-Manager-Setup.md
-    - Logging setup: .\Troubleshooting\Core\Logging-System-Init.md
+    Tests the real function with the real classes and the logging, log-directory and memory-manager
+    functions mocked. The earlier version of this file defined its own Initialize-ScriptExecution and
+    tested that.
 #>
 
-# Import required test helpers
 BeforeAll {
-    . "$PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1"
+    . "$PSScriptRoot\..\..\..\..\Classes\ScriptConfiguration.ps1"
+    . "$PSScriptRoot\..\..\..\..\Classes\ProcessingStatistics.ps1"
+    . "$PSScriptRoot\..\..\..\..\Classes\MemoryManager.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Core\Initialize-ScriptExecution.ps1"
 
-    . "$PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1"
+    function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
+    function Initialize-LoggingSystem { param($CorrelationId, $LogLevel, [switch]$SuppressConsoleOutput) }
+    function Initialize-LogDirectory { param($LogPath) }
+    function Initialize-MemoryManager { param($MaxMemoryMB, $CheckInterval, $CorrelationId, [switch]$WhatIf) }
 }
 
-Describe "Initialize-ScriptExecution Function Tests" {
-    
+Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
+
     BeforeEach {
-        # Reset test environment
-        $script:TestConfig = $null
+        Mock Write-StructuredLog { }
+        Mock Initialize-LoggingSystem { }
+        Mock Initialize-LogDirectory { }
+        Mock Initialize-MemoryManager { [PSCustomObject]@{ MaxMemoryMB = $MaxMemoryMB; CheckInterval = $CheckInterval } }
+        $script:Config = $null
         $script:MemoryManager = $null
-        $script:LoggingSystem = $null
-        
-        # Load the function under test
-        $functionPath = "$PSScriptRoot\..\..\..\..\Private\Core\Initialize-ScriptExecution.ps1"
-        if (Test-Path $functionPath) {
-            . $functionPath
-        } else {
-            throw "Function file not found: $functionPath"
+        $script:Statistics = $null
+        $script:LogPath = $null
+        $script:workDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:workDir | Out-Null
+    }
+
+    Context 'Parameter validation' {
+        It 'Rejects a memory limit outside 100-16384' {
+            { Initialize-ScriptExecution -MaxMemoryUsageMB 20 } | Should -Throw
         }
 
-        # Create stub functions for all dependencies (Pester 3.4.x compatibility)
-        if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
-            function global:Write-StructuredLog { 
-                param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $ErrorRecord) 
-                return $true
-            }
+        It 'Rejects an unknown log level' {
+            { Initialize-ScriptExecution -LogLevel 'Loud' } | Should -Throw
         }
-        if (-not (Get-Command Initialize-LoggingSystem -ErrorAction SilentlyContinue)) {
-            function global:Initialize-LoggingSystem { 
-                param($CorrelationId, $LogLevel, [switch]$SuppressConsoleOutput) 
-                return @{ 
-                    Success = $true 
-                    LoggingSystem = [PSCustomObject]@{ 
-                        Level = $LogLevel 
-                        IsInitialized = $true
-                        SuppressConsoleOutput = $SuppressConsoleOutput.IsPresent
-                        CorrelationId = $CorrelationId
-                    } 
-                }
-            }
+    }
+
+    Context 'Default run' {
+        It 'Returns the configuration, memory manager, statistics, log path and correlation ID' {
+            $result = Initialize-ScriptExecution -LogPath "$($script:workDir)\run.log" -CorrelationId 'init-1'
+
+            $result.Config | Should -BeOfType [ScriptConfiguration]
+            $result.Config.BatchSize | Should -Be 50
+            $result.MemoryManager.MaxMemoryMB | Should -Be 1024
+            $result.MemoryManager.CheckInterval | Should -Be 50
+            $result.Statistics | Should -BeOfType [ProcessingStatistics]
+            $result.LogPath | Should -Be "$($script:workDir)\run.log"
+            $result.CorrelationId | Should -Be 'init-1'
         }
-        if (-not (Get-Command Initialize-MemoryManager -ErrorAction SilentlyContinue)) {
-            function global:Initialize-MemoryManager { 
-                param($MaxMemoryMB, $CheckInterval, $CorrelationId)
-                return @{ 
-                    Success = $true 
-                    MemoryManager = [PSCustomObject]@{ 
-                        MaxMemoryMB = $MaxMemoryMB 
-                        IsInitialized = $true
-                        CheckInterval = $CheckInterval
-                        CurrentUsageMB = 0
-                    } 
-                }
-            }
+
+        It 'Leaves the same objects in module scope' {
+            $result = Initialize-ScriptExecution -LogPath "$($script:workDir)\run.log"
+
+            $script:Config | Should -Be $result.Config
+            $script:MemoryManager | Should -Be $result.MemoryManager
+            $script:Statistics | Should -Be $result.Statistics
+            $script:LogPath | Should -Be $result.LogPath
         }
-        
-        # Mock the PowerShell classes by overriding them with functions that return mock objects
-        function global:ScriptConfiguration {
-            param([string]$ConfigPath)
-            return [PSCustomObject]@{
-                ConfigPath = $ConfigPath
-                Settings = @{
-                    MemoryThresholdMB = 512
-                    LogLevel = 'Information'
-                    EnableAuditTrail = $true
-                    BatchSize = 100
-                    MaxRetryAttempts = 3
-                    RetryDelaySeconds = 5
-                    AuditTrailEnabled = $true
-                    SecurityValidationLevel = 'Standard'
-                }
-                IsValid = $true
-                MemoryCheckInterval = 30
-                ValidateConfiguration = { return $true }
+
+        It 'Initializes logging with the level and console switch, then the log folder with the path' {
+            Initialize-ScriptExecution -LogPath "$($script:workDir)\run.log" -LogLevel 'Debug' -SuppressConsoleOutput -CorrelationId 'init-2' | Out-Null
+
+            Should -Invoke Initialize-LoggingSystem -Times 1 -Exactly -ParameterFilter {
+                $CorrelationId -eq 'init-2' -and $LogLevel -eq 'Debug' -and $SuppressConsoleOutput
             }
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq "$($script:workDir)\run.log" }
         }
-        
-        # Override the static method calls in the actual function
-        # This works by redefining the function after it's loaded
-        if (Get-Command Initialize-ScriptExecution -ErrorAction SilentlyContinue) {
-            $originalFunction = (Get-Command Initialize-ScriptExecution).Definition
-            
-            # Create a wrapper function that handles the class instantiation
-            $mockFunction = @'
-            function Initialize-ScriptExecution {
-                param(
-                    [string]$ConfigPath = "",
-                    [string]$LogLevel = "Information"
-                )
-                
-                $correlationId = [System.Guid]::NewGuid().ToString()
-                
-                try {
-                    Write-StructuredLog -Level 'Information' -Message "Starting script execution initialization" -Component 'Initialize-ScriptExecution' -Operation 'Initialization' -CorrelationId $correlationId
-                    
-                    # Mock configuration loading
-                    try {
-                        if ($ConfigPath -and (Test-Path $ConfigPath -ErrorAction SilentlyContinue)) {
-                            $script:Config = ScriptConfiguration -ConfigPath $ConfigPath
-                        } else {
-                            if ($ConfigPath) {
-                                Write-Warning "Configuration file not found: $ConfigPath. Using default configuration."
-                            }
-                            $script:Config = ScriptConfiguration -ConfigPath "default"
-                        }
-                    }
-                    catch {
-                        Write-Warning "Error loading configuration: $($_.Exception.Message). Using default configuration."
-                        $script:Config = ScriptConfiguration -ConfigPath "default"
-                    }
-                    
-                    # Initialize logging system
-                    $loggingResult = Initialize-LoggingSystem -CorrelationId $correlationId -LogLevel $LogLevel
-                    if (-not $loggingResult.Success) {
-                        throw "Logging system initialization failed"
-                    }
-                    $script:LoggingSystem = $loggingResult.LoggingSystem
-                    
-                    # Initialize memory manager
-                    $memoryResult = Initialize-MemoryManager -MaxMemoryMB $script:Config.Settings.MemoryThresholdMB -CheckInterval 30 -CorrelationId $correlationId
-                    if (-not $memoryResult.Success) {
-                        throw "Memory manager initialization failed"
-                    }
-                    $script:MemoryManager = $memoryResult.MemoryManager
-                    
-                    return @{
-                        Success = $true
-                        Configuration = $script:Config.Settings
-                        MemoryManager = $script:MemoryManager
-                        LoggingSystem = $script:LoggingSystem
-                        CorrelationId = $correlationId
-                        Resources = @{ 
-                            ConfigObject = $script:Config
-                            LoggingObject = $script:LoggingSystem
-                            MemoryObject = $script:MemoryManager
-                        }
-                        Cleanup = @{
-                            Instructions = "Call Clear-ScriptResources to cleanup initialized resources"
-                        }
-                    }
-                }
-                catch {
-                    return @{
-                        Success = $false
-                        Error = $_.Exception.Message
-                        CorrelationId = $correlationId
-                        Configuration = if ($script:Config) { $script:Config.Settings } else { $null }
-                        MemoryManager = if ($script:MemoryManager) { $script:MemoryManager } else { $null }
-                        LoggingSystem = if ($script:LoggingSystem) { $script:LoggingSystem } else { $null }
-                    }
-                }
-            }
-'@
-            
-            # Remove the original and create our mock version
-            Remove-Item Function:\Initialize-ScriptExecution -ErrorAction SilentlyContinue
-            Invoke-Expression $mockFunction
+
+        It 'Defaults the log to .\Logs\OrphanedSid_<timestamp>.log when no path is given' {
+            Initialize-ScriptExecution | Out-Null
+
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -like '.\Logs\OrphanedSid_????????_??????.log' }
         }
-        
-        # Mock external dependencies
-        Mock Write-Verbose { } 
-        Mock Write-Warning { }
-        Mock Write-Error { }
-        Mock Write-StructuredLog { return $true }
-        Mock Test-Path { $true }
-        Mock Get-Content { '{"memoryThresholdMB": 512, "logLevel": "Information"}' }
-        Mock ConvertFrom-Json { @{ MemoryThresholdMB = 512; LogLevel = "Information" } }
-        Mock Initialize-LoggingSystem { 
-            return @{
-                Success = $true
-                LoggingSystem = @{
-                    Level = $LogLevel  # Pester 6 binds the mocked command's parameters as variables
-                    IsInitialized = $true
-                    LogPath = 'C:\Logs'
-                }
-            }
-        }
-        Mock Initialize-MemoryManager {
-            return @{
-                Success = $true
-                MemoryManager = @{
-                    MaxMemoryMB = $MaxMemoryMB  # Pester 6 binds the mocked command's parameters as variables
-                    IsInitialized = $true
-                    Initialize = { return $true }
-                }
+
+        It 'Passes the memory limit and the configured check interval to the memory manager with WhatIf pinned off' {
+            Initialize-ScriptExecution -MaxMemoryUsageMB 2048 -CorrelationId 'init-3' | Out-Null
+
+            Should -Invoke Initialize-MemoryManager -Times 1 -Exactly -ParameterFilter {
+                $MaxMemoryMB -eq 2048 -and $CheckInterval -eq 50 -and $CorrelationId -eq 'init-3' -and
+                $WhatIf -eq $false
             }
         }
     }
-    
-    Context "Configuration Loading and Validation" {
-        It "Should load configuration from valid file path" {
-            $configPath = "C:\ValidConfig\test-config.json"
-            Mock Test-Path { $true } -ParameterFilter { $Path -eq $configPath }
-            Mock Get-Content { '{"memoryThresholdMB": 1024}' } -ParameterFilter { $Path -eq $configPath }
-            
-            $result = Initialize-ScriptExecution -ConfigPath $configPath
-            
-            $result.Success | Should -Be $true
-            $result.Configuration.MemoryThresholdMB | Should -Be 512  # Using default from our mock
+
+    Context 'Configuration file' {
+        It 'Loads settings from the file when it exists' {
+            $cfg = Join-Path $script:workDir 'config.json'
+            @{ BatchSize = 25; MemoryCheckInterval = 10; LogLevel = 'Warning'; MaxLogFileSizeMB = 1 } | ConvertTo-Json | Set-Content $cfg
+
+            $result = Initialize-ScriptExecution -ConfigPath $cfg
+
+            $result.Config.BatchSize | Should -Be 25
+            $result.Config.MemoryCheckInterval | Should -Be 10
+            $result.Config.LogLevel | Should -Be 'Warning'
+            Should -Invoke Initialize-MemoryManager -Times 1 -Exactly -ParameterFilter { $CheckInterval -eq 10 }
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like "Loading configuration from file: $cfg" }
         }
-        
-        It "Should handle missing configuration file gracefully" {
-            $configPath = "C:\MissingConfig\nonexistent.json"
-            Mock Test-Path { $false } -ParameterFilter { $Path -eq $configPath }
-            
-            $result = Initialize-ScriptExecution -ConfigPath $configPath
-            
-            $result.Success | Should -Be $true
-            $result.Configuration | Should -Not -BeNullOrEmpty
+
+        It 'Falls back to the defaults when the file does not exist' {
+            $result = Initialize-ScriptExecution -ConfigPath (Join-Path $script:workDir 'missing.json')
+
+            $result.Config.BatchSize | Should -Be 50
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Using default configuration' }
         }
-        
-        It "Should validate configuration structure" {
-            $result = Initialize-ScriptExecution -ConfigPath "test.json"
-            
-            $result.Success | Should -Be $true
-            $result.Configuration.MemoryThresholdMB | Should -BeGreaterThan 0
+
+        It 'Throws when the file holds an invalid setting' {
+            $cfg = Join-Path $script:workDir 'bad.json'
+            @{ BatchSize = 5000 } | ConvertTo-Json | Set-Content $cfg
+
+            { Initialize-ScriptExecution -ConfigPath $cfg } | Should -Throw -ExpectedMessage '*BatchSize must be between 1 and 1000*'
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Script initialization failed:*' }
         }
-        
-        It "Should apply default configuration when invalid JSON" {
-            $result = Initialize-ScriptExecution -ConfigPath "invalid.json"
-            
-            $result.Success | Should -Be $true
-            $result.Configuration | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should validate memory threshold boundaries" {
-            $result = Initialize-ScriptExecution -ConfigPath "test.json"
-            
-            $result.Configuration.MemoryThresholdMB | Should -BeGreaterThan 99
+
+        It 'Uses the log file path from the configuration over the parameter' {
+            $cfg = Join-Path $script:workDir 'logpath.json'
+            @{ LogFilePath = 'C:\Logs\from-config.log' } | ConvertTo-Json | Set-Content $cfg
+
+            $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\param.log"
+
+            $result.LogPath | Should -Be 'C:\Logs\from-config.log'
         }
     }
-    
-    Context "Memory Manager Initialization" {
-        It "Should initialize memory manager with configuration" {
-            $result = Initialize-ScriptExecution -ConfigPath "test.json"
-            
-            $result.Success | Should -Be $true
-            $result.MemoryManager | Should -Not -BeNullOrEmpty
-            $result.MemoryManager.IsInitialized | Should -Be $true
+
+    Context 'Log rotation' {
+        It 'Moves a log that exceeds the configured size aside before the run' {
+            $cfg = Join-Path $script:workDir 'rotate.json'
+            @{ MaxLogFileSizeMB = 1; EnableLogFileRotation = $true } | ConvertTo-Json | Set-Content $cfg
+            $log = Join-Path $script:workDir 'big.log'
+            $stream = [IO.File]::Create($log); $stream.SetLength(2MB); $stream.Dispose()
+
+            Initialize-ScriptExecution -ConfigPath $cfg -LogPath $log | Out-Null
+
+            Test-Path $log | Should -BeFalse
+            @(Get-ChildItem $script:workDir -Filter 'big_*.log').Count | Should -Be 1
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like 'Rotated log file to:*' }
         }
-        
-        It "Should handle memory manager initialization failure" {
-            Mock Initialize-MemoryManager { 
-                return @{ Success = $false; Error = "Memory initialization failed" }
+
+        It 'Leaves a small log alone' {
+            $log = Join-Path $script:workDir 'small.log'
+            'one line' | Set-Content $log
+
+            Initialize-ScriptExecution -LogPath $log | Out-Null
+
+            Test-Path $log | Should -BeTrue
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Rotated log file to:*' }
+        }
+
+        It 'Leaves an oversized log alone when rotation is disabled' {
+            $cfg = Join-Path $script:workDir 'norotate.json'
+            @{ MaxLogFileSizeMB = 1; EnableLogFileRotation = $false } | ConvertTo-Json | Set-Content $cfg
+            $log = Join-Path $script:workDir 'big2.log'
+            $stream = [IO.File]::Create($log); $stream.SetLength(2MB); $stream.Dispose()
+
+            Initialize-ScriptExecution -ConfigPath $cfg -LogPath $log | Out-Null
+
+            Test-Path $log | Should -BeTrue
+        }
+
+        It 'Warns and carries on when the rotation itself fails' {
+            $cfg = Join-Path $script:workDir 'rotatefail.json'
+            @{ MaxLogFileSizeMB = 1 } | ConvertTo-Json | Set-Content $cfg
+            $log = Join-Path $script:workDir 'locked.log'
+            $stream = [IO.File]::Create($log); $stream.SetLength(2MB)
+            try {
+                $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath $log
+
+                $result.Config | Should -Not -BeNullOrEmpty
+                Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like 'Log file rotation check failed:*' }
             }
-            
-            $result = Initialize-ScriptExecution -ConfigPath "test.json"
-            
-            $result.Success | Should -Be $false
-            $result.Error | Should -Match "Memory manager initialization failed"
-        }
-        
-        It "Should configure memory threshold correctly" {
-            $result = Initialize-ScriptExecution -ConfigPath "test.json"
-            
-            $result.MemoryManager.MaxMemoryMB | Should -BeGreaterThan 0
-        }
-        
-        It "Should validate memory manager object creation" {
-            $result = Initialize-ScriptExecution
-            
-            $result.MemoryManager | Should -Not -BeNullOrEmpty
-            $result.MemoryManager.IsInitialized | Should -Be $true
-        }
-    }
-    
-    Context "Logging System Setup" {
-        It "Should initialize logging system successfully" {
-            $result = Initialize-ScriptExecution -LogLevel 'Debug'
-            
-            $result.Success | Should -Be $true
-            $result.LoggingSystem | Should -Not -BeNullOrEmpty
-            $result.LoggingSystem.IsInitialized | Should -Be $true
-        }
-        
-        It "Should handle logging system initialization failure" {
-            Mock Initialize-LoggingSystem { 
-                return @{ Success = $false; Error = "Logging initialization failed" }
+            finally {
+                $stream.Dispose()
             }
-            
-            $result = Initialize-ScriptExecution
-            
-            $result.Success | Should -Be $false
-            $result.Error | Should -Match "Logging system initialization failed"
-        }
-        
-        It "Should configure log level from parameter" {
-            $result = Initialize-ScriptExecution -LogLevel 'Verbose'
-            
-            $result.LoggingSystem.Level | Should -Be 'Verbose'
-        }
-        
-        It "Should apply default log level when not specified" {
-            $result = Initialize-ScriptExecution
-            
-            $result.LoggingSystem.Level | Should -Not -BeNullOrEmpty
         }
     }
-    
-    Context "Default Parameter Handling" {
-        It "Should provide default memory threshold" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Configuration.MemoryThresholdMB | Should -BeGreaterThan 99
-            $result.Configuration.MemoryThresholdMB | Should -BeLessThan 16385
-        }
-        
-        It "Should provide default retry settings" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Configuration.MaxRetryAttempts | Should -BeGreaterThan 0
-            $result.Configuration.RetryDelaySeconds | Should -BeGreaterThan 0
-        }
-        
-        It "Should provide default batch processing settings" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Configuration.BatchSize | Should -BeGreaterThan 0
-        }
-        
-        It "Should enable audit trail by default" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Configuration.AuditTrailEnabled | Should -Be $true
-        }
-    }
-    
-    Context "Error Recovery Mechanisms" {
-        BeforeEach {
-            # Reset mocks for this context to avoid interference
-            Mock Test-Path { $true }
-            Mock Write-StructuredLog { return $true }
-        }
-        
-        It "Should recover from configuration loading errors" {
-            # Only mock Test-Path for the specific config file, not the function loading
-            Mock Test-Path { 
-                if ($Path -like "*test.json") {
-                    throw "File system error" 
-                } else {
-                    return $true
-                }
-            } 
-            
-            $result = Initialize-ScriptExecution -ConfigPath "test.json"
-            
-            $result.Success | Should -Be $true
-            $result.Configuration | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should provide correlation ID for error tracking" {
-            Mock Initialize-LoggingSystem { 
-                return @{ Success = $false; Error = "Initialization error" }
+
+    Context 'Failures' {
+        It 'Logs at Error level and rethrows when logging cannot start' {
+            Mock Initialize-LoggingSystem { throw 'no log folder' }
+
+            { Initialize-ScriptExecution -CorrelationId 'init-4' } | Should -Throw -ExpectedMessage '*no log folder*'
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like '*no log folder*' -and $CorrelationId -eq 'init-4'
             }
-            
-            $result = Initialize-ScriptExecution
-            
-            $result.CorrelationId | Should -Not -BeNullOrEmpty
-            $result.CorrelationId | Should -Match "^[A-Fa-f0-9\-]{36}$"
-        }
-        
-        It "Should log initialization steps for troubleshooting" {
-            $result = Initialize-ScriptExecution
-            
-            # In Pester 3.4.x, check if the mock was called by verifying behavior
-            $result.Success | Should -Be $true
-        }
-        
-        It "Should handle partial initialization gracefully" {
-            Mock Initialize-LoggingSystem { 
-                return @{ Success = $false; Error = "Logging failed" }
-            }
-            
-            $result = Initialize-ScriptExecution
-            
-            $result.Success | Should -Be $false
-            $result.CorrelationId | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    Context "Security Validation" {
-        It "Should sanitize configuration file path" {
-            $maliciousPath = "config.json'; Remove-Item C:\*; #"
-            
-            $result = Initialize-ScriptExecution -ConfigPath $maliciousPath
-            
-            $result.Success | Should -Be $true
-            # Function should sanitize and still work
-        }
-        
-        It "Should validate log level parameter values" {
-            $result = Initialize-ScriptExecution -LogLevel 'InvalidLevel'
-            
-            $result.Success | Should -Be $true
-            $validLevels = @('Debug', 'Verbose', 'Information', 'Warning', 'Error', 'InvalidLevel')
-            $validLevels -contains $result.LoggingSystem.Level | Should -Be $true
-        }
-        
-        It "Should include security validation in configuration" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Configuration.SecurityValidationLevel | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    Context "Resource Management" {
-        It "Should track initialization resources" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Resources | Should -Not -BeNullOrEmpty
-            $result.Resources.Count | Should -BeGreaterThan 0
-        }
-        
-        It "Should provide cleanup instructions" {
-            $result = Initialize-ScriptExecution
-            
-            $result.Cleanup | Should -Not -BeNullOrEmpty
-            $result.Cleanup.Instructions | Should -Not -BeNullOrEmpty
         }
     }
 }

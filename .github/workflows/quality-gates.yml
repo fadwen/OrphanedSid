@@ -4,7 +4,7 @@
 #
 #   tests     Windows, PowerShell 7. PSScriptAnalyzer over the shipping code with zero tolerance,
 #             over the tests with a relaxed rule set, then the whole Pester suite shuffled with an
-#             coverage gate over Public/ and Private/ (a ratchet, 60% today; see the step). Every Active Directory cmdlet the suite
+#             80% coverage gate over Public/ and Private/. Every Active Directory cmdlet the suite
 #             touches is mocked; Tests/TestHelpers/ADCmdletStubs.ps1 defines placeholders when
 #             RSAT is absent, so the suite reaches no directory.
 #
@@ -101,7 +101,7 @@ jobs:
           $cfg.CodeCoverage.Enabled = $true
           $cfg.CodeCoverage.Path = './Public/*.ps1', './Private/*/*.ps1'
           # CoveragePercentTarget only reports; the gate below is what enforces it.
-          $cfg.CodeCoverage.CoveragePercentTarget = 60
+          $cfg.CodeCoverage.CoveragePercentTarget = 80
 
           $result = Invoke-Pester -Configuration $cfg
 
@@ -111,10 +111,10 @@ jobs:
                   "container(s) failed under shuffle seed $seed.")
           }
 
-          # The gate is a ratchet. The suite the module inherited measures 62% because many of its
-          # files test a stub of the function rather than the function; 60 holds that line while
-          # those files are replaced. Raise the number as coverage rises; never lower it.
-          $coverageGate = 60
+          # 80% is the standards' floor. The suite measures about 81% after the stub-testing files were
+          # replaced with tests of the real functions (#2). Raise the number as coverage rises; never
+          # lower it.
+          $coverageGate = 80
           $coverage = [math]::Round($result.CodeCoverage.CoveragePercent, 2)
           Write-Host "Code coverage: $coverage% (gate $coverageGate%)"
           if ($coverage -lt $coverageGate) {

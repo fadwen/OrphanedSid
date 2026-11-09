@@ -1,220 +1,208 @@
-# Pester tests for Invoke-SIDRemoval function
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
+#Requires -Version 5.1
 
-# Mock functions for testing
-# Function under test
+<#
+.SYNOPSIS
+    Unit tests for Invoke-SIDRemoval, which strips the allowed orphaned SIDs out of an ACL object.
+
+.DESCRIPTION
+    Tests the real function against an ACL double: an object with an Access collection of ACEs and a
+    RemoveAccessRuleSpecific method that removes from that collection and records the call, which is
+    all the function uses of System.DirectoryServices.ActiveDirectorySecurity. The earlier version of
+    this file defined its own Invoke-SIDRemoval with a different parameter set and tested that.
+#>
+
 BeforeAll {
-    function Write-StructuredLog {
-        param($Level, $Message, $CorrelationId, $SecurityContext)
-        # Mock implementation
-    }
+    . "$PSScriptRoot\..\..\..\..\Private\ACL\Invoke-SIDRemoval.ps1"
 
-    function Test-ValidDistinguishedName {
-        param($DistinguishedName)
-        if ($DistinguishedName -match '^CN=|^OU=|^DC=') {
-            return $true
-        }
-        return $false
-    }
+    function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
-    function Invoke-ADOperationWithRetry {
-        param($ScriptBlock, $MaxRetries, $OperationName, $ObjectContext, $CorrelationId)
-        return & $ScriptBlock
-    }
-
-    function Get-ACLForRemoval {
-        param($ObjectDistinguishedName)
-        return [PSCustomObject]@{
-            DistinguishedName = $ObjectDistinguishedName
-            OrphanedSIDs = @(
-                [PSCustomObject]@{
-                    SID = "S-1-5-21-1234567890-1001"
-                    Type = "Unknown"
-                }
-            )
+    function New-TestAce {
+        param([string]$Sid, [string]$Rights = 'GenericRead')
+        [PSCustomObject]@{
+            IdentityReference     = [PSCustomObject]@{ Value = $Sid }
+            ActiveDirectoryRights = $Rights
         }
     }
 
-    function Invoke-SIDRemoval {
-        [CmdletBinding(SupportsShouldProcess)]
-        param(
-            [string]$ObjectDistinguishedName,
-            [string[]]$OrphanedSIDs,
-            [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
-        )
-        
-        # Custom parameter validation to avoid prompting
-        if ([string]::IsNullOrEmpty($ObjectDistinguishedName)) {
-            throw [System.Management.Automation.ParameterBindingException]::new("Cannot bind argument to parameter 'ObjectDistinguishedName' because it is an empty string.")
+    # An ACL double. $FailFor names SIDs whose removal throws, to drive the per-ACE catch.
+    function New-TestAcl {
+        param([object[]]$Aces, [string[]]$FailFor = @())
+        $acl = [PSCustomObject]@{
+            Access  = [System.Collections.ArrayList]::new($Aces)
+            Removed = [System.Collections.Generic.List[string]]::new()
+            FailFor = $FailFor
         }
-        
-        if ($null -eq $OrphanedSIDs -or $OrphanedSIDs.Count -eq 0) {
-            throw [System.Management.Automation.ParameterBindingException]::new("Cannot bind argument to parameter 'OrphanedSIDs' because it is null.")
+        $acl | Add-Member -MemberType ScriptMethod -Name RemoveAccessRuleSpecific -Value {
+            param($Ace)
+            if ($this.FailFor -contains $Ace.IdentityReference.Value) { throw "Access is denied for $($Ace.IdentityReference.Value)" }
+            $this.Removed.Add($Ace.IdentityReference.Value)
+            $this.Access.Remove($Ace)
         }
-        
-        if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDistinguishedName)) {
-            throw "Invalid distinguished name format"
-        }
-        
-        foreach ($sid in $OrphanedSIDs) {
-            if ($sid -notmatch '^S-1-[0-59]-\d+') {
-                throw "Invalid SID format: $sid"
-            }
-            
-            if ($sid -match "malicious|injection") {
-                throw "Invalid SID detected"
-            }
-        }
-        
-        if ($WhatIfPreference) {
-            Write-StructuredLog -Level Information -Message "WhatIf: Would remove SIDs" -CorrelationId $CorrelationId
-            return [PSCustomObject]@{
-                ObjectDistinguishedName = $ObjectDistinguishedName
-                SIDsToRemove = $OrphanedSIDs
-                WhatIf = $true
-                Success = $true
-            }
-        }
-        
-        $result = Invoke-ADOperationWithRetry -ScriptBlock {
-            if ($ObjectDistinguishedName -eq "CN=TestFailure,DC=domain,DC=com") {
-                throw "Access denied"
-            }
-            
-            [PSCustomObject]@{
-                ObjectDistinguishedName = $ObjectDistinguishedName
-                SIDsRemoved = $OrphanedSIDs
-                Success = $true
-                RemovedCount = $OrphanedSIDs.Count
-            }
-        } -MaxRetries 3 -OperationName "RemoveSIDs" -ObjectContext $ObjectDistinguishedName -CorrelationId $CorrelationId
-        
-        Write-StructuredLog -Level Information -Message "SIDs removed successfully" -CorrelationId $CorrelationId -SecurityContext @{
-            ObjectDN = $ObjectDistinguishedName
-            SIDCount = $OrphanedSIDs.Count
-        }
-        
-        return $result
+        return $acl
     }
+
+    $script:orphan1 = 'S-1-5-21-111-222-333-9001'
+    $script:orphan2 = 'S-1-5-21-111-222-333-9002'
+    $script:keep = 'S-1-5-21-111-222-333-1105'
+    $script:dn = 'CN=Finance Share,OU=Groups,DC=contoso,DC=com'
 }
 
-Describe "Invoke-SIDRemoval" {
-    
-    Context "Parameter Validation" {
-        It "Should -throw when ObjectDistinguishedName is null or empty" {
-            { Invoke-SIDRemoval -OrphanedSIDs @("S-1-5-21-1234567890-1001") } | Should -Throw "*Cannot bind argument to parameter 'ObjectDistinguishedName' because it is an empty string.*"
+Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
+
+    BeforeEach {
+        Mock Write-StructuredLog { }
+        $script:acl = New-TestAcl -Aces @(
+            (New-TestAce -Sid $script:keep -Rights 'GenericAll')
+            (New-TestAce -Sid $script:orphan1)
+            (New-TestAce -Sid $script:orphan2 -Rights 'WriteProperty')
+        )
+    }
+
+    Context 'Parameter validation' {
+        It 'Rejects a null ACL' {
+            { Invoke-SIDRemoval -ACL $null -AllowedSIDs $script:orphan1 } | Should -Throw
         }
-        
-        It "Should -throw when ObjectDistinguishedName is empty string" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "" -OrphanedSIDs @("S-1-5-21-1234567890-1001") } | Should -Throw "*Cannot bind argument to parameter 'ObjectDistinguishedName' because it is an empty string.*"
+
+        It 'Rejects an empty allowed list' {
+            { Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs @() } | Should -Throw
         }
-        
-        It "Should -throw when OrphanedSIDs is null" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs $null } | Should -Throw "*Cannot bind argument to parameter 'OrphanedSIDs' because it is null.*"
+
+        It 'Throws for a SID that is not in S-x-y-z form' {
+            { Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs 'CONTOSO\Finance' } |
+                Should -Throw -ExpectedMessage '*Invalid SID format: CONTOSO\Finance*'
+            $script:acl.Removed.Count | Should -Be 0
         }
-        
-        It "Should -throw when OrphanedSIDs is empty array" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @() } | Should -Throw "*Cannot bind argument to parameter 'OrphanedSIDs' because it is null.*"
+
+        It 'Throws for an object that is not an ACL' {
+            $notAnAcl = [PSCustomObject]@{ InvalidProperty = 1 }
+
+            { Invoke-SIDRemoval -ACL $notAnAcl -AllowedSIDs $script:orphan1 } |
+                Should -Throw -ExpectedMessage '*must have Access property*'
         }
-        
-        It "Should accept valid parameters" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
-            $result | Should -Not -BeNullOrEmpty
+
+        It 'Treats an object without an Access collection as an empty ACL' {
+            $bare = [PSCustomObject]@{ Owner = 'CONTOSO\Domain Admins' }
+
+            $result = Invoke-SIDRemoval -ACL $bare -AllowedSIDs $script:orphan1
+
+            $result.Success | Should -BeTrue
+            $result.SIDFound | Should -BeFalse
+            $result.RulesProcessed | Should -Be 0
+            @($bare.Access).Count | Should -Be 0
         }
     }
-    
-    Context "SID Validation" {
-        It "Should validate SID format" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("InvalidSID") } | Should -Throw "*Invalid SID format*"
+
+    Context 'Removing orphaned entries' {
+        It 'Removes every ACE whose identity is in the allowed list and keeps the rest' {
+            $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan1, $script:orphan2 -ObjectDN $script:dn -CorrelationId 'rm-1'
+
+            $result.PSTypeNames | Should -Contain 'SIDRemovalResult'
+            $result.Success | Should -BeTrue
+            $result.SIDFound | Should -BeTrue
+            $result.RemovedSIDs | Should -Be @($script:orphan1, $script:orphan2)
+            $result.FoundSIDs | Should -Be @($script:orphan1, $script:orphan2)
+            $result.FailedSIDs | Should -BeNullOrEmpty
+            $result.RulesFound | Should -Be 2
+            $result.RulesRemoved | Should -Be 2
+            $result.RulesProcessed | Should -Be 3
+            $result.PreservedSIDs | Should -Be @($script:keep)
+            $result.DryRun | Should -BeFalse
+            $result.CorrelationId | Should -Be 'rm-1'
+            $result.ModifiedACL | Should -Be $script:acl
+            $script:acl.Removed | Should -Be @($script:orphan1, $script:orphan2)
+            @($script:acl.Access).Count | Should -Be 1
         }
-        
-        It "Should accept valid SID formats" {
-            $validSIDs = @("S-1-5-21-1234567890-1001", "S-1-5-32-544")
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs $validSIDs
-            $result.Success | Should -Be $true
+
+        It 'Leaves an ACL alone when none of the allowed SIDs appear in it' {
+            $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs 'S-1-5-21-111-222-333-7777'
+
+            $result.Success | Should -BeTrue
+            $result.SIDFound | Should -BeFalse
+            $result.RulesFound | Should -Be 0
+            $result.RemovedSIDs | Should -BeNullOrEmpty
+            $result.PreservedSIDs.Count | Should -Be 3
+            $script:acl.Removed.Count | Should -Be 0
         }
-        
-        It "Should process multiple SIDs" {
-            $multipleSIDs = @("S-1-5-21-1234567890-1001", "S-1-5-21-1234567890-1002", "S-1-5-21-1234567890-1003")
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs $multipleSIDs
-            $result.RemovedCount | Should -Be 3
+
+        It 'Removes only the allowed SIDs, not every unresolved one' {
+            $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan2
+
+            $result.RemovedSIDs | Should -Be @($script:orphan2)
+            $result.PreservedSIDs | Should -Be @($script:keep, $script:orphan1)
         }
-    }
-    
-    Context "SID Removal Operations" {
-        It "Should remove SIDs successfully" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
-            $result.Success | Should -Be $true
-            $result.SIDsRemoved -contains "S-1-5-21-1234567890-1001" | Should -Be $true
+
+        It 'Reports a SID once when it holds several ACEs' {
+            $acl = New-TestAcl -Aces @(
+                (New-TestAce -Sid $script:orphan1 -Rights 'GenericRead')
+                (New-TestAce -Sid $script:orphan1 -Rights 'WriteProperty')
+            )
+
+            $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1
+
+            $result.RemovedSIDs | Should -Be @($script:orphan1)
+            $result.RulesRemoved | Should -Be 1
+            $acl.Removed.Count | Should -Be 2
+            @($acl.Access).Count | Should -Be 0
         }
-        
-        It "Should return correct object structure" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
-            $result.ObjectDistinguishedName | Should -Be "CN=TestUser,DC=domain,DC=com"
-            $result.Success | Should -Be $true
-            $result.RemovedCount | Should -Be 1
-        }
-        
-        It "Should handle DN with special characters" {
-            $specialDN = "CN=Test User (Special),OU=Users,DC=domain,DC=com"
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName $specialDN -OrphanedSIDs @("S-1-5-21-1234567890-1001")
-            $result.ObjectDistinguishedName | Should -Be $specialDN
-        }
-        
-        It "Should count removed SIDs correctly" {
-            $testSIDs = @("S-1-5-21-1234567890-1001", "S-1-5-21-1234567890-1002")
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs $testSIDs
-            $result.RemovedCount | Should -Be 2
-        }
-    }
-    
-    Context "WhatIf Support" {
-        It "Should support WhatIf mode" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001") -WhatIf
-            $result.WhatIf | Should -Be $true
-            $result.SIDsToRemove | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should not actually remove SIDs in WhatIf mode" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001") -WhatIf
-            $result.SIDsToRemove | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    Context "Error Handling" {
-        It "Should handle access denied errors" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestFailure,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001") } | Should -Throw
-        }
-        
-        It "Should validate distinguished name format" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "InvalidFormat" -OrphanedSIDs @("S-1-5-21-1234567890-1001") } | Should -Throw
+
+        It 'Logs each removal at Verbose level with the rights it carried' {
+            Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan2 -CorrelationId 'rm-2' | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
+                $Level -eq 'Verbose' -and $Message -like "REMOVED ACE: $($script:orphan2) - WriteProperty" -and $CorrelationId -eq 'rm-2'
+            }
         }
     }
-    
-    Context "Security Validation" {
-        It "Should reject malicious SIDs" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-malicious-1001") } | Should -Throw
-        }
-        
-        It "Should reject injection attempts in SIDs" {
-            { Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-injection-1001") } | Should -Throw
+
+    Context 'WhatIf mode' {
+        It 'Reports what it would remove and changes nothing' {
+            $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan1, $script:orphan2 -WhatIfMode
+
+            $result.DryRun | Should -BeTrue
+            $result.SIDFound | Should -BeTrue
+            $result.FoundSIDs | Should -Be @($script:orphan1, $script:orphan2)
+            $result.RemovedSIDs | Should -BeNullOrEmpty
+            $result.RulesRemoved | Should -Be 0
+            $result.Success | Should -BeTrue
+            $script:acl.Removed.Count | Should -Be 0
+            @($script:acl.Access).Count | Should -Be 3
+            Should -Invoke Write-StructuredLog -Times 2 -Exactly -ParameterFilter { $Message -like 'WOULD REMOVE ACE:*' }
         }
     }
-    
-    Context "Integration and Dependencies" {
-        It "Should validate distinguished names" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
-            $result | Should -Not -BeNullOrEmpty
+
+    Context 'Failures during removal' {
+        It 'Records a SID whose removal threw and carries on with the others' {
+            $acl = New-TestAcl -FailFor $script:orphan1 -Aces @(
+                (New-TestAce -Sid $script:keep)
+                (New-TestAce -Sid $script:orphan1)
+                (New-TestAce -Sid $script:orphan2)
+            )
+
+            $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1, $script:orphan2
+
+            $result.Success | Should -BeFalse
+            $result.PartialSuccess | Should -BeTrue
+            $result.FailedSIDs | Should -Be @($script:orphan1)
+            $result.RemovedSIDs | Should -Be @($script:orphan2)
+            $result.ErrorMessage | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like "FAILED to process SID $($script:orphan1)*denied*"
+            }
         }
-        
-        It "Should use retry mechanisms" {
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
-            $result.Success | Should -Be $true
-        }
-        
-        It "Should maintain correlation ID" {
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            $result = Invoke-SIDRemoval -ObjectDistinguishedName "CN=TestUser,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001") -CorrelationId $correlationId
-            $result | Should -Not -BeNullOrEmpty
+
+        It 'Reports no partial success when every removal failed' {
+            $acl = New-TestAcl -FailFor $script:orphan1, $script:orphan2 -Aces @(
+                (New-TestAce -Sid $script:orphan1)
+                (New-TestAce -Sid $script:orphan2)
+            )
+
+            $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1, $script:orphan2
+
+            $result.Success | Should -BeFalse
+            $result.PartialSuccess | Should -BeFalse
+            $result.FailedSIDs.Count | Should -Be 2
+            $result.RemovedSIDs | Should -BeNullOrEmpty
         }
     }
 }

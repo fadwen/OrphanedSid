@@ -293,7 +293,8 @@ function Initialize-ScriptExecution {
 
                     if ($script:Config.EnableLogFileRotation -and $fileSizeMB -gt $script:Config.MaxLogFileSizeMB) {
                         $rotatedPath = $script:LogPath -replace '\.log$', "_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-                        Move-Item $script:LogPath $rotatedPath
+                        # -ErrorAction Stop: a non-terminating failure here was logged as a successful rotation
+                        Move-Item $script:LogPath $rotatedPath -ErrorAction Stop
                         Write-StructuredLog "Rotated log file to: $rotatedPath (Size: $fileSizeMB MB)" -Level Information -Component 'Initialization' -CorrelationId $CorrelationId
                     }
                 } catch {

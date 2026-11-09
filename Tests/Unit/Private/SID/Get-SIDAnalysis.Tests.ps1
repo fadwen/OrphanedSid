@@ -323,7 +323,9 @@ Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tag @("Unit", "SI
             
             $results = $sidCollection | Get-SIDAnalysis
             
-            $afterMemory = [System.GC]::GetTotalMemory($false)
+            # Collected on both sides: the uncollected figure is garbage-collector timing, and on the
+            # Windows PowerShell 5.1 runner it measured 58 MB for 50 strings
+            $afterMemory = [System.GC]::GetTotalMemory($true)
             $memoryUsed = ($afterMemory - $beforeMemory) / 1MB
             
             # Memory usage Should -be reasonable (less than 50MB for 50 SIDs)

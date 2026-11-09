@@ -108,16 +108,17 @@ parameter its callee lacks. When a helper needs a sibling that works on a file p
 loaded data, give it a distinct name (`Test-BackupFileIntegrity`, `Get-BackupFileMetadata`) rather
 than a second definition.
 
-### The coverage gate is a ratchet
+### The coverage gate is 80% and only goes up
 
-`quality-gates.yml` fails below 60% line coverage over `Public/` and `Private/`. The suite the
-module inherited measures 62%, because many of its files test a stub of the function rather than
-the function (`Set-ModifiedACL.Tests.ps1` defines its own `Set-ModifiedACL`). When a file is
-replaced with tests of the real function, raise the number in the workflow to what the run then
-measures. Never lower it. v1.0.0 is not tagged until the gate is 80% and green; that work is its
-own pull request, tracked in the repository's issues, not part of the conversion. The workflow also sets `$ErrorActionPreference = 'Continue'` before `Invoke-Pester`, because the
-GitHub shells prepend a Stop preference to every step: it reaches the functions under test and
-turns a per-item `Write-Error` into a termination the tests do not expect.
+`quality-gates.yml` fails below 80% line coverage over `Public/` and `Private/`; the suite measures
+about 81%. The module arrived with test files that defined a stub of their subject and tested the
+stub (`Set-ModifiedACL.Tests.ps1` defined its own `Set-ModifiedACL`), which is why coverage was 62%
+with 2,400 passing tests. A test file dot-sources the real function and mocks only its
+collaborators; `Tests/TestHelpers/ADCmdletStubs.ps1` supplies the Active Directory cmdlets, and the
+`ADIdentityNotFoundException` type, when RSAT is absent. Raise the gate as coverage rises; never
+lower it. The workflow also sets `$ErrorActionPreference = 'Continue'` before `Invoke-Pester`,
+because the GitHub shells prepend a Stop preference to every step: it reaches the functions under
+test and turns a per-item `Write-Error` into a termination the tests do not expect.
 
 ### The analyzer gate is strict on shipping code and relaxed on tests
 

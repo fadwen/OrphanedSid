@@ -207,7 +207,7 @@ function Find-OrphanedSIDsInObject {
                 if (-not $obj.nTSecurityDescriptor) {
                     Write-StructuredLog "No security descriptor found for $objectDN" -Level Debug -CorrelationId $CorrelationId
                     $processingStats.SkippedSIDs++
-                    return $results.ToArray()
+                    continue
                 }
 
                 # Delegate security descriptor processing to specialized module
@@ -216,7 +216,7 @@ function Find-OrphanedSIDsInObject {
                 if (-not $accessRules) {
                     Write-StructuredLog "No access rules retrieved for $objectDN" -Level Debug -CorrelationId $CorrelationId
                     $processingStats.SkippedSIDs++
-                    return $results.ToArray()
+                    continue
                 }
 
                 $processingStats.AccessRulesRetrieved = $accessRules.Count
@@ -268,8 +268,9 @@ function Find-OrphanedSIDsInObject {
                     [System.GC]::WaitForPendingFinalizers()
                 }
 
-                # Return results for this object
-                return $results.ToArray()
+                # Emit this object's results and carry on: a return here would end the foreach and skip
+                # every object after the first when several arrive by parameter
+                $results.ToArray()
             }
             catch {
                 $processingStats.ErrorsEncountered++
@@ -279,7 +280,7 @@ function Find-OrphanedSIDsInObject {
                 # Log final processing statistics even on error
                 Write-StructuredLog "Processing statistics for $($processingStats.ObjectDN) : Processed: $($processingStats.ProcessedSIDs), Errors: $($processingStats.ErrorsEncountered), Orphaned found: $($processingStats.OrphanedSIDsFound)" -Level Debug -CorrelationId $CorrelationId
 
-                return $results.ToArray()
+                $results.ToArray()
             }
         }
     }

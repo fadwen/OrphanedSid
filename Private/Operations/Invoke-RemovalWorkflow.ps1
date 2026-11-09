@@ -230,7 +230,9 @@ function Invoke-RemovalWorkflow {
             if ($PSCmdlet.ShouldProcess($ObjectDistinguishedName, "Apply SID removal changes")) {
                 $applicationSuccess = Set-ModifiedACL -ACL $removalResults.ModifiedACL -ObjectDN $ObjectDistinguishedName -CorrelationId $CorrelationId
 
-                if ($applicationSuccess) {
+                # Set-ModifiedACL returns an ACLApplicationResult, which is truthy even when the write
+                # failed; only its Success property says whether the ACL was applied
+                if ($applicationSuccess.Success) {
                     # Log successful operation
                     Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "ACL modification operation completed successfully" -Outcome 'Success' -CorrelationId $CorrelationId -SecurityContext @{
                         Operation = 'RemoveOrphanedSIDs'
