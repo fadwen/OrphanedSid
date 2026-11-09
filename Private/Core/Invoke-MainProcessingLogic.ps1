@@ -320,7 +320,8 @@ function Invoke-MainProcessingLogic {
                         # Additional memory management for large operations
                         if ($processedCount % 100 -eq 0) {
                             # Use centralized cleanup for large operations
-                            $cleanupResult = Invoke-Cleanup -CorrelationId $CorrelationId
+                            # Pinned: housekeeping, not the operation -WhatIf rehearses
+                            $cleanupResult = Invoke-Cleanup -CorrelationId $CorrelationId -WhatIf:$false
                             Write-Verbose "Memory usage at $processedCount objects: $($cleanupResult.MemoryAfterMB) MB (Freed: $($cleanupResult.MemoryFreedMB) MB)"
                         }
 

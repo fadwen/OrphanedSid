@@ -25,7 +25,7 @@ Invoke-MainProcessingLogic                      (Private\Core)
           New-OrphanedSIDResult                 (Private\SID\New-SIDResult.ps1)
       attach ProcessingStatistics to each result
     StreamingResultsManager.AddResult(...)      (batch files under $env:TEMP\OrphanedSid-<CorrelationId>)
-    if -Remove: Remove-OrphanedSidEntry per result
+    under Remove-OrphanedSid: Remove-OrphanedSidEntry per result
 ```
 
 Objects are processed sequentially; there is no parallel path.
@@ -55,7 +55,8 @@ see them.
 | `No security descriptor found for <DN>` | Object arrived without `nTSecurityDescriptor` |
 | `No access rules retrieved for <DN>` | `Get-ObjectAccessRule` returned nothing; a Warning `All security descriptor retrieval methods failed for <DN>` usually precedes it (see `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`) |
 
-Skips are not errors. `Processing errors` in the summary counts exceptions caught by the main loop,
+Skips are not errors. `Processing errors` in the summary counts exceptions caught by the per-object
+loop in `Invoke-MainProcessingLogic`,
 not skipped objects.
 
 ### 2. Rules Evaluated but No Result Created
@@ -85,7 +86,7 @@ Select-String -Path .\Logs\<Command>_*.log -Pattern 'ORPHANED ACCOUNT DETECTED' 
 `Test-OrphanedSID` tries, in order: `Get-ADObject -Filter "objectSid -eq '<sid>'"`, the same
 with `-IncludeDeletedObjects`, `SecurityIdentifier.Translate`, then `Get-ADUser`, `Get-ADGroup`
 and `Get-ADComputer`. Each AD call goes through `Invoke-ADOperationWithRetry`, which retries
-transient errors up to its own default of 3 attempts (the main script's `-MaxRetries` does not reach
+transient errors up to its own default of 3 attempts (the commands' `-MaxRetries` does not reach
 it). When every method fails, the SID is marked orphaned
 (`SID could not be resolved - marking as orphaned: <sid>` at Debug) and cached for the rest of the
 run. An exception in the function itself also marks the SID orphaned (`Error testing SID for
@@ -104,7 +105,7 @@ Get-ADObject -Filter "objectSid -eq '$sid'" -IncludeDeletedObjects
 ([System.Security.Principal.SecurityIdentifier]$sid).Translate([System.Security.Principal.NTAccount])
 ```
 
-Never run `-Remove` on results from a run whose log shows lookup failures.
+Never run `Remove-OrphanedSid` against a scope whose discovery log shows lookup failures.
 
 ### 4. Errors Inside the Workflow
 
@@ -117,19 +118,20 @@ Never run `-Remove` on results from a run whose log shows lookup failures.
 | `Error processing object <DN>: <message>` then `Retry attempt N of M for object <DN>` | Error / Warning | `Invoke-MainProcessingLogic` | Object retried up to `-MaxRetries` times with 2s, 4s, 6s... back-off; `Max retries (M) exceeded for object <DN>` when exhausted |
 
 Errors never abort the run; the next object is processed. `Processing errors: N` in the summary is
-the count of main-loop exceptions.
+the count of exceptions caught in the per-object loop.
 
 ### 5. Resource Clean-up
 
 Results are streamed to `$env:TEMP\OrphanedSid-<CorrelationId>\batch_<n>.json` by
-`StreamingResultsManager` (`BatchSize` results per file, default 50) and the folder is removed when the script's `finally`
-block disposes it. Pass `-PreserveTempFiles` to keep the folder for inspection; the log then shows
-`Temporary result files preserved as requested`. Every 100 objects the main loop calls
-`Invoke-Cleanup`, which logs the freed memory at Verbose level
+`StreamingResultsManager` (`BatchSize` results per file, default 50) and the folder is removed when
+`Stop-OrphanedSidSession` disposes it in the command's `finally` block. Pass `-PreserveTempFiles` to
+keep the folder for inspection; the log then shows `Temporary result files preserved in: <folder>`.
+Every 100 objects `Invoke-MainProcessingLogic` calls `Invoke-Cleanup`, which writes the freed memory
+to the Verbose stream
 (`Memory usage at N objects: X MB (Freed: Y MB)`).
 
 ```powershell
-.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -PreserveTempFiles -CorrelationId ($id = [guid]::NewGuid().ToString())
+Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -PreserveTempFiles -CorrelationId ($id = [guid]::NewGuid().ToString())
 Get-ChildItem -Path (Join-Path $env:TEMP "OrphanedSid-$id")
 ```
 

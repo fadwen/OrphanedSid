@@ -106,7 +106,7 @@ $acl = Get-Acl -Path "AD:\CN=Example,OU=Users,DC=contoso,DC=com"
 $acl.Access | Where-Object { [string]::IsNullOrWhiteSpace($_.IdentityReference.Value) }
 ```
 
-If an entry has no identity, repair the ACL outside this script; `Find-OrphanedSid` never
+If an entry has no identity, repair the ACL outside this module; `Find-OrphanedSid` never
 removes an ACE it could not resolve.
 
 ### 3. Identity references of other types

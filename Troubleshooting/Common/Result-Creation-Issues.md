@@ -2,7 +2,7 @@
 
 ## Overview
 
-`New-OrphanedSIDResult` in `Private\SID\New-SIDResult.ps1` is the only place the script creates
+`New-OrphanedSIDResult` in `Private\SID\New-SIDResult.ps1` is the only place the module creates
 result objects. It returns an instance of the `OrphanedSIDResult` class defined in
 `Classes\OrphanedSIDResult.ps1`. This guide covers the ways that creation can fail or produce an
 object that looks incomplete.
@@ -77,8 +77,10 @@ with those properties will do.
 
 #### Issue: "Unable to find type [OrphanedSIDResult]"
 
-**Root Cause:** the class file was not loaded in the session. The main script dot-sources every file
-in `Classes\` after hash validation; a diagnostic session must do so explicitly.
+**Root Cause:** the class is defined inside the module, so it is visible in the module's scope and
+not in the caller's. `OrphanedSid.psm1` dot-sources every file in `Classes\` at import; a
+diagnostic session reaches the type through `& (Get-Module OrphanedSid) { [OrphanedSIDResult]::new() }`
+or dot-sources the class file itself.
 
 **Resolution:**
 
@@ -110,7 +112,7 @@ deserialized access rules whose property names differ.
 
 **Resolution:** run with `-LogLevel Debug` and look for
 `ActiveDirectoryRights property missing, set to GenericRead`. Then check how the object reached the
-script; `Get-ObjectAccessRule` prefers a live `Get-Acl`, which returns fully typed rules.
+module; `Get-ObjectAccessRule` prefers a live `Get-Acl`, which returns fully typed rules.
 
 #### Issue: `LikelySource` is `Unknown` and `Confidence` is `Medium`
 

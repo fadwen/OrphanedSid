@@ -4,23 +4,23 @@
 
 This guide covers memory problems that can appear during large discovery or removal runs of
 `Find-OrphanedSid`: memory that keeps growing, warnings that the configured threshold has been
-exceeded, and out-of-memory failures. It describes the memory controls the script actually has and
+exceeded, and out-of-memory failures. It describes the memory controls the module actually has and
 how to read their output. The architecture itself is described in
 [Memory-Management.md](./Memory-Management.md); the levers you can tune are in
 [Performance-Tuning.md](./Performance-Tuning.md).
 
-## What the script does with memory
+## What the module does with memory
 
 | Component | File | Behaviour |
 |---|---|---|
 | `MemoryManager` class | `Classes\MemoryManager.ps1` | Counts operations; every `CheckInterval` operations it reads the process working set, tracks the peak, and if the value exceeds `MaxMemoryMB` runs `GC.Collect()` twice around `WaitForPendingFinalizers()`, adds and removes 50 MB of GC pressure, and re-measures. It never throws; it warns. |
-| `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object (`Normal` under 75 % of the threshold, `High` to 90 %, `Critical` above). |
-| `Invoke-Cleanup` | `Private\System\Invoke-GarbageCollection.ps1` | Called every 100 processed objects. Adds 50 MB of GC pressure, runs three collect/finalize cycles 100 ms apart, removes the pressure, and returns `MemoryBeforeMB`, `MemoryAfterMB`, `MemoryFreedMB`. `-IncludeLOHCompaction` sets `GCLargeObjectHeapCompactionMode.CompactOnce` for that cleanup. |
+| `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic` with `-WhatIf:$false`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object (`Normal` under 75 % of the threshold, `High` to 90 %, `Critical` above). |
+| `Invoke-Cleanup` | `Private\System\Invoke-GarbageCollection.ps1` | Called every 100 processed objects, with `-WhatIf:$false`. Adds 50 MB of GC pressure, runs three collect/finalize cycles 100 ms apart, removes the pressure, and returns `MemoryBeforeMB`, `MemoryAfterMB`, `MemoryFreedMB`. `-IncludeLOHCompaction` sets `GCLargeObjectHeapCompactionMode.CompactOnce` for that cleanup. |
 | `StreamingResultsManager` | `Classes\StreamingResultsManager.ps1` | Holds at most 50 results in memory before flushing them to a JSON batch file and calling `GC.Collect()`. |
-| `Invoke-ResourceCleanup` | `Private\System\Invoke-ResourceDisposal.ps1` | Runs in the script's `finally` block; disposes the streaming manager and the memory manager, then performs a final collection. |
+| `Invoke-ResourceCleanup` | `Private\System\Invoke-ResourceDisposal.ps1` | Runs from `Stop-OrphanedSidSession` in each command's `finally` block, with `-WhatIf:$false`; disposes the streaming manager and the memory manager, then performs a final collection. |
 
 The threshold is `-MaxMemoryUsageMB` (100-16384, default 1024). The check interval is the
-`MemoryCheckInterval` key of a `-ConfigPath` JSON file (1-100, default 50).
+`MemoryCheckInterval` key of a `-ConfigPath` JSON file (1-1000, default 50).
 
 ## Common Issues
 
@@ -40,10 +40,10 @@ The second line is verbose output and appears only with `-Verbose`.
 
 **What it means**
 
-The working set of the PowerShell process is above `-MaxMemoryUsageMB`. The script keeps running;
+The working set of the PowerShell process is above `-MaxMemoryUsageMB`. The command keeps running;
 the warning is advisory. Working set includes the .NET runtime, the ActiveDirectory module and any
 other modules loaded in the session, so a 1024 MB limit is easy to exceed in a large session even
-when the script itself is behaving.
+when the command itself is behaving.
 
 **Resolution**
 
@@ -57,7 +57,7 @@ when the script itself is behaving.
 2. Raise the threshold to something the host can afford. The parameter accepts up to 16384:
 
    ```powershell
-   .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
+   Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
    ```
 
 3. If the warning recurs after garbage collection, check more often so cleanup starts earlier. The
@@ -65,7 +65,7 @@ when the script itself is behaving.
 
    ```powershell
    @{ MemoryCheckInterval = 10 } | ConvertTo-Json | Set-Content .\config.json
-   .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+   Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
    ```
 
 4. Reduce the scope of a single run by passing smaller search bases (see
@@ -129,7 +129,7 @@ The run terminates with `OutOfMemoryException`, typically while reading a very l
 
 ## Validation Commands
 
-The memory helpers are private functions dot-sourced by the main script. To call them in an
+The memory helpers are private functions of the module. To call them in an
 interactive session, load the files in this order. `Invoke-GarbageCollection.ps1` carries its own
 minimal `Write-StructuredLog` and `Get-CurrentMemoryUsage` definitions for test mocking; loading
 it first lets the full versions from the logging system and `Get-MemoryStatistics.ps1` take

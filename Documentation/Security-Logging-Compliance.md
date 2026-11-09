@@ -93,8 +93,10 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
 
 `OrphanedSid.psm1` dot-sources `Private/Logging/` before every other `Private/` folder, so the
 logging functions, including the security writer, exist before any function that calls them is
-defined. Nothing in `Private/` runs code at load time; the shared logging state is created by
-`Initialize-LoggingConfiguration` and configured per run by `Start-OrphanedSidSession`.
+defined. `Private/Logging/Initialize-LoggingConfiguration.ps1` is the one file that does work at
+load time: it creates the shared logging state (`$script:LogLevel`, `$script:LogLevels`, the
+metrics tables) when the root module dot-sources it. Every other file only defines functions.
+`Start-OrphanedSidSession` configures that state per run.
 
 ## What This Provides
 
@@ -115,7 +117,7 @@ and forward the file to a central log store if the audit trail must survive the 
 
 ```powershell
 # Only Error and Critical operational entries reach the file; all security entries still do
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Error
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Error
 
 # Read back the security entries for a run
 Select-String -Path ".\Logs\<Command>_*.log" -Pattern "\[SecurityAudit\]" |

@@ -31,7 +31,7 @@ access rules:
 | 3 | Fresh `Get-ADObject -Identity <DN> -Properties nTSecurityDescriptor` | `Fresh AD query returned no security descriptor for <DN>` or `Fresh AD query failed for <DN>: <message>` | Warning |
 
 Only when all three fail does the summary warning above appear. None of these calls is retried;
-`Invoke-ADOperationWithRetry` wraps SID lookups and the ACL steps of `-Remove`, and `-MaxRetries`
+`Invoke-ADOperationWithRetry` wraps SID lookups and the ACL steps of `Remove-OrphanedSid`, and `-MaxRetries`
 drives the per-object retry loop in the main processing logic, which re-runs the whole object only
 when processing it threw an exception. A retrieval failure is a skip, not an exception, so it is not
 retried.
@@ -57,7 +57,7 @@ Well-known SIDs such as `S-1-5-18`, `S-1-5-19` and `S-1-5-20` do not cause these
 filtered later, per access rule, by `Test-WellKnownSID` (`Private\SID\Test-SIDFormat.ps1`), and
 that filtering is logged at Debug level only.
 
-## Expected Script Behavior
+## Expected Behavior
 
 Correct behaviour when the warning appears:
 
@@ -73,7 +73,7 @@ Messages that indicate an actual problem rather than an expected skip:
 - `[Error] [General] Error in orchestrated processing for object <DN> : <message>` - the per-object
   workflow in `Find-OrphanedSIDsInObject` failed after retrieval.
 - `[Error] [MainProcessing] Error processing object <DN>: <message>` followed by
-  `Retry attempt N of M for object <DN>` - the main loop caught an exception and is retrying up to
+  `Retry attempt N of M for object <DN>` - `Invoke-MainProcessingLogic` caught an exception and is retrying up to
   `-MaxRetries` times with a 2, 4, 6... second back-off.
 
 ## Troubleshooting
@@ -101,7 +101,7 @@ the problem; check that the `ActiveDirectory` module loaded in the same session.
 ### Make the cause visible
 
 ```powershell
-.\Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -LogLevel Debug -WhatIf
+Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -LogLevel Debug -WhatIf
 ```
 
 With `-LogLevel Debug` the file receives the strategy-1 `Get-Acl failed for <DN>: <message>` line,
@@ -115,7 +115,7 @@ still print. `-SuppressConsoleOutput` silences only security-event console lines
 warning stream:
 
 ```powershell
-.\Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' 3> $null
+Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' 3> $null
 ```
 
 The warnings remain in the log file.

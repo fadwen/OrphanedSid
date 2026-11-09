@@ -2,7 +2,7 @@
 
 ## Overview
 
-Every orphaned SID the script finds becomes one `OrphanedSIDResult` object
+Every orphaned SID `Find-OrphanedSid` or `Remove-OrphanedSid` finds becomes one `OrphanedSIDResult` object
 (`Classes\OrphanedSIDResult.ps1`). `New-OrphanedSIDResult` (`Private\SID\New-SIDResult.ps1`) fills
 it in three steps:
 
@@ -23,7 +23,7 @@ the object it came from. This guide covers the metadata that can look wrong and 
 #### Issue: Timestamps are local time, not UTC
 
 `Timestamp` is set with `Get-Date` in the class constructor and again in `Add-ProcessingMetadata`,
-so it carries the local time of the machine running the script with `Kind = Local`. The CSV written
+so it carries the local time of the machine running the command with `Kind = Local`. The CSV written
 by `-OutputPath` serialises it in the local culture's format. This is by design; convert on the way
 out when a downstream system needs UTC:
 
@@ -117,13 +117,12 @@ Select-String -Path .\Logs\<Command>_*.log -Pattern ([regex]::Escape($dn)) | Sel
 
 #### Issue: Correlation ID format
 
-All generated IDs are GUID strings (`[System.Guid]::NewGuid().ToString()`). The main script accepts
-any string for `-CorrelationId`, but `Test-BackupValidation` in the restore path validates
-`-CorrelationId` as a GUID (`CorrelationId must be in valid GUID format`). Use GUIDs throughout:
+Generated IDs are GUID strings (`[System.Guid]::NewGuid().ToString()`). `-CorrelationId` accepts
+any string on all three commands, so a change or ticket number works as well as a GUID:
 
 ```powershell
 $id = [guid]::NewGuid().ToString()
-.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
+Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
 ```
 
 ### 4. Processing Context

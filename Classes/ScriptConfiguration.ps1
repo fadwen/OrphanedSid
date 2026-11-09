@@ -103,8 +103,8 @@ class ScriptConfiguration {
             }
 
             if ($configData.MemoryCheckInterval) {
-                if ($configData.MemoryCheckInterval -lt 1 -or $configData.MemoryCheckInterval -gt 100) {
-                    throw "MemoryCheckInterval must be between 1 and 100, got: $($configData.MemoryCheckInterval)"
+                if ($configData.MemoryCheckInterval -lt 1 -or $configData.MemoryCheckInterval -gt 1000) {
+                    throw "MemoryCheckInterval must be between 1 and 1000, got: $($configData.MemoryCheckInterval)"
                 }
                 $config.MemoryCheckInterval = $configData.MemoryCheckInterval
             }

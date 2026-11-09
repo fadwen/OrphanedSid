@@ -63,7 +63,7 @@ $regular | Where-Object { $_ -match '^\[[^\]]+\] \[Information\]' } | Measure-Ob
 **Diagnosis**
 
 ```powershell
-# In a session where the script's modules are loaded
+# In a session where OrphanedSid is imported
 Get-Command Write-SecurityStructuredLogEntry -ErrorAction SilentlyContinue
 
 $state = Get-LoggingSystemState
@@ -199,8 +199,8 @@ they will not parse as JSON; keep that in mind when reporting.
 
 **Root cause**
 
-`Write-SecurityLog` generates a new GUID when none is passed. All call sites in the script pass the
-run's ID, so a mismatch indicates a manual call or a helper invoked outside the script.
+`Write-SecurityLog` generates a new GUID when none is passed. Every call site in the module passes
+the run's ID, so a mismatch indicates a manual call or a helper invoked outside a command.
 
 **Solution**
 
@@ -221,7 +221,7 @@ Context keys are stored in the JSON object prefixed `Security_`.
 ### Confirm security entries survive a restrictive log level
 
 ```powershell
-.\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -LogLevel Error -WhatIf
+Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -LogLevel Error -WhatIf
 
 $log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 $security = Get-Content $log.FullName | Where-Object { $_.StartsWith('{') -and $_ -match '"Component":"SecurityAudit"' }

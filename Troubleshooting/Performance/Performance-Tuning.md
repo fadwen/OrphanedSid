@@ -32,20 +32,20 @@ garbage collection. Set it high enough that the threshold is not crossed during 
 each forced collection pauses the run.
 
 ```powershell
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 4096
 ```
 
 See [Memory-Management.md](./Memory-Management.md) for the behaviour behind the threshold.
 
 ### MemoryCheckInterval (configuration key)
 
-Number of objects between working-set checks. Default 50; `-ConfigPath` JSON accepts 1-100. A
+Number of objects between working-set checks. Default 50; `-ConfigPath` JSON accepts 1-1000. A
 larger interval means fewer `Get-Process` calls; a smaller one catches growth earlier. The
 difference is small either way because a check costs a few milliseconds.
 
 ```powershell
 @{ MemoryCheckInterval = 100 } | ConvertTo-Json | Set-Content .\config.json
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 ```
 
 ### BatchSize (configuration key)
@@ -59,7 +59,7 @@ with thousands of tiny files on a very large OU (raise it).
 
 ```powershell
 @{ BatchSize = 200 } | ConvertTo-Json | Set-Content .\config.json
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 ```
 
 ### -MaxRetries
@@ -84,7 +84,7 @@ log and measurable I/O. Use `Information` (the default) or `Warning` for product
 `Debug` for reproducing a specific object. Security audit entries are written regardless of level.
 
 ```powershell
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Warning
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Warning
 ```
 
 `-SuppressConsoleOutput` removes console writes for scheduled runs; file logging is unaffected.
@@ -109,7 +109,7 @@ $searchBases = @(
 
 foreach ($base in $searchBases) {
     $name = ($base -split ',')[0] -replace '^OU=', ''
-    .\Find-OrphanedSid -SearchBase $base -OutputPath ".\Reports\$name.csv" -MaxMemoryUsageMB 2048 -LogLevel Warning
+    Find-OrphanedSid -SearchBase $base -OutputPath ".\Reports\$name.csv" -MaxMemoryUsageMB 2048 -LogLevel Warning
 }
 ```
 
@@ -123,7 +123,7 @@ Keeps `<TEMP>\OrphanedSid-<CorrelationId>\batch_N.json` after the run. Use it to
 intermediate results without re-running, or to recover results when the CSV export failed:
 
 ```powershell
-.\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'perf-01'
+Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'perf-01'
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) 'OrphanedSid-perf-01'
 Get-ChildItem $dir -Filter 'batch_*.json' | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json } |
     Export-Csv .\recovered.csv -NoTypeInformation
@@ -133,8 +133,8 @@ Remove the folder when done; it contains object DNs and SIDs.
 
 ## Measuring a Run
 
-The script writes nothing to the pipeline. Its metrics are in the processing summary at the end of
-the log and on the console:
+The commands write results, not timings, to the pipeline. The run's metrics are in the processing
+summary at the end of the log and on the console:
 
 ```text
 === PROCESSING SUMMARY ===
@@ -149,7 +149,7 @@ To time a run and extract those lines:
 ```powershell
 $correlationId = [guid]::NewGuid().ToString()
 $elapsed = Measure-Command {
-    .\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $correlationId -LogLevel Information
+    Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -CorrelationId $correlationId -LogLevel Information
 }
 "Wall time: $($elapsed.TotalSeconds) s"
 

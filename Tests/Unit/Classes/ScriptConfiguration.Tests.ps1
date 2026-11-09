@@ -184,6 +184,20 @@ Describe 'ScriptConfiguration Class Tests' {
             }
         }
 
+        It 'Accepts a MemoryCheckInterval anywhere in the 1-1000 range the validator allows' {
+            # The loader once stopped at 100 while ValidateConfiguration and the documentation said 1-1000
+            $file = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "interval-config-$(Get-Random).json"
+            @{ MemoryCheckInterval = 500 } | ConvertTo-Json | Out-File $file -Encoding UTF8
+
+            try {
+                [ScriptConfiguration]::LoadFromFile($file).MemoryCheckInterval | Should -Be 500
+                @{ MemoryCheckInterval = 1001 } | ConvertTo-Json | Out-File $file -Encoding UTF8
+                { [ScriptConfiguration]::LoadFromFile($file) } | Should -Throw -ExpectedMessage '*between 1 and 1000*'
+            } finally {
+                Remove-Item $file -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'Should -throw error for non-existent file' {
             { [ScriptConfiguration]::LoadFromFile('C:\NonExistent\config.json') } | Should -Throw
         }

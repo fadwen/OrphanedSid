@@ -12,8 +12,9 @@ Each backup is one `Export-Clixml` file written by `New-ACLBackup`
 (`Private\Backup\New-ACLBackup.ps1`):
 
 - **Folder**: `<BackupPath>\<yyyyMMdd_HHmmss>\`. The timestamped subfolder is created once per run
-  (`Created timestamped backup subfolder: <path>` in the log). When `-BackupPath` is omitted the
-  script uses `<script folder>\Backup` and warns `No backup path specified. Using default: <path>`.
+  by `Remove-OrphanedSid` before discovery starts (`Created backup folder: <path>` in the log).
+  When `-BackupPath` is omitted it is `.\Backup` under the current directory. The parent of
+  `-BackupPath` must already exist. Under `-WhatIf` no folder is created.
 - **File name**: `<sanitized DN>_<yyyyMMdd_HHmmss>.xml`, where the DN has `\ / : * ? " < > | , =`
   and whitespace replaced by `_` and is cut at 200 characters (`_truncated` appended).
 - **Content**: a single object with these properties.
@@ -44,7 +45,7 @@ Immediately after writing, `New-ACLBackup` re-imports the file and compares `SDD
 `Backup integrity check failed - SHA256 hash mismatch detected` or
 `Backup integrity check failed - ObjectDN mismatch detected`.
 
-## Backup Process Flow (during `-Remove`)
+## Backup Process Flow (`Remove-OrphanedSid`)
 
 1. `Get-ACLForRemoval` reads the current ACL (`Failed to retrieve ACL for <DN>` on failure).
 2. `Invoke-SecurityValidation` checks the SIDs to be removed.
@@ -55,16 +56,19 @@ Immediately after writing, `New-ACLBackup` re-imports the file and compares `SDD
 5. `Invoke-SIDRemoval` and `Set-ModifiedACL` apply the change, then `Invoke-RemovalVerification`
    confirms the SIDs are gone.
 
-Under `-WhatIf` the main loop logs `WhatIf: Would remove orphaned SID: <sid> from <DN>` and never
-calls the removal workflow, so no backup folder or file is written. `Backup creation was cancelled by
+Under `-WhatIf`, `Invoke-MainProcessingLogic` prints `What if: Performing the operation "Remove
+Orphaned SID" on target "<DN> - SID: <sid>"` per orphaned entry, logs
+`WhatIf: Would remove orphaned SID: <sid> from <DN>` at Verbose level, and never calls the removal
+workflow, so no backup folder or file is written. `Backup creation was cancelled by
 user` (Warning) appears only when `New-ACLBackup`'s own confirmation is declined, for example with
 `-Confirm` answered No.
 
-## Restore Process Flow (during `-Restore`)
+## Restore Process Flow (`Restore-OrphanedSidBackup`)
 
-`-Restore` requires `-BackupPath` (`BackupPath parameter is required when using -Restore`) pointing
-at an existing folder (`Backup directory not found for restore operation: <path>`). Each
-`-SearchBase` value is passed as a target DN to `Invoke-RestoreWorkflow`
+`-BackupPath` is mandatory and must be an existing folder; parameter validation rejects anything
+else before the command starts. Each `-TargetObjectDN` value (aliases `DistinguishedName` and
+`SearchBase`, also accepted from the pipeline) is passed to
+`Start-OrchestrationWorkflow -OperationType Restore` and on to `Invoke-RestoreWorkflow`
 (`Private\Backup\Invoke-RestoreWorkflow.ps1`), which:
 
 1. **Validates input**: the DN must start with `CN=`, `OU=` or `DC=`
@@ -85,28 +89,36 @@ at an existing folder (`Backup directory not found for restore operation: <path>
 6. **Verifies** with `Confirm-RestorationSuccess`. Its findings are written to the Verbose stream
    only and never mark a restore as failed (details below).
 
-The main script then logs a summary:
+`Restore-OrphanedSidBackup` then logs a summary:
 
 ```text
 === RESTORE OPERATION SUMMARY ===
-Total restore operations: 3
-Successful restores: 2
+Total restore operations: 2
+Successful restores: 1
 Failed restores: 1
-Total ACL entries restored: 97
+Total ACL entries restored: 34
 Backup source: D:\ACLBackups\20250702_103631
-Individual restore results:
-  [SUCCESS] CN=User1,OU=Test,DC=contoso,DC=com (49 entries)
-  [FAILED] CN=User2,OU=Test,DC=contoso,DC=com
-    Error: Target validation failed: Target object not found or inaccessible: Cannot find an object with identity ...
 ```
 
-`-Restore` without `-Force` prompts in an interactive console and refuses in a non-interactive one
-(`Refusing to restore ACLs from backup without confirmation. Re-run with -Force to proceed
-unattended, or with -WhatIf to preview the changes.`). `-WhatIf` runs the discovery and validation
-steps and reports `WhatIf: Would apply ACL with N modifications to <DN>` without changing anything.
+The summary has no per-object lines. Each target's outcome is the result object the command writes
+to the pipeline (`Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`, and for a container
+`IndividualResults`); the CSV written by `-OutputPath` has the first five columns:
 
-Note that `-Restore` points `-BackupPath` at the **timestamped subfolder**
-(`D:\ACLBackups\20250702_103631`), not at the root used for `-Remove`; discovery does not recurse.
+```powershell
+$results = @(Restore-OrphanedSidBackup -TargetObjectDN 'OU=Test,DC=contoso,DC=com' -BackupPath 'D:\ACLBackups\20250702_103631' -Force)
+$results.IndividualResults | Where-Object { -not $_.Success } | Select-Object TargetObjectDN, ErrorMessage
+```
+
+`Restore-OrphanedSidBackup` has `ConfirmImpact = 'High'`: it prompts once
+(`Restore ACLs from backup folder <path>`) in an interactive console, and a non-interactive run needs
+`-Force` or `-Confirm:$false`; without either, PowerShell's own prompt fails. A declined prompt logs
+`Restore declined at the confirmation prompt for: <targets>`. `-WhatIf` runs the discovery and
+validation steps and prints `What if: Performing the operation "Apply ACL from backup" on target
+"<DN>"` per object without changing anything.
+
+Note that `Restore-OrphanedSidBackup -BackupPath` names the **timestamped subfolder**
+(`D:\ACLBackups\20250702_103631`), not the root given to `Remove-OrphanedSid`; discovery does not
+recurse.
 
 ## Critical Backup Issues
 
@@ -146,7 +158,7 @@ $drive = Get-PSDrive -Name $backupRoot.Substring(0, 1)
 "Free: $([math]::Round($drive.Free / 1GB, 2)) GB"
 
 # Keep paths short
-.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
+Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
 ```
 
 #### Issue: `ACL object contains no access entries to backup for <DN>`
@@ -181,7 +193,8 @@ Import-Module OrphanedSid
 # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
 Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Object {
-    $check = Test-BackupIntegrity -BackupFilePath $_.FullName
+    $file = $_.FullName
+    $check = & (Get-Module OrphanedSid) { param($Path) Test-BackupFileIntegrity -BackupFilePath $Path } $file
     [PSCustomObject]@{
         File    = $_.Name
         IsValid = $check.IsValid
@@ -191,19 +204,19 @@ Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Obje
 } | Format-Table -AutoSize
 ```
 
-Two functions share the name `Test-BackupIntegrity`: the one in `Private\Utilities` takes
-`-BackupFilePath` and reads the file; the one in `Private\Backup\Test-BackupValidation.ps1` takes
-`-BackupData` (an already imported object) and is the one the restore workflow calls. Dot-source
-only the one needed in a diagnostic session.
+`Test-BackupFileIntegrity` (`Private\Utilities`) takes `-BackupFilePath` and reads the file.
+`Test-BackupIntegrity` (`Private\Backup\Test-BackupValidation.ps1`) takes `-BackupData`, an
+already imported object, and is the one the restore workflow calls.
 
 For an inventory of a backup folder with filtering:
 
 ```powershell
-Find-BackupFile -BackupPath 'D:\ACLBackups\20250702_103631' -ObjectDN '*OU=Test,DC=contoso,DC=com' |
-    Select-Object FileName, ObjectDN, BackupDate, ACLEntryCount, BackupVersion
+& (Get-Module OrphanedSid) {
+    Find-BackupFile -BackupPath 'D:\ACLBackups\20250702_103631' -ObjectDN '*OU=Test,DC=contoso,DC=com'
+} | Select-Object FileName, ObjectDN, BackupDate, ACLEntryCount, BackupVersion
 ```
 
-`Find-BackupFile` recurses, so it can be pointed at the backup root. A corrupt file cannot be
+`Find-BackupFile` is private and no command calls it; it recurses, so it can be pointed at the backup root. A corrupt file cannot be
 repaired; restore from a different backup set or rebuild the ACL by hand (see Recovery Procedures).
 
 ## Critical Restore Issues
@@ -212,10 +225,10 @@ repaired; restore from a different backup set or rebuild the ACL by hand (see Re
 
 #### Issue: "Target validation failed: Target object not found or inaccessible: ..."
 
-**Symptoms:** the object is listed as `[FAILED]` with that error.
+**Symptoms:** the object's result has `Success = False` and that `ErrorMessage`.
 
 **Root Cause:** the object was deleted or moved since the backup; the backup's `ObjectDN` no longer
-resolves. In bulk mode the DN comes from the backup file, not from `-SearchBase`.
+resolves. In bulk mode the DN comes from the backup file, not from `-TargetObjectDN`.
 
 **Resolution:**
 
@@ -236,7 +249,7 @@ $name = 'User1'
 Get-ADObject -Filter "Name -eq '$name'" | Select-Object DistinguishedName
 ```
 
-A moved object has a new DN, so its backup cannot be applied by the script. Apply the SDDL manually
+A moved object has a new DN, so `Restore-OrphanedSidBackup` cannot apply its backup. Apply the SDDL manually
 if needed:
 
 ```powershell
@@ -248,7 +261,7 @@ Set-Acl -Path "AD:$newDn" -AclObject $sd -WhatIf
 
 #### Issue: "Target validation failed: Insufficient permissions to modify ACL: ..." or "ACL application failed: ..."
 
-**Symptoms:** `[FAILED]` with one of those errors; `Cannot read current ACL: <message>` may also
+**Symptoms:** a result with `Success = False` and one of those errors; `Cannot read current ACL: <message>` may also
 appear in the issues list.
 
 **Root Cause:** the running account lacks Modify Permissions on the object, or the object is
@@ -275,14 +288,14 @@ VERBOSE: Verification differences detected (this is often normal): Verification 
 ```
 
 **What it means:** after `Set-Acl`, `Confirm-RestorationSuccess` splits the backup SDDL and the
-current SDDL into ACE strings and counts exact matches. At the `Standard` tolerance used by the
-script, 80 percent of the backed-up ACEs must be present for `IsVerified` to be true. A difference of
+current SDDL into ACE strings and counts exact matches. At the `Standard` tolerance the restore
+workflow uses, 80 percent of the backed-up ACEs must be present for `IsVerified` to be true. A difference of
 one or two entries is normal: inherited entries re-evaluated against the parent, entries added by
 SDProp, or permissions granted after the backup. `Significant entry count difference detected` is
 added when the backup has more than three ACEs that the current ACL lacks.
 
 These lines are informational. They go to the Verbose stream only, do not appear in the log file,
-and never change a result from `[SUCCESS]` to `[FAILED]`. The `EntriesRestored` count in the summary
+and never change a result's `Success` to `False`. The `EntriesRestored` count in the summary
 is the number of ACEs in the applied SDDL, not the number verified.
 
 **When to investigate:** `Significant entry count difference detected`, or a `matched` count far
@@ -300,9 +313,10 @@ $actualAces   = $current     -split '\(' | Where-Object { $_ -like '*;*' }
 
 ### 4. Partial Restore Scenarios
 
-Mixed `[SUCCESS]` and `[FAILED]` results in one run are expected when some objects were deleted,
-moved, or are protected. Each failed line carries its own `Error:` text; address them individually.
-The main script's exit status is not affected by individual failures - read the summary.
+Mixed successful and failed results in one run are expected when some objects were deleted,
+moved, or are protected. Each failed result carries its own `ErrorMessage`; address them
+individually. A per-object failure does not raise an error from the command; read the result
+objects or the CSV.
 
 ## Performance Issues
 
@@ -313,14 +327,14 @@ and are rarely the bottleneck; SID resolution during discovery is (see
 `.\Troubleshooting\Performance\Performance-Tuning.md`). Restores cost one `Import-Clixml`, one
 `Get-ADObject`, one `Get-Acl` and one `Set-Acl` per object.
 
-To keep runs bounded, split large OUs across several `-Remove` runs, each producing its own
+To keep runs bounded, split large OUs across several `Remove-OrphanedSid` runs, each producing its own
 timestamped backup subfolder, and restore each subfolder separately:
 
 ```powershell
 $ous = Get-ADOrganizationalUnit -Filter * -SearchBase 'OU=Departments,DC=contoso,DC=com' -SearchScope OneLevel |
     Select-Object -ExpandProperty DistinguishedName
 foreach ($ou in $ous) {
-    .\Remove-OrphanedSid -SearchBase $ou -BackupPath 'D:\ACLBackups' -Force
+    Remove-OrphanedSid -SearchBase $ou -BackupPath 'D:\ACLBackups' -Force
 }
 ```
 
@@ -346,7 +360,8 @@ $recovery = 'D:\ACLBackups\Recovered_20250702_103631'
 New-Item -Path $recovery -ItemType Directory -Force | Out-Null
 
 Get-ChildItem -Path $source -Filter *.xml | ForEach-Object {
-    if ((Test-BackupIntegrity -BackupFilePath $_.FullName).IsValid) {
+    $file = $_.FullName
+    if ((& (Get-Module OrphanedSid) { param($p) Test-BackupFileIntegrity -BackupFilePath $p } $file).IsValid) {
         Copy-Item -Path $_.FullName -Destination $recovery
         "Salvaged: $($_.Name)"
     } else {
@@ -354,7 +369,7 @@ Get-ChildItem -Path $source -Filter *.xml | ForEach-Object {
     }
 }
 
-.\Restore-OrphanedSidBackup -TargetObjectDN 'OU=Test,DC=contoso,DC=com' -BackupPath $recovery -WhatIf
+Restore-OrphanedSidBackup -TargetObjectDN 'OU=Test,DC=contoso,DC=com' -BackupPath $recovery -WhatIf
 ```
 
 ### 7. Manual ACL Clean-up Without a Backup
@@ -381,9 +396,9 @@ foreach ($ace in @($acl.Access | Where-Object { -not $_.IsInherited })) {
 if ($removed -gt 0) { Set-Acl -Path "AD:$dn" -AclObject $acl -WhatIf }
 ```
 
-Only SID-form identities are tested here; the script's own detection (`Test-OrphanedSID`) also
-checks deleted objects and performs AD lookups, so prefer `Remove-OrphanedSid` whenever the
-script can run.
+Only SID-form identities are tested here; the module's own detection (`Test-OrphanedSID`) also
+checks deleted objects and performs AD lookups, so prefer `Remove-OrphanedSid` whenever it can
+run.
 
 ## Preventive Measures
 
@@ -396,12 +411,15 @@ Import-Module OrphanedSid
 $root = 'D:\ACLBackups'
 Get-ChildItem -Path $root -Directory | Where-Object CreationTime -gt (Get-Date).AddHours(-24) | ForEach-Object {
     $files = Get-ChildItem -Path $_.FullName -Filter *.xml
-    $valid = @($files | Where-Object { (Test-BackupIntegrity -BackupFilePath $_.FullName).IsValid }).Count
+    $valid = @($files | Where-Object {
+        $path = $_.FullName
+        (& (Get-Module OrphanedSid) { param($p) Test-BackupFileIntegrity -BackupFilePath $p } $path).IsValid
+    }).Count
     [PSCustomObject]@{ BackupSet = $_.Name; Files = $files.Count; Valid = $valid }
 } | Format-Table -AutoSize
 ```
 
-Keep backup sets for at least as long as the change-review window; the script never deletes them.
+Keep backup sets for at least as long as the change-review window; the module never deletes them.
 
 ## Support Information
 
@@ -409,7 +427,7 @@ When reporting a backup or restore problem, provide:
 
 1. The correlation ID of the run (fourth bracketed field in every log line).
 2. The `-BackupPath` used and a listing of the timestamped subfolder.
-3. The exact `Error:` text from the restore summary.
+3. The `ErrorMessage` of each failed result, or the CSV from `-OutputPath`.
 4. Whether the run used `-WhatIf`, `-Force`, or an interactive confirmation.
 
 ## Related Documentation

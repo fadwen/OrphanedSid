@@ -6,45 +6,44 @@ before it changes anything, how each SID is validated before removal, what is ba
 files are loaded, and how the audit trail is protected from log-level filtering. It also shows how
 to verify each control and how to customise the lists it relies on.
 
-## Operating Modes and Gates
+## Commands and Gates
 
-| Mode | Parameters | Effect on the directory |
-|---|---|---|
-| Discovery (default) | `-SearchBase` | Read-only: `Get-ADObject`, `Get-Acl`, SID lookups |
-| Removal | `-Remove` | Modifies ACLs; writes a backup first |
-| Restore | `-Restore -BackupPath` | Rewrites ACLs from backup files |
+| Command | Effect on the directory |
+|---|---|
+| `Find-OrphanedSid` | Read-only: `Get-ADObject`, `Get-Acl`, SID lookups |
+| `Remove-OrphanedSid` | Modifies ACLs; writes a backup first |
+| `Restore-OrphanedSidBackup` | Rewrites ACLs from backup files |
 
 ### -WhatIf
 
-Removal and restore honour `SupportsShouldProcess`. With `-WhatIf` the full discovery runs, every
-planned removal is logged as `WhatIf: Would remove orphaned SID: <SID> from <DN>` and recorded in
-the results with `SecurityValidation = 'WhatIf - Would Remove'`, and no ACL is written and no
-backup is created.
+`Remove-OrphanedSid` and `Restore-OrphanedSidBackup` honour `SupportsShouldProcess`. With
+`Remove-OrphanedSid -WhatIf` the full discovery runs, every planned removal prints
+`What if: Performing the operation "Remove Orphaned SID" on target "<DN> - SID: <SID>"` and is
+written to the pipeline with `SecurityValidation = 'WhatIf - Would Remove'`, and no ACL is written
+and no backup folder is created. `Find-OrphanedSid` never changes anything and has no `-WhatIf`.
 
 ### Confirmation and -Force
 
-A `-Remove` or `-Restore` run without `-WhatIf` requires an explicit go-ahead:
+Both commands declare `ConfirmImpact = 'High'` and call `ShouldProcess` once per run:
 
-- In an interactive console the script asks once through `ShouldContinue`:
-  `This will remove orphaned SIDs from ACLs for: <search bases>` (or
-  `restore ACLs from backup for: ...`). Answering No stops the run.
-- In a session that cannot prompt (scheduled task, CI, remote host) the run stops with:
-
-  ```text
-  Refusing to remove orphaned SIDs from ACLs without confirmation. Re-run with -Force to proceed unattended, or with -WhatIf to preview the changes.
-  ```
-
-- `-Force` skips the prompt and is the only way to run destructive modes unattended.
+- In an interactive console PowerShell asks once (`Remove orphaned SIDs from ACLs (a backup of each
+  ACL is written first)` or `Restore ACLs from backup folder <path>`). Answering No logs
+  `Removal declined at the confirmation prompt for: ...` or
+  `Restore declined at the confirmation prompt for: ...` and changes nothing.
+- In a session that cannot prompt (scheduled task, CI, remote host) the prompt fails with
+  PowerShell's own error and nothing changes.
+- `-Force` (or `-Confirm:$false`) skips the prompt and is the way to run either command
+  unattended.
 
 ```powershell
 # Preview
-.\Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -WhatIf
+Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -WhatIf
 
 # Interactive, prompted once
-.\Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com"
+Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com"
 
 # Unattended
-.\Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConsoleOutput
+Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConsoleOutput
 ```
 
 ## Input Validation
@@ -55,7 +54,8 @@ A `-Remove` or `-Restore` run without `-WhatIf` requires an explicit go-ahead:
   validates each component. A failing value stops `Invoke-MainProcessingLogic` with a parameter
   validation error.
 - **OutputPath**: the parent directory must exist.
-- **BackupPath**: for `-Restore` the directory must exist; for `-Remove` its parent must exist.
+- **BackupPath**: for `Restore-OrphanedSidBackup` the directory must exist; for
+  `Remove-OrphanedSid` its parent must exist.
 - **ConfigPath**: the file must exist; `ScriptConfiguration.LoadFromFile` validates every key it
   reads (regex patterns must compile, protected SIDs must match `^S-1-\d+(-\d+)*$`, numeric ranges
   are enforced).
@@ -63,7 +63,7 @@ A `-Remove` or `-Restore` run without `-WhatIf` requires an explicit go-ahead:
 - **MaxRetries** 1-10, **MaxMemoryUsageMB** 100-16384, **LogLevel** from a fixed set.
 
 `Test-PathTraversal` (`Private\Security\Test-PathTraversal.ps1`) exists as a utility for checking
-that a path stays under a base directory, but the script does not call it.
+that a path stays under a base directory, but no command calls it.
 
 ## SID Validation Before Removal
 
@@ -138,7 +138,7 @@ Every decision writes a `DataValidation` security audit entry (see
 `Get-SIDRiskAssessment -SIDList <sids>` runs `Get-SIDAnalysis` and `Test-SIDSecurity` over a list
 and returns `OverallRisk`, `RiskBreakdown`, `BlockedSIDs`, `AllowedSIDs`, `RequiresApproval`,
 `Recommendations` and `SafeForAutomation` (true only when nothing is blocked and nothing requires
-approval). It is a reporting helper and is not called by the main script.
+approval). It is a reporting helper and no command calls it.
 
 ### Verifying the validation
 
@@ -177,12 +177,13 @@ In `Invoke-RemovalWorkflow`, after security validation passes and before any ACE
 `New-ACLBackup` writes the object's current ACL to
 `<BackupPath>\<safe object name>_<yyyyMMdd_HHmmss>.xml` with metadata and a SHA256 hash of the SDDL
 for integrity checking. If the backup fails the removal is aborted
-(`Failed to create ACL backup - aborting removal operation`). The main script defaults
-`-BackupPath` to `.\Backup\<yyyyMMdd_HHmmss>\` under the script directory when `-Remove` is used
-without it. Under `-WhatIf` no backup is written because no change is made.
+(`Failed to create ACL backup - aborting removal operation`). `Remove-OrphanedSid` writes into
+`<BackupPath>\<yyyyMMdd_HHmmss>\`, with `-BackupPath` defaulting to `.\Backup` under the current
+directory. Under `-WhatIf` no backup is written because no change is made.
 
-`-Restore -BackupPath <folder>` validates each backup file (`Test-BackupValidation`, including the
-hash) before `Restore-ACLOperation` rewrites the ACL. See
+`Restore-OrphanedSidBackup -BackupPath <folder>` validates each backup file with
+`Test-BackupIntegrity`, including the hash, before `Set-ObjectACL`
+(`Private\Backup\Restore-ACLOperation.ps1`) rewrites the ACL. See
 [Backup-Restore-Issues.md](../Common/Backup-Restore-Issues.md).
 
 ## Module Integrity
@@ -244,8 +245,8 @@ Supply a JSON file with `-ConfigPath`. Only these keys are read:
 
 - [ ] A `-WhatIf` run has been reviewed and the CSV examined for false positives.
 - [ ] `-ConfigPath` lists any domain-specific principals that must never be removed.
-- [ ] `-BackupPath` points at storage that is itself backed up; the default `.\Backup\` is on the
-      script host.
+- [ ] `-BackupPath` points at storage that is itself backed up; the default `.\Backup\` is under
+      the current directory of the machine running the command.
 - [ ] The run is interactive, or `-Force` is deliberate and the job is monitored.
 - [ ] The log file location is writable so security entries do not fall back to `$env:TEMP`.
 - [ ] `Classes\` and `Private\` are write-protected on the host.

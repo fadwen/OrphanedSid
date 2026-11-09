@@ -26,7 +26,7 @@ Defined in `Classes\StreamingResultsManager.ps1`, created once per run by
 - **Export**: `ExportToCsv($path)` flushes the current batch, reads all batch files back, and calls
   `Export-Csv`. `Write-ProcessingSummary` calls it when `-OutputPath` is given.
 - **Cleanup**: `Dispose()` flushes, updates the summary and removes the temp directory unless the
-  `PreserveFiles` property is set. The main script sets that property when `-PreserveTempFiles` is
+  `PreserveFiles` property is set. `Stop-OrphanedSidSession` sets that property when `-PreserveTempFiles` is
   passed, and logs `Temporary result files preserved in: <path>`.
 - **WhatIf**: under `-WhatIf` no directory or files are created; flushes are simulated and logged
   as `WhatIf: Would flush batch N with M results to <file>`.
@@ -57,7 +57,7 @@ In `Invoke-MainProcessingLogic`:
   `Memory usage at 100 objects: 412.3 MB (Freed: 18.6 MB)`.
 - In `Private\SID\Invoke-SIDProcessing.ps1`, access-rule references are nulled after each object
   and a collection runs every 100 SIDs inspected.
-- In the script's `finally` block, `Invoke-ResourceCleanup` disposes the streaming manager and the
+- In each command's `finally` block, `Stop-OrphanedSidSession` calls `Invoke-ResourceCleanup`, which disposes the streaming manager and the
   memory manager and runs a final collection.
 
 ## Memory Usage Patterns
@@ -89,14 +89,14 @@ or split the run. Details in [Memory-Management-Issues.md](./Memory-Management-I
 
 ### Issue: Memory not released after the run
 
-**Symptoms**: the PowerShell process stays large after the script returns.
+**Symptoms**: the PowerShell process stays large after the command returns.
 
 **Resolution**: `Invoke-ResourceCleanup` already runs a full collection at exit. Remaining working
 set belongs to the session (loaded modules, the AD provider drive). Start large runs in a fresh
 process:
 
 ```powershell
-powershell.exe -NoProfile -File .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
+powershell.exe -NoProfile -File Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
 ```
 
 ### Issue: Temporary file accumulation
@@ -128,7 +128,7 @@ shared host.
 ### Memory monitoring during a run
 
 ```powershell
-# From a second console while the script runs
+# From a second console while the command runs
 Get-Process -Name powershell, pwsh -ErrorAction SilentlyContinue |
     Select-Object Id, ProcessName, @{ Name = 'WorkingSetMB'; Expression = { [Math]::Round($_.WorkingSet64 / 1MB, 1) } }
 ```
@@ -157,7 +157,7 @@ Messages written at Information level and above:
 
 ```powershell
 # Keep the batch files and inspect them afterwards
-.\Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'mem-check-01'
+Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'mem-check-01'
 
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) 'OrphanedSid-mem-check-01'
 Get-ChildItem $dir
@@ -169,14 +169,14 @@ Get-Content (Get-ChildItem $dir -Filter 'summary_*.json').FullName -Raw | Conver
 
 ```powershell
 # Threshold is a parameter
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
 
-# Check interval is a configuration key (1-100)
+# Check interval is a configuration key (1-1000)
 @{ MemoryCheckInterval = 25 } | ConvertTo-Json | Set-Content .\config.json
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 
 # Keep streaming files for analysis
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -PreserveTempFiles
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -PreserveTempFiles
 ```
 
 Suggested thresholds by object count; adjust to the host's free memory:
@@ -205,8 +205,8 @@ Suggested thresholds by object count; adjust to the host's free memory:
 - Results added via `$script:StreamingResults.AddResult()` in `Invoke-MainProcessingLogic`
 - CSV export via `$ProcessingResults.StreamingManager.ExportToCsv($OutputPath)` in
   `Private\Reporting\Write-ProcessingSummary.ps1`
-- Disposal via `Invoke-ResourceCleanup -AdditionalResources @($script:StreamingResults)` in the
-  main script's `finally` block
+- Disposal via `Invoke-ResourceCleanup -AdditionalResources @($script:StreamingResults)` from
+  `Stop-OrphanedSidSession`, in each command's `finally` block
 
 ## Related Documentation
 

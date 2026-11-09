@@ -2,10 +2,21 @@
 
 ## Overview
 
-`-WhatIf` previews the changes a run would make to Active Directory. The memory management
-functions deliberately do not treat `-WhatIf` as a reason to skip work: a preview of a 50,000
-object domain allocates as much as a real run, so the memory manager, the periodic cleanup and the
-final disposal all execute regardless. Only their logging goes through `ShouldProcess`.
+`-WhatIf` previews the changes a run would make to Active Directory. A preview of a 50,000 object
+domain allocates as much as a real run, so the memory manager, the per-object check, the periodic
+cleanup and the final disposal all execute regardless.
+
+**Under a command.** `Remove-OrphanedSid -WhatIf` and `Restore-OrphanedSidBackup -WhatIf` pass the
+preference on to everything they call, so the commands pin the housekeeping calls with
+`-WhatIf:$false`: `Initialize-ScriptExecution` creates the memory manager, `Invoke-MainProcessingLogic`
+calls `Invoke-MemoryCheck` and `Invoke-Cleanup`, and `Stop-OrphanedSidSession` calls
+`Invoke-ResourceCleanup`, all pinned. A command run under `-WhatIf` therefore logs the normal memory
+lines and prints no `What if:` line for memory work; `-WhatIf` reaches only the ACL change, the backup
+folder and the streaming manager's temp files. `Find-OrphanedSid` has no `-WhatIf`.
+
+**Called directly.** The sections below describe the functions when they are called on their own
+with `-WhatIf`, as in a diagnostic session. There `ShouldProcess` guards their log statements, not
+the operation.
 
 ## Design Principle
 
@@ -75,8 +86,8 @@ modes. Under `-WhatIf` the log shows `WhatIf: Would dispose and cleanup resource
 
 ### Functions that do honour -WhatIf
 
-- `Invoke-GarbageCollection` (same file as `Invoke-Cleanup`) is a targeted helper that is not
-  called by the main processing loop. Under `-WhatIf` it skips the collection, logs
+- `Invoke-GarbageCollection` (same file as `Invoke-Cleanup`) is a targeted helper that no command
+  calls. Under `-WhatIf` it skips the collection, logs
   `WhatIf: Would perform garbage collection`, and returns `MemoryAfter` equal to `MemoryBefore`
   with `WhatIfMode = $true`.
 - `StreamingResultsManager` in WhatIf mode creates no temp directory and writes no batch files; it
@@ -117,15 +128,21 @@ Memory manager disposed successfully
 Final garbage collection completed
 ```
 
-Lines that appear only under `-WhatIf` (verbose stream, so pass `-Verbose`):
+Lines that appear only under `-WhatIf` (verbose stream, so pass `-Verbose`). From a command run,
+only the streaming manager's lines appear, because the memory functions are pinned:
+
+```text
+WhatIf: Would create temporary directory: <TEMP>\OrphanedSid-<CorrelationId>
+WhatIf: Would flush batch 1 with 50 results to <TEMP>\OrphanedSid-<CorrelationId>\batch_1.json
+```
+
+When the memory functions are called directly with `-WhatIf`, these appear as well:
 
 ```text
 WhatIf: Would initialize memory manager with threshold 1024 MB
 WhatIf: Would check memory usage and cleanup if needed
 WhatIf: Would perform memory cleanup
 WhatIf: Would dispose and cleanup resources
-WhatIf: Would create temporary directory: <TEMP>\OrphanedSid-<CorrelationId>
-WhatIf: Would flush batch 1 with 50 results to <TEMP>\OrphanedSid-<CorrelationId>\batch_1.json
 ```
 
 ## Troubleshooting
@@ -134,8 +151,9 @@ WhatIf: Would flush batch 1 with 50 results to <TEMP>\OrphanedSid-<CorrelationId
 every `Get-Acl` and every SID lookup, and only skips the ACL writes. Tune `-MaxMemoryUsageMB` and
 the search base as for a real run.
 
-**Verbose output is noisy under -WhatIf.** Expected: each guarded log statement is replaced by a
-`WhatIf: Would ...` verbose line. Drop `-Verbose` to silence them; the operations still run.
+**Verbose output is noisy under -WhatIf.** When the memory functions are called directly, each
+guarded log statement is replaced by a `WhatIf: Would ...` verbose line. Drop `-Verbose` to silence
+them; the operations still run. A command run does not produce them.
 
 **Disposal errors under -WhatIf.** Resource disposal is real in both modes, so a disposal error
 points at an actual resource problem (for example a temp directory removed by another process), not
