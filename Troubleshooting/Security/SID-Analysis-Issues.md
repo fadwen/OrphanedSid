@@ -195,7 +195,7 @@ so every domain SID is classified as `Unknown Domain` with `RiskLevel = High`.
 **Solution:** fix the domain lookup, then re-run.
 
 ```powershell
-# The same call the script makes; the error here is the one in the log
+# The same call Invoke-MainProcessingLogic makes; the error here is the one in the log
 $domain = Get-ADDomain -ErrorAction Stop
 $domain.DomainSID.Value
 

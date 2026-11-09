@@ -1,60 +1,78 @@
 ﻿# OrphanedSid Automation Guide
 
-This guide covers running `Find-OrphanedSid` from a scheduled task, a CI/CD job or any other
+This guide covers running the OrphanedSid commands from a scheduled task, a CI/CD job or any other
 session where nobody can answer a prompt, and how such a job reads the results.
 
-## Exit Codes
+## Errors and Results
 
-| Code | Meaning |
-|------|---------|
-| 0 | The script ran to completion. Individual objects may still have failed; check the log and the CSV. |
-| 1 | A critical error reached the script's `end` block. The message is logged at `Error` level and the script stops. |
+The commands have no exit codes. Each one writes its results to the pipeline and reports failure
+through PowerShell's error stream:
 
-There are no other exit codes. A failed object, a blocked SID or a failed backup does not change
-the exit code; those outcomes are recorded in the log and in the per-object results.
+| Outcome | How it surfaces |
+|---------|-----------------|
+| The run completed | The command returns normally. Individual objects may still have failed; check the result objects, the log and the CSV. |
+| A critical error ended the run | The command logs `Discovery failed: ...`, `Removal failed: ...` or `Restore failed: ...` at `Error` level and raises a terminating error. |
+
+A failed object, a blocked SID or a failed backup does not end the run; those outcomes are recorded
+in the log and in the per-object results. Wrap the call in `try`/`catch`, or pass
+`-ErrorAction Stop`, so that a terminating error fails the job step.
+
+### Pipeline Output
+
+| Command | Writes to the pipeline |
+|---------|------------------------|
+| `Find-OrphanedSid` | One `OrphanedSIDResult` per orphaned access control entry |
+| `Remove-OrphanedSid` | One `RemovalOperationResult` per removal attempted, one for each orphaned entry found; under `-WhatIf`, one preview object per entry that would be removed |
+| `Restore-OrphanedSidBackup` | One `RestoreWorkflowResult` per `-TargetObjectDN` value, with `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage` and `CorrelationId` |
+
+`$found = @(Find-OrphanedSid ...)` captures the findings directly. `-OutputPath` writes the same
+data to CSV in addition.
 
 ## Parameters for Unattended Runs
 
-| Parameter | Purpose in automation |
-|-----------|----------------------|
-| `-SearchBase <string[]>` | OU or object DNs to scan. Omitted: the current domain root, with a warning. |
-| `-OutputPath <path>` | CSV file for discovery and removal results. The parent folder must exist. Without it, results exist only in the log. |
-| `-LogPath <path>` | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` relative to the working directory. |
-| `-LogLevel <level>` | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
-| `-SuppressConsoleOutput` | Suppresses console log output. File logging is unaffected. |
-| `-CorrelationId <string>` | Identifier stamped on every log line and every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
-| `-Force` | Required for an unattended `-Remove` or `-Restore`. See [Confirmation](#confirmation-in-non-interactive-sessions). |
-| `-WhatIf` | Previews `-Remove` or `-Restore` without changing anything and never prompts. |
-| `-ConfigPath <path>` | JSON configuration file. See [Configuration File](#configuration-file). |
-| `-MaxMemoryUsageMB <int>` | Memory threshold in MB, 100 to 16384, default 1024. |
-| `-MaxRetries <int>` | Retries per Active Directory operation, 1 to 10, default 3. |
-| `-IncludeInherited` | Also report inherited access control entries. |
-| `-PreserveTempFiles` | Keep the per-run streaming results folder after the run. |
+| Parameter | Commands | Purpose in automation |
+|-----------|----------|----------------------|
+| `-SearchBase <string[]>` | Find, Remove | OU or object DNs to scan; accepts pipeline input. Omitted: the current domain root, with a warning. |
+| `-TargetObjectDN <string[]>` | Restore | Object or container DNs to restore. Mandatory; accepts pipeline input; aliases `DistinguishedName` and `SearchBase`. |
+| `-BackupPath <path>` | Remove, Restore | Remove: folder that receives the per-run `<yyyyMMdd_HHmmss>` subfolder, default `.\Backup` under the current directory; its parent must exist. Restore: mandatory, the timestamped run folder that holds the `.xml` files. |
+| `-OutputPath <path>` | all | CSV file for the results. The parent folder must exist. |
+| `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. Pass an absolute path: a relative value is resolved against the module folder. An existing file is overwritten at the start of the run. |
+| `-LogLevel <level>` | all | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
+| `-SuppressConsoleOutput` | all | Suppresses console log output. File logging is unaffected. |
+| `-CorrelationId <string>` | all | Identifier stamped on every log line, every result and every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
+| `-Force` | Remove, Restore | Required for an unattended run. Sets `$ConfirmPreference` to `None` for the command; `-Confirm:$false` has the same effect. See [Confirmation](#confirmation-in-non-interactive-sessions). |
+| `-WhatIf` | Remove, Restore | Previews without changing anything and never prompts. |
+| `-ConfigPath <path>` | Find, Remove | JSON configuration file. See [Configuration File](#configuration-file). |
+| `-MaxMemoryUsageMB <int>` | Find, Remove | Memory threshold in MB, 100 to 16384, default 1024. |
+| `-MaxRetries <int>` | Find, Remove | Retries per Active Directory operation, 1 to 10, default 3. |
+| `-IncludeInherited` | Find, Remove | Also report inherited access control entries. |
+| `-PreserveTempFiles` | Find, Remove | Keep the per-run streaming results folder after the run. |
 
-The script writes nothing to the pipeline. `$result = .\Find-OrphanedSid ...` captures nothing
-useful; read `$LASTEXITCODE`, the CSV and the log instead.
+There is no `-Credential` parameter; every command runs as the calling account.
 
 ## Confirmation in Non-Interactive Sessions
 
-`-Remove` and `-Restore` ask for confirmation once unless `-Force` or `-WhatIf` is given. A session
-that cannot show a prompt (scheduled task, CI agent, no host UI) is treated as a refusal, and the
-script stops with exit code 1 and this message in the log and on the error stream:
+`Remove-OrphanedSid` and `Restore-OrphanedSidBackup` declare `ConfirmImpact = 'High'` and call
+`ShouldProcess` once per run, so they ask for confirmation unless `-Force`, `-Confirm:$false` or
+`-WhatIf` is given. A session that cannot show a prompt (scheduled task, CI agent, no host UI)
+cannot answer it: the prompt fails with PowerShell's own host error, the command logs
+`Removal failed: ...` or `Restore failed: ...` at `Error` level and raises a terminating error.
+Nothing has been changed at that point.
 
-```text
-Refusing to remove orphaned SIDs from ACLs without confirmation. Re-run with -Force to proceed unattended, or with -WhatIf to preview the changes.
-```
+An operator who answers No in a console gets `Removal declined at the confirmation prompt for:
+<targets>` (or `Restore declined ...`) at `Warning` level, and the command returns without output.
 
-Discovery mode (neither switch) never prompts.
+`Find-OrphanedSid` never prompts.
 
 ```powershell
 # Discovery, unattended
-.\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -OutputPath "C:\Reports\orphaned-sids.csv" -SuppressConsoleOutput
+Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -OutputPath "C:\Reports\orphaned-sids.csv" -SuppressConsoleOutput
 
 # Removal preview, unattended
-.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -WhatIf -SuppressConsoleOutput
+Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -WhatIf -SuppressConsoleOutput
 
 # Removal, unattended
-.\Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups" -Force -SuppressConsoleOutput
+Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups" -Force -SuppressConsoleOutput
 ```
 
 ## CI/CD Integration
@@ -103,15 +121,16 @@ $command = 'Import-Module OrphanedSid; Find-OrphanedSid -SearchBase ''DC=contoso
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -Command `"$command`""
 ```
 
-A scheduled `Remove-OrphanedSid` must pass `-Force`; without it the command stops at the
+A scheduled `Remove-OrphanedSid` must pass `-Force`; without it the command fails at the
 confirmation prompt, which a non-interactive session cannot answer.
 
 ## Reading the Results
 
 ### CSV Output
 
-With `-OutputPath`, discovery and removal results are exported with `Export-Csv -NoTypeInformation`
-(UTF-8). One row per orphaned access control entry, with these columns:
+With `-OutputPath`, `Find-OrphanedSid` and `Remove-OrphanedSid` export the orphaned entries found
+with `Export-Csv -NoTypeInformation` (UTF-8). One row per orphaned access control entry, with these
+columns:
 
 `ObjectDN`, `ObjectClass`, `OrphanedSID`, `LikelySource`, `Confidence`, `AnalysisNotes`,
 `AccessControlType`, `ActiveDirectoryRights`, `InheritanceType`, `ObjectType`,
@@ -120,6 +139,9 @@ With `-OutputPath`, discovery and removal results are exported with `Export-Csv 
 
 No CSV is written when nothing was found, or under `-WhatIf`.
 
+`Restore-OrphanedSidBackup` exports one row per target with `Success`, `TargetObjectDN`,
+`EntriesRestored`, `ErrorMessage` and `CorrelationId`, whenever it produced at least one result.
+
 ```powershell
 $results = Import-Csv "C:\Reports\orphaned-sids.csv"
 $results | Group-Object ObjectDN | Sort-Object Count -Descending | Select-Object -First 10
@@ -127,18 +149,20 @@ $results | Group-Object ObjectDN | Sort-Object Count -Descending | Select-Object
 
 ### Log File
 
-Each log line has the form:
+Each operational log line has the form:
 
 ```text
-[2025-01-27T14:30:22.123] [Information] [Main] [12345678-1234-1234-1234-123456789012] Starting main processing workflow
+[2025-01-27T14:30:22.123] [Information] [Main] [12345678-1234-1234-1234-123456789012] Starting discovery
 ```
 
 Entries with structured details append ` | Details: {...}` as compact JSON. Security audit
-entries carry the component `SecurityAudit`. Filter by the correlation ID to isolate one run when
-several share a log file:
+entries are written as one compact JSON object per line, with `"Component":"SecurityAudit"`,
+`"SecurityEventType"`, `"Outcome"`, `"Message"` and `"CorrelationId"` keys; they are written at
+every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run when several
+append to the same file through the `LogFilePath` configuration key:
 
 ```powershell
-Select-String -Path "C:\Logs\OrphanedSid.log" -Pattern "\[12345678-1234-1234-1234-123456789012\]" |
+Select-String -Path "C:\Logs\OrphanedSid.log" -Pattern "12345678-1234-1234-1234-123456789012" |
     Where-Object { $_.Line -match '\[(Error|Warning)\]' }
 ```
 
@@ -147,9 +171,10 @@ lines and drops `Information`, `Debug` and `Verbose`. Security audit entries byp
 
 ### Temporary Files
 
-Discovery results are streamed in batches to `<TEMP>\OrphanedSid-<CorrelationId>\` as
-`batch_<n>.json`, `results_<timestamp>.json` and `summary_<timestamp>.json`. The folder is deleted
-when the run ends unless `-PreserveTempFiles` is given, in which case its path is logged.
+Discovery results are streamed in batches to `$env:TEMP\OrphanedSid-<CorrelationId>\` as
+`batch_<n>.json`, alongside a `summary_<timestamp>.json`. The folder is deleted when the run ends
+unless `-PreserveTempFiles` is given, in which case its path is logged. Under `-WhatIf` the folder
+is not created.
 
 ## Configuration File
 
@@ -160,11 +185,11 @@ when the run ends unless `-PreserveTempFiles` is given, in which case its path i
 | `WellKnownSIDPatterns` | string[] | Built-in list of regexes for well-known SIDs | Each value must compile as a .NET regex |
 | `ProtectedSIDs` | string[] | `S-1-5-32-544`, `S-1-5-32-545`, `S-1-5-32-546`, `S-1-5-18`, `S-1-5-19`, `S-1-5-20` | Each value must match `^S-1-\d+(-\d+)*$` |
 | `BatchSize` | int | 50 | 1 to 1000; results per streaming batch file |
-| `MemoryCheckInterval` | int | 50 | 1 to 100; objects processed between memory checks |
-| `EnableDetailedLogging` | bool | false | |
+| `MemoryCheckInterval` | int | 50 | 1 to 1000; objects processed between memory checks |
+| `EnableDetailedLogging` | bool | false | Read and validated; no command acts on it |
 | `LogLevel` | string | `Information` | Same values as `-LogLevel` |
-| `LogFilePath` | string | none | When set, entries written after configuration load go to this file instead of `-LogPath`; its folder must exist. Startup entries are already in `-LogPath` |
-| `EnableLogFileRotation` | bool | true | Rotate an existing log larger than `MaxLogFileSizeMB` at startup |
+| `LogFilePath` | string | none | When set, entries written after configuration load go to this file instead of `-LogPath`; its folder must exist. Startup entries are already in `-LogPath`. Runs append to this file |
+| `EnableLogFileRotation` | bool | true | At startup, rename the `LogFilePath` file with a timestamp suffix when it is larger than `MaxLogFileSizeMB`. A `-LogPath` file is recreated each run, so rotation only matters for `LogFilePath` |
 | `MaxLogFileSizeMB` | int | 10 | |
 
 `CriticalObjectPatterns` is part of the default configuration but cannot be set from the file.
@@ -180,10 +205,11 @@ when the run ends unless `-PreserveTempFiles` is given, in which case its path i
 
 ## Best Practices
 
-1. Run with `-WhatIf` in a new environment before the first `-Remove`.
+1. Run `Remove-OrphanedSid -WhatIf` in a new environment before the first removal.
 2. Always pass `-OutputPath` and `-LogPath` to known locations and collect both as job artifacts.
-3. Pass the job identifier as `-CorrelationId`; it is stamped on every log line and every backup
-   file.
-4. Treat exit code 0 as "the run finished", not as "nothing failed"; inspect `[Error]` and
-   `[Warning]` lines before acting on the output.
-5. Keep `-Force` out of discovery runs; it only matters for `-Remove` and `-Restore`.
+3. Pass the job identifier as `-CorrelationId`; it is stamped on every log line, every result and
+   every backup file.
+4. Treat a command that returned as "the run finished", not as "nothing failed"; inspect the
+   result objects and the `[Error]` and `[Warning]` lines before acting on the output.
+5. Keep `-Force` out of discovery runs; only `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`
+   have it.

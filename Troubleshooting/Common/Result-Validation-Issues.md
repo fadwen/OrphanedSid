@@ -10,7 +10,8 @@ check a set of results after a run.
 
 ## What to Validate
 
-The script writes results to the CSV named by `-OutputPath` (always CSV, whatever the extension).
+`Find-OrphanedSid` writes one result object per orphaned entry to the pipeline, and the same rows to
+the CSV named by `-OutputPath` (always CSV, whatever the extension).
 The columns are the class members: `ObjectDN`, `ObjectClass`, `OrphanedSID`, `LikelySource`,
 `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`, `InheritanceType`,
 `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`, `ActionTaken`,

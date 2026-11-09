@@ -32,8 +32,10 @@ applies it. Results stream to batch files on disk so memory stays flat on large 
 - **Backup before change.** Every `Remove-OrphanedSid` run writes one Clixml file per modified
   object into a timestamped folder; `Restore-OrphanedSidBackup` validates the SHA256 hash before
   applying it.
-- **Protected SIDs.** The BUILTIN groups, SYSTEM, LOCAL SERVICE, NETWORK SERVICE, and the domain
-  admin groups are never reported as orphaned and never removed. Both lists can be extended.
+- **Protected SIDs.** The BUILTIN Administrators, Users and Guests groups, SYSTEM, LOCAL SERVICE and
+  NETWORK SERVICE are never removed, and well-known SIDs are never reported as orphaned. Objects whose
+  DN matches a critical pattern (Domain Admins, Enterprise Admins, Schema Admins, BUILTIN, the Users
+  and Computers containers) are flagged high risk. All three lists come from the configuration file.
 - **Confirmation gate.** `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` have
   `ConfirmImpact = 'High'`: they prompt once, `-WhatIf` previews, and an unattended run needs
   `-Force`.

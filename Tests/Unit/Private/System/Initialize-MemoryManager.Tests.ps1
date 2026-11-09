@@ -44,9 +44,10 @@ Describe "Initialize-MemoryManager" {
             $checkIntervalParam.Attributes | Where-Object { $_ -is [Parameter] } | ForEach-Object { $_.Mandatory | Should -Be $true }
         }
 
-        It "Should validate MaxMemoryMB range (256-16384)" {
-            { Initialize-MemoryManager -MaxMemoryMB 100 -CheckInterval 25 -ErrorAction Stop } | Should -Throw
+        It "Should validate MaxMemoryMB range (100-16384, the range -MaxMemoryUsageMB accepts)" {
+            { Initialize-MemoryManager -MaxMemoryMB 99 -CheckInterval 25 -ErrorAction Stop } | Should -Throw
             { Initialize-MemoryManager -MaxMemoryMB 20000 -CheckInterval 25 -ErrorAction Stop } | Should -Throw
+            { Initialize-MemoryManager -MaxMemoryMB 100 -CheckInterval 25 } | Should -Not -Throw
         }
 
         It "Should accept valid MaxMemoryMB values" {
@@ -54,9 +55,11 @@ Describe "Initialize-MemoryManager" {
             { Initialize-MemoryManager -MaxMemoryMB 2048 -CheckInterval 25 } | Should -Not -Throw
         }
 
-        It "Should validate CheckInterval range (5-100)" {
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1 -ErrorAction Stop } | Should -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 150 -ErrorAction Stop } | Should -Throw
+        It "Should validate CheckInterval range (1-1000, the range the configuration file accepts)" {
+            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 0 -ErrorAction Stop } | Should -Throw
+            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1001 -ErrorAction Stop } | Should -Throw
+            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1 } | Should -Not -Throw
+            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1000 } | Should -Not -Throw
         }
 
         It "Should accept valid CheckInterval values" {

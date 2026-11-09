@@ -1,22 +1,24 @@
 ﻿# Enterprise Integration Guide - OrphanedSid
 ## Overview
 
-This guide covers running `Find-OrphanedSid` from schedulers, pipelines and monitoring systems,
-and the integration problems that follow from how the script actually behaves:
+This guide covers running `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`
+from schedulers, pipelines and monitoring systems, and the integration problems that follow from how
+they behave:
 
-- It writes **nothing to the pipeline**. Results are available only as the CSV named by
-  `-OutputPath` and in the log file.
+- Each command writes its **results to the pipeline** as objects: one `OrphanedSIDResult` per
+  orphaned entry, one `RemovalOperationResult` per modified object, one restore result per target.
+  `-OutputPath` also writes them as CSV, and every run writes a log file.
 - The log file is **plain text**, one line per entry:
   `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`. Entries with
   extra data end with a space followed by `| Details: <json>`.
 - The correlation ID is in every line but **never in the file name**
   (`<Command>_<yyyyMMdd_HHmmss>.log` by default).
 - `-OutputPath` always produces **CSV**, whatever extension is given.
-- There is no parallel mode, no throttle parameter and no `-Credential`; the script runs as the
+- There is no parallel mode, no throttle parameter and no `-Credential`; every command runs as the
   invoking account.
-- `-Remove` and `-Restore` require `-Force` to run unattended; without it a non-interactive session
-  stops with `Refusing to <operation> without confirmation. Re-run with -Force to proceed
-  unattended, or with -WhatIf to preview the changes.`
+- `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` have `ConfirmImpact = 'High'` and need
+  `-Force` (or `-Confirm:$false`) to run unattended; without it the confirmation prompt fails in a
+  non-interactive session and nothing changes.
 
 ## Integration Scenarios
 
@@ -26,7 +28,7 @@ Point `-LogPath` at a folder the forwarder watches and parse the bracketed field
 
 ```powershell
 $logPath = 'C:\Program Files\SplunkUniversalForwarder\var\log\splunk\OrphanedSid.log'
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogPath $logPath -LogLevel Information `
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogPath $logPath -LogLevel Information `
     -CorrelationId ([guid]::NewGuid().ToString())
 ```
 
@@ -48,21 +50,18 @@ even with `-LogLevel Error`. Fields worth indexing: `level`, `component`, `corre
 - **Log rotation**: an existing log larger than `MaxLogFileSizeMB` (config, default 10 MB) is
   renamed to `<name>_<yyyyMMdd_HHmmss>.log` at start-up when `EnableLogFileRotation` is true. Watch
   the folder, not a single file name.
-- **Correlation ID format**: any string is accepted, but `-Restore` validates GUID format
-  internally. Use GUIDs so the same convention works for every mode.
+- **Correlation ID format**: any string is accepted on all three commands, so a change or ticket
+  number can be used directly and searched for in the SIEM.
 
 ### 2. Monitoring (SCOM, Event Log)
 
-Read the summary from the log or the CSV; the script returns no object to test.
+Count the result objects the command returns; the log and the CSV carry the same information.
 
 ```powershell
 $id = [guid]::NewGuid().ToString()
 $csv = "D:\Reports\sid-audit-$(Get-Date -Format 'yyyyMMdd').csv"
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv -CorrelationId $id -MaxMemoryUsageMB 2048
+$found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv -CorrelationId $id -MaxMemoryUsageMB 2048).Count
 
-$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$found = [int](Select-String -Path $log.FullName -Pattern "\[$id\] Orphaned SIDs found: (\d+)" |
-    ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -Last 1)
 
 if ($found -gt 100) {
     Write-EventLog -LogName Application -Source 'OrphanedSid' -EventId 1001 -EntryType Warning `
@@ -77,7 +76,7 @@ least one orphaned SID was found; `Test-Path $csv` is a valid zero-result check.
 
 ### 3. Desired State Configuration
 
-The `Script` resource must read the CSV or the log, as above:
+The `Script` resource counts the result objects; the CSV feeds `GetScript`:
 
 ```powershell
 Configuration ADSecurityMaintenance {
@@ -107,11 +106,11 @@ Configuration ADSecurityMaintenance {
 
 ### 4. Azure Monitor / Log Analytics
 
-Upload the CSV rows, not a script return value:
+Upload the result objects, or the CSV rows written by `-OutputPath`:
 
 ```powershell
 $csv = '.\Reports\sid-audit.csv'
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv
 if (Test-Path $csv) {
     $body = Import-Csv -Path $csv | ConvertTo-Json -Depth 3
     # Send $body with the Log Analytics HTTP Data Collector API or a Logs Ingestion DCR endpoint
@@ -143,7 +142,7 @@ The task's account needs Read permissions for discovery and Modify permissions f
 <DN>` during removal.
 
 **Resolution:** grant the service account Read permissions on the search base for discovery and
-Modify permissions for `-Remove`/`-Restore`. Verify as that account:
+Modify permissions for `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`. Verify as that account:
 
 ```powershell
 Get-ADObject -SearchBase 'DC=contoso,DC=com' -Filter * -ResultSetSize 1 -ErrorAction Stop
@@ -152,7 +151,7 @@ Get-Acl -Path 'AD:\CN=Users,DC=contoso,DC=com' | Select-Object -ExpandProperty A
 
 #### Issue: Credential prompts
 
-The script never prompts for credentials and has no `-Credential` parameter. A prompt comes from
+The commands never prompt for credentials and have no `-Credential` parameter. A prompt comes from
 the environment (for example a `Get-Credential` in a wrapper). Run the task as the intended account
 instead.
 
@@ -161,24 +160,24 @@ instead.
 #### Issue: Memory pressure on large domains
 
 ```powershell
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096 -LogLevel Warning
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096 -LogLevel Warning
 ```
 
-`-MaxMemoryUsageMB` must be at least 256 (lower values fail `Initialize-MemoryManager`
-validation). Splitting the domain by OU across several runs is the only way to shorten a run; see
+`-MaxMemoryUsageMB` accepts 100-16384 (default 1024); it sets the warning threshold, not a hard
+cap. Splitting the domain by OU across several runs is the only way to shorten a run; see
 `.\Troubleshooting\Performance\Performance-Tuning.md`.
 
 #### Issue: Network timeouts
 
 ```powershell
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxRetries 5
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxRetries 5
 ```
 
 `-MaxRetries` (1-10) controls the per-object retry loop: an object whose processing threw is
-re-run up to that many times. SID lookups and the ACL steps of `-Remove` are wrapped by
+re-run up to that many times. SID lookups and the ACL steps of `Remove-OrphanedSid` are wrapped by
 `Invoke-ADOperationWithRetry` with a fixed default of 3 attempts for transient errors. Object
 discovery is not retried. There are no timeout settings in the configuration file. When every lookup
-for a SID fails, that SID is reported as orphaned; do not run `-Remove` from a run whose log contains
+for a SID fails, that SID is reported as orphaned; do not run `Remove-OrphanedSid` against a scope whose discovery log contains
 `lookup failed for SID`.
 
 ### 3. Logging and Monitoring
@@ -186,7 +185,7 @@ for a SID fails, that SID is reported as orphaned; do not run `-Remove` from a r
 #### Issue: Log growth
 
 ```powershell
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning -LogPath '\\fileserver\logs\ADSecurity\OrphanedSid.log'
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning -LogPath '\\fileserver\logs\ADSecurity\OrphanedSid.log'
 ```
 
 `-LogLevel` filters file output only; console output is unaffected. The folder part of `-LogPath`
@@ -198,7 +197,7 @@ Generate the ID once and pass it everywhere:
 
 ```powershell
 $id = [guid]::NewGuid().ToString()
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath ".\Reports\$id.csv"
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath ".\Reports\$id.csv"
 Select-String -Path .\Logs\<Command>_*.log -Pattern "\[$id\]"
 ```
 
@@ -222,10 +221,11 @@ pipeline {
                 powershell """
                     \$id = [guid]::NewGuid().ToString()
                     \$csv = "\$env:WORKSPACE\\sid-audit-${env.BUILD_NUMBER}.csv"
+                    Import-Module OrphanedSid
                     if ('${params.OPERATION}' -eq 'Removal') {
-                        .\\Remove-OrphanedSid -Force -SearchBase '${params.SEARCH_BASE}' -BackupPath "\$env:WORKSPACE\\ACLBackups" -CorrelationId \$id -OutputPath \$csv
+                        Remove-OrphanedSid -Force -SearchBase '${params.SEARCH_BASE}' -BackupPath "\$env:WORKSPACE\\ACLBackups" -CorrelationId \$id -OutputPath \$csv
                     } else {
-                        .\\Find-OrphanedSid -SearchBase '${params.SEARCH_BASE}' -CorrelationId \$id -OutputPath \$csv
+                        Find-OrphanedSid -SearchBase '${params.SEARCH_BASE}' -CorrelationId \$id -OutputPath \$csv
                     }
                 """
                 archiveArtifacts artifacts: 'sid-audit-*.csv, ACLBackups/**', allowEmptyArchive: true
@@ -254,7 +254,7 @@ pool:
 steps:
 - powershell: |
     $id = [guid]::NewGuid().ToString()
-    .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -CorrelationId $id `
+    Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -CorrelationId $id `
         -OutputPath "$(Build.ArtifactStagingDirectory)\sid-audit-results.csv" `
         -LogPath "$(Build.ArtifactStagingDirectory)\OrphanedSid.log"
   displayName: 'Execute AD Security Audit'
@@ -318,7 +318,7 @@ function Send-SecurityAlert {
 
 $id  = [guid]::NewGuid().ToString()
 $csv = ".\Reports\$id.csv"
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath $csv
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath $csv
 $count = if (Test-Path $csv) { @(Import-Csv -Path $csv).Count } else { 0 }
 if ($count -gt 100) {
     Send-SecurityAlert -AlertType 'HighOrphanedSIDCount' -Message "Found $count orphaned SIDs" -CorrelationId $id
@@ -348,17 +348,16 @@ function Get-IntegrationDiagnostics {
 }
 ```
 
-`Interactive = False` means a `-Remove` or `-Restore` run needs `-Force`.
+`Interactive = False` means a `Remove-OrphanedSid` or `Restore-OrphanedSidBackup` run needs `-Force`.
 
 ### Common error patterns
 
 | Error | Cause | Resolution |
 | --- | --- | --- |
-| `Refusing to remove orphaned SIDs from ACLs without confirmation. ...` | Non-interactive `-Remove` without `-Force` | Add `-Force`, or `-WhatIf` for a preview |
-| `Script initialization failed: Active Directory PowerShell module is not available` | RSAT AD module missing on the agent | Install RSAT-AD-PowerShell |
+| A prompting error from `Remove-OrphanedSid` or `Restore-OrphanedSidBackup` | Non-interactive run without `-Force` | Add `-Force`, or `-WhatIf` for a preview |
+| `The ActiveDirectory PowerShell module is not available. Install RSAT: ...` | RSAT AD module missing on the agent | Install RSAT-AD-PowerShell |
 | `The RPC server is unavailable` inside AD lookups | DC connectivity | Check port 389/636 and DNS; raise `-MaxRetries` |
-| `Cannot validate argument on parameter 'OutputPath'` | Folder in `-OutputPath` does not exist | Create it first |
-| `Cannot validate argument on parameter 'MaxMemoryMB'` | `-MaxMemoryUsageMB` below 256 | Use 256 or more |
+| `The folder for -OutputPath does not exist: <dir>` | Folder in `-OutputPath` does not exist | Create it first |
 | CSV missing after a run | No orphaned SIDs found | Treat as a zero result; check `Orphaned SIDs found: 0` in the log |
 
 ### Batch processing for large environments
@@ -369,12 +368,12 @@ $batchSize = 10
 for ($i = 0; $i -lt $ous.Count; $i += $batchSize) {
     $batch = $ous[$i..([Math]::Min($i + $batchSize - 1, $ous.Count - 1))]
     $id = [guid]::NewGuid().ToString()
-    .\Find-OrphanedSid -SearchBase $batch -CorrelationId $id -OutputPath ".\Reports\batch-$($i / $batchSize + 1)-$id.csv"
+    Find-OrphanedSid -SearchBase $batch -CorrelationId $id -OutputPath ".\Reports\batch-$($i / $batchSize + 1)-$id.csv"
 }
 ```
 
 `-SearchBase` accepts an array, and distinguished names can also be piped
-(`$ous | .\Find-OrphanedSid`).
+(`$ous | Find-OrphanedSid`).
 
 ## Related Documentation
 

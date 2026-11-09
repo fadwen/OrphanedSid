@@ -61,8 +61,8 @@ Get-ADObject -Identity $dn -ErrorAction SilentlyContinue
 (Get-Acl -Path "AD:\$dn").Access.Count
 ```
 
-The main script imports the module itself; this failure mode mostly affects interactive use of the
-private functions.
+The commands import the ActiveDirectory module themselves (`Start-OrphanedSidSession`); this
+failure mode mostly affects interactive use of the private functions.
 
 ### 2. Binary descriptor conversion failures
 

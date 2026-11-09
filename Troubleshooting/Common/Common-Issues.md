@@ -2,29 +2,35 @@
 
 ## Overview
 
-This guide covers the issues most often reported when running `Find-OrphanedSid`, with the
-exact messages the script emits and fixes that use its real parameters.
+This guide covers the issues most often reported when running `Find-OrphanedSid`,
+`Remove-OrphanedSid` and `Restore-OrphanedSidBackup`, with the exact messages they emit and fixes
+that use their real parameters.
 
-The script accepts: `-SearchBase` (string array, also from the pipeline, alias `DistinguishedName`),
-`-OutputPath`, `-IncludeInherited`, `-Remove`, `-Restore`, `-BackupPath`, `-MaxRetries` (1-10,
+`Find-OrphanedSid` and `Remove-OrphanedSid` accept `-SearchBase` (string array, also from the
+pipeline, alias `DistinguishedName`), `-OutputPath`, `-IncludeInherited`, `-MaxRetries` (1-10,
 default 3), `-ConfigPath`, `-MaxMemoryUsageMB` (100-16384, default 1024), `-PreserveTempFiles`,
 `-LogPath`, `-CorrelationId`, `-LogLevel` (`Critical`, `Error`, `Warning`, `Information`, `Debug`,
-`Verbose`; default `Information`), `-SuppressConsoleOutput`, `-Force`, `-WhatIf` and `-Confirm`.
-There is no `-Credential`; the script runs as the current user.
+`Verbose`; default `Information`) and `-SuppressConsoleOutput`. `Remove-OrphanedSid` adds
+`-BackupPath` and `-Force`. `Restore-OrphanedSidBackup` takes `-TargetObjectDN`, a mandatory
+`-BackupPath`, `-Force`, `-OutputPath`, `-LogPath`, `-CorrelationId`, `-LogLevel` and
+`-SuppressConsoleOutput`. The two commands that change Active Directory also take `-WhatIf` and
+`-Confirm`. There is no `-Credential`; every command runs as the current user.
 
-The script writes nothing to the pipeline. Results reach disk only through `-OutputPath` (always
-CSV) and the log file.
+Each command writes its results to the pipeline as objects: one `OrphanedSIDResult` per orphaned
+entry, one `RemovalOperationResult` per modified object, one restore result per target.
+`-OutputPath` also writes them as CSV, and every run writes a log file.
 
 ## Critical Issues (Immediate Resolution Required)
 
-### 1. Script Fails to Start
+### 1. A Command Fails to Start
 
 #### Issue: "Active Directory PowerShell module is not available"
 
 **Symptoms:**
 
-- The script terminates in the `begin` block before any object is processed.
-- Console shows `Script initialization failed: Active Directory PowerShell module is not available`.
+- The command stops before any object is processed.
+- The error is `The ActiveDirectory PowerShell module is not available. Install RSAT: Active
+  Directory PowerShell (...) and run the command again.`, raised by `Start-OrphanedSidSession`.
 
 **Root Cause:** the `ActiveDirectory` module is not installed, or is not visible to the PowerShell
 edition in use.
@@ -38,7 +44,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName RSATClient-Roles-AD-Powershel
 # Windows Server Core
 Add-WindowsFeature RSAT-AD-PowerShell
 
-# Verify from the same PowerShell edition that will run the script
+# Verify from the same PowerShell edition that will run the command
 Get-Module -ListAvailable -Name ActiveDirectory
 ```
 
@@ -70,20 +76,20 @@ Get-ChildItem -Path .\Private -Recurse -Filter *.ps1 | Measure-Object
   during discovery.
 - Repeated `All security descriptor retrieval methods failed for <DN>` warnings (see
   `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`).
-- With `-Remove`: `Failed to retrieve ACL for <DN>` or Set-Acl access-denied errors.
+- From `Remove-OrphanedSid`: `Failed to retrieve ACL for <DN>` or Set-Acl access-denied errors.
 
 **Required permissions:**
 
-| Mode | Permission on target objects |
+| Command | Permission on target objects |
 | --- | --- |
-| Discovery (default) | Read all properties and Read permissions |
-| `-Remove` | Modify permissions (and the backup folder must be writable) |
-| `-Restore` | Modify permissions |
+| `Find-OrphanedSid` | Read all properties and Read permissions |
+| `Remove-OrphanedSid` | Modify permissions (and the backup folder must be writable) |
+| `Restore-OrphanedSidBackup` | Modify permissions |
 
 **Resolution:**
 
 ```powershell
-# Confirm the account running the script
+# Confirm the account running the command
 whoami
 whoami /groups | findstr /i "Domain Admins Account Operators"
 
@@ -106,45 +112,45 @@ Test-NetConnection -ComputerName $dc -Port 389 -InformationLevel Detailed
 Resolve-DnsName -Name $dc -Type A
 
 # Raise the retry count for SID lookups and object discovery (default 3, maximum 10)
-.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -MaxRetries 5
+Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -MaxRetries 5
 ```
 
 `-MaxRetries` governs the per-object retry loop in `Invoke-MainProcessingLogic`: when processing an
 object throws, the object is retried up to that many times with a 2, 4, 6... second back-off
-(`Retry attempt N of M for object <DN>`). SID lookups and the ACL steps of `-Remove` go through
+(`Retry attempt N of M for object <DN>`). SID lookups and the ACL steps of `Remove-OrphanedSid` go through
 `Invoke-ADOperationWithRetry`, which has its own fixed default of 3 attempts and retries only
 errors matching `timeout|network|connection|busy|unavailable|server not operational|replication|domain controller`.
 Object discovery (`Get-ADObject -SearchBase`) and `Get-Acl` are not retried.
 
-### 3. Destructive Modes Refuse to Run
+### 3. Remove or Restore Stops at the Confirmation Prompt
 
-#### Issue: "Refusing to remove orphaned SIDs from ACLs without confirmation"
+#### Issue: a scheduled or remote run fails before changing anything
 
-**Symptoms:** a `-Remove` or `-Restore` run stops immediately after the search base is resolved with
-one of:
+**Symptoms:** `Remove-OrphanedSid` or `Restore-OrphanedSidBackup` stops immediately with a PowerShell
+error about prompting in a non-interactive session, or, when the prompt was answered No, logs one of:
 
 ```text
-Refusing to remove orphaned SIDs from ACLs without confirmation. Re-run with -Force to proceed unattended, or with -WhatIf to preview the changes.
-Refusing to restore ACLs from backup without confirmation. Re-run with -Force to proceed unattended, or with -WhatIf to preview the changes.
+Removal declined at the confirmation prompt for: <search bases>
+Restore declined at the confirmation prompt for: <targets>
 ```
 
-**Root Cause:** `-Remove` and `-Restore` require an explicit go-ahead. In an interactive console the
-script asks once (`This will remove orphaned SIDs from ACLs for: <search bases>` under the caption
-`Confirm destructive operation`); answering No produces the message above. A session that cannot
-prompt - a scheduled task, CI agent, or remote host - is treated as a refusal.
+**Root Cause:** both commands declare `ConfirmImpact = 'High'` and call `ShouldProcess` once per run
+(`Remove orphaned SIDs from ACLs (a backup of each ACL is written first)` and
+`Restore ACLs from backup folder <path>`). In an interactive console PowerShell asks once. A host
+that cannot prompt - a scheduled task, CI agent, or remote session - fails the prompt instead.
 
 **Resolution:**
 
 ```powershell
 # Preview without any prompt or change
-.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -WhatIf
+Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -WhatIf
 
 # Unattended run - skips the confirmation
-.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -Force
+Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -Force
 ```
 
-`-WhatIf` never prompts. `-Force` only affects this confirmation; it does not change what is
-removed or restored.
+`-WhatIf` never prompts. `-Force` (or `-Confirm:$false`) only affects this confirmation; it does not
+change what is removed or restored.
 
 ## High Priority Issues
 
@@ -161,7 +167,7 @@ removed or restored.
 
 ```powershell
 # Raise the ceiling (100-16384 MB; default 1024)
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 4096
 
 # Watch the process while it runs (pwsh or powershell depending on host)
 Get-Process -Id $PID | Select-Object ProcessName, @{ n = 'WorkingSetMB'; e = { [math]::Round($_.WorkingSet64 / 1MB) } }
@@ -169,7 +175,7 @@ Get-Process -Id $PID | Select-Object ProcessName, @{ n = 'WorkingSetMB'; e = { [
 # Split a large domain into several runs
 $ous = Get-ADOrganizationalUnit -Filter * -SearchScope OneLevel | Select-Object -ExpandProperty DistinguishedName
 foreach ($ou in $ous) {
-    .\Find-OrphanedSid -SearchBase $ou -OutputPath ".\Reports\$($ou.Split(',')[0].Substring(3)).csv"
+    Find-OrphanedSid -SearchBase $ou -OutputPath ".\Reports\$($ou.Split(',')[0].Substring(3)).csv"
 }
 ```
 
@@ -178,18 +184,7 @@ are streamed to batch files under `$env:TEMP\OrphanedSid-<CorrelationId>\` so re
 not drive memory use. See `.\Troubleshooting\Performance\Memory-Management-Issues.md` and
 `.\Troubleshooting\Performance\Performance-Tuning.md`.
 
-#### Issue: Initialization fails with a MaxMemoryMB validation error
-
-**Symptoms:** `Script initialization failed: Cannot validate argument on parameter 'MaxMemoryMB'`
-when `-MaxMemoryUsageMB` is below 256.
-
-**Root Cause:** `-MaxMemoryUsageMB` accepts 100-16384, but `Initialize-MemoryManager` requires
-`-MaxMemoryMB` in 256-16384. The same applies to a config `MemoryCheckInterval` below 5, which
-`Initialize-MemoryManager -CheckInterval` rejects.
-
-**Resolution:** use 256 or higher for `-MaxMemoryUsageMB`, and 5-100 for `MemoryCheckInterval`.
-
-#### Issue: Script appears to hang
+#### Issue: A run appears to hang
 
 **Symptoms:** no progress line for a long time. Progress is logged every 50 objects as
 `Processing: <n>/<total> objects (<pct>%) - Orphaned SIDs found: <k>`.
@@ -203,10 +198,10 @@ when the error looks transient.
 
 ```powershell
 # See each lookup as it happens
-.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -LogLevel Debug
+Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -LogLevel Debug
 
 # Bound the run from a wrapper
-$job = Start-Job -ScriptBlock { Find-OrphanedSid' -SearchBase 'OU=Test,DC=contoso,DC=com' }
+$job = Start-Job -ScriptBlock { Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' }
 if (-not (Wait-Job -Job $job -Timeout 1800)) {
     Stop-Job -Job $job
     Write-Warning 'Find-OrphanedSid did not finish within 30 minutes'
@@ -223,7 +218,7 @@ Lookup results are cached per SID for the run, so repeated SIDs cost one lookup 
 **Symptoms:**
 
 - `Cannot validate argument on parameter 'ConfigPath'. Configuration file not found: <path>`.
-- `Script initialization failed: Failed to load configuration from <path> : <message>`.
+- `Failed to load configuration from <path> : <message>`, logged as `Script initialization failed: ...`.
 - Settings in the file appear to be ignored.
 
 **Root Cause:** the path is wrong, the JSON is malformed, or the file uses keys the loader does not
@@ -234,7 +229,7 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 | `WellKnownSIDPatterns` | string[] of regex | built-in list | each must compile |
 | `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$` |
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
-| `MemoryCheckInterval` | int | 50 | 1-100 (use 5-100; see above) |
+| `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
 | `EnableDetailedLogging` | bool | false | |
 | `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose |
 | `LogFilePath` | string | null | overrides `-LogPath` when set |
@@ -279,20 +274,21 @@ if (Test-Path $configPath) {
 
 **Symptoms:**
 
-- `Cannot validate argument on parameter 'OutputPath'` - the folder part of the path does not exist.
+- `The folder for -OutputPath does not exist: <dir>` from parameter validation.
 - The summary ends with `No orphaned SIDs found. Active Directory ACLs appear to be clean.` and no
   file is written.
 - `Failed to export results to CSV: <message>` in the summary section.
 
 **Root Cause:** the export runs only when at least one orphaned SID was found. The file is always
 CSV (`StreamingResultsManager.ExportToCsv`), whatever extension `-OutputPath` carries. The folder
-must already exist.
+must already exist. The same results are written to the pipeline whether or not `-OutputPath` is
+given.
 
 **Resolution:**
 
 ```powershell
 New-Item -Path .\Reports -ItemType Directory -Force | Out-Null
-.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -OutputPath '.\Reports\orphaned-sids.csv'
+Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -OutputPath '.\Reports\orphaned-sids.csv'
 
 # Confirm from the log
 Select-String -Path (Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1).FullName -Pattern 'Orphaned SIDs found:|Results exported to:'
@@ -316,12 +312,12 @@ not given a new GUID is generated per run.
 
 ```powershell
 $correlationId = [guid]::NewGuid().ToString()
-.\Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $correlationId
+Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $correlationId
 Select-String -Path .\Logs\<Command>_*.log -Pattern "\[$correlationId\]" | Select-Object -First 20
 ```
 
-Any string is accepted for `-CorrelationId` on the main script, but `Test-BackupValidation` in the
-restore path requires GUID format, so keep GUIDs for runs that use `-Restore`.
+Any string is accepted for `-CorrelationId` on all three commands, so a change or ticket number
+can be used directly.
 
 ### 7. Backup Issues During Removal
 
@@ -331,11 +327,10 @@ restore path requires GUID format, so keep GUIDs for runs that use `-Restore`.
 
 - `Failed to create ACL backup for <DN> : <message>` followed by
   `Failed to create ACL backup - aborting removal operation` for that object.
-- `WARNING: No backup path specified. Using default: <script folder>\Backup`.
 
 **Root Cause:** every removal first writes `<sanitized DN>_<yyyyMMdd_HHmmss>.xml` (Export-Clixml)
-to `-BackupPath\<yyyyMMdd_HHmmss>\`. When `-BackupPath` is omitted the script creates
-`<script folder>\Backup`. A failed backup aborts that object's removal; other objects continue.
+to `<BackupPath>\<yyyyMMdd_HHmmss>\`. When `-BackupPath` is omitted it is `.\Backup` under the
+current directory. A failed backup aborts that object's removal; other objects continue.
 
 **Resolution:**
 
@@ -345,10 +340,10 @@ New-Item -Path $backupRoot -ItemType Directory -Force | Out-Null
 $drive = Get-PSDrive -Name $backupRoot.Substring(0, 1)
 "Free space: $([math]::Round($drive.Free / 1GB, 2)) GB"
 
-.\Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
+Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRoot -WhatIf
 ```
 
-The parent of `-BackupPath` must exist (`Parent directory does not exist for backup path: <dir>`
+The parent of `-BackupPath` must exist (`The parent folder for -BackupPath does not exist: <dir>`
 otherwise). Full backup and restore guidance is in
 `.\Troubleshooting\Common\Backup-Restore-Issues.md`.
 
@@ -362,7 +357,7 @@ otherwise). Full backup and restore guidance is in
 
 ```powershell
 # Write only Warning and above to the file; console output is unaffected
-.\Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning
+Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning
 
 # Remove logs older than 30 days
 Get-ChildItem -Path .\Logs -Filter '<Command>_*.log' |

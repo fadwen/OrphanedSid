@@ -257,7 +257,7 @@ HelpMessage: ''
 
 ### -PreserveTempFiles
 
-Keep the streaming batch files under $env:TEMP\Find-UnknownSID-<CorrelationId>\ for
+Keep the streaming batch files under $env:TEMP\OrphanedSid-<CorrelationId>\ for
 inspection after the run.
 
 ```yaml

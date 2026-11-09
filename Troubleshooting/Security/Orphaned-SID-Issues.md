@@ -89,7 +89,7 @@ Get-ADObject -Server trusted.example.com -Filter "objectSid -eq '$testSID'"
 
 - Run as an account with read access to every object in scope.
 - Check replication (`repadmin /replsummary`) before a large run.
-- Always run `-WhatIf` and review the CSV before `-Remove`.
+- Always run `Remove-OrphanedSid -WhatIf` and review the results before the real run.
 
 ### 2. False negatives: orphaned SIDs marked as valid
 
@@ -126,7 +126,7 @@ try {
 }
 ```
 
-Disabled accounts are not orphaned; the script reports only SIDs with no object.
+Disabled accounts are not orphaned; only SIDs with no object are reported.
 
 ### 3. Performance problems
 
@@ -184,7 +184,7 @@ Test-NetConnection -ComputerName $dc -Port 636    # LDAPS
 Test-NetConnection -ComputerName $dc -Port 3268   # Global Catalog
 ```
 
-Do not run `-Remove` while connectivity is uncertain: a run that cannot reach the directory marks
+Do not run `Remove-OrphanedSid` while connectivity is uncertain: a run that cannot reach the directory marks
 SIDs orphaned on error.
 
 ## Cache Management
@@ -206,7 +206,8 @@ $script:SIDValidationCache.Count
 ```
 
 Entries have no timestamp; clear the cache if the directory changed during a long interactive
-session. The main script creates a fresh cache every time it is invoked as a new process.
+session. The cache lives in the module's scope, so it lasts as long as the module stays imported;
+`Import-Module OrphanedSid -Force` or a new process starts with an empty one.
 
 ## Error Messages
 
@@ -237,7 +238,7 @@ Select-String -Path $log.FullName -Pattern $correlationId
 
 ## Best Practices
 
-- Review `-WhatIf` output before any `-Remove` run; a SID marked orphaned because of an error is
+- Review `-WhatIf` output before any `Remove-OrphanedSid` run; a SID marked orphaned because of an error is
   indistinguishable from a real orphan in the CSV.
 - Run from a host close to a domain controller; per-SID latency dominates run time.
 - In an interactive session, clear the cache between runs against different domains.

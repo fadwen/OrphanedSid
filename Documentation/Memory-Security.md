@@ -4,25 +4,28 @@
 
 ### How Memory Is Managed
 
-The script creates one `MemoryManager` (`Classes/MemoryManager.ps1`) per run with the
-`-MaxMemoryUsageMB` threshold (100 to 16384 MB, default 1024). Every `MemoryCheckInterval` objects
-(configuration key, default 50) it reads the process working set, records the peak, and when the
-working set exceeds the threshold it writes
+`Find-OrphanedSid` and `Remove-OrphanedSid` create one `MemoryManager` (`Classes/MemoryManager.ps1`)
+per run with the `-MaxMemoryUsageMB` threshold (100 to 16384 MB, default 1024). Every
+`MemoryCheckInterval` objects (configuration key, default 50) it reads the process working set,
+records the peak, and when the working set exceeds the threshold it writes
 
 ```text
 WARNING: Memory usage threshold exceeded: <n> MB (Limit: <max> MB) - CorrelationId: <id>
 ```
 
-and forces a full garbage collection. The threshold is advisory: it triggers cleanup, it does not
-stop the run or cap the process.
+and forces a full garbage collection. If the working set is still above the threshold afterwards
+it adds `Memory usage still exceeds limit after garbage collection: <n> MB. Consider reducing batch
+size or increasing memory limit.` The threshold is advisory: it triggers cleanup, it does not stop
+the run or cap the process.
 
 Discovery results are not held in memory. `StreamingResultsManager`
 (`Classes/StreamingResultsManager.ps1`) writes them in batches of `BatchSize` objects (configuration
-key, default 100) to `<TEMP>\OrphanedSid-<CorrelationId>\batch_<n>.json` and reads them back only
-when the CSV is exported. The folder is removed at the end of the run unless `-PreserveTempFiles` is
-given.
+key, default 50) to `$env:TEMP\OrphanedSid-<CorrelationId>\batch_<n>.json` and reads them back at
+the end of the run, to write them to the pipeline and, with `-OutputPath`, to the CSV. The folder is
+removed at the end of the run unless `-PreserveTempFiles` is given. Under `-WhatIf` the folder is
+not created.
 
-Peak working set is reported in the run summary as `PeakMemoryUsageMB`.
+The peak working set is written to the log in the processing summary as `Peak memory usage: <n> MB`.
 
 ### High Memory Usage
 
@@ -37,11 +40,11 @@ Peak working set is reported in the run summary as `PeakMemoryUsageMB`.
 2. Check more often and flush smaller batches through a configuration file:
 
    ```json
-   { "BatchSize": 50, "MemoryCheckInterval": 10 }
+   { "BatchSize": 25, "MemoryCheckInterval": 10 }
    ```
 
    ```powershell
-   .\Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath ".\low-memory.json"
+   Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath ".\low-memory.json"
    ```
 
 3. Scan one OU at a time by passing several `-SearchBase` values across separate runs rather than
@@ -50,9 +53,10 @@ Peak working set is reported in the run summary as `PeakMemoryUsageMB`.
 
 ### Temporary Files Left Behind
 
-The streaming folder is deleted by `Dispose()` at the end of the run. It remains on disk when
-`-PreserveTempFiles` was given (the path is logged) or when the process was terminated before the
-`end` block ran. In either case it is safe to delete `<TEMP>\OrphanedSid-<CorrelationId>`.
+The streaming folder is deleted by `Dispose()` when the command's `finally` block runs
+`Stop-OrphanedSidSession`. It remains on disk when `-PreserveTempFiles` was given (the path is
+logged) or when the process was terminated before that block ran. In either case it is safe to
+delete `$env:TEMP\OrphanedSid-<CorrelationId>`.
 
 See [Memory-Management.md](../Troubleshooting/Performance/Memory-Management.md),
 [Memory-Management-Issues.md](../Troubleshooting/Performance/Memory-Management-Issues.md) and
@@ -62,26 +66,37 @@ See [Memory-Management.md](../Troubleshooting/Performance/Memory-Management.md),
 
 ### What Is Checked Before Removal
 
-In `-Remove` mode every orphaned SID on an object passes through `Invoke-SecurityValidation`
-(`Private/Security/Invoke-SecurityValidation.ps1`), which calls `Test-SIDSecurity`
-(`Private/SID/Test-SIDSecurity.ps1`) at the `Standard` level for each SID. A SID is blocked when any
-of these applies:
+During a `Remove-OrphanedSid` run that is not a `-WhatIf` preview, every orphaned SID on an object
+passes through `Invoke-SecurityValidation` (`Private/Security/Invoke-SecurityValidation.ps1`),
+which calls `Test-SIDSecurity` (`Private/SID/Test-SIDSecurity.ps1`) at the `Standard` level for
+each SID. A SID is blocked when any of these applies:
 
 | Check | Source of the rule | Issue text in the log |
 |-------|--------------------|-----------------------|
 | Listed as protected | `ProtectedSIDs` configuration key | `SID is in protected SIDs list - removal blocked by security policy` |
 | Matches a well-known pattern | `WellKnownSIDPatterns` configuration key | `Well-known SID detected - removal may impact system security` |
 | Malformed or malicious-looking input | Built-in pattern checks | `Critical security risk detected - potentially malicious input pattern: <pattern>` |
-| Rated High risk by SID analysis | `Get-SIDAnalysis` risk level | `High-risk SID requires elevated confirmation for removal` |
-| The object matches a critical pattern | `CriticalObjectPatterns` (defaults: Domain Admins, Enterprise Admins, Schema Admins, BUILTIN, `CN=Users,DC=*`, `CN=Computers,DC=*`) | `SID is on critical object: <DN>` |
+| Rated Critical risk by SID analysis | `Get-SIDAnalysis` risk level | `Critical security risk detected - potentially malicious input` |
+
+Two further findings are recorded but do not block at the `Standard` level: a SID rated High risk
+by `Get-SIDAnalysis` (`High-risk SID requires elevated confirmation for removal`, reported by
+`Invoke-SecurityValidation` as `High-risk SID detected: <sid>`), and an object whose DN matches a
+`CriticalObjectPatterns` entry (defaults: Domain Admins, Enterprise Admins, Schema Admins, BUILTIN,
+`CN=Users,DC=*`, `CN=Computers,DC=*`; issue text `SID is on critical object: <DN>`). Both set the
+validation's `RiskLevel` to `High` and appear in the `SecurityValidation` property of the
+`RemovalOperationResult`; the entry is still removed.
 
 If any SID on an object is blocked, the removal workflow skips that object entirely and logs
 `SECURITY BLOCK: Security validation failed: <issues>` at `Error` level. The blocked SIDs are also
-written as `[SecurityAudit]` entries, which are always logged regardless of `-LogLevel`.
+written as security audit entries (`"Component":"SecurityAudit"`, `DataValidation` events with
+outcome `Failure`), which are always logged regardless of `-LogLevel`.
 
 There is no parameter that overrides a block. The only adjustable inputs are `ProtectedSIDs` and
 `WellKnownSIDPatterns` in the `-ConfigPath` file; `CriticalObjectPatterns` and the risk rating are
 fixed in code.
+
+Security validation runs only when an entry is actually being removed. A `-WhatIf` run lists the
+entries that would be removed but does not evaluate these checks.
 
 ### Protected or Well-Known SID Blocked
 
@@ -97,29 +112,31 @@ fixed in code.
 2. If a SID in the default `ProtectedSIDs` list is genuinely orphaned in this forest, supply a
    configuration file with a `ProtectedSIDs` array that omits it, and keep that file under change
    control.
-3. Review the `[SecurityAudit]` entries for the run before re-running with the changed
+3. Review the security audit entries for the run before re-running with the changed
    configuration.
 
-### Critical Object Protection
+### Critical Object Findings
 
 **Symptoms**
 
-- `SID is on critical object: <DN>` in the log
-- Objects under `CN=Users` or `CN=Computers`, or admin groups, are skipped
+- `SID is on critical object: <DN>` in the `SecurityValidation.Issues` of a result, or
+  `High-risk SID detected: <sid>` for objects under `CN=Users` or `CN=Computers`, or admin groups
+- The result's `SecurityValidation.RiskLevel` is `High`
 
 **Solutions**
 
-1. Verify the finding in `-WhatIf` output first.
-2. Remove the entry by hand with `Set-Acl` after review, since the patterns cannot be changed
-   through configuration.
-3. Test in a non-production forest before touching the same objects in production.
+1. These findings do not stop the removal. Review the affected objects in the results before
+   relying on the run, and restore from the run's backup folder if an entry should not have gone.
+2. Test in a non-production forest before touching the same objects in production; the patterns
+   cannot be changed through configuration.
 
 ### Backup Integrity Failures
 
 **Symptoms**
 
-- `Failed to create ACL backup - aborting removal operation` during `-Remove`
-- `Backup validation failed: SDDL integrity check failed: Hash mismatch ...` during `-Restore`
+- `Failed to create ACL backup for <DN> : <message>` during `Remove-OrphanedSid`
+- `Backup validation failed: SDDL integrity check failed: Hash mismatch ...` during
+  `Restore-OrphanedSidBackup`
 
 **Solutions**
 
@@ -135,17 +152,18 @@ See [Security-Validation-Guide.md](../Troubleshooting/Security/Security-Validati
 
 ### Memory
 
-- Set `-MaxMemoryUsageMB` for the host the script runs on, not for the dataset.
+- Set `-MaxMemoryUsageMB` for the host the command runs on, not for the dataset.
 - Use a configuration file with a smaller `BatchSize` and `MemoryCheckInterval` for large domains.
 - Keep `-PreserveTempFiles` for troubleshooting only.
 
 ### Security Validation
 
-- Run `-WhatIf` before every `-Remove` and read the `SECURITY BLOCK` lines.
+- Run `Remove-OrphanedSid -WhatIf` first to see which entries would be removed, then read the
+  `SECURITY BLOCK` lines and the `BlockedSIDs` of each result after the real run.
 - Keep the default `ProtectedSIDs` unless a reviewed configuration file says otherwise.
 - Keep the backup folders from every removal run until the change has been verified.
 
 ### Error Recovery
 
 - Record the run's correlation ID; it is on every log line and inside every backup file.
-- Rehearse `-Restore -WhatIf` against a real backup folder before relying on it.
+- Rehearse `Restore-OrphanedSidBackup -WhatIf` against a real backup folder before relying on it.

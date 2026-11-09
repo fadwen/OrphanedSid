@@ -30,12 +30,10 @@ BeforeAll {
         }
     }
 
-    if (-not (Get-Command Get-ADObject -ErrorAction SilentlyContinue)) {
-        function global:Get-ADObject {
-            param($Identity, $SearchBase, $Filter, $Properties, $SearchScope, $ResultPageSize, $Server)
-            throw 'Get-ADObject stub: the ActiveDirectory module is not installed and this call was not mocked'
-        }
-    }
+    # The shared stubs, not a local global Get-ADObject: a global defined here with a shorter
+    # parameter list outlived the file, and Mock then built later files' Get-ADObject mocks from it,
+    # so -IncludeDeletedObjects never reached the mock body.
+    . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     . "$PSScriptRoot\..\..\..\..\Private\Security\Get-SecurityDescriptor.ps1"
 }

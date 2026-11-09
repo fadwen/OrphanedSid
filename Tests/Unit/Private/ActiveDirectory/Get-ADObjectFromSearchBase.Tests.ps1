@@ -2,14 +2,10 @@
 Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
     
     BeforeAll {
-        # Pester 3.4 can only mock a command that exists. Stub Get-ADObject when the RSAT
-        # ActiveDirectory module is not installed so the Mock below has something to replace.
-        if (-not (Get-Command Get-ADObject -ErrorAction SilentlyContinue)) {
-            function global:Get-ADObject {
-                param($Identity, $SearchBase, $Filter, $Properties, $SearchScope, $ResultPageSize, $Server)
-                throw 'Get-ADObject stub: the ActiveDirectory module is not installed and this call was not mocked'
-            }
-        }
+        # The shared stubs, not a local global Get-ADObject: a global defined here with a shorter
+        # parameter list outlived the file, and Mock then built later files' Get-ADObject mocks from it,
+        # so -IncludeDeletedObjects never reached the mock body.
+        . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
         # Import the function once for all tests
         $FunctionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\ActiveDirectory\Get-ADObjectFromSearchBase.ps1"

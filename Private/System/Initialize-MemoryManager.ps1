@@ -101,11 +101,14 @@ function Initialize-MemoryManager {
     [OutputType('MemoryManager')]
     param(
         [Parameter(Mandatory)]
-        [ValidateRange(256, 16384)]
+        # The same ranges the commands and the configuration file accept. This function once took
+        # 256-16384 and 5-100, so -MaxMemoryUsageMB 100-255 and a configured interval outside 5-100
+        # passed every earlier check and then failed initialization.
+        [ValidateRange(100, 16384)]
         [int]$MaxMemoryMB,
 
         [Parameter(Mandatory)]
-        [ValidateRange(5, 100)]
+        [ValidateRange(1, 1000)]
         [int]$CheckInterval,
 
         [Parameter()]
