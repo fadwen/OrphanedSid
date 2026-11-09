@@ -75,11 +75,16 @@ else before the command starts. Each `-TargetObjectDN` value (aliases `Distingui
    (`Invalid target object DN format`).
 2. **Discovers backups** in `-BackupPath` (top level only, `*.xml`):
    - `No backup files found in directory: <path>` when the folder holds no `.xml` files.
-   - **Bulk mode** when the target starts with `OU=` or `DC=` and more than one file exists: every
-     backup whose `ObjectDN` ends with the target DN is restored.
-   - **Single mode** otherwise: the newest file whose name contains the target's first DN component
-     (for example `CN_User1`) is restored; `No backup files found for object <DN> in path <path>`
-     when none matches.
+   - Every file is read with `Import-Clixml` for the `ObjectDN` it records; a file that cannot be
+     read is skipped with `Failed to process backup file '<path>': <message>`. File names are not
+     used to pick a backup.
+   - **Bulk mode** when the target starts with `OU=` or `DC=`: every backup whose `ObjectDN` is the
+     target or ends with `,<target>` is restored. `OU=Sales` takes in `OU=East,OU=Sales` but not
+     `OU=PreSales`.
+   - **Single mode** otherwise: only backups whose `ObjectDN` equals the target, ignoring case.
+     `No backup files found for object <DN> in path <path>` when none does.
+   - In both modes an object with several backups in the folder is restored once, from the one with
+     the latest `LastWriteTime`.
 3. **Validates each backup** with `Test-BackupIntegrity -BackupData` at `Standard` level
    (`Backup validation failed: <issues>` on failure).
 4. **Validates the target** with `Get-RestorationTarget -CheckPermissions`

@@ -39,6 +39,8 @@
 1.0.1 - Restore-OrphanedSidBackup restores a single object again. In 1.0.0 every single-object
 restore failed with "Could not find file '<BackupPath>\C'", because one matching backup was
 indexed as a string. Container restores were not affected.
+A single-object restore now matches backups on the object DN they record, not on the file name,
+which could select a backup of another object such as CN=User10 for CN=User1.
 
 1.0.0 - First release as a module.
 Find-OrphanedSid, Remove-OrphanedSid and Restore-OrphanedSidBackup replace the three modes of the
