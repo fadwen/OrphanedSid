@@ -33,9 +33,10 @@ ACL back to verify the result.
 
 -TargetObjectDN decides the scope.
 A container (an OU or the domain root) restores every
-backup whose object sits under it.
-A single object restores its most recent matching
-backup.
+object that is the container or sits under it.
+A single object restores only backups whose recorded object DN equals
+-TargetObjectDN, compared without regard to letter case.
+Either way each object is restored once, from its most recent backup in the folder.
 -BackupPath is the folder that holds the .xml files, normally one timestamped run
 folder under the Remove-OrphanedSid backup root.
 

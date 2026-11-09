@@ -6,6 +6,32 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-09
+
+### Fixed
+
+- `Restore-OrphanedSidBackup` failed for every single object, with `Could not find file
+  '<BackupPath>\C'` and `TargetObjectDN = Unknown (from C)`. When one backup file matched the
+  object, `Sort-Object` returned the path itself instead of an array, and `[0]` on a string is its
+  first character. This broke restoring one object, and the rollback from a removal's CSV shown in
+  the README; a container target with more than one backup used a different path and worked.
+  Nothing was changed by the failed attempts.
+- `Get-SIDProcessingStatistics` counted the keys of a single result's statistics hashtable as the
+  number of objects processed. No command calls it.
+- A single-object restore picked its backup by file name, and could restore a different object.
+  The match was a substring of the sanitized DN, so `CN=User1` also matched a backup of
+  `CN=User10`, and a CN matched the same CN in any other OU. The newest match won, and its own
+  object was rewritten from its backup while the requested object was left as it was; the result
+  named the other object with `Success = True`. Backups are now matched on the `ObjectDN` they
+  record, compared exactly without regard to case.
+
+### Changed
+
+- A container restore with a single backup file in the folder now restores the objects under the
+  container. It previously fell back to the single-object file-name match.
+- A folder that holds several backups of one object restores that object once, from its most recent
+  backup. A container restore previously restored every one of them, in no defined order.
+
 ## [1.0.0] - 2026-11-08
 
 First release as a module. The code was previously the `Find-UnknownSID.ps1` script under

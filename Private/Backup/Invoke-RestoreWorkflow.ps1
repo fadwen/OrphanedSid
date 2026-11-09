@@ -321,55 +321,48 @@ function Invoke-RestoreWorkflow {
 
                 Write-Verbose "Successfully collected $($allBackupFilePaths.Count) valid file paths"
 
-                # Determine if this is a bulk operation based on number of files and target DN
-                # Check if the TargetObjectDN appears to be a search base (high-level OU/DC) with multiple backup files
-                if ($allBackupFilePaths.Count -gt 1 -and ($TargetObjectDN -match '^(OU|DC)=')) {
-                    # Bulk restore mode - find all backup files that represent objects within the search base
-                    $restoreMode = "Bulk"
-                    
-                    foreach ($backupFilePath in $allBackupFilePaths) {
-                        try {
-                            Write-Verbose "Processing backup file: $backupFilePath"
-                            
-                            # Quick peek at backup file to get the actual object DN
-                            $backupMetadata = Import-Clixml -Path $backupFilePath -ErrorAction Stop
-                            $backupObjectDN = $backupMetadata.ObjectDN
+                # Read the ObjectDN each backup records. A file name cannot identify the object: it is the
+                # sanitized DN, so CN=User1 is a prefix of a CN_User10 backup, and the same CN recurs in
+                # every OU that holds one.
+                $backupIndex = foreach ($backupFilePath in $allBackupFilePaths) {
+                    try {
+                        Write-Verbose "Processing backup file: $backupFilePath"
+                        $backupMetadata = Import-Clixml -Path $backupFilePath -ErrorAction Stop
+                        [PSCustomObject]@{
+                            Path      = $backupFilePath
+                            ObjectDN  = [string]$backupMetadata.ObjectDN
+                            WrittenAt = (Get-Item -LiteralPath $backupFilePath).LastWriteTime
+                        }
+                    } catch {
+                        Write-Warning "Failed to process backup file '$backupFilePath': $($_.Exception.Message)"
+                    }
+                }
+                $backupIndex = @($backupIndex | Where-Object { $_.ObjectDN })
+                $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
 
-                            # Check if this backup object is within the search base scope
-                            if ($backupObjectDN -like "*$TargetObjectDN") {
-                                Write-Verbose "Adding backup file for object: $backupObjectDN"
-                                $backupFilesToProcess += $backupFilePath
-                            }
-                        } catch {
-                            Write-Warning "Failed to process backup file '$backupFilePath': $($_.Exception.Message)"
-                        }
-                    }
+                if ($TargetObjectDN -match '^(OU|DC)=') {
+                    # Bulk restore mode - every object at or under the container. The comma anchors the
+                    # suffix, so OU=Sales does not take in OU=PreSales.
+                    $restoreMode = "Bulk"
+                    $inScope = @($backupIndex | Where-Object {
+                            $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) -or
+                            $_.ObjectDN.EndsWith(",$TargetObjectDN", $ignoreCase)
+                        })
                 } else {
-                    # Single restore mode - find exact match for the target object
+                    # Single restore mode - only backups of exactly this object
                     $restoreMode = "Single"
-                    
-                    # Try to find exact match based on filename patterns
-                    $possibleMatches = @()
-                    $firstComponent = $TargetObjectDN.Split(',')[0]
-                    $sanitizedFirstComponent = $firstComponent -replace '[\\/:*?"<>|,=]', '_' -replace '\s+', '_'
-                    
-                    foreach ($backupFilePath in $allBackupFilePaths) {
-                        $filename = [System.IO.Path]::GetFileNameWithoutExtension($backupFilePath)
-                        # Check both original format and sanitized format
-                        if ($filename -like "*$firstComponent*" -or $filename -like "*$sanitizedFirstComponent*") {
-                            $possibleMatches += $backupFilePath
-                        }
-                    }
-                    
-                    if ($possibleMatches.Count -gt 0) {
-                        # Sort by modification time and take the most recent
-                        $sortedMatches = $possibleMatches | Sort-Object {(Get-Item $_).LastWriteTime} -Descending
-                        $backupFilesToProcess = @($sortedMatches[0])
-                        Write-Verbose "Using exact match backup: $($sortedMatches[0])"
-                    } else {
+                    $inScope = @($backupIndex | Where-Object { $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) })
+                    if ($inScope.Count -eq 0) {
                         throw "No backup files found for object $TargetObjectDN in path $BackupPath"
                     }
                 }
+
+                # One backup per object, the most recent, so two runs in one folder cannot restore an
+                # object twice in an arbitrary order
+                $backupFilesToProcess = @(foreach ($group in ($inScope | Group-Object { $_.ObjectDN.ToUpperInvariant() })) {
+                        @($group.Group | Sort-Object WrittenAt -Descending)[0].Path
+                    })
+                Write-Verbose "Matched $($backupFilesToProcess.Count) backup files for $TargetObjectDN"
             } else {
                 throw "Either BackupFile or BackupPath must be specified"
             }
