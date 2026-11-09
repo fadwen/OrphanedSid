@@ -6,6 +6,31 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `Remove-OrphanedSidEntry` and `Find-OrphanedSIDsInObject` returned after the first object when
+  several were passed by parameter; each now emits per object and carries on. The engine passed
+  one object at a time, so neither command was affected.
+- `Invoke-RemovalWorkflow` treated the result object of `Set-ModifiedACL` as a success flag; an
+  object is truthy even when its `Success` is `$false`, so a failed write was reported as applied.
+- The removal summary logged an empty count for successful or failed removals on Windows
+  PowerShell 5.1 when exactly one object matched, because a lone object from `Where-Object` has no
+  `Count` there. Both counts are taken from an array now.
+- `Initialize-ScriptExecution` logged a log rotation as done when `Move-Item` had failed, because
+  the failure was non-terminating. It is terminating now and the catch reports it.
+
+### Changed
+
+- The coverage gate is 80%, up from the 60% the first release shipped with. Six test files that
+  defined and tested a stub of their subject (`Set-ModifiedACL`, `Get-ACLForRemoval`,
+  `Invoke-SIDRemoval`, `New-ACLBackup`, `Initialize-ScriptExecution`, `Remove-OrphanedSidEntry`)
+  now test the real functions, and the session start and stop, the per-object detector, the
+  identity resolution helpers, the restore helpers, the backup integrity check, the processing
+  summary and the memory cleanup have tests for the first time.
+- `Tests/TestHelpers/ADCmdletStubs.ps1` defines a stand-in
+  `Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException` when RSAT is absent, so the
+  catch clauses in `Test-OrphanedSID` are valid and its resolution order can be tested.
+
 ## [1.0.0] - 2026-11-08
 
 First release as a module. The code was previously the `Find-UnknownSID.ps1` script under

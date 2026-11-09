@@ -32,15 +32,15 @@ Tests/
 | `Unit/Public` | `Find-OrphanedSid`, `Remove-OrphanedSid`, `Restore-OrphanedSidBackup`: parameter validation, pipeline input, the confirmation gate, result emission, session start and stop. The engine is mocked with `Mock -ModuleName OrphanedSid` |
 | `Unit/Private/ACL` | `Get-ACLForRemoval`, `Invoke-SIDRemoval`, `Set-ModifiedACL` |
 | `Unit/Private/ActiveDirectory` | `Get-ADObjectFromSearchBase`, `Get-ADObjectsSequential`, `Invoke-ADOperationWithRetry`, `Test-ValidDistinguishedName` |
-| `Unit/Private/Backup` | `New-ACLBackup`, `Find-BackupFile`, `Get-BackupFileMetadata`, `Test-BackupValidation` (with `Test-BackupIntegrity`, `Test-BackupFormat` and `Get-BackupMetadata`), `Invoke-RestoreWorkflow`, `Restore-IndividualObject`, `Restore-ACLOperation` (`Set-ObjectACL`, `Confirm-RestorationSuccess` and the other functions in that file) |
-| `Unit/Private/Core` | `Initialize-ScriptExecution`, `Invoke-MainProcessingLogic`, `Start-OrchestrationWorkflow`, `Remove-OrphanedSidEntry` |
+| `Unit/Private/Backup` | `New-ACLBackup`, `Find-BackupFile`, `Get-BackupFileMetadata`, `Test-BackupValidation` (with `Test-BackupFormat` and `Get-BackupMetadata`), `Test-BackupIntegrity` at each level, `Invoke-RestoreWorkflow`, `Restore-IndividualObject`, `Restore-ACLOperation` (`Set-ObjectACL` with its helpers mocked) and `Restore-ACLOperation.Helpers` (`Get-RestorationTarget`, `Confirm-RestorationSuccess`, `ConvertFrom-BackupToACL` for real) |
+| `Unit/Private/Core` | `Initialize-ScriptExecution`, `Invoke-MainProcessingLogic`, `Start-OrchestrationWorkflow`, `Remove-OrphanedSidEntry`, `Start-OrphanedSidSession`, `Stop-OrphanedSidSession` |
 | `Unit/Private/FileSystem` | `Get-SafeFileName`, `Initialize-LogDirectory`, `Test-DirectoryAccess` |
 | `Unit/Private/Logging` | `Initialize-LoggingConfiguration` (including `Set-LogLevel`), `Initialize-LoggingSystem` (including `Test-LogLevel`), `Format-LogMessage`, `Protect-LogMessage`, `Write-StructuredLogEntry`, `Write-StructuredLog`, `Write-SecurityStructuredLogEntry`, `Write-SecurityLog`, `Write-SecurityLogEvent`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog` |
 | `Unit/Private/Operations` | `Invoke-OperationWithRetry`, `Invoke-RemovalWorkflow` |
-| `Unit/Private/Reporting` | `Export-DiagnosticData`, `Get-LogFileSummary`, `Write-ProcessingSummary` |
+| `Unit/Private/Reporting` | `Export-DiagnosticData`, `Get-LogFileSummary`, `Write-ProcessingSummary` (parameters) and `Write-ProcessingSummary.Scenarios` (discovery, removal and restore results, CSV export, automation output) |
 | `Unit/Private/Security` | `Get-SecurityDescriptor` (`Get-ObjectAccessRule` and its retrieval strategies), `Invoke-SecurityValidation`, `Invoke-RemovalVerification`, `Test-PathTraversal` |
-| `Unit/Private/SID` | `Test-SIDFormat` (with `Test-WellKnownSID`), `Test-OrphanedSID` (with the validation cache), `Resolve-SIDIdentity`, `Get-SIDAnalysis`, `Test-SIDSecurity`, `New-SIDResult` |
-| `Unit/Private/System` | `Get-MemoryStatistics`, `Initialize-MemoryManager`, `Invoke-MemoryMonitoring`, `Invoke-GarbageCollection`, `Invoke-ResourceDisposal` |
+| `Unit/Private/SID` | `Test-SIDFormat` (with `Test-WellKnownSID`), `Test-OrphanedSID` end to end and `Test-OrphanedSID.Resolution` (each lookup in the resolution order, the validation cache), `Resolve-SIDIdentity` (availability) and `Test-AccessRuleForOrphanedSID` (the resolution helpers for real), `Find-OrphanedSIDsInObject`, `Get-SIDAnalysis`, `Test-SIDSecurity`, `New-SIDResult` |
+| `Unit/Private/System` | `Get-MemoryStatistics`, `Initialize-MemoryManager`, `Invoke-MemoryMonitoring`, `Invoke-GarbageCollection`, `Invoke-Cleanup`, `Invoke-ResourceDisposal` |
 | `Unit/Private/Utilities` | `Get-StringHash`, `Test-BackupFileIntegrity`, `Test-BackupSignature` |
 
 Every unit file dot-sources the class and private files it needs inside `BeforeAll` and stubs

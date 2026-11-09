@@ -33,12 +33,12 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         # CRITICAL FIX FOR PESTER 3.4: Force override functions after importing
         # Remove original functions and redefine to ensure overrides work in Pester 3.4
         
-        # Override utility functions
-        function global:Write-Verbose { }
-        function global:Write-Debug { }
-        function global:Write-Information { }
-        function global:Write-Progress { }
-        function global:Write-StructuredLog { }
+        # Mocks, not global functions: a global Write-Information defined here outlived this file and
+        # replaced the cmdlet for every test file that ran after it
+        Mock Write-Verbose { }
+        Mock Write-Debug { }
+        Mock Write-Information { }
+        # Write-Progress and Write-StructuredLog are replaced per test below with tracking functions
 
         # Let Pester handle mock cleanup automatically
         
@@ -126,10 +126,9 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         
         # Let Pester handle mock cleanup automatically
         
-        # Override utility functions
-        function global:Write-Verbose { }
-        function global:Write-Debug { }
-        function global:Write-Information { }
+        Mock Write-Verbose { }
+        Mock Write-Debug { }
+        Mock Write-Information { }
         
         # Create tracking variables for mock validation
         $script:WriteProgressCalls = @()

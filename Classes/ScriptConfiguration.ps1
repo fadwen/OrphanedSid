@@ -123,9 +123,7 @@ class ScriptConfiguration {
     }
 
     # Findings are warnings, not errors: the method answers with $false and the caller decides. A
-
     # Write-Error here becomes terminating under an inherited -ErrorAction Stop, so the caller would
-
     # see an exception instead of the $false it tests for.
 
     [bool] ValidateConfiguration() {

@@ -69,7 +69,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             }
         }
 
-        Mock Set-ModifiedACL { return $true }
+        Mock Set-ModifiedACL { [PSCustomObject]@{ Success = $true } }
 
         Mock Invoke-RemovalVerification {
             return @{
@@ -207,7 +207,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
                 }
             }
             Mock New-ACLBackup { return $true }
-            Mock Set-ModifiedACL { return $true }
+            Mock Set-ModifiedACL { [PSCustomObject]@{ Success = $true } }
             Mock Invoke-RemovalVerification {
                 return @{
                     Success = $true
@@ -264,7 +264,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             }
             
             # Now override the specific mock for this test
-            Mock Set-ModifiedACL { return $false }
+            Mock Set-ModifiedACL { [PSCustomObject]@{ Success = $false; ErrorMessage = 'Access is denied' } }
             
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName "CN=Test,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
             

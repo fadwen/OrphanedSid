@@ -220,8 +220,10 @@ function Write-ProcessingSummary {
 
             # Removal summary if applicable
             if ($ProcessingResults.RemovalResults -and $ProcessingResults.RemovalResults.Count -gt 0) {
-                $successfulRemovals = ($ProcessingResults.RemovalResults | Where-Object Success).Count
-                $failedRemovals = ($ProcessingResults.RemovalResults | Where-Object { -not $_.Success }).Count
+                # @(...): on Windows PowerShell 5.1 a single object from Where-Object has no Count, so a run
+                # with one removal logged an empty number
+                $successfulRemovals = @($ProcessingResults.RemovalResults | Where-Object Success).Count
+                $failedRemovals = @($ProcessingResults.RemovalResults | Where-Object { -not $_.Success }).Count
 
                 Write-StructuredLog "Removal summary details:" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "=== REMOVAL SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId

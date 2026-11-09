@@ -256,7 +256,9 @@ function Remove-OrphanedSidEntry {
                 $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $dn -OrphanedSIDs $OrphanedSIDs -BackupPath $BackupPath -WhatIfMode:$WhatIfMode -CorrelationId $CorrelationId
 
                 Write-StructuredLog "SID removal operation completed for $dn - Success: $($result.Success)" -Level Verbose -CorrelationId $CorrelationId
-                return $result
+                # Emit, do not return: a return here would end the foreach and silently skip every
+                # distinguished name after the first when several arrive by parameter
+                $result
             }
             catch {
                 # Create error result object for consistency
@@ -268,7 +270,7 @@ function Remove-OrphanedSidEntry {
                 $errorResult.ErrorMessage = "Public API workflow delegation failed: $($_.Exception.Message)"
 
                 Write-StructuredLog "SID removal operation failed for $dn : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
-                return $errorResult
+                $errorResult
             }
         }
     }

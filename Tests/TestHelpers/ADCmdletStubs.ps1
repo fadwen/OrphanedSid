@@ -28,7 +28,7 @@
 $adCmdletStubs = @{
     'Get-ADDomain'           = '$Identity, $Current, $Server, $Credential'
     'Get-ADDomainController' = '$Identity, $Filter, $Discover, $Server, $Credential'
-    'Get-ADObject'           = '$Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $ResultPageSize, $ResultSetSize, $IncludeDeletedObjects, $Server, $Credential'
+    'Get-ADObject'           = '$Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $ResultPageSize, $ResultSetSize, [switch]$IncludeDeletedObjects, $Server, $Credential'
     'Set-ADObject'           = '$Identity, $Replace, $Add, $Remove, $Clear, $Server, $Credential, $PassThru'
     'Remove-ADObject'        = '$Identity, $Recursive, $Server, $Credential'
     'Get-ADUser'             = '$Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $Server, $Credential'
@@ -59,4 +59,21 @@ throw "`$name stub: the ActiveDirectory module is not installed and this call (`
 "@
 
     Set-Item -Path "function:global:$cmdletName" -Value ([scriptblock]::Create($definition))
+}
+
+# Test-OrphanedSID names this exception type in catch clauses. Without RSAT the type does not exist,
+# and the first exception that reaches such a clause fails with "Unable to find type", which the
+# outer catch then reports as the SID being orphaned. A stand-in with the same name keeps the
+# clauses valid so the resolution order can be tested.
+if (-not ('Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException' -as [type])) {
+    Add-Type -TypeDefinition @'
+namespace Microsoft.ActiveDirectory.Management
+{
+    public class ADIdentityNotFoundException : System.Exception
+    {
+        public ADIdentityNotFoundException() : base() { }
+        public ADIdentityNotFoundException(string message) : base(message) { }
+    }
+}
+'@
 }
