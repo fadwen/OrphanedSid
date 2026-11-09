@@ -42,7 +42,10 @@ jobs:
   publish:
     name: 'Publish to PowerShell Gallery'
     needs: gates
-    runs-on: ubuntu-latest
+    # Windows, like the module: the publish script imports the staged copy and runs Test-SIDFormat,
+    # which builds a SecurityIdentifier, and .NET supports that type only on Windows. On Linux the
+    # check failed and v1.0.0 did not publish.
+    runs-on: windows-latest
 
     steps:
       - name: Checkout

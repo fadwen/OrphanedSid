@@ -98,6 +98,8 @@ its history is carried over in this repository.
   `Count` there. Both counts are taken from an array now.
 - `Initialize-ScriptExecution` logged a log rotation as done when `Move-Item` had failed, because
   the failure was non-terminating. It is terminating now and the catch reports it.
+- The release workflow published from an Ubuntu runner, where the staged-module check fails
+  because `SecurityIdentifier` is Windows-only. The publish job runs on Windows.
 - `ScriptConfiguration.LoadFromFile` rejected a `MemoryCheckInterval` above 100 while the validator
   and the documentation allow 1-1000, and `Initialize-MemoryManager` accepted only 256-16384 MB and
   an interval of 5-100. `-MaxMemoryUsageMB` 100-255 or a configured interval outside 5-100 passed
