@@ -409,7 +409,9 @@ Describe "Test-PathTraversal" {
             $largeBatch = 1..500 | ForEach-Object { $script:SafeFile }
             $result = Test-PathTraversal -Path $largeBatch -BasePath $script:TestBasePath
             
-            $afterMemory = [System.GC]::GetTotalMemory($false)
+            # Collected on both sides, so the figure is what the run retained, not what the collector
+            # had not yet reclaimed; the uncollected figure reached 60 MB on the 5.1 runner
+            $afterMemory = [System.GC]::GetTotalMemory($true)
             $memoryUsedMB = ($afterMemory - $beforeMemory) / 1MB
             
             $memoryUsedMB | Should -BeLessThan 50  # Should use less than 50MB
