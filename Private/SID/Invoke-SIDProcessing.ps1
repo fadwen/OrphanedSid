@@ -330,9 +330,10 @@ function Get-SIDProcessingStatistics {
             Write-StructuredLog "Generating processing statistics for $($OrphanedSIDResults.Count) results" -Level Debug -CorrelationId $CorrelationId
 
             # Extract processing statistics from results
-            $allStats = $OrphanedSIDResults | Where-Object { $_.PSObject.Properties['ProcessingStatistics'] } | ForEach-Object { $_.ProcessingStatistics }
+            # @(...): each statistics entry is a hashtable, so for one result .Count would be its key count
+            $allStats = @($OrphanedSIDResults | Where-Object { $_.PSObject.Properties['ProcessingStatistics'] } | ForEach-Object { $_.ProcessingStatistics })
 
-            if (-not $allStats) {
+            if ($allStats.Count -eq 0) {
                 Write-StructuredLog "No processing statistics found in results" -Level Warning -CorrelationId $CorrelationId
                 return $null
             }

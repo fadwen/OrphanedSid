@@ -6,6 +6,19 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-09
+
+### Fixed
+
+- `Restore-OrphanedSidBackup` failed for every single object, with `Could not find file
+  '<BackupPath>\C'` and `TargetObjectDN = Unknown (from C)`. When one backup file matched the
+  object, `Sort-Object` returned the path itself instead of an array, and `[0]` on a string is its
+  first character. This broke restoring one object, and the rollback from a removal's CSV shown in
+  the README; a container target with more than one backup used a different path and worked.
+  Nothing was changed by the failed attempts.
+- `Get-SIDProcessingStatistics` counted the keys of a single result's statistics hashtable as the
+  number of objects processed. No command calls it.
+
 ## [1.0.0] - 2026-11-08
 
 First release as a module. The code was previously the `Find-UnknownSID.ps1` script under

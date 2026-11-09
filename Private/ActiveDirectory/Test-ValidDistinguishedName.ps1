@@ -259,7 +259,7 @@ function Test-ValidDistinguishedName {
             }
 
             # Must contain at least one DC component (case-insensitive)
-            $domainComponents = $components | Where-Object { $_ -match '(?i)^DC\s*=' }
+            $domainComponents = @($components | Where-Object { $_ -match '(?i)^DC\s*=' })
             if ($domainComponents.Count -eq 0) {
                 Write-StructuredLog "Distinguished Name validation failed: No domain components (DC=) found" -Level Debug -Component 'DNValidator' -CorrelationId $CorrelationId
                 return $false

@@ -1,6 +1,6 @@
 @{
     RootModule = 'OrphanedSid.psm1'
-    ModuleVersion = '1.0.0'
+    ModuleVersion = '1.0.1'
     GUID = '7d3f2a9e-5b61-4c08-9e4a-2f8c1b6d0a37'
     Author = 'Jeffrey Stuhr'
     CompanyName = 'Jeffrey Stuhr'
@@ -36,6 +36,10 @@
             LicenseUri = 'https://github.com/fadwen/OrphanedSid/blob/main/LICENSE'
             ProjectUri = 'https://github.com/fadwen/OrphanedSid'
             ReleaseNotes = @'
+1.0.1 - Restore-OrphanedSidBackup restores a single object again. In 1.0.0 every single-object
+restore failed with "Could not find file '<BackupPath>\C'", because one matching backup was
+indexed as a string. Container restores were not affected.
+
 1.0.0 - First release as a module.
 Find-OrphanedSid, Remove-OrphanedSid and Restore-OrphanedSidBackup replace the three modes of the
 Find-UnknownSID.ps1 script that lived in the TechbyJeff repository. Results are written to the

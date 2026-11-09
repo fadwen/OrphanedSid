@@ -363,7 +363,9 @@ function Invoke-RestoreWorkflow {
                     
                     if ($possibleMatches.Count -gt 0) {
                         # Sort by modification time and take the most recent
-                        $sortedMatches = $possibleMatches | Sort-Object {(Get-Item $_).LastWriteTime} -Descending
+                        # @(...): with one match Sort-Object returns the path itself, and [0] on a string is its
+                        # first character, so every single-object restore looked for a file named 'C'
+                        $sortedMatches = @($possibleMatches | Sort-Object {(Get-Item $_).LastWriteTime} -Descending)
                         $backupFilesToProcess = @($sortedMatches[0])
                         Write-Verbose "Using exact match backup: $($sortedMatches[0])"
                     } else {
