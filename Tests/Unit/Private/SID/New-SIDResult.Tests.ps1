@@ -66,6 +66,37 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $result = New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -CorrelationId $correlationId
             $result.CorrelationId | Should -Be $correlationId
         }
+
+        It "Should mark a result Orphaned by default" {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow'; ActiveDirectoryRights = 'ReadProperty' }
+
+            $result = New-OrphanedSIDResult -ObjectDN 'CN=TestUser,OU=Users,DC=contoso,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
+
+            $result.VerificationStatus | Should -Be 'Orphaned'
+            $result.VerificationError | Should -BeNullOrEmpty
+        }
+
+        It "Should carry an Unverified status and the lookup failure" {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow'; ActiveDirectoryRights = 'ReadProperty' }
+            $params = @{
+                ObjectDN           = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
+                OrphanedSID        = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
+                AccessRule         = $testAccessRule
+                VerificationStatus = 'Unverified'
+                VerificationError  = 'Get-ADObject: Access is denied'
+            }
+
+            $result = New-OrphanedSIDResult @params
+
+            $result.VerificationStatus | Should -Be 'Unverified'
+            $result.VerificationError | Should -Be 'Get-ADObject: Access is denied'
+        }
+
+        It "Should reject a verification status other than Orphaned or Unverified" {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow'; ActiveDirectoryRights = 'ReadProperty' }
+
+            { New-OrphanedSIDResult -ObjectDN 'CN=TestUser,DC=contoso,DC=com' -OrphanedSID 'S-1-5-21-1-2-3-1001' -AccessRule $testAccessRule -VerificationStatus 'Exists' } | Should -Throw
+        }
     }
     
     Context "Parameter Validation and Error Handling" {

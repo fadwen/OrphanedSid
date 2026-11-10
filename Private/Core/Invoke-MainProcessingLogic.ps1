@@ -92,6 +92,7 @@ function Invoke-MainProcessingLogic {
         [Hashtable] Processing results containing:
         - TotalObjectsProcessed: Number of AD objects analyzed
         - OrphanedSIDsFound: Count of orphaned SIDs discovered
+        - UnverifiedSIDsFound: Count of SIDs a failed lookup left unverified (never removed)
         - ProcessingErrors: Number of errors encountered
         - ProcessingDuration: Total execution time
         - ObjectsPerSecond: Processing performance metric
@@ -305,15 +306,22 @@ function Invoke-MainProcessingLogic {
                             Write-StructuredLog "Processing: $processedCount/$($objectArray.Count) objects ($percentComplete%) - Orphaned SIDs found: $orphanedFoundCount" -Level Information -Component 'MainProcessing' -CorrelationId $CorrelationId
                         }
 
-                        $orphanedResults = Find-OrphanedSIDsInObject -ADObject $_ -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID
+                        $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $_ -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
+
+                        # An Unverified result is a SID that no lookup found but at least one lookup
+                        # failed to check. It is reported, counted apart, and never removed.
+                        $verifiedResults = @($orphanedResults | Where-Object { $_.VerificationStatus -ne 'Unverified' })
+                        $unverifiedResults = @($orphanedResults | Where-Object { $_.VerificationStatus -eq 'Unverified' })
 
                         # Log security audit for orphaned SID analysis
-                        if ($orphanedResults -and $orphanedResults.Count -gt 0) {
+                        if ($orphanedResults.Count -gt 0) {
                             Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Detection' -Outcome 'Success' -SecurityContext @{
                                 ObjectDN = $_.DistinguishedName
                                 ObjectClass = $_.ObjectClass
-                                OrphanedSIDsFound = $orphanedResults.Count
-                                OrphanedSIDs = ($orphanedResults | ForEach-Object { $_.OrphanedSID }) -join ','
+                                OrphanedSIDsFound = $verifiedResults.Count
+                                OrphanedSIDs = ($verifiedResults | ForEach-Object { $_.OrphanedSID }) -join ','
+                                UnverifiedSIDsFound = $unverifiedResults.Count
+                                UnverifiedSIDs = ($unverifiedResults | ForEach-Object { $_.OrphanedSID }) -join ','
                             } -CorrelationId $CorrelationId
                         }
 
@@ -325,18 +333,24 @@ function Invoke-MainProcessingLogic {
                             Write-Verbose "Memory usage at $processedCount objects: $($cleanupResult.MemoryAfterMB) MB (Freed: $($cleanupResult.MemoryFreedMB) MB)"
                         }
 
-                        if ($orphanedResults -and $orphanedResults.Count -gt 0) {
-                            $script:Statistics.OrphanedSIDsFound += $orphanedResults.Count
-                            $orphanedFoundCount += $orphanedResults.Count
+                        if ($orphanedResults.Count -gt 0) {
+                            $script:Statistics.OrphanedSIDsFound += $verifiedResults.Count
+                            $script:Statistics.UnverifiedSIDsFound += $unverifiedResults.Count
+                            $orphanedFoundCount += $verifiedResults.Count
 
-                            # Stream results to disk instead of accumulating in memory
+                            # Stream results to disk instead of accumulating in memory. Unverified
+                            # results go too, marked by VerificationStatus, so they can be re-checked.
                             foreach ($orphanedResult in $orphanedResults) {
                                 $script:StreamingResults.AddResult($orphanedResult)
                             }
 
                             if ($Remove) {
+                                foreach ($unverifiedResult in $unverifiedResults) {
+                                    Write-StructuredLog "Not removing unverified SID $($unverifiedResult.OrphanedSID) from $($unverifiedResult.ObjectDN): a directory lookup failed, so it may belong to a live principal ($($unverifiedResult.VerificationError))" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                }
+
                                 # Apply ShouldProcess only to actual removal operations
-                                foreach ($orphanedResult in $orphanedResults) {
+                                foreach ($orphanedResult in $verifiedResults) {
                                     $target = "$($orphanedResult.ObjectDN) - SID: $($orphanedResult.OrphanedSID)"
                                     if ($PSCmdlet.ShouldProcess($target, "Remove Orphaned SID")) {
                                         Write-StructuredLog "Removing orphaned SID: $($orphanedResult.OrphanedSID) from $($orphanedResult.ObjectDN)" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
@@ -423,11 +437,12 @@ function Invoke-MainProcessingLogic {
 
                             try {
                                 Start-Sleep -Seconds (2 * $retryCount)  # Exponential backoff
-                                $orphanedResults = Find-OrphanedSIDsInObject -ADObject $_ -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID
+                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $_ -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
                                 $retrySuccessful = $true
 
-                                if ($orphanedResults -and $orphanedResults.Count -gt 0) {
-                                    $script:Statistics.OrphanedSIDsFound += $orphanedResults.Count
+                                if ($orphanedResults.Count -gt 0) {
+                                    $script:Statistics.OrphanedSIDsFound += @($orphanedResults | Where-Object { $_.VerificationStatus -ne 'Unverified' }).Count
+                                    $script:Statistics.UnverifiedSIDsFound += @($orphanedResults | Where-Object { $_.VerificationStatus -eq 'Unverified' }).Count
                                     # Stream retry results to disk as well
                                     foreach ($orphanedResult in $orphanedResults) {
                                         $script:StreamingResults.AddResult($orphanedResult)
@@ -459,6 +474,7 @@ function Invoke-MainProcessingLogic {
             $processingResults = @{
                 TotalObjectsProcessed = $script:Statistics.ProcessedObjects
                 OrphanedSIDsFound = $script:Statistics.OrphanedSIDsFound
+                UnverifiedSIDsFound = $script:Statistics.UnverifiedSIDsFound
                 ProcessingErrors = $script:Statistics.ProcessingErrors
                 ProcessingDuration = $script:Statistics.Duration
                 ObjectsPerSecond = $script:Statistics.ObjectsPerSecond

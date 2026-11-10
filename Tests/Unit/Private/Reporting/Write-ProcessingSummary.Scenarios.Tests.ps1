@@ -18,10 +18,10 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
     function New-DiscoveryResults {
-        param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2)
+        param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [switch]$AsHashtable)
         $manager = [PSCustomObject]@{ Summary = [PSCustomObject]@{ TotalResults = $TotalResults }; Exported = $null }
         $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path }
-        [PSCustomObject]@{
+        $results = [ordered]@{
             TotalObjectsProcessed = 37
             ProcessingDuration    = [TimeSpan]::FromSeconds(17.8)
             ObjectsPerSecond      = 2.079
@@ -31,6 +31,14 @@ BeforeAll {
             StreamingManager      = $manager
             RemovalResults        = @()
         }
+        if ($Unverified -ge 0) {
+            $results.UnverifiedSIDsFound = $Unverified
+        }
+        # Invoke-MainProcessingLogic hands the summary a hashtable
+        if ($AsHashtable) {
+            return [hashtable]$results
+        }
+        [PSCustomObject]$results
     }
 
     function New-RestoreResults {
@@ -63,6 +71,34 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
                 Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq $expected -and $Component -eq 'Summary' -and $CorrelationId -eq 'sum-1' }
             }
             Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like '*RESTORE*' }
+        }
+
+        It 'Logs the same totals for the hashtable Invoke-MainProcessingLogic returns' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 0) -CorrelationId 'sum-h'
+
+            foreach ($expected in 'Processing rate: 2.08 objects/second', 'Peak memory usage: 141.5 MB', 'Processing errors: 0',
+                'Orphaned SIDs found: 2', 'Unverified SIDs (lookup failed, not removed): 0') {
+                Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq $expected -and $CorrelationId -eq 'sum-h' }
+            }
+        }
+
+        It 'Counts unverified SIDs and warns that they were not removed' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 3)
+
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Unverified SIDs (lookup failed, not removed): 3' }
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like '3 SID(s) could not be verified*not removed*' }
+        }
+
+        It 'Does not warn when every SID was verified' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 0)
+
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*could not be verified*' }
+        }
+
+        It 'Includes the unverified count in automation output' {
+            $info = Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 4) -AutomationMode 6>&1
+
+            ($info | Out-String) | Should -Match '"UnverifiedSIDsFound":\s*4'
         }
 
         It 'Exports the streamed results to the CSV path through the streaming manager' {

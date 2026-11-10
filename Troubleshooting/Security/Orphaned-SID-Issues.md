@@ -5,23 +5,40 @@
 This guide covers `Private\SID\Test-OrphanedSID.ps1`, which decides whether a SID still exists in
 Active Directory and caches the answer for the rest of the run.
 
-`Test-OrphanedSID -SID <sid>` returns `$true` (orphaned) or `$false` (exists). It works through
-these steps and stops at the first that decides:
+`Test-OrphanedSID -SID <sid>` returns a `SIDLookupResult` with `SID`, `Status`, `IsOrphaned` and
+`ErrorMessage`. `Status` is one of:
 
-1. `Test-SIDFormat`; an invalid format is treated as orphaned (Warning
-   `SID format invalid - treating as orphaned: <SID>`).
+| Status | Meaning | Reported | Removed |
+|---|---|---|---|
+| `Exists` | A lookup found a live principal | No | No |
+| `Orphaned` | Every lookup completed and none found the SID, or it was found only among deleted objects | Yes, `VerificationStatus = Orphaned` | Yes |
+| `Unverified` | No lookup found the SID, but at least one failed for a reason other than "not found" | Yes, `VerificationStatus = Unverified` | Never |
+
+It works through these steps and stops at the first that decides:
+
+1. `Test-SIDFormat`; an invalid format is `Unverified`, because no lookup was made (Warning
+   `SID format invalid - cannot be verified: <SID>`).
 2. Cache lookup in `$script:SIDValidationCache` (Debug `SID validation cache hit for <SID>`).
-3. `Get-ADObject -Filter "objectSid -eq '<SID>'"`; found means not orphaned.
+3. `Get-ADObject -Filter "objectSid -eq '<SID>'"`; found means `Exists`.
 4. The same query with `-IncludeDeletedObjects`; a match in the Deleted Objects container is
-   treated as **orphaned** (the account is gone and the ACE should be cleaned).
-5. `SecurityIdentifier.Translate([NTAccount])`; a resolved name that is not itself a SID means not
-   orphaned.
+   `Orphaned` (the account is gone and the ACE should be cleaned), even when step 3 failed.
+5. `SecurityIdentifier.Translate([NTAccount])`; a resolved name that is not itself a SID means
+   `Exists`.
 6. `Get-ADUser`, `Get-ADGroup`, `Get-ADComputer` with `SID -eq '<SID>'`.
-7. Otherwise orphaned (Debug `SID could not be resolved - marking as orphaned: <SID>`).
+7. If any step from 3 to 6 threw anything other than a not-found error
+   (`ADIdentityNotFoundException`, or `IdentityNotMappedException` for the translation), the SID is
+   `Unverified` and `ErrorMessage` names each failed step (Warning
+   `SID could not be verified - N lookup(s) failed: <SID> (<errors>)`).
+8. Otherwise `Orphaned` (Debug `SID could not be resolved - marking as orphaned: <SID>`).
 
 Directory calls go through `Invoke-ADOperationWithRetry`, so transient failures are retried before
-a method is considered to have failed. Any unexpected exception marks the SID orphaned for safety
-(Error `Error testing SID for orphaned status <SID> : ...`).
+a step is considered to have failed. An unexpected exception anywhere in the function also gives
+`Unverified` (Error `Error testing SID for orphaned status <SID> : ...`). Before 1.1.0 every one of
+these failures reported the SID as orphaned, and `Remove-OrphanedSid` removed it.
+
+Only `Exists` and `Orphaned` are cached. An `Unverified` result is not, so the next object that
+carries the same SID performs the lookups again, and a transient failure does not decide the answer
+for the rest of the run.
 
 The functions are private; load them as shown in
 [Identity-Resolution-Issues.md](./Identity-Resolution-Issues.md#loading-the-functions-in-a-session).
@@ -39,10 +56,12 @@ The functions are private; load them as shown in
 **Causes**
 
 - Replication lag: the object exists on one domain controller but not on the one answering.
-- The running account lacks read permission on the object, so every lookup fails.
-- The SID belongs to a trusted domain; `Get-ADObject` queries the local domain only, and
-  translation may fail across a one-way trust.
-- A cached `$true` from an earlier lookup in the same run.
+- The SID belongs to a trusted domain that answered "not found" for it; see
+  [SIDs from a trusted domain](#6-sids-from-a-trusted-domain).
+- A cached `Orphaned` result from an earlier lookup in the same session.
+
+A lookup that fails with an unreachable server or a broken trust no longer causes this: the SID is
+reported `Unverified` instead (see [Unverified SIDs](#5-unverified-sids)).
 
 **Solutions**
 
@@ -99,7 +118,7 @@ Get-ADObject -Server trusted.example.com -Filter "objectSid -eq '$testSID'"
 
 **Causes**
 
-- A cached `$false` from an earlier lookup in the same run (the cache does not expire).
+- A cached `Exists` result from an earlier lookup in the same session (the cache does not expire).
 - The SID resolves through a trust, so `Translate` succeeds although no local object exists.
 
 Deleted objects are not a cause: an object found in the Deleted Objects container is treated as
@@ -166,7 +185,7 @@ directory latency.
 **Symptoms**
 
 - `Unable to contact the server` or authentication errors.
-- Every SID marked orphaned.
+- Every SID reported with `VerificationStatus = Unverified`.
 
 **Solutions**
 
@@ -184,14 +203,89 @@ Test-NetConnection -ComputerName $dc -Port 636    # LDAPS
 Test-NetConnection -ComputerName $dc -Port 3268   # Global Catalog
 ```
 
-Do not run `Remove-OrphanedSid` while connectivity is uncertain: a run that cannot reach the directory marks
-SIDs orphaned on error.
+A run that cannot reach the directory removes nothing: every SID it cannot check is `Unverified`.
+It also finds nothing useful, so fix connectivity before running it.
+
+### 5. Unverified SIDs
+
+**Symptoms**
+
+- Results with `VerificationStatus = Unverified`, `Confidence = Low` and a `VerificationError`.
+- The summary line `Unverified SIDs (lookup failed, not removed): N`, with a warning when N is above
+  zero.
+- During `Remove-OrphanedSid`, a warning
+  `Not removing unverified SID <SID> from <DN>: a directory lookup failed, so it may belong to a live principal (<errors>)`.
+
+**Causes**
+
+`VerificationError` names each lookup that failed and its error, for example
+`Get-ADObject: Unable to contact the server` or `Get-ADUser: Access is denied`:
+
+- The domain controller was unreachable, busy, or timed out after the retries.
+- The SID belongs to a trusted domain whose domain controllers cannot be reached, or the trust is
+  broken (`The trust relationship between the primary domain and the trusted domain failed`).
+- A directory call failed with an error such as access denied. Lack of read permission alone
+  usually does not do this; see [Running without read access](#7-running-without-read-access).
+
+**Solutions**
+
+```powershell
+# List what could not be checked, and why
+$results = Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com'
+$results | Where-Object VerificationStatus -eq 'Unverified' |
+    Select-Object ObjectDN, OrphanedSID, VerificationError
+
+# Keep only confirmed orphans for review
+$results | Where-Object VerificationStatus -eq 'Orphaned'
+```
+
+Fix the cause the error names, then run the command again. Unverified results are never cached, so
+the new run looks every such SID up afresh.
+
+### 6. SIDs from a trusted domain
+
+A SID from another domain is never found by the local `Get-ADObject` and typed lookups, which search
+the local domain only. The answer comes from `SecurityIdentifier.Translate`, which Windows routes
+through the trust to the domain that issued the SID. What is reported depends on what that domain
+says:
+
+| Trusted domain | Reported as | `VerificationError` / `LikelySource` |
+|---|---|---|
+| Reachable, principal exists | Not reported | |
+| Reachable, principal deleted | `Orphaned` | `LikelySource = Foreign Domain/Trust` |
+| Domain controllers unreachable, trust broken or timing out | `Unverified` | `SecurityIdentifier.Translate: ... The trust relationship between the primary domain and the trusted domain failed.` |
+
+Only the domain that issued a SID can say whether it still exists. When that domain answers "not
+found", the SID is reported orphaned. When it cannot be reached, nothing is decided and the SID is
+left in place.
+
+Each unreachable-trust lookup waits for the trust to time out, about 40 seconds per distinct SID in
+testing, and an unverified answer is not cached, so every ACE that names such a SID pays it again.
+A run that slows down sharply on objects with foreign entries is usually waiting on a trust:
+
+```powershell
+nltest /sc_verify:<trusted domain DNS name>   # NERR_Success means the secure channel works
+```
+
+Review `Foreign Domain/Trust` rows before a removal: they are the entries whose owner lives outside
+the domain you are cleaning, and someone in that domain may want to know before the access goes.
+
+### 7. Running without read access
+
+An account that is not allowed to read a principal does not get an error from Active Directory. The
+search returns nothing, exactly as it would for a SID that does not exist, so missing read
+permission on its own does not make a SID `Unverified`. The name translation step still resolves a
+live principal in that case, because Windows performs it with the domain controller's own access
+and not the caller's, so the principal is not reported. Run discovery and removal as an account that
+can read every object in scope all the same: it is the only setup in which every lookup step
+answers for itself.
 
 ## Cache Management
 
-The cache is `$script:SIDValidationCache`, a hashtable of SID to boolean (`$true` = orphaned). It
-lives for the PowerShell session or process, grows by one entry per distinct SID tested, and is
-cleared only by `Clear-SIDValidationCache`, which also resets the hit and lookup counters.
+The cache is `$script:SIDValidationCache`, a hashtable of SID to `SIDLookupResult`. Only `Exists`
+and `Orphaned` results are stored. It lives for the PowerShell session or process, grows by one
+entry per distinct SID resolved, and is cleared only by `Clear-SIDValidationCache`, which also
+resets the hit and lookup counters.
 
 ```powershell
 $stats = Get-SIDValidationCacheStat
@@ -201,8 +295,8 @@ if ($stats.TotalEntries -gt 10000) {
 
 # Direct inspection
 $script:SIDValidationCache.Count
-($script:SIDValidationCache.Values | Where-Object { $_ }).Count        # orphaned
-($script:SIDValidationCache.Values | Where-Object { -not $_ }).Count   # valid
+@($script:SIDValidationCache.Values | Where-Object Status -eq 'Orphaned').Count   # orphaned
+@($script:SIDValidationCache.Values | Where-Object Status -eq 'Exists').Count     # valid
 ```
 
 Entries have no timestamp; clear the cache if the directory changed during a long interactive
@@ -213,13 +307,17 @@ session. The cache lives in the module's scope, so it lasts as long as the modul
 
 | Message | Level | Meaning |
 |---|---|---|
-| `SID format invalid - treating as orphaned: <SID>` | Warning | Failed `Test-SIDFormat`; reported as orphaned |
+| `SID format invalid - cannot be verified: <SID>` | Warning | Failed `Test-SIDFormat`; `Unverified` |
 | `SID validation cache hit for <SID>` | Debug | Answer returned from cache |
-| `SID found in AD via Get-ADObject: <DN>` | Debug | Not orphaned |
-| `SID found in deleted objects: <DN> - treating as orphaned` | Debug | Tombstoned object; orphaned |
-| `SID could not be translated - likely orphaned: <SID>` | Debug | Translation step failed; later steps still run |
-| `SID could not be resolved - marking as orphaned: <SID>` | Debug | Every method failed |
-| `Error testing SID for orphaned status <SID> : <error>` | Error | Unexpected exception; marked orphaned |
+| `SID found in AD via Get-ADObject: <DN>` | Debug | `Exists` |
+| `SID found in deleted objects: <DN> - treating as orphaned` | Debug | Tombstoned object; `Orphaned` |
+| `SID could not be translated - likely orphaned: <SID>` | Debug | Translation reported not-found; later steps still run |
+| `<step> lookup failed for SID <SID> : <error>` | Warning | A step threw something other than not-found; later steps still run |
+| `SID could not be verified - N lookup(s) failed: <SID> (<errors>)` | Warning | Nothing found the SID and a step failed; `Unverified` |
+| `SID could not be resolved - marking as orphaned: <SID>` | Debug | Every step completed and none found it; `Orphaned` |
+| `Error testing SID for orphaned status <SID> : <error>` | Error | Unexpected exception; `Unverified` |
+| `UNVERIFIED SID: <SID> on <DN> could not be checked - <errors>` | Warning | Discovery listed the entry as unverified |
+| `Not removing unverified SID <SID> from <DN>: ...` | Warning | `Remove-OrphanedSid` skipped it |
 | `Cleared SID validation cache (N entries)` | Information | `Clear-SIDValidationCache` ran |
 
 Debug lines appear in the log file only with `-LogLevel Debug`.
@@ -238,8 +336,8 @@ Select-String -Path $log.FullName -Pattern $correlationId
 
 ## Best Practices
 
-- Review `-WhatIf` output before any `Remove-OrphanedSid` run; a SID marked orphaned because of an error is
-  indistinguishable from a real orphan in the CSV.
+- Review `-WhatIf` output before any `Remove-OrphanedSid` run. Check the `VerificationStatus` column
+  of the CSV: `Unverified` rows are SIDs a failed lookup could not check, and are not removed.
 - Run from a host close to a domain controller; per-SID latency dominates run time.
 - In an interactive session, clear the cache between runs against different domains.
 - Use correlation IDs to tie a reported SID back to the exact lookup sequence in the log.

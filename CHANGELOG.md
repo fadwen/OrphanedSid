@@ -6,6 +6,31 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
+  access control entries. A timeout, an access-denied error or an unreachable domain controller was
+  treated the same as "this SID does not exist", so live principals could lose their access; the
+  removal was recoverable only from the backup. A SID is now orphaned only when every lookup
+  completed and none found it. A SID that no lookup found but at least one lookup failed to check is
+  reported as unverified and is never removed. This includes a SID from a trusted domain whose domain
+  controllers cannot be reached. ([#9](https://github.com/fadwen/OrphanedSid/issues/9))
+- A failed lookup no longer sticks for the rest of the run. Unverified results are not cached, so
+  the next object that carries the same SID looks it up again.
+- The processing summary did not log the processing rate, peak memory, error count or orphaned SID
+  count for discovery and removal runs. It read those values only from an object's properties, and
+  the processing results are a hashtable.
+
+### Changed
+
+- `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
+  (`Orphaned` or `Unverified`) and `VerificationError`, which names each lookup that failed. An
+  unverified SID is listed with `Confidence = Low`. Filter on `VerificationStatus -eq 'Orphaned'` to
+  keep only confirmed orphans; re-run once the domain controller is reachable and the account can
+  read the targets to settle the unverified ones.
+- `Remove-OrphanedSid` logs a warning naming each unverified SID it skips, and the processing summary
+  reports how many SIDs were unverified.
+
 ## [1.0.1] - 2026-11-09
 
 ### Fixed

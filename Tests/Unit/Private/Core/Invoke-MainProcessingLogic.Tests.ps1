@@ -207,6 +207,7 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             TotalObjects = 0
             ProcessedObjects = 0
             OrphanedSIDsFound = 0
+            UnverifiedSIDsFound = 0
             ProcessingErrors = 0
             CriticalErrors = 0
             Duration = [TimeSpan]::FromSeconds(5)
@@ -504,6 +505,66 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         }
     }
     
+    Context "Unverified SIDs" {
+        BeforeEach {
+            $script:unverifiedSid = 'S-1-5-21-123456789-123456789-123456789-2002'
+            $script:verifiedSid = 'S-1-5-21-123456789-123456789-123456789-1001'
+            $script:removedSids = [System.Collections.Generic.List[string]]::new()
+            $script:warnings = [System.Collections.Generic.List[string]]::new()
+
+            function Get-ADObjectsSequential {
+                param($SearchBase)
+                @{ DistinguishedName = 'CN=User1,OU=Users,DC=test,DC=com'; ObjectClass = 'user' }
+            }
+
+            # One SID every lookup confirmed missing, one a failed lookup left unverified
+            function Find-OrphanedSIDsInObject {
+                param($ADObject, $IncludeInherited, $CurrentDomainSID)
+                [PSCustomObject]@{ OrphanedSID = $script:verifiedSid; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:unverifiedSid; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Get-ADObject: The server is not operational' }
+            }
+
+            function Remove-OrphanedSidEntry {
+                param($ObjectDN, $OrphanedSIDs, $CorrelationId, $BackupPath)
+                foreach ($sid in $OrphanedSIDs) { $script:removedSids.Add($sid) }
+                @{ Success = $true; ObjectDN = $ObjectDN; RemovedSIDs = $OrphanedSIDs; BackupCreated = $true; BackupPath = $BackupPath; RemovedCount = @($OrphanedSIDs).Count }
+            }
+
+            function Write-StructuredLog {
+                param($Message, $Level, $Component, $CorrelationId)
+                if ($Level -eq 'Warning') { $script:warnings.Add($Message) }
+            }
+        }
+
+        It "Never passes an unverified SID to removal" {
+            $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -Remove
+
+            @($script:removedSids) | Should -Be @($script:verifiedSid)
+            @($result.RemovalResults).Count | Should -Be 1
+        }
+
+        It "Logs a warning that names the unverified SID and the lookup failure" {
+            $null = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -Remove
+
+            $named = @($script:warnings | Where-Object { $_ -like "Not removing unverified SID $($script:unverifiedSid)*not operational*" })
+            $named.Count | Should -Be 1
+        }
+
+        It "Counts unverified SIDs apart from orphaned ones" {
+            $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
+
+            $result.OrphanedSIDsFound | Should -Be 1
+            $result.UnverifiedSIDsFound | Should -Be 1
+            $script:removedSids.Count | Should -Be 0
+        }
+
+        It "Leaves the unverified SID out of a -WhatIf preview" {
+            $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com" -Remove -WhatIf
+
+            @($result.RemovalResults.OrphanedSID) | Should -Be @($script:verifiedSid)
+        }
+    }
+
     Context "Memory Management During Processing" {
         It "Should manage memory efficiently during AD processing" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"

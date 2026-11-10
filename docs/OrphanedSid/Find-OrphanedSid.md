@@ -37,8 +37,27 @@ the object's distinguished name, the unresolvable SID, the rights it still grant
 analysis of where the SID probably came from.
 The same rows are written to -OutputPath as
 CSV when that parameter is given.
-A summary (objects processed, orphaned SIDs found,
+A summary (objects processed, orphaned SIDs found, unverified SIDs,
 duration, peak memory) goes to the console and the log.
+
+A SID is reported orphaned only when every directory lookup completed and none found it.
+When no lookup found the SID but at least one failed for another reason, such as a timeout,
+access denied or an unreachable domain controller, the SID may still belong to a live
+principal. It is listed with VerificationStatus Unverified, Confidence Low and a
+VerificationError that names each failed lookup, so it can be re-checked.
+Remove-OrphanedSid never removes an unverified SID.
+Unverified results are not cached, so a later object or a later run looks the SID up again.
+
+A SID from a trusted domain can only be checked by that domain.
+When its domain controllers answer that the principal is gone, the SID is reported orphaned
+with LikelySource Foreign Domain/Trust; review those rows before a removal, since the owner
+sits outside the domain being cleaned.
+When they cannot be reached or the trust is broken, the SID is reported Unverified, and each
+such lookup waits for the trust to time out (about 40 seconds per SID in testing).
+
+An account that cannot read a principal gets no error from Active Directory, only an empty
+search, so missing read permission alone does not make a SID unverified.
+Run the command as an account that can read every object in scope.
 
 Results stream to batch files in the temp directory while the run is in progress so memory
 stays flat on large OUs; the files are removed when the command finishes unless
@@ -72,6 +91,16 @@ Get-ADOrganizationalUnit -Filter * -SearchScope OneLevel |
 DESCRIPTION: Pipes OUs in and groups the findings by SID
 OUTPUT: The SIDs that appear most often across the domain
 USE CASE: Deciding which deleted principals left the widest footprint
+
+### EXAMPLE 4
+
+$results = Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com'
+$results | Where-Object VerificationStatus -eq 'Unverified' |
+        Select-Object ObjectDN, OrphanedSID, VerificationError
+
+DESCRIPTION: Lists the SIDs a failed directory lookup left unverified, with the reason
+OUTPUT: One row per unverified entry, naming each lookup that failed
+USE CASE: Re-checking after a domain controller outage or a permissions problem before cleanup
 
 ## PARAMETERS
 
@@ -343,7 +372,10 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 One object per orphaned access control entry, with `ObjectDN`, `ObjectClass`, `OrphanedSID`,
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
-`ActionTaken`, `CorrelationId` and `Timestamp`.
+`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`.
+
+`VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
+`Unverified` when a lookup failed; `VerificationError` then names each failed lookup.
 ## NOTES
 
 Author: Jeffrey Stuhr
@@ -355,6 +387,7 @@ Requires the RSAT ActiveDirectory module and read access to the objects under -S
 TROUBLESHOOTING:
 - Common issues: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Common-Issues.md
 - Security descriptors: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Descriptor-Issues.md
+- Unverified SIDs: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Orphaned-SID-Issues.md
 - Memory: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Performance/Memory-Management.md
 
 

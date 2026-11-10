@@ -4,6 +4,8 @@ class ProcessingStatistics {
     [int]$TotalObjects
     [int]$ProcessedObjects
     [int]$OrphanedSIDsFound
+    # SIDs no lookup found but at least one lookup failed to check; reported, never removed
+    [int]$UnverifiedSIDsFound
     [int]$ProcessingErrors
     [int]$CriticalErrors
     [DateTime]$StartTime

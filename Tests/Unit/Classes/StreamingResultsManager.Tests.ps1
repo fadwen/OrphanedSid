@@ -34,6 +34,19 @@ Describe "StreamingResultsManager Tests" {
             $manager.Summary.TotalResults | Should -Be 1
         }
 
+        It "Should count unverified results apart from orphaned ones" {
+            $testDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "StreamingResultsManagerTest_$(Get-Random)"
+            $manager = [StreamingResultsManager]::new($testDir, 50, $true)
+
+            $manager.AddResult([PSCustomObject]@{ OrphanedSID = 'S-1-5-21-1-2-3-1001'; VerificationStatus = 'Orphaned' })
+            $manager.AddResult([PSCustomObject]@{ OrphanedSID = 'S-1-5-21-1-2-3-1002'; VerificationStatus = 'Unverified' })
+            $manager.AddResult([PSCustomObject]@{ OrphanedSID = 'S-1-5-21-1-2-3-1003' })
+
+            $manager.Summary.TotalResults | Should -Be 3
+            $manager.Summary.OrphanedSIDsFound | Should -Be 2
+            $manager.Summary.UnverifiedSIDsFound | Should -Be 1
+        }
+
         It "Should dispose properly" {
             $testDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "StreamingResultsManagerTest_$(Get-Random)"
             $manager = [StreamingResultsManager]::new($testDir, 50, $true)

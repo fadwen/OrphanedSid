@@ -108,8 +108,10 @@ function Test-AccessRuleForOrphanedSID {
 
     .OUTPUTS
         [OrphanedSIDResult] If an orphaned SID is detected, returns a comprehensive
-        result object containing detailed analysis and metadata. Returns null if
-        no orphaned SID is found or if validation fails.
+        result object containing detailed analysis and metadata. When the lookup failed
+        and the SID could not be verified, returns a result whose VerificationStatus is
+        Unverified and whose VerificationError names the failures. Returns null if the
+        SID exists or if validation fails.
 
     .NOTES
         PROCESSING WORKFLOW:
@@ -182,20 +184,41 @@ function Test-AccessRuleForOrphanedSID {
         Write-StructuredLog "SID $sidString passed validation, testing for orphaned status..." -Level Debug -CorrelationId $CorrelationId
 
         # Test for orphaned status and create result
-        $isOrphaned = Test-OrphanedSID -SID $sidString
-        Write-StructuredLog "Orphaned status for SID $sidString : $isOrphaned" -Level Debug -CorrelationId $CorrelationId
+        $lookup = Test-OrphanedSID -SID $sidString -CorrelationId $CorrelationId
+        Write-StructuredLog "Orphaned status for SID $sidString : $($lookup.Status)" -Level Debug -CorrelationId $CorrelationId
 
-        if ($isOrphaned) {
-            Write-StructuredLog "ORPHANED SID DETECTED: $sidString on $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
+        switch ($lookup.Status) {
+            'Orphaned' {
+                Write-StructuredLog "ORPHANED SID DETECTED: $sidString on $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
 
-            # Get detailed SID analysis
-            $sidAnalysis = Get-SIDAnalysis -SIDString $sidString -CurrentDomainSID $CurrentDomainSID
+                # Get detailed SID analysis
+                $sidAnalysis = Get-SIDAnalysis -SIDString $sidString -CurrentDomainSID $CurrentDomainSID
 
-            # Create comprehensive orphaned SID result
-            return New-OrphanedSIDResult -ObjectDN $ObjectDN -ObjectClass $ObjectClass -OrphanedSID $sidString -AccessRule $AccessRule -LikelySource $sidAnalysis.LikelySource -Confidence $sidAnalysis.Confidence -Notes $sidAnalysis.Notes -ProcessingMethod "Identity-Resolution" -CorrelationId $CorrelationId
-        } else {
-            Write-StructuredLog "SID $sidString is valid (found in AD)" -Level Debug -CorrelationId $CorrelationId
-            return $null
+                # Create comprehensive orphaned SID result
+                return New-OrphanedSIDResult -ObjectDN $ObjectDN -ObjectClass $ObjectClass -OrphanedSID $sidString -AccessRule $AccessRule -LikelySource $sidAnalysis.LikelySource -Confidence $sidAnalysis.Confidence -Notes $sidAnalysis.Notes -ProcessingMethod "Identity-Resolution" -CorrelationId $CorrelationId
+            }
+            'Unverified' {
+                # Reported so it can be re-checked, marked so that removal skips it
+                Write-StructuredLog "UNVERIFIED SID: $sidString on $ObjectDN could not be checked - $($lookup.ErrorMessage)" -Level Warning -CorrelationId $CorrelationId
+                $resultParams = @{
+                    ObjectDN           = $ObjectDN
+                    ObjectClass        = $ObjectClass
+                    OrphanedSID        = $sidString
+                    AccessRule         = $AccessRule
+                    LikelySource       = 'Unverified - lookup failed'
+                    Confidence         = 'Low'
+                    Notes              = 'A directory lookup failed, so this SID may belong to a live principal. Re-check it before acting.'
+                    ProcessingMethod   = 'Identity-Resolution'
+                    VerificationStatus = 'Unverified'
+                    VerificationError  = $lookup.ErrorMessage
+                    CorrelationId      = $CorrelationId
+                }
+                return New-OrphanedSIDResult @resultParams
+            }
+            default {
+                Write-StructuredLog "SID $sidString is valid (found in AD)" -Level Debug -CorrelationId $CorrelationId
+                return $null
+            }
         }
     }
     catch {

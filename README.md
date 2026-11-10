@@ -36,6 +36,12 @@ applies it. Results stream to batch files on disk so memory stays flat on large 
   NETWORK SERVICE are never removed, and well-known SIDs are never reported as orphaned. Objects whose
   DN matches a critical pattern (Domain Admins, Enterprise Admins, Schema Admins, BUILTIN, the Users
   and Computers containers) are flagged high risk. All three lists come from the configuration file.
+- **A failed lookup is not an orphan.** A SID is reported orphaned only when every directory lookup
+  completed and none found it. When a lookup fails with a timeout, access denied or an unreachable
+  domain controller, the entry is reported with `VerificationStatus = Unverified` and the failure in
+  `VerificationError`, and `Remove-OrphanedSid` leaves it in place. A SID from a trusted domain is
+  orphaned only when that domain answers that the principal is gone; an unreachable trust leaves it
+  unverified. See [SIDs from a trusted domain](./Troubleshooting/Security/Orphaned-SID-Issues.md#6-sids-from-a-trusted-domain).
 - **Confirmation gate.** `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` have
   `ConfirmImpact = 'High'`: they prompt once, `-WhatIf` previews, and an unattended run needs
   `-Force`.
@@ -135,12 +141,19 @@ Import-Csv .\Reports\CHG0012345.csv |
 
 ```powershell
 $report = "C:\Reports\orphaned-sids-$(Get-Date -Format yyyyMMdd).csv"
-$found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $report -SuppressConsoleOutput)
-if ($found.Count -gt 0) {
+$results = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $report -SuppressConsoleOutput)
+$found = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+$unverified = @($results | Where-Object VerificationStatus -eq 'Unverified')
+if ($results.Count -gt 0) {
+    $subject = "Orphaned SIDs found: $($found.Count), unverified: $($unverified.Count)"
     Send-MailMessage -To 'security-alerts@contoso.com' -From 'ad-hygiene@contoso.com' `
-        -SmtpServer 'smtp.contoso.com' -Subject "Orphaned SIDs found: $($found.Count)" -Body "Report: $report"
+        -SmtpServer 'smtp.contoso.com' -Subject $subject -Body "Report: $report"
 }
 ```
+
+An unverified entry is a SID that no lookup found but at least one lookup failed to check, so it may
+still belong to a live principal. `VerificationError` names each failed lookup; re-run once the
+cause is fixed.
 
 ### Configuration file
 
@@ -195,6 +208,7 @@ Select-String -Path .\Logs\*.log -Pattern '<correlation id>'
 | `The ActiveDirectory PowerShell module is not available` | [Prerequisites](#prerequisites) |
 | A prompt appears in a scheduled task, or a `-Confirm` error in a non-interactive session | Pass `-Force` to `Remove-OrphanedSid` or `Restore-OrphanedSidBackup` |
 | `All security descriptor retrieval methods failed for <DN>` | [Security descriptor issues](./Troubleshooting/Security/Security-Descriptor-Issues.md) |
+| Results with `VerificationStatus = Unverified`, or `Not removing unverified SID` warnings | [Unverified SIDs](./Troubleshooting/Security/Orphaned-SID-Issues.md#5-unverified-sids) |
 | `Memory usage threshold exceeded` warnings | [Memory management](./Troubleshooting/Performance/Memory-Management.md) |
 | `Backup validation failed` on restore | [Backup and restore issues](./Troubleshooting/Common/Backup-Restore-Issues.md) |
 

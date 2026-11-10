@@ -87,27 +87,39 @@ Describe "Test-OrphanedSID Function Tests" {
     }
     
     Context "Return Value Validation" {
-        It "Should return boolean value for valid SID" {
+        It "Should return a SIDLookupResult for valid SID" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $result = Test-OrphanedSID -SID $testSID
             
             $result | Should -Not -BeNullOrEmpty
-            $result | Should -BeOfType [bool]
+            $result.PSTypeNames | Should -Contain 'SIDLookupResult'
         }
         
-        It "Should return boolean value for well-known SID" {
+        It "Should return a SIDLookupResult for well-known SID" {
             # For AD context, well-known Windows SIDs may be considered "orphaned" 
             # since they're not AD objects (this is the actual function behavior)
             $wellKnownSID = 'S-1-5-32-544'  # Administrators group
             $result = Test-OrphanedSID -SID $wellKnownSID
             
             $result | Should -Not -BeNullOrEmpty
-            $result | Should -BeOfType [bool]
-            # Function behavior: well-known SIDs return false (not orphaned)
-            $result | Should -Be $false
+            $result.PSTypeNames | Should -Contain 'SIDLookupResult'
+            # Function behavior: well-known SIDs translate locally, so they exist
+            $result.Status | Should -Be 'Exists'
         }
     }
     
+    Context "Directory Unreachable" {
+        It "Leaves a domain SID unverified, not orphaned, when every directory lookup fails" {
+            # Without a domain the AD lookups throw rather than report not-found, which is the
+            # failure a timeout or an unreachable domain controller produces
+            $result = Test-OrphanedSID -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001'
+
+            $result.Status | Should -Be 'Unverified'
+            $result.IsOrphaned | Should -BeFalse
+            $result.ErrorMessage | Should -Not -BeNullOrEmpty
+        }
+    }
+
     Context "Error Handling" {
         It "Should handle correlation ID tracking" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
@@ -136,9 +148,9 @@ Describe "Test-OrphanedSID Function Tests" {
             )
             
             foreach ($sid in $invalidSIDs) {
-                # Invalid SIDs should return $true (treated as orphaned)
+                # Invalid SIDs are unverified: no lookup is made, so nothing proves them orphaned
                 $result = Test-OrphanedSID -SID $sid
-                $result | Should -Be $true
+                $result.Status | Should -Be 'Unverified'
             }
         }
         
@@ -161,10 +173,10 @@ Describe "Test-OrphanedSID Function Tests" {
             
             foreach ($sid in $wellKnownSIDs) {
                 $result = Test-OrphanedSID -SID $sid
-                $result | Should -BeOfType [bool]
+                $result.PSTypeNames | Should -Contain 'SIDLookupResult'
                 # Function behavior: well-known Windows SIDs are not orphaned
                 # they should translate successfully
-                $result | Should -Be $false
+                $result.Status | Should -Be 'Exists'
             }
         }
         
@@ -177,7 +189,7 @@ Describe "Test-OrphanedSID Function Tests" {
             
             foreach ($sid in $builtInSIDs) {
                 $result = Test-OrphanedSID -SID $sid
-                $result | Should -BeOfType [bool]
+                $result.PSTypeNames | Should -Contain 'SIDLookupResult'
             }
         }
     }
@@ -207,11 +219,11 @@ Describe "Test-OrphanedSID Function Tests" {
             $time2 = Measure-Command { $result2 = Test-OrphanedSID -SID $testSID }
             
             # Results Should -be consistent
-            $result1 | Should -Be $result2
+            $result1.Status | Should -Be $result2.Status
             
             # Second call should generally be faster (cached)
             # Note: This may not always be true due to AD variability
-            $result2 | Should -BeOfType [bool]
+            $result2.PSTypeNames | Should -Contain 'SIDLookupResult'
         }
     }
     
@@ -225,7 +237,7 @@ Describe "Test-OrphanedSID Function Tests" {
             
             $results = $testSIDs | Test-OrphanedSID
             $results.Count | Should -Be 3
-            $results | ForEach-Object { $_ | Should -BeOfType [bool] }
+            $results | ForEach-Object { $_.PSTypeNames | Should -Contain 'SIDLookupResult' }
         }
         
         It "Should process mixed valid and invalid SIDs" {
@@ -237,10 +249,10 @@ Describe "Test-OrphanedSID Function Tests" {
             
             $results = $mixedSIDs | Test-OrphanedSID
             $results.Count | Should -Be 3
-            $results | ForEach-Object { $_ | Should -BeOfType [bool] }
+            $results | ForEach-Object { $_.PSTypeNames | Should -Contain 'SIDLookupResult' }
             
-            # Invalid SID should return true (orphaned)
-            $results[1] | Should -Be $true
+            # Invalid SID is unverified, never orphaned
+            $results[1].Status | Should -Be 'Unverified'
         }
     }
     
@@ -254,7 +266,7 @@ Describe "Test-OrphanedSID Function Tests" {
             
             # Should complete within 5 seconds for well-known SIDs
             $executionTime.TotalSeconds | Should -BeLessThan 5
-            $result | Should -BeOfType [bool]
+            $result.PSTypeNames | Should -Contain 'SIDLookupResult'
         }
         
         It "Should handle batch processing efficiently" {
@@ -273,7 +285,7 @@ Describe "Test-OrphanedSID Function Tests" {
             # Should process 5 SIDs within 10 seconds
             $executionTime.TotalSeconds | Should -BeLessThan 10
             $results.Count | Should -Be 5
-            $results | ForEach-Object { $_ | Should -BeOfType [bool] }
+            $results | ForEach-Object { $_.PSTypeNames | Should -Contain 'SIDLookupResult' }
         }
         
         It "Should maintain consistent results across multiple calls" {
@@ -286,8 +298,8 @@ Describe "Test-OrphanedSID Function Tests" {
             
             # All results Should -be the same
             $results.Count | Should -Be 3
-            $results[0] | Should -Be $results[1]
-            $results[1] | Should -Be $results[2]
+            $results[0].Status | Should -Be $results[1].Status
+            $results[1].Status | Should -Be $results[2].Status
         }
     }
 }

@@ -34,6 +34,18 @@ Clixml backup of the object's ACL, and removes the orphaned entries.
 The backup for a run
 lands in a timestamped folder so a whole run can be undone with Restore-OrphanedSidBackup.
 
+Only SIDs that every directory lookup confirmed missing are removed.
+When a lookup fails for a reason other than "not found", such as a timeout, access denied or an
+unreachable domain controller, the SID may still belong to a live principal: it is marked
+Unverified, left in place, and named in a warning together with the lookup that failed.
+The summary reports how many SIDs were unverified.
+Re-run once the domain controller is reachable and the account can read the targets.
+
+A SID from a trusted domain is removed only when that domain answers that the principal no
+longer exists; an unreachable trusted domain leaves the SID unverified and in place.
+Run Find-OrphanedSid or -WhatIf first and review entries with LikelySource Foreign Domain/Trust:
+their owners sit outside the domain being cleaned.
+
 The command has ConfirmImpact High: it asks once before changing anything.
 -WhatIf previews
 the run, listing the entries that would be removed, and creates no backup.
@@ -436,11 +448,12 @@ LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 Requires the RSAT ActiveDirectory module and write access to the security descriptor of
 every object under -SearchBase (Modify Permissions).
 SIDs in ProtectedSIDs and SIDs that
-match WellKnownSIDPatterns are never removed.
+match WellKnownSIDPatterns are never removed, and neither are SIDs a failed lookup left unverified.
 
 TROUBLESHOOTING:
 - Backups: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Backup-Restore-Issues.md
 - Security validation: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Validation-Guide.md
+- Unverified SIDs: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Orphaned-SID-Issues.md
 
 
 ## RELATED LINKS
