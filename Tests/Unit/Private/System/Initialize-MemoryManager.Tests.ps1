@@ -5,189 +5,148 @@ BeforeAll {
 
     . "$ModulePath\Classes\MemoryManager.ps1"
 
-    . "$ModulePath\Private\System\Initialize-MemoryManager.ps1"
-
     . "$ModulePath\Private\Logging\Write-StructuredLog.ps1"
 
-    . "$ModulePath\Private\System\Get-MemoryStatistics.ps1"
-
-    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
-        function Write-StructuredLog {
-            param($Message, $Level, $Component, $CorrelationId)
-        }
-    }
+    . "$ModulePath\Private\System\Initialize-MemoryManager.ps1"
 }
 
-Describe "Initialize-MemoryManager" {
+Describe "Initialize-MemoryManager" -Tag 'Unit' {
     BeforeEach {
         Mock Write-StructuredLog {}
+        Mock Write-Verbose {}
     }
 
     Context "Parameter Validation" {
         It "Should require MaxMemoryMB parameter" {
-            # Use reflection to check parameter definition instead of calling function
             $command = Get-Command Initialize-MemoryManager
-            $maxMemoryParam = $command.Parameters['MaxMemoryMB']
-            $maxMemoryParam.Attributes | Where-Object { $_ -is [Parameter] } | ForEach-Object { $_.Mandatory | Should -Be $true }
+            $attribute = $command.Parameters['MaxMemoryMB'].Attributes | Where-Object { $_ -is [Parameter] }
+            $attribute.Mandatory | Should -Be $true
         }
 
         It "Should require CheckInterval parameter" {
-            # Use reflection to check parameter definition instead of calling function
             $command = Get-Command Initialize-MemoryManager
-            $checkIntervalParam = $command.Parameters['CheckInterval']
-            $checkIntervalParam.Attributes | Where-Object { $_ -is [Parameter] } | ForEach-Object { $_.Mandatory | Should -Be $true }
+            $attribute = $command.Parameters['CheckInterval'].Attributes | Where-Object { $_ -is [Parameter] }
+            $attribute.Mandatory | Should -Be $true
         }
 
-        It "Should validate MaxMemoryMB range (100-16384, the range -MaxMemoryUsageMB accepts)" {
-            { Initialize-MemoryManager -MaxMemoryMB 99 -CheckInterval 25 -ErrorAction Stop } | Should -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 20000 -CheckInterval 25 -ErrorAction Stop } | Should -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 100 -CheckInterval 25 } | Should -Not -Throw
+        It "Should reject MaxMemoryMB <Value>, outside 100-16384" -ForEach @(
+            @{ Value = 99 }
+            @{ Value = 16385 }
+        ) {
+            { Initialize-MemoryManager -MaxMemoryMB $Value -CheckInterval 25 } | Should -Throw -ExpectedMessage '*MaxMemoryMB*'
         }
 
-        It "Should accept valid MaxMemoryMB values" {
-            { Initialize-MemoryManager -MaxMemoryMB 512 -CheckInterval 25 } | Should -Not -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 2048 -CheckInterval 25 } | Should -Not -Throw
+        It "Should reject CheckInterval <Value>, outside 1-1000" -ForEach @(
+            @{ Value = 0 }
+            @{ Value = 1001 }
+        ) {
+            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval $Value } | Should -Throw -ExpectedMessage '*CheckInterval*'
         }
 
-        It "Should validate CheckInterval range (1-1000, the range the configuration file accepts)" {
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 0 -ErrorAction Stop } | Should -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1001 -ErrorAction Stop } | Should -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1 } | Should -Not -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 1000 } | Should -Not -Throw
+        It "Should accept the range boundaries MaxMemoryMB <MaxMemoryMB> and CheckInterval <CheckInterval>" -ForEach @(
+            @{ MaxMemoryMB = 100; CheckInterval = 1 }
+            @{ MaxMemoryMB = 16384; CheckInterval = 1000 }
+        ) {
+            $result = Initialize-MemoryManager -MaxMemoryMB $MaxMemoryMB -CheckInterval $CheckInterval
+
+            $result.MaxMemoryMB | Should -Be $MaxMemoryMB
+            $result.CheckInterval | Should -Be $CheckInterval
         }
 
-        It "Should accept valid CheckInterval values" {
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 10 } | Should -Not -Throw
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 50 } | Should -Not -Throw
-        }
+        It "Should replace a whitespace CorrelationId with a new GUID" {
+            $result = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId '   '
 
-        It "Should accept optional CorrelationId parameter" {
-            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'test-id' } | Should -Not -Throw
-        }
-
-        It "Should generate GUID when CorrelationId is empty" {
-            $result = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25
-            $result.CorrelationId | Should -Not -BeNullOrEmpty
-            $result.CorrelationId.Length | Should -Be 36
+            $result.CorrelationId | Should -Match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+            Should -Invoke Write-StructuredLog -Times 4 -Exactly -ParameterFilter { $CorrelationId -eq $result.CorrelationId }
         }
     }
 
     Context "MemoryManager Creation" {
-        It "Should create MemoryManager instance with correct parameters" {
+        It "Should create a MemoryManager with the given threshold, interval and correlation ID" {
             $result = Initialize-MemoryManager -MaxMemoryMB 2048 -CheckInterval 30 -CorrelationId 'creation-test-id'
-            
-            $result | Should -Not -BeNullOrEmpty
+
             $result.GetType().Name | Should -Be 'MemoryManager'
+            $result.MaxMemoryMB | Should -Be 2048
+            $result.CheckInterval | Should -Be 30
+            $result.CorrelationId | Should -Be 'creation-test-id'
         }
 
-        It "Should return MemoryManager type object" {
+        It "Should generate a GUID correlation ID when not provided" {
             $result = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25
-            
-            $result | Should -Not -BeNullOrEmpty
-            $result.GetType().Name | Should -Be 'MemoryManager'
+
+            $result.CorrelationId | Should -Match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
         }
 
-        It "Should generate correlation ID when not provided" {
-            $result = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25
-            
-            $result.CorrelationId | Should -Not -BeNullOrEmpty
-            $result.CorrelationId | Should -Match '^[0-9a-fA-F-]{36}$'
-        }
+        It "Should return a single object" {
+            $output = @(Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25)
 
-        It "Should use provided correlation ID when specified" {
-            $result = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'custom-test-id'
-            
-            $result.CorrelationId | Should -Be 'custom-test-id'
+            $output.Count | Should -Be 1
         }
     }
 
     Context "Logging Integration" {
-        It "Should log initialization start" {
-            Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'log-test-id'
-            
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
-                $Message -like "*Initializing memory manager*" -and
-                $Level -eq 'Information' -and
-                $CorrelationId -eq 'log-test-id'
-            }
-        }
+        It "Should log the start, success, configuration and completion under the MemoryManagement component" {
+            Initialize-MemoryManager -MaxMemoryMB 2048 -CheckInterval 50 -CorrelationId 'log-test-id'
 
-        It "Should log initialization success" {
-            Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'success-test-id'
-            
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
-                $Message -like "*Memory manager initialized successfully*" -and
-                $Level -eq 'Information' -and
-                $CorrelationId -eq 'success-test-id'
+            Should -Invoke Write-StructuredLog -Times 4 -Exactly
+            Should -Invoke Write-StructuredLog -Times 4 -Exactly -ParameterFilter {
+                $Component -eq 'MemoryManagement' -and $CorrelationId -eq 'log-test-id'
             }
-        }
-
-        It "Should log configuration details" {
-            Initialize-MemoryManager -MaxMemoryMB 2048 -CheckInterval 50 -CorrelationId 'config-test-id'
-            
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
-                $Message -like "*Configuration: Threshold=2048 MB, CheckInterval=50 operations*" -and
-                $Level -eq 'Debug' -and
-                $CorrelationId -eq 'config-test-id'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Initializing memory manager with threshold 2048 MB' -and $Level -eq 'Information'
             }
-        }
-
-        It "Should log completion" {
-            Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'completion-test-id'
-            
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
-                $Message -like "*Memory manager initialization completed*" -and
-                $Level -eq 'Debug' -and
-                $CorrelationId -eq 'completion-test-id'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Memory manager initialized successfully' -and $Level -eq 'Information'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Configuration: Threshold=2048 MB, CheckInterval=50 operations' -and $Level -eq 'Debug'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Memory manager initialization completed' -and $Level -eq 'Debug'
             }
         }
     }
 
     Context "WhatIf Support" {
-        It "Should support ShouldProcess" {
-            $command = Get-Command Initialize-MemoryManager
-            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
+        It "Should still create and return the MemoryManager under -WhatIf" {
+            $result = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'whatif-id' -WhatIf
+
+            $result.GetType().Name | Should -Be 'MemoryManager'
+            $result.MaxMemoryMB | Should -Be 1024
         }
 
-        It "Should create MemoryManager even in WhatIf mode" {
-            # Only checks that -WhatIf exists; the function is not run under -WhatIf
-            $command = Get-Command Initialize-MemoryManager
-            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
+        It "Should replace the Information logs with a WhatIf note under -WhatIf" {
+            Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'whatif-id' -WhatIf | Out-Null
 
-            $true | Should -Be $true
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Information' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Memory manager created for WhatIf simulation' -and $Level -eq 'Debug' -and $CorrelationId -eq 'whatif-id'
+            }
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'WhatIf: Would initialize memory manager with threshold 1024 MB'
+            }
         }
+    }
 
-        It "Should log WhatIf simulation" {
-            # Only checks that -WhatIf exists; no log output is asserted
-            $command = Get-Command Initialize-MemoryManager
-            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
-        }
+    Context "Failure" {
+        It "Should log the failure at Error level and stop with the reason" {
+            Mock Write-StructuredLog { throw 'log sink unavailable' } -ParameterFilter { $Level -eq 'Information' }
 
-        It "Should show verbose WhatIf message" {
-            # Only checks that -WhatIf and -Verbose exist; no message is asserted
-            $command = Get-Command Initialize-MemoryManager
-            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
-            $command.Parameters.ContainsKey('Verbose') | Should -Be $true
-        }
+            { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'fail-id' } |
+                Should -Throw -ExpectedMessage 'Memory manager initialization failed: log sink unavailable'
 
-        It "Should return MemoryManager instance even in WhatIf mode" {
-            # Only checks that -WhatIf exists; the function is not run under -WhatIf
-            $command = Get-Command Initialize-MemoryManager
-            $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Failed to initialize memory manager: log sink unavailable' -and $CorrelationId -eq 'fail-id'
+            }
         }
     }
 
     Context "Configuration Constants" {
-        It "Should have memory management configuration available" {
-            # Check if the configuration variable exists in script scope
-            $configExists = $null -ne (Get-Variable -Name 'MemoryManagementConfig' -Scope Script -ErrorAction SilentlyContinue)
-            
-            $configExists | Should -Be $true
-        }
-
-        It "Should use expected configuration values" {
-            $script:MemoryManagementConfig | Should -Not -BeNullOrEmpty
-            $script:MemoryManagementConfig.GetType().Name | Should -Be 'Hashtable'
+        It "Should define the memory management defaults at load time" {
+            $script:MemoryManagementConfig | Should -BeOfType [hashtable]
+            $script:MemoryManagementConfig.DefaultMemoryThresholdMB | Should -Be 1024
+            $script:MemoryManagementConfig.DefaultCheckInterval | Should -Be 25
+            $script:MemoryManagementConfig.LogComponent | Should -Be 'MemoryManagement'
         }
     }
 }

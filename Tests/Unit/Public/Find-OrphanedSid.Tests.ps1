@@ -49,11 +49,11 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
         }
 
         It 'Rejects -MaxMemoryUsageMB outside 100-16384' {
-            { Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 50 } | Should -Throw
+            { Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 50 } | Should -Throw '*MaxMemoryUsageMB*'
         }
 
         It 'Rejects an unknown -LogLevel' {
-            { Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel 'Chatty' } | Should -Throw
+            { Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel 'Chatty' } | Should -Throw '*LogLevel*'
         }
     }
 
@@ -67,10 +67,11 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
         }
 
         It 'Collects pipeline input by value' {
-            'OU=A,DC=contoso,DC=com', 'OU=B,DC=contoso,DC=com' | Find-OrphanedSid | Out-Null
+            'OU=A,DC=contoso,DC=com', ' OU=B,DC=contoso,DC=com ', '  ' | Find-OrphanedSid | Out-Null
 
+            # Blank entries are dropped and the rest trimmed
             Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
-                $SearchBase.Count -eq 2
+                $SearchBase.Count -eq 2 -and $SearchBase[0] -eq 'OU=A,DC=contoso,DC=com' -and $SearchBase[1] -eq 'OU=B,DC=contoso,DC=com'
             }
         }
 
@@ -83,8 +84,10 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
         }
 
         It 'Defaults to the domain root when no search base is given' {
-            Find-OrphanedSid -WarningAction SilentlyContinue | Out-Null
+            Find-OrphanedSid -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
 
+            @($warnings).Count | Should -Be 1
+            $warnings[0].Message | Should -Be 'No search base specified. Using the current domain root.'
             Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 1 -Exactly
             Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
                 $SearchBase -eq 'DC=contoso,DC=com'
@@ -105,7 +108,7 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
             $results = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com')
 
             $results.Count | Should -Be 2
-            $results.OrphanedSID | Should -Contain 'S-1-5-21-1-2-3-1002'
+            $results.OrphanedSID | Should -Be @('S-1-5-21-1-2-3-1001', 'S-1-5-21-1-2-3-1002')
         }
 
         It 'Writes nothing when the engine found nothing' {
@@ -123,7 +126,7 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
             Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -OutputPath $csv | Out-Null
 
             Should -Invoke -ModuleName OrphanedSid Write-ProcessingSummary -Times 1 -Exactly -ParameterFilter {
-                $OutputPath -eq $csv
+                $OutputPath -eq $csv -and $ProcessingResults.OrphanedSIDsFound -eq 2
             }
         }
     }
@@ -140,9 +143,13 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
         It 'Stops the session even when the engine throws' {
             Mock -ModuleName OrphanedSid Invoke-MainProcessingLogic { throw 'engine failed' }
 
-            { Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' } | Should -Throw '*engine failed*'
+            { Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId 'corr-2' } | Should -Throw '*engine failed*'
 
-            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'corr-2' }
+            Should -Invoke -ModuleName OrphanedSid Write-ProcessingSummary -Times 0 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Discovery failed: engine failed'
+            }
         }
 
         It 'Passes -PreserveTempFiles through to the session stop' {

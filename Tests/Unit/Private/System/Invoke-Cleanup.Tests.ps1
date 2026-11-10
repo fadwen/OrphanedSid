@@ -40,8 +40,8 @@ Describe 'Invoke-Cleanup' -Tag 'Unit', 'System', 'Private' {
         $result.WhatIfMode | Should -BeFalse
         $result.CorrelationId | Should -Be 'gc-1'
         Should -Invoke Get-CurrentMemoryUsage -Times 2 -Exactly
-        Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Starting memory cleanup operation...' -and $Component -eq 'MemoryManagement' }
-        Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Memory after cleanup: 250.25 MB (Freed: 50.25 MB)' -and $Level -eq 'Information' }
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Starting memory cleanup operation...' -and $Component -eq 'MemoryManagement' }
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Memory after cleanup: 250.25 MB (Freed: 50.25 MB)' -and $Level -eq 'Information' }
     }
 
     It 'Reports no success when nothing was freed' {
@@ -57,7 +57,7 @@ Describe 'Invoke-Cleanup' -Tag 'Unit', 'System', 'Private' {
         $result = Invoke-Cleanup -IncludeLOHCompaction
 
         $result.LOHCompactionUsed | Should -BeTrue
-        Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Large Object Heap compaction enabled' }
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Large Object Heap compaction enabled' }
     }
 
     It 'Generates a correlation ID when given a blank one' {
@@ -72,14 +72,14 @@ Describe 'Invoke-Cleanup' -Tag 'Unit', 'System', 'Private' {
         $result.WhatIfMode | Should -BeTrue
         $result.MemoryBeforeMB | Should -Be 300.5
         Should -Invoke Get-CurrentMemoryUsage -Times 2 -Exactly
-        Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'WhatIf simulation: memory cleanup would be performed' }
-        Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -eq 'Starting memory cleanup operation...' }
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'WhatIf simulation: memory cleanup would be performed' }
+        Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -eq 'Starting memory cleanup operation...' }
     }
 
     It 'Logs at Error level and stops when the memory reading fails' {
         Mock Get-CurrentMemoryUsage { throw 'counter unavailable' }
 
         { Invoke-Cleanup -CorrelationId 'gc-2' } | Should -Throw -ExpectedMessage '*counter unavailable*'
-        Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Cleanup failed: counter unavailable' -and $CorrelationId -eq 'gc-2' }
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Cleanup failed: counter unavailable' -and $CorrelationId -eq 'gc-2' }
     }
 }

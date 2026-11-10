@@ -1,623 +1,222 @@
-﻿# Get-ADObjectsSequential Function Tests
-
-# The collaborators are hand-written stubs, defined in both global and script scope, that record
-# their calls in the $Global:*Calls arrays; the tests assert on those arrays rather than on Pester mocks.
+﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 BeforeAll {
-    $here = $PSScriptRoot
+    $privateRoot = Join-Path $PSScriptRoot '..\..\..\..\Private'
 
-    $sut = (Split-Path -Leaf $PSCommandPath) -replace '\.Tests\.', '.'
+    # The real collaborators are dot-sourced so each mock carries the real parameter block: a call
+    # that would not bind to the real Get-ADObjectFromSearchBase does not bind to its mock either.
+    . (Join-Path $privateRoot 'Logging\Write-ADOperationSecurityLog.ps1')
+    . (Join-Path $privateRoot 'ActiveDirectory\Get-ADObjectFromSearchBase.ps1')
+    . (Join-Path $privateRoot 'ActiveDirectory\Get-ADObjectsSequential.ps1')
 
-    $functionPath = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $here)))) "Private\ActiveDirectory\Get-ADObjectsSequential.ps1"
-
-    if (Test-Path $functionPath) {
-        . $functionPath
+    function New-TestADObject {
+        param([string]$Name, [string]$ObjectClass, [string]$Container)
+        [PSCustomObject]@{
+            DistinguishedName = "CN=$Name,$Container"
+            Name = $Name
+            ObjectClass = $ObjectClass
+            nTSecurityDescriptor = "SD-$Name"
+        }
     }
 
-    $Global:TestConfig = @{
-        ValidSearchBases = @(
-            'OU=Users,DC=contoso,DC=com'
-            'OU=Groups,DC=contoso,DC=com'
-            'OU=Computers,DC=contoso,DC=com'
+    $script:Users = 'OU=Users,DC=contoso,DC=com'
+    $script:Groups = 'OU=Groups,DC=contoso,DC=com'
+    $script:Computers = 'OU=Computers,DC=contoso,DC=com'
+    $script:Empty = 'OU=Empty,DC=contoso,DC=com'
+    $script:Invalid1 = 'OU=Invalid1,DC=contoso,DC=com'
+    $script:Invalid2 = 'OU=Invalid2,DC=contoso,DC=com'
+
+    $script:ObjectsByBase = @{
+        $script:Users = @(
+            New-TestADObject -Name 'User1' -ObjectClass 'user' -Container $script:Users
+            New-TestADObject -Name 'User2' -ObjectClass 'user' -Container $script:Users
+            New-TestADObject -Name 'User3' -ObjectClass 'user' -Container $script:Users
         )
-        LargeSearchBases = @(
-            'OU=Corp,DC=contoso,DC=com'
-            'OU=Sales,DC=contoso,DC=com'
-            'OU=Marketing,DC=contoso,DC=com'
-            'OU=IT,DC=contoso,DC=com'
-            'OU=Finance,DC=contoso,DC=com'
-        )
-        TestObjects = @{
-            'OU=Users,DC=contoso,DC=com' = @(
-                [PSCustomObject]@{
-                    DistinguishedName = 'CN=User1,OU=Users,DC=contoso,DC=com'
-                    Name = 'User1'
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = 'MockSecurityDescriptor1'
-                }
-                [PSCustomObject]@{
-                    DistinguishedName = 'CN=User2,OU=Users,DC=contoso,DC=com'
-                    Name = 'User2'
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = 'MockSecurityDescriptor2'
-                }
-                [PSCustomObject]@{
-                    DistinguishedName = 'CN=User3,OU=Users,DC=contoso,DC=com'
-                    Name = 'User3'
-                    ObjectClass = 'user'
-                    nTSecurityDescriptor = 'MockSecurityDescriptor3'
-                }
-            )
-            'OU=Groups,DC=contoso,DC=com' = @(
-                [PSCustomObject]@{
-                    DistinguishedName = 'CN=Group1,OU=Groups,DC=contoso,DC=com'
-                    Name = 'Group1'
-                    ObjectClass = 'group'
-                    nTSecurityDescriptor = 'MockSecurityDescriptor3'
-                }
-            )
-            'OU=Computers,DC=contoso,DC=com' = @(
-                [PSCustomObject]@{
-                    DistinguishedName = 'CN=Computer1,OU=Computers,DC=contoso,DC=com'
-                    Name = 'Computer1$'
-                    ObjectClass = 'computer'
-                    nTSecurityDescriptor = 'MockSecurityDescriptor4'
-                }
-            )
-            'OU=Corp,DC=contoso,DC=com' = @(
-                1..50 | ForEach-Object {
-                    [PSCustomObject]@{
-                        DistinguishedName = "CN=CorpUser$_,OU=Corp,DC=contoso,DC=com"
-                        Name = "CorpUser$_"
-                        ObjectClass = 'user'
-                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+100)"
-                    }
-                }
-            )
-            'OU=Sales,DC=contoso,DC=com' = @(
-                1..30 | ForEach-Object {
-                    [PSCustomObject]@{
-                        DistinguishedName = "CN=SalesUser$_,OU=Sales,DC=contoso,DC=com"
-                        Name = "SalesUser$_"
-                        ObjectClass = 'user'
-                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+200)"
-                    }
-                }
-            )
-            'OU=Marketing,DC=contoso,DC=com' = @(
-                1..25 | ForEach-Object {
-                    [PSCustomObject]@{
-                        DistinguishedName = "CN=MarketingUser$_,OU=Marketing,DC=contoso,DC=com"
-                        Name = "MarketingUser$_"
-                        ObjectClass = 'user'
-                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+300)"
-                    }
-                }
-            )
-            'OU=IT,DC=contoso,DC=com' = @(
-                1..15 | ForEach-Object {
-                    [PSCustomObject]@{
-                        DistinguishedName = "CN=ITUser$_,OU=IT,DC=contoso,DC=com"
-                        Name = "ITUser$_"
-                        ObjectClass = 'user'
-                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+350)"
-                    }
-                }
-            )
-            'OU=Finance,DC=contoso,DC=com' = @(
-                1..20 | ForEach-Object {
-                    [PSCustomObject]@{
-                        DistinguishedName = "CN=FinanceUser$_,OU=Finance,DC=contoso,DC=com"
-                        Name = "FinanceUser$_"
-                        ObjectClass = 'user'
-                        nTSecurityDescriptor = "MockSecurityDescriptor$($_+400)"
-                    }
-                }
-            )
-            'OU=Invalid,DC=contoso,DC=com' = $null  # For testing error handling
-            'OU=Invalid1,DC=contoso,DC=com' = $null
-            'OU=Invalid2,DC=contoso,DC=com' = $null
-        }
-    }
-
-    $Global:GetADObjectFromSearchBaseCalls = @()
-
-    $Global:WriteSecurityLogCalls = @()
-
-    $Global:WriteVerboseCalls = @()
-
-    $Global:MockDebugInfo = @{}
-
-    function Global:Get-ADObjectFromSearchBase {
-        param($SearchBase, $IncludeInherited, $CorrelationId)
-        
-        # Handle both single string and array input - convert to single string for lookup
-        $searchBaseKey = if ($SearchBase -is [array] -and $SearchBase.Count -eq 1) {
-            $SearchBase[0]
-        } elseif ($SearchBase -is [string]) {
-            $SearchBase
-        } else {
-            $SearchBase -join ','
-        }
-        
-        # Track function calls for verification
-        $Global:GetADObjectFromSearchBaseCalls += @{
-            SearchBase = $searchBaseKey
-            # The real Get-ADObjectFromSearchBase declares [string]$SearchBase; a one-element array does
-            # not bind to it, so the type the caller passed is recorded for the regression test below
-            SearchBaseIsString = $SearchBase -is [string]
-            IncludeInherited = $IncludeInherited
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-        }
-        
-        $script:GetADObjectFromSearchBaseCallCount++
-
-        Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-        
-        $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
-        
-        Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-        
-        if ($containsKeyResult) {
-            $result = $Global:TestConfig.TestObjects[$searchBaseKey]
-            # If the search base is marked as invalid (null value), throw an exception
-            if ($result -eq $null -and $searchBaseKey -like "*Invalid*") {
-                Write-Debug "GLOBAL MOCK: Simulating error for invalid $searchBaseKey"
-                if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
-                    throw "The specified domain either does not exist or could not be contacted."
-                } else {
-                    throw "The specified domain either does not exist or could not be contacted."
-                }
-            } elseif ($result -ne $null) {
-                Write-Debug "GLOBAL MOCK: Returning $($result.Count) objects for $searchBaseKey"
-                return $result
-            } else {
-                Write-Debug "GLOBAL MOCK: No test objects found for $searchBaseKey"
-                return @()
-            }
-        } elseif ($searchBaseKey -like "*Invalid*") {
-            Write-Debug "GLOBAL MOCK: Simulating error for $searchBaseKey"
-            if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
-                throw "The specified domain either does not exist or could not be contacted."
-            } else {
-                throw "The specified domain either does not exist or could not be contacted."
-            }
-        } else {
-            Write-Debug "GLOBAL MOCK: No test objects found for $searchBaseKey"
-            return @()
-        }
-    }
-
-    function script:Get-ADObjectFromSearchBase {
-        param($SearchBase, $IncludeInherited, $CorrelationId)
-        
-        # Handle both single string and array input - convert to single string for lookup
-        $searchBaseKey = if ($SearchBase -is [array] -and $SearchBase.Count -eq 1) {
-            $SearchBase[0]
-        } elseif ($SearchBase -is [string]) {
-            $SearchBase
-        } else {
-            $SearchBase -join ','
-        }
-        
-        # Track function calls for verification  
-        $Global:GetADObjectFromSearchBaseCalls += @{
-            SearchBase = $searchBaseKey
-            # The real Get-ADObjectFromSearchBase declares [string]$SearchBase; a one-element array does
-            # not bind to it, so the type the caller passed is recorded for the regression test below
-            SearchBaseIsString = $SearchBase -is [string]
-            IncludeInherited = $IncludeInherited
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-        }
-        
-        $script:GetADObjectFromSearchBaseCallCount++
-
-        Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-        
-        $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
-        
-        Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
-        
-        if ($containsKeyResult) {
-            $result = $Global:TestConfig.TestObjects[$searchBaseKey]
-            # If the search base is marked as invalid (null value), throw an exception
-            if ($result -eq $null -and $searchBaseKey -like "*Invalid*") {
-                Write-Debug "SCRIPT MOCK: Simulating error for invalid $searchBaseKey"
-                if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
-                    throw "The specified domain either does not exist or could not be contacted."
-                } elseif ($searchBaseKey -like 'OU=Invalid*,DC=contoso,DC=com') {
-                    throw "The specified domain either does not exist or could not be contacted."
-                } else {
-                    throw "The specified domain either does not exist or could not be contacted."
-                }
-            } elseif ($result -ne $null) {
-                Write-Debug "SCRIPT MOCK: Returning $($result.Count) objects for $searchBaseKey"
-                return $result
-            } else {
-                Write-Debug "SCRIPT MOCK: No test objects found for $searchBaseKey"
-                return @()
-            }
-        } elseif ($searchBaseKey -like "*Invalid*") {
-            Write-Debug "SCRIPT MOCK: Simulating error for $searchBaseKey"
-            if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
-                throw "The specified domain either does not exist or could not be contacted."
-            } elseif ($searchBaseKey -like 'OU=Invalid*,DC=contoso,DC=com') {
-                throw "The specified domain either does not exist or could not be contacted."
-            } else {
-                throw "The specified domain either does not exist or could not be contacted."
-            }
-        } else {
-            Write-Debug "SCRIPT MOCK: No test objects found for $searchBaseKey"
-            return @()
-        }
-    }
-
-    function Global:Write-ADOperationSecurityLog {
-        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-        $Global:WriteSecurityLogCalls += @{
-            OperationName = $OperationName
-            Outcome = $Outcome
-            SecurityContext = $SecurityContext
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-        }
-    }
-
-    function script:Write-ADOperationSecurityLog {
-        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-        $Global:WriteSecurityLogCalls += @{
-            OperationName = $OperationName
-            Outcome = $Outcome
-            SecurityContext = $SecurityContext
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-        }
-    }
-
-    function Global:Write-Verbose {
-        param([string]$Message)
-        $Global:WriteVerboseCalls += @{
-            Message = $Message
-            Timestamp = Get-Date
-        }
-    }
-
-    function script:Write-Verbose {
-        param([string]$Message)
-        $Global:WriteVerboseCalls += @{
-            Message = $Message
-            Timestamp = Get-Date
-        }
-    }
-
-    function Global:Write-StructuredLog {
-        param($Level, $Message, $Component, $CorrelationId, $Data)
-    }
-
-    function script:Write-StructuredLog {
-        param($Level, $Message, $Component, $CorrelationId, $Data)
-    }
-
-    function Global:Write-SecurityStructuredLogEntry {
-        param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
-    }
-
-    function script:Write-SecurityStructuredLogEntry {
-        param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
-    }
-
-    function Global:Write-SecurityLog {
-        param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $Outcome, $SecurityContext)
-        $Global:WriteSecurityLogCalls += @{
-            Level = $Level
-            Message = $Message
-            Component = $Component
-            Operation = $Operation
-            CorrelationId = $CorrelationId
-            Data = $Data
-            Outcome = $Outcome
-            SecurityContext = $SecurityContext
-            Timestamp = Get-Date
-        }
-    }
-
-    function script:Write-SecurityLog {
-        param($Level, $Message, $Component, $Operation, $CorrelationId, $Data, $Outcome, $SecurityContext)
-        $Global:WriteSecurityLogCalls += @{
-            Level = $Level
-            Message = $Message
-            Component = $Component
-            Operation = $Operation
-            CorrelationId = $CorrelationId
-            Data = $Data
-            Outcome = $Outcome
-            SecurityContext = $SecurityContext
-            Timestamp = Get-Date
-        }
-    }
-
-    function Global:Write-ADOperationSecurityLog {
-        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-        $Global:WriteSecurityLogCalls += @{
-            OperationName = $OperationName
-            Outcome = $Outcome
-            SecurityContext = $SecurityContext
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-        }
-    }
-
-    function script:Write-ADOperationSecurityLog {
-        param($OperationName, $Outcome, $SecurityContext, $CorrelationId)
-        $Global:WriteSecurityLogCalls += @{
-            OperationName = $OperationName
-            Outcome = $Outcome
-            SecurityContext = $SecurityContext
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-        }
+        $script:Groups = @(New-TestADObject -Name 'Group1' -ObjectClass 'group' -Container $script:Groups)
+        $script:Computers = @(New-TestADObject -Name 'Computer1$' -ObjectClass 'computer' -Container $script:Computers)
     }
 }
 
-Describe "Get-ADObjectsSequential" {
-    
+Describe "Get-ADObjectsSequential" -Tag 'Unit' {
+
     BeforeEach {
-        # Clear call tracking arrays before each test
-        $Global:GetADObjectFromSearchBaseCalls = @()
-        $Global:WriteSecurityLogCalls = @()
-        $Global:WriteVerboseCalls = @()
-        
-        # Reset any test-specific variables
-        $script:GetADObjectFromSearchBaseCallCount = 0
+        Mock Write-ADOperationSecurityLog { }
+        Mock Write-Verbose { }
+        Mock Write-Warning { }
+        Mock Get-ADObjectFromSearchBase {
+            if ($SearchBase -like '*Invalid*') {
+                throw 'The specified domain either does not exist or could not be contacted.'
+            }
+            if ($script:ObjectsByBase.ContainsKey($SearchBase)) {
+                $script:ObjectsByBase[$SearchBase]
+            }
+        }
     }
-    
-    Context "Parameter Validation and Security" {
-        It "Should validate mandatory SearchBase parameter" {
-            # Test that mandatory parameter validation works by calling with $null
-            { Get-ADObjectsSequential -SearchBase $null -ErrorAction Stop } | Should -Throw
+
+    Context "Parameter validation" {
+        It "Rejects a null SearchBase" {
+            { Get-ADObjectsSequential -SearchBase $null } | Should -Throw -ExpectedMessage '*SearchBase*'
+            Should -Invoke Get-ADObjectFromSearchBase -Times 0 -Exactly
         }
-        
-        It "Should accept array of valid Distinguished Names" {
-            { Get-ADObjectsSequential -SearchBase $Global:TestConfig.ValidSearchBases } | Should -Not -Throw
+
+        It "Rejects an empty SearchBase array" {
+            { Get-ADObjectsSequential -SearchBase @() } | Should -Throw -ExpectedMessage '*SearchBase*'
+            Should -Invoke Get-ADObjectFromSearchBase -Times 0 -Exactly
         }
-        
-        It "Should handle single search base as array" {
-            $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            $result = Get-ADObjectsSequential -SearchBase $searchBase
-            $result | Should -Not -BeNullOrEmpty
+    }
+
+    Context "Sequential processing" {
+        It "Returns the objects from every search base in search-base order" {
+            $results = Get-ADObjectsSequential -SearchBase $script:Users, $script:Groups, $script:Computers
+
+            $results.Name | Should -Be @('User1', 'User2', 'User3', 'Group1', 'Computer1$')
         }
-        
-        It "Should support IncludeInherited switch parameter" {
-            $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            { Get-ADObjectsSequential -SearchBase $searchBase -IncludeInherited } | Should -Not -Throw
+
+        It "Calls Get-ADObjectFromSearchBase once per search base, each with a single string" {
+            # A loop variable named like the [string[]] parameter in another letter case is the same
+            # variable, so each element arrived as a one-element array and did not bind to [string].
+            # The mock carries the real [string] parameter, so such a call would fail and log a Failure.
+            Get-ADObjectsSequential -SearchBase $script:Users, $script:Groups, $script:Computers | Out-Null
+
+            Should -Invoke Get-ADObjectFromSearchBase -Times 3 -Exactly
+            foreach ($base in $script:Users, $script:Groups, $script:Computers) {
+                Should -Invoke Get-ADObjectFromSearchBase -Times 1 -Exactly -ParameterFilter { $SearchBase -eq $base }
+            }
+            Should -Invoke Write-ADOperationSecurityLog -Times 0 -Exactly -ParameterFilter { $Outcome -eq 'Failure' }
         }
-        
-        It "Should validate correlation ID parameter format" {
-            $searchBase = $Global:TestConfig.ValidSearchBases[0]
+
+        It "Accepts a single search base string" {
+            $results = Get-ADObjectsSequential -SearchBase $script:Groups
+
+            @($results).Count | Should -Be 1
+            $results.Name | Should -Be 'Group1'
+        }
+
+        It "Passes IncludeInherited and CorrelationId to Get-ADObjectFromSearchBase" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-ADObjectsSequential -SearchBase $searchBase -CorrelationId $correlationId } | Should -Not -Throw
-        }
-        
-        It "Should auto-generate correlation ID when not provided" {
-            $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            { Get-ADObjectsSequential -SearchBase $searchBase } | Should -Not -Throw
-        }
-    }
-    
-    Context "Core Functionality - Sequential Processing" {
-        It "Should process multiple search bases sequentially" {
-            Write-Debug "TestConfig ValidSearchBases count: $($Global:TestConfig.ValidSearchBases.Count)"
-            Write-Debug "TestConfig TestObjects keys: $($Global:TestConfig.TestObjects.Keys -join ', ')"
-            Write-Debug "About to call Get-ADObjectsSequential with: $($Global:TestConfig.ValidSearchBases -join ', ')"
-            
-            $results = Get-ADObjectsSequential -SearchBase $Global:TestConfig.ValidSearchBases
-            
-            Write-Debug "Returned $($results.Count) results"
-            Write-Debug "GetADObjectFromSearchBaseCalls count: $($Global:GetADObjectFromSearchBaseCalls.Count)"
-            foreach ($call in $Global:GetADObjectFromSearchBaseCalls) {
-                Write-Debug "Called with: $($call.SearchBase)"
-            }
-            
-            $results.Count | Should -Be 5  # 3 users + 1 group + 1 computer
-        }
-        
-        It "Should pass each search base to Get-ADObjectFromSearchBase as a string, not a one-element array" {
-            # Regression: a loop variable named like the [string[]] parameter in another letter case is the
-            # same variable, so every element came back wrapped as [string[]] and failed to bind downstream
-            Get-ADObjectsSequential -SearchBase $Global:TestConfig.ValidSearchBases[0..2]
 
-            $Global:GetADObjectFromSearchBaseCalls.Count | Should -Be 3
-            foreach ($call in $Global:GetADObjectFromSearchBaseCalls) {
-                $call.SearchBaseIsString | Should -BeTrue
+            Get-ADObjectsSequential -SearchBase $script:Users -IncludeInherited -CorrelationId $correlationId | Out-Null
+
+            Should -Invoke Get-ADObjectFromSearchBase -Times 1 -Exactly -ParameterFilter {
+                $IncludeInherited -eq $true -and $CorrelationId -eq $correlationId
             }
         }
 
-        It "Should call Get-ADObjectFromSearchBase for each search base" {
-            $searchBases = $Global:TestConfig.ValidSearchBases[0..2]  # First 3 search bases
-            Get-ADObjectsSequential -SearchBase $searchBases
-            $script:GetADObjectFromSearchBaseCallCount | Should -Be $searchBases.Count
-        }
-        
-        It "Should aggregate results from all search bases" {
-            $searchBases = @(
-                $Global:TestConfig.ValidSearchBases[0]  # Users (3 objects)
-                $Global:TestConfig.ValidSearchBases[1]  # Groups (1 object)
-                $Global:TestConfig.ValidSearchBases[2]  # Computers (1 object)
-            )
-            $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results.Count | Should -Be 5  # 3 users + 1 group + 1 computer
-        }
-        
-        It "Should pass IncludeInherited parameter to Get-ADObjectFromSearchBase" {
-            $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            Get-ADObjectsSequential -SearchBase $searchBase -IncludeInherited
-            
-            $callWithInherited = $Global:GetADObjectFromSearchBaseCalls | Where-Object { $_.IncludeInherited -eq $true }
-            $callWithInherited | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should maintain object order from search bases" {
-            $searchBases = @(
-                $Global:TestConfig.ValidSearchBases[0]  # Users
-                $Global:TestConfig.ValidSearchBases[1]  # Groups
-            )
-            $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results[0].ObjectClass | Should -Be 'user'
-        }
-    }
-    
-    Context "Enterprise Security Logging and Auditing" {
-        It "Should log operation attempt with correct security context" {
-            $searchBases = $Global:TestConfig.ValidSearchBases[0..1]
-            Get-ADObjectsSequential -SearchBase $searchBases
-            
-            $attemptLog = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Attempt' }
-            $attemptLog | Should -Not -BeNullOrEmpty
-            $attemptLog.SecurityContext.SearchBaseCount | Should -Be 2
-        }
-        
-        It "Should log operation success with comprehensive metrics" {
-            # $Global:MockDebugInfo is written for inspection after a failure; nothing asserts on it
-            $Global:MockDebugInfo = @{}
+        It "Passes IncludeInherited as false when the switch is omitted" {
+            Get-ADObjectsSequential -SearchBase $script:Users | Out-Null
 
-            $searchBases = @($Global:TestConfig.ValidSearchBases[0], $Global:TestConfig.ValidSearchBases[1])
+            Should -Invoke Get-ADObjectFromSearchBase -Times 1 -Exactly -ParameterFilter { -not $IncludeInherited }
+        }
 
-            $Global:MockDebugInfo.OriginalArray = $Global:TestConfig.ValidSearchBases
-            $Global:MockDebugInfo.SlicedArray = $searchBases
-            $Global:MockDebugInfo.SlicedCount = $searchBases.Count
-            $Global:MockDebugInfo.WrappedCount = @($searchBases).Count
-            
-            Get-ADObjectsSequential -SearchBase $searchBases
-            
-            $successCall = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
-            $successCall | Should -Not -BeNullOrEmpty
-            
-            $Global:MockDebugInfo.ActualSearchBaseCount = $successCall.SecurityContext.SearchBaseCount
-            $Global:MockDebugInfo.ExpectedCount = @($searchBases).Count
+        It "Treats a search base with no objects as successful" {
+            $results = Get-ADObjectsSequential -SearchBase $script:Empty, $script:Groups
 
-            $successCall.SecurityContext.SearchBaseCount | Should -Be @($searchBases).Count
-        }
-        
-        It "Should include result summary in success logging" {
-            $searchBases = $Global:TestConfig.ValidSearchBases[0..1]
-            Get-ADObjectsSequential -SearchBase $searchBases
-            
-            $successCall = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
-            $successCall.SecurityContext.TotalObjectsRetrieved | Should -BeGreaterThan 0
-        }
-    }
-    
-    Context "Error Handling and Resilience" {
-        It "Should continue processing when individual search bases fail" {
-            $searchBases = @(
-                $Global:TestConfig.ValidSearchBases[0]     # Valid
-                'OU=Invalid,DC=contoso,DC=com'             # Invalid
-                $Global:TestConfig.ValidSearchBases[1]     # Valid
-            )
-            $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results.Count | Should -BeGreaterThan 0
-        }
-        
-        It "Should handle empty search base arrays" {
-            { Get-ADObjectsSequential -SearchBase @() -ErrorAction Stop } | Should -Throw
-        }
-        
-        It "Should handle all search bases failing" {
-            $searchBases = @('OU=Invalid1,DC=contoso,DC=com', 'OU=Invalid2,DC=contoso,DC=com')
-            
-            # Clear previous calls to isolate this test
-            $Global:WriteSecurityLogCalls = @()
-            
-            $results = Get-ADObjectsSequential -SearchBase $searchBases -ErrorAction SilentlyContinue
-            
-            $logCalls = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Failure' }
-            $logCalls.Count | Should -Be 2
-        }
-        
-        It "Should provide graceful degradation when AD is unavailable" {
-            # The search base is a valid one, so this does not simulate an unavailable directory;
-            # the assertion only evaluates the result variable
-            $searchBases = @($Global:TestConfig.ValidSearchBases[0])
-
-            $results = Get-ADObjectsSequential -SearchBase $searchBases -ErrorAction SilentlyContinue
-            { $results } | Should -Not -Throw
-        }
-    }
-    
-    Context "Performance and Scalability" {
-        It "Should log processing progress for large operations" {
-            $largeSearchBases = $Global:TestConfig.LargeSearchBases
-            
-            $VerbosePreference = 'Continue'
-            Get-ADObjectsSequential -SearchBase $largeSearchBases -Verbose
-            $VerbosePreference = 'SilentlyContinue'
-            
-            # The Write-Verbose stub records the messages
-            $startMessage = $Global:WriteVerboseCalls | Where-Object { $_.Message -like "*Starting*" }
-            $startMessage | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should efficiently process large numbers of search bases" {
-            $largeSearchBases = $Global:TestConfig.LargeSearchBases
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            $results = Get-ADObjectsSequential -SearchBase $largeSearchBases
-            $stopwatch.Stop()
-            
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 10000  # 10 seconds
-            $results.Count | Should -Be 140  # 50+30+25+15+20 from large search bases
-        }
-        
-        It "Should provide accurate object counting and metrics" {
-            $searchBases = @(
-                $Global:TestConfig.ValidSearchBases[0]  # Users (3 objects)
-                $Global:TestConfig.ValidSearchBases[1]  # Groups (1 object)
-            )
-            $results = Get-ADObjectsSequential -SearchBase $searchBases
-            $results.Count | Should -Be 4  # 3 users + 1 group
-            
-            $successLog = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
-            $successLog.SecurityContext.TotalObjectsRetrieved | Should -Be 4
-        }
-        
-        It "Should handle memory efficiently for large result sets" {
-            $largeSearchBases = $Global:TestConfig.LargeSearchBases
-            
-            $beforeMemory = [System.GC]::GetTotalMemory($false)
-            $results = Get-ADObjectsSequential -SearchBase $largeSearchBases
-            $afterMemory = [System.GC]::GetTotalMemory($false)
-            
-            $memoryUsed = ($afterMemory - $beforeMemory) / 1MB
-            $results.Count | Should -Be 140  # 50+30+25+15+20 from large search bases
-            $memoryUsed | Should -BeLessThan 50  # Should use less than 50MB
-        }
-    }
-    
-    Context "Integration with Pipeline and Output" {
-        It "Should output objects directly to pipeline for efficiency" {
-            $searchBases = $Global:TestConfig.ValidSearchBases
-            $results = Get-ADObjectsSequential -SearchBase $searchBases | Where-Object { $_.ObjectClass -eq 'user' }
-            @($results).Count | Should -Be 3
-        }
-        
-        It "Should maintain object integrity through pipeline" {
-            $searchBase = $Global:TestConfig.ValidSearchBases[0]
-            $results = Get-ADObjectsSequential -SearchBase $searchBase
-            
-            foreach ($result in $results) {
-                $result.DistinguishedName | Should -Not -BeNullOrEmpty
-                $result.ObjectClass | Should -Not -BeNullOrEmpty
-                $result.nTSecurityDescriptor | Should -Not -BeNullOrEmpty
+            @($results).Count | Should -Be 1
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "No objects found in $($script:Empty) (not an error)"
+            }
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Success' -and $SecurityContext.SuccessfulBases -eq 2 -and $SecurityContext.FailedBases -eq 0
             }
         }
-        
-        It "Should support complex pipeline operations" {
-            $searchBases = $Global:TestConfig.ValidSearchBases
-            $results = Get-ADObjectsSequential -SearchBase $searchBases | 
-                       Where-Object { $_.ObjectClass -eq 'user' } |
-                       Select-Object -First 2
-            @($results).Count | Should -Be 2
+    }
+
+    Context "Security logging" {
+        It "Logs an Attempt with the search base count, IncludeInherited and correlation ID" {
+            $correlationId = [System.Guid]::NewGuid().ToString()
+
+            Get-ADObjectsSequential -SearchBase $script:Users, $script:Groups -IncludeInherited -CorrelationId $correlationId | Out-Null
+
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $OperationName -eq 'Get-ADObjectsSequential' -and
+                $Outcome -eq 'Attempt' -and
+                $CorrelationId -eq $correlationId -and
+                $SecurityContext.SearchBaseCount -eq 2 -and
+                $SecurityContext.IncludeInherited -eq $true -and
+                $SecurityContext.ProcessingType -eq 'Sequential' -and
+                $SecurityContext.ADAccessType -eq 'BulkRetrieval'
+            }
+        }
+
+        It "Logs Success with the base and object counts and a result summary" {
+            $correlationId = [System.Guid]::NewGuid().ToString()
+
+            Get-ADObjectsSequential -SearchBase $script:Users, $script:Groups -CorrelationId $correlationId | Out-Null
+
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Success' -and
+                $CorrelationId -eq $correlationId -and
+                $SecurityContext.SearchBaseCount -eq 2 -and
+                $SecurityContext.SuccessfulBases -eq 2 -and
+                $SecurityContext.FailedBases -eq 0 -and
+                $SecurityContext.TotalObjectsRetrieved -eq 4 -and
+                $SecurityContext.IncludeInherited -eq $false -and
+                $SecurityContext.ResultSummary -eq 'Retrieved 4 objects from 2/2 search bases'
+            }
+        }
+
+        It "Counts a single search base string as one base" {
+            Get-ADObjectsSequential -SearchBase $script:Users | Out-Null
+
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Attempt' -and $SecurityContext.SearchBaseCount -eq 1
+            }
+        }
+    }
+
+    Context "Error handling" {
+        It "Continues past a failing search base and returns the others' objects" {
+            $results = Get-ADObjectsSequential -SearchBase $script:Users, $script:Invalid1, $script:Groups
+
+            $results.Name | Should -Be @('User1', 'User2', 'User3', 'Group1')
+            Should -Invoke Get-ADObjectFromSearchBase -Times 3 -Exactly
+        }
+
+        It "Warns and logs a Failure naming the failed search base and error" {
+            $correlationId = [System.Guid]::NewGuid().ToString()
+
+            Get-ADObjectsSequential -SearchBase $script:Users, $script:Invalid1 -CorrelationId $correlationId | Out-Null
+
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Failed to process search base $($script:Invalid1) : The specified domain either does not exist or could not be contacted."
+            }
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and
+                $CorrelationId -eq $correlationId -and
+                $SecurityContext.FailedSearchBase -eq $script:Invalid1 -and
+                $SecurityContext.ErrorMessage -eq 'The specified domain either does not exist or could not be contacted.' -and
+                $SecurityContext.ContinueProcessing -eq $true
+            }
+        }
+
+        It "Logs one Failure per failing base and reports them in the Success summary" {
+            $results = Get-ADObjectsSequential -SearchBase $script:Invalid1, $script:Invalid2
+
+            $results | Should -BeNullOrEmpty
+            Should -Invoke Write-ADOperationSecurityLog -Times 2 -Exactly -ParameterFilter { $Outcome -eq 'Failure' }
+            Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Success' -and
+                $SecurityContext.SuccessfulBases -eq 0 -and
+                $SecurityContext.FailedBases -eq 2 -and
+                $SecurityContext.TotalObjectsRetrieved -eq 0
+            }
+        }
+    }
+
+    Context "Verbose progress" {
+        It "Reports the number of search bases at the start" {
+            Get-ADObjectsSequential -SearchBase $script:Users, $script:Groups, $script:Computers | Out-Null
+
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Starting sequential AD object retrieval from 3 search bases'
+            }
+        }
+
+        It "Reports the totals at the end" {
+            Get-ADObjectsSequential -SearchBase $script:Users, $script:Invalid1 | Out-Null
+
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Sequential processing completed: 3 objects from 1/2 search bases'
+            }
         }
     }
 }

@@ -44,15 +44,15 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
 
     Context 'Parameter validation' {
         It 'Requires a command name' {
-            { Start-OrphanedSidSession -CommandName '' } | Should -Throw
+            { Start-OrphanedSidSession -CommandName '' } | Should -Throw -ExpectedMessage '*CommandName*'
         }
 
         It 'Rejects a memory limit outside 100-16384' {
-            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -MaxMemoryUsageMB 50 } | Should -Throw
+            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -MaxMemoryUsageMB 50 } | Should -Throw -ExpectedMessage '*MaxMemoryUsageMB*'
         }
 
         It 'Rejects an unknown log level' {
-            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -LogLevel 'Chatty' } | Should -Throw
+            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -LogLevel 'Chatty' } | Should -Throw -ExpectedMessage '*LogLevel*'
         }
     }
 
@@ -86,7 +86,10 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
         It 'Does not look for the module unless asked' {
             Mock Get-Module { throw 'should not be called' }
 
-            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' } | Should -Not -Throw
+            Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' | Out-Null
+
+            Should -Invoke Get-Module -Times 0 -Exactly
+            Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly
         }
     }
 
@@ -144,6 +147,7 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             $script:Config.BatchSize | Should -Be 50
             $script:MemoryManager.Name | Should -Be 'manager'
             $script:Statistics.Name | Should -Be 'stats'
+            $script:LogPath | Should -Be $result.LogPath
             $result.CorrelationId | Should -Be 'start-1'
             Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly -ParameterFilter {
                 $ConfigPath -eq 'C:\cfg.json' -and $MaxMemoryUsageMB -eq 2048 -and $CorrelationId -eq 'start-1' -and $SuppressConsoleOutput

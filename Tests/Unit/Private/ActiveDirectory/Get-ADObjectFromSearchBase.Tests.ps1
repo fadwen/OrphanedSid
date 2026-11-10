@@ -65,171 +65,148 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
     }
 
     Context "Parameter Validation" {
-        It "Should accept valid Distinguished Name for Users OU" {
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' } | Should -Not -Throw
+        It "Rejects an empty SearchBase" {
+            { Get-ADObjectFromSearchBase -SearchBase '' } | Should -Throw -ExpectedMessage "*SearchBase*"
+            Should -Invoke Get-ADObject -Times 0 -Exactly
         }
-        
-        It "Should accept valid Distinguished Name for Groups OU" {
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Groups,DC=contoso,DC=com' } | Should -Not -Throw
+
+        It "Binds a piped string to SearchBase" {
+            $result = @('OU=Groups,DC=contoso,DC=com' | Get-ADObjectFromSearchBase)
+
+            $result.Count | Should -Be 1
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter {
+                $SearchBase -eq 'OU=Groups,DC=contoso,DC=com'
+            }
         }
-        
-        It "Should accept pipeline input" {
-            { 'OU=Users,DC=contoso,DC=com' | Get-ADObjectFromSearchBase } | Should -Not -Throw
-        }
-        
-        It "Should accept Properties parameter" {
-            $properties = @('Name', 'Description', 'mail')
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -Properties $properties } | Should -Not -Throw
-        }
-        
-        It "Should accept CorrelationId parameter" {
+
+        It "Writes the CorrelationId into the start-of-search verbose message" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -CorrelationId $correlationId } | Should -Not -Throw
+            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -CorrelationId $correlationId
+
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -like "Retrieving AD objects from search base: OU=Users,DC=contoso,DC=com*" -and
+                $Message -like "*CorrelationId: $correlationId"
+            }
         }
     }
 
     Context "Core Functionality" {
         It "Should return AD objects from Users OU" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            $result | Should -Not -BeNullOrEmpty
+
             $result.Count | Should -Be 2
             $result[0].Name | Should -Be 'User1'
             $result[1].Name | Should -Be 'User2'
         }
-        
-        It "Should return AD objects from Groups OU" {
+
+        It "Should return a single AD object from Groups OU" {
             $result = @(Get-ADObjectFromSearchBase -SearchBase 'OU=Groups,DC=contoso,DC=com')
-            
-            $result | Should -Not -BeNullOrEmpty
+
             $result.Count | Should -Be 1
             $result[0].Name | Should -Be 'Group1'
         }
-        
+
         It "Should include nTSecurityDescriptor in results" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            $result[0].nTSecurityDescriptor | Should -Not -BeNullOrEmpty
+
             $result[0].nTSecurityDescriptor | Should -Be 'MockSecurityDescriptor1'
         }
-        
-        It "Should handle empty result set" {
+
+        It "Should return nothing and warn nothing for an empty result set" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'OU=Empty,DC=contoso,DC=com'
-            
+
             $result | Should -BeNullOrEmpty
+            Should -Invoke Write-Warning -Times 0 -Exactly
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Retrieved 0 objects from search base: OU=Empty,DC=contoso,DC=com'
+            }
         }
-        
+
+        It "Should report the retrieved object count in a verbose message" {
+            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
+
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Retrieved 2 objects from search base: OU=Users,DC=contoso,DC=com'
+            }
+        }
+
         It "Should process multiple search bases via pipeline" {
             $searchBases = @('OU=Users,DC=contoso,DC=com', 'OU=Groups,DC=contoso,DC=com')
             $result = $searchBases | Get-ADObjectFromSearchBase
-            
-            $result | Should -Not -BeNullOrEmpty
+
             $result.Count | Should -Be 3  # 2 users + 1 group
+            $result.Name | Should -Be @('User1', 'User2', 'Group1')
+            Should -Invoke Get-ADObject -Times 2 -Exactly
         }
     }
 
     Context "Error Handling" {
-        It "Should handle invalid Distinguished Name gracefully" {
-            $result = Get-ADObjectFromSearchBase -SearchBase 'InvalidDN'
-            
-            # A failed search base warns rather than throwing
-            Should -Invoke Write-Warning -Exactly 1 -ParameterFilter {
-                $Message -match "Failed to retrieve objects"
-            }
-        }
-        
-        It "Should handle access denied errors gracefully" {
-            { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=AccessDenied,DC=contoso,DC=com' } | Should -Not -Throw
+        It "Warns with the search base and error message instead of throwing for <Case>" -ForEach @(
+            @{ Case = 'invalid DN'; Base = 'InvalidDN'; Expected = 'The supplied distinguished name contains invalid syntax' }
+            @{ Case = 'access denied'; Base = 'OU=AccessDenied,DC=contoso,DC=com'; Expected = 'Insufficient access rights to perform the operation' }
+            @{ Case = 'server unavailable'; Base = 'OU=ServerError,DC=contoso,DC=com'; Expected = 'The server is not operational' }
+        ) {
+            $result = Get-ADObjectFromSearchBase -SearchBase $Base
 
-            # Requires at least one warning; the count is not pinned
-            Should -Invoke Write-Warning -ParameterFilter {
-                $Message -match "Failed to retrieve objects"
+            $result | Should -BeNullOrEmpty
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Failed to retrieve objects from search base '$Base': $Expected"
+            }
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
+                $Message -like "Search base error details: *$Expected"
             }
         }
-        
-        It "Should handle server unavailable errors gracefully" {
-            { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=ServerError,DC=contoso,DC=com' } | Should -Not -Throw
 
-            # Requires at least one warning; the count is not pinned
-            Should -Invoke Write-Warning -ParameterFilter {
-                $Message -match "Failed to retrieve objects"
-            }
-        }
-        
         It "Should continue pipeline processing after error" {
             $searchBases = @('OU=Users,DC=contoso,DC=com', 'InvalidDN', 'OU=Groups,DC=contoso,DC=com')
             $result = $searchBases | Get-ADObjectFromSearchBase
-            
-            # Should get results from valid search bases despite error in middle
-            $result | Should -Not -BeNullOrEmpty
-            $result.Count | Should -Be 3  # 2 users + 1 group (InvalidDN produces no output)
+
+            # Results from the valid search bases despite the error in the middle
+            $result.Count | Should -Be 3
+            $result.Name | Should -Be @('User1', 'User2', 'Group1')
+            Should -Invoke Write-Warning -Times 1 -Exactly
         }
     }
 
-    Context "Integration Tests" {
-        It "Should call Get-ADObject with correct SearchBase" {
+    Context "Get-ADObject call" {
+        It "Should call Get-ADObject with the SearchBase, Filter * and ErrorAction Stop" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            Should -Invoke Get-ADObject -Exactly 1 -ParameterFilter {
-                $SearchBase -eq 'OU=Users,DC=contoso,DC=com'
+
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter {
+                $SearchBase -eq 'OU=Users,DC=contoso,DC=com' -and
+                $Filter -eq '*' -and
+                $ErrorAction -eq 'Stop'
             }
         }
-        
-        It "Should call Get-ADObject with correct Filter" {
+
+        It "Should request only nTSecurityDescriptor by default" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            # The function passes -Filter * so every object class under the search base is returned
-            Should -Invoke Get-ADObject -ParameterFilter {
-                $Filter -eq '*'
+
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter {
+                @($Properties).Count -eq 1 -and @($Properties)[0] -eq 'nTSecurityDescriptor'
             }
         }
-        
-        It "Should call Get-ADObject with nTSecurityDescriptor property" {
-            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            Should -Invoke Get-ADObject -ParameterFilter {
-                $Properties -contains 'nTSecurityDescriptor'
-            }
-        }
-        
-        It "Should call Get-ADObject with custom properties" {
+
+        It "Should add nTSecurityDescriptor to custom properties" {
             $customProperties = @('Name', 'Description', 'mail')
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -Properties $customProperties
-            
-            Should -Invoke Get-ADObject -Exactly 1 -ParameterFilter {
+
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter {
+                @($Properties).Count -eq 4 -and
                 $Properties -contains 'nTSecurityDescriptor' -and
                 $Properties -contains 'Name' -and
                 $Properties -contains 'Description' -and
                 $Properties -contains 'mail'
             }
         }
-        
-        It "Should log verbose messages" {
-            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            # Asserts nothing: it only runs the function with Write-Verbose mocked. A check would be
-            # Should -Invoke Write-Verbose -ParameterFilter { $Message -match "Retrieving AD objects" }
-        }
-    }
 
-    Context "Performance" {
-        It "Should complete within reasonable time" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
-            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
-            
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000  # 1 second max
-        }
-        
-        It "Should handle pipeline input efficiently" {
-            $searchBases = 1..10 | ForEach-Object { "OU=Test$_,DC=contoso,DC=com" }
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            $searchBases | Get-ADObjectFromSearchBase
-            $stopwatch.Stop()
-            
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 5000  # 5 seconds max for 10 items
+        It "Should not request nTSecurityDescriptor twice when the caller names it" {
+            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -Properties @('nTSecurityDescriptor', 'Name')
+
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter {
+                @($Properties | Where-Object { $_ -eq 'nTSecurityDescriptor' }).Count -eq 1 -and
+                @($Properties).Count -eq 2
+            }
         }
     }
 }

@@ -61,7 +61,7 @@ Describe 'Stop-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             Stop-OrphanedSidSession -CorrelationId 'override'
 
             Should -Invoke Invoke-ResourceCleanup -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'override' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'All resources cleaned up' -and $CorrelationId -eq 'override' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'All resources cleaned up' -and $CorrelationId -eq 'override' }
         }
     }
 
@@ -72,7 +72,7 @@ Describe 'Stop-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             Stop-OrphanedSidSession -PreserveTempFiles
 
             $streaming.PreserveFiles | Should -BeTrue
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Temporary result files preserved in: C:\Temp\run' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Temporary result files preserved in: C:\Temp\run' }
         }
 
         It 'Leaves the files to disposal by default' {
@@ -81,7 +81,7 @@ Describe 'Stop-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             Stop-OrphanedSidSession
 
             $streaming.PreserveFiles | Should -BeFalse
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like 'Temporary result files will be cleaned up*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like 'Temporary result files will be cleaned up*' }
         }
     }
 
@@ -107,8 +107,13 @@ Describe 'Stop-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             $script:MemoryManager.Disposed = $true
             $script:MemoryManager | Add-Member -MemberType ScriptMethod -Name Dispose -Value { throw 'disposed twice' } -Force
 
-            { Stop-OrphanedSidSession } | Should -Not -Throw
+            $streaming = $script:StreamingResults
+
+            Stop-OrphanedSidSession
+
+            # A second warning would mean the throwing Dispose ran
             Should -Invoke Write-Warning -Times 1 -Exactly
+            $streaming.Disposed | Should -BeTrue
         }
 
         It 'Warns a second time when the fallback disposal fails too' {

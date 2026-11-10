@@ -38,7 +38,10 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
 
     Context 'Parameter validation' {
         It 'Requires -BackupPath' {
-            { Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com' -Force } | Should -Throw
+            # Omitting it would prompt in an interactive host, so the declaration is checked instead
+            $attribute = (Get-Command Restore-OrphanedSidBackup).Parameters['BackupPath'].Attributes |
+                Where-Object { $_ -is [Parameter] }
+            $attribute.Mandatory | Should -Be $true
         }
 
         It 'Rejects a -BackupPath that does not exist' {
@@ -48,19 +51,24 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
 
         It 'Accepts the DistinguishedName and SearchBase aliases' {
             Restore-OrphanedSidBackup -SearchBase 'CN=A,DC=contoso,DC=com' -BackupPath $script:backupDir -Force | Out-Null
+            Restore-OrphanedSidBackup -DistinguishedName 'CN=B,DC=contoso,DC=com' -BackupPath $script:backupDir -Force | Out-Null
 
-            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter { $Parameters.TargetObjectDN -eq 'CN=A,DC=contoso,DC=com' }
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter { $Parameters.TargetObjectDN -eq 'CN=B,DC=contoso,DC=com' }
         }
     }
 
     Context 'Orchestration' {
         It 'Calls the restore workflow once per target with the backup path' {
             Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com', 'CN=B,DC=contoso,DC=com' `
-                -BackupPath $script:backupDir -Force | Out-Null
+                -BackupPath $script:backupDir -Force -CorrelationId 'rs-1' | Out-Null
 
             Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 2 -Exactly -ParameterFilter {
-                $OperationType -eq 'Restore' -and $Parameters.BackupPath -eq $script:backupDir
+                $OperationType -eq 'Restore' -and $Parameters.BackupPath -eq $script:backupDir -and
+                $Parameters.CorrelationId -eq 'rs-1' -and $CorrelationId -eq 'rs-1' -and -not $Parameters.ContainsKey('WhatIf')
             }
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter { $Parameters.TargetObjectDN -eq 'CN=A,DC=contoso,DC=com' }
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter { $Parameters.TargetObjectDN -eq 'CN=B,DC=contoso,DC=com' }
         }
 
         It 'Collects targets from the pipeline' {
@@ -68,6 +76,9 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
                 Restore-OrphanedSidBackup -BackupPath $script:backupDir -Force | Out-Null
 
             Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 3 -Exactly
+            foreach ($dn in 'CN=A,DC=contoso,DC=com', 'CN=B,DC=contoso,DC=com', 'CN=C,DC=contoso,DC=com') {
+                Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter { $Parameters.TargetObjectDN -eq $dn }
+            }
         }
 
         It 'Passes WhatIf to the workflow and still calls it' {
@@ -83,7 +94,9 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
                 -BackupPath $script:backupDir -Force)
 
             $results.Count | Should -Be 2
-            $results.TargetObjectDN | Should -Contain 'CN=B,DC=contoso,DC=com'
+            $results.TargetObjectDN | Should -Be @('CN=A,DC=contoso,DC=com', 'CN=B,DC=contoso,DC=com')
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Successful restores: 2' }
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Total ACL entries restored: 6' }
         }
 
         It 'Turns a workflow exception into a failed result and continues with the next target' {
@@ -99,6 +112,12 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
             $bad = $results | Where-Object TargetObjectDN -like 'CN=Bad*'
             $bad.Success | Should -BeFalse
             $bad.ErrorMessage | Should -Be 'no backup for this object'
+            $bad.EntriesRestored | Should -Be 0
+            ($results | Where-Object TargetObjectDN -like 'CN=Good*').Success | Should -BeTrue
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Restore failed for CN=Bad,DC=contoso,DC=com : no backup for this object'
+            }
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Failed restores: 1' }
         }
     }
 
@@ -122,10 +141,10 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
             }
         }
 
-        It 'Stops the session after the run' {
-            Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com' -BackupPath $script:backupDir -Force | Out-Null
+        It 'Stops the session after the run with the correlation ID' {
+            Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com' -BackupPath $script:backupDir -Force -CorrelationId 'rs-2' | Out-Null
 
-            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'rs-2' }
         }
     }
 }

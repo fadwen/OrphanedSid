@@ -64,7 +64,7 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
 
             Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -WhatIf -BackupPath $root | Out-Null
 
-            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter { $Remove }
             @(Get-ChildItem $root -Directory).Count | Should -Be 0
         }
     }
@@ -87,7 +87,12 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
 
             Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -BackupPath $root | Out-Null
 
-            @(Get-ChildItem $root -Directory).Count | Should -Be 1
+            $runFolders = @(Get-ChildItem $root -Directory)
+            $runFolders.Count | Should -Be 1
+            $runFolders[0].Name | Should -Match '^\d{8}_\d{6}$'
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
+                $BackupPath -eq $runFolders[0].FullName
+            }
         }
 
         It 'Rejects a -BackupPath whose parent folder does not exist' {
@@ -101,7 +106,9 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
             $results = @(Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force)
 
             $results.Count | Should -Be 2
-            @($results | Where-Object Success).Count | Should -Be 1
+            $results.ObjectDN | Should -Be @('CN=A,DC=contoso,DC=com', 'CN=B,DC=contoso,DC=com')
+            $results.Success | Should -Be @($true, $false)
+            Should -Invoke -ModuleName OrphanedSid Write-ProcessingSummary -Times 1 -Exactly
         }
 
         It 'Starts the session under its own command name' {
@@ -115,9 +122,12 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
         It 'Stops the session even when the engine throws' {
             Mock -ModuleName OrphanedSid Invoke-MainProcessingLogic { throw 'engine failed' }
 
-            { Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force } | Should -Throw '*engine failed*'
+            { Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -CorrelationId 'rm-corr' } | Should -Throw '*engine failed*'
 
-            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'rm-corr' }
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Removal failed: engine failed'
+            }
         }
     }
 }

@@ -5,7 +5,10 @@
     Pester tests for the Invoke-GarbageCollection private function
 
 .DESCRIPTION
-    Tests Invoke-GarbageCollection: memory cleanup and garbage collection operations.
+    Runs Invoke-GarbageCollection with its [System.GC] wrappers (Invoke-GCCollect,
+    Invoke-GCWaitForPendingFinalizers, Get-GCTotalMemory) mocked, so the collection strategy, the
+    memory figures it reports, -WhatIf and its error handling can be asserted exactly.
+    Invoke-Cleanup, from the same file, is covered by Invoke-Cleanup.Tests.ps1.
 
 .NOTES
     PowerShell Version: 5.1+
@@ -14,181 +17,166 @@
 #>
 
 BeforeAll {
-    $functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
 
-    if (Test-Path $functionPath) {
-        . $functionPath
-    } else {
-        throw "Could not find function file at: $functionPath"
-    }
-
-    if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
-        function Write-StructuredLog {
-            param($Message, $Level, $Component, $CorrelationId)
-        }
-    }
-
-    # Pester cannot mock a .NET static method, so Invoke-GarbageCollection.ps1 calls [System.GC]
-    # through wrapper functions the tests mock. These definitions apply only if a wrapper is missing.
-    if (-not (Get-Command Invoke-GCCollect -ErrorAction SilentlyContinue)) {
-        function Invoke-GCCollect { [System.GC]::Collect() }
-    }
-
-    if (-not (Get-Command Invoke-GCWaitForPendingFinalizers -ErrorAction SilentlyContinue)) {
-        function Invoke-GCWaitForPendingFinalizers { [System.GC]::WaitForPendingFinalizers() }
-    }
-
-    if (-not (Get-Command Get-GCTotalMemory -ErrorAction SilentlyContinue)) {
-        function Get-GCTotalMemory { param($forceCollection) return [System.GC]::GetTotalMemory($forceCollection) }
-    }
+    function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId) }
 }
 
-Describe "Invoke-GarbageCollection" {
-    
+Describe "Invoke-GarbageCollection" -Tag 'Unit' {
+
+    BeforeEach {
+        Mock Write-StructuredLog { }
+        Mock Write-Verbose { }
+        Mock Invoke-GCCollect { }
+        Mock Invoke-GCWaitForPendingFinalizers { }
+        # 1000 MB before the collection, 800 MB after the forced full measurement
+        Mock Get-GCTotalMemory { if ($ForceFullCollection) { 800MB } else { 1000MB } }
+    }
+
     Context "Parameter Validation" {
-        It "Should accept optional Force parameter" {
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Write-StructuredLog { }
-            
-            { Invoke-GarbageCollection } | Should -Not -Throw
-            { Invoke-GarbageCollection -Force } | Should -Not -Throw
+        It "Should reject Generation <Value>, outside -1 to 2" -ForEach @(
+            @{ Value = -2 }
+            @{ Value = 3 }
+        ) {
+            { Invoke-GarbageCollection -Generation $Value } | Should -Throw -ExpectedMessage '*Generation*'
+            Should -Invoke Invoke-GCCollect -Times 0 -Exactly
         }
-        
-        It "Should accept optional CorrelationId parameter" {
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Write-StructuredLog { }
-            
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            { Invoke-GarbageCollection -CorrelationId $correlationId } | Should -Not -Throw
+
+        It "Should replace a blank CorrelationId with a GUID" {
+            $result = Invoke-GarbageCollection -CorrelationId '   '
+
+            $result.CorrelationId | Should -Match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
         }
     }
-    
-    Context "Core Functionality" {
-        BeforeEach {
-            Mock Write-StructuredLog { }
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Get-GCTotalMemory { return 1000000 }
-        }
-        
-        It "Should perform basic garbage collection" {
+
+    Context "Collection strategy" {
+        It "Should collect, wait for finalizers and collect again by default" {
             $result = Invoke-GarbageCollection
-            
-            Should -Invoke Invoke-GCCollect -Exactly 2  # Called twice in full collection
-            Should -Invoke Invoke-GCWaitForPendingFinalizers -Exactly 1
-            $result.Success | Should -Be $true
+
+            Should -Invoke Invoke-GCCollect -Times 2 -Exactly -ParameterFilter { -not $PSBoundParameters.ContainsKey('Generation') }
+            Should -Invoke Invoke-GCWaitForPendingFinalizers -Times 1 -Exactly
+            $result.GenerationsCollected | Should -Be @(0, 1, 2)
         }
-        
-        It "Should return PSCustomObject with expected properties" {
-            $result = Invoke-GarbageCollection
-            
-            $result | Should -Not -BeNullOrEmpty
+
+        It "Should collect only generation <Generation> when one is named" -ForEach @(
+            @{ Generation = 0 }
+            @{ Generation = 1 }
+            @{ Generation = 2 }
+        ) {
+            $requested = $Generation
+
+            $result = Invoke-GarbageCollection -Generation $requested
+
+            Should -Invoke Invoke-GCCollect -Times 1 -Exactly
+            Should -Invoke Invoke-GCCollect -Times 1 -Exactly -ParameterFilter { $Generation -eq $requested }
+            Should -Invoke Invoke-GCWaitForPendingFinalizers -Times 0 -Exactly
+            $result.GenerationsCollected | Should -Be @($requested)
+        }
+    }
+
+    Context "Result" {
+        It "Should report memory before, after and freed in MB, with the correlation ID" {
+            $result = Invoke-GarbageCollection -CorrelationId 'gc-1'
+
             $result | Should -BeOfType [PSCustomObject]
-            $result.PSObject.Properties.Name -contains "Success" | Should -Be $true
-            $result.PSObject.Properties.Name -contains "MemoryBefore" | Should -Be $true
-            $result.PSObject.Properties.Name -contains "MemoryAfter" | Should -Be $true
-            $result.PSObject.Properties.Name -contains "CorrelationId" | Should -Be $true
-        }
-        
-        It "Should accept CorrelationId parameter" {
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Write-StructuredLog { }
-            
-            { Invoke-GarbageCollection -Force -CorrelationId 'test-id' } | Should -Not -Throw
-        }
-    }
-    
-    Context "Basic Garbage Collection" {
-        BeforeEach {
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Get-GCTotalMemory { 
-                param($forceFullCollection)
-                if ($forceFullCollection) { return 500MB } else { return 1000MB }
-            }
-            Mock Write-StructuredLog { }
-        }
-        
-        It "Should call GC.Collect() without force by default" {
-            Invoke-GarbageCollection
-            
-            Should -Invoke Invoke-GCCollect -Times 1
-        }
-        
-        It "Should call GC.Collect() with force when specified" {
-            Invoke-GarbageCollection -Force
-            
-            Should -Invoke Invoke-GCCollect -Times 1
-        }
-        
-        It "Should wait for pending finalizers" {
-            Invoke-GarbageCollection
-            
-            Should -Invoke Invoke-GCWaitForPendingFinalizers -Times 1
-        }
-        
-        It "Should perform final collection after finalizers" {
-            Invoke-GarbageCollection
-            
-            # Called twice: the initial collection and the one after finalizers
-            Should -Invoke Invoke-GCCollect -Times 2
-        }
-        
-        It "Should return memory statistics" {
-            Mock Write-StructuredLog { }
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Get-GCTotalMemory {
-                param([bool]$ForceFullCollection)
-                if ($ForceFullCollection) { return 800MB } else { return 1000MB }
-            }
-            
-            $result = Invoke-GarbageCollection
-            
-            $result | Should -Not -BeNullOrEmpty
+            $result.Success | Should -Be $true
             $result.MemoryBefore | Should -Be 1000
             $result.MemoryAfter | Should -Be 800
+            $result.MemoryFreed | Should -Be 200
+            $result.CorrelationId | Should -Be 'gc-1'
+            $result.WhatIfMode | Should -Be $false
+            $result.CollectionTime | Should -BeOfType [TimeSpan]
+            Should -Invoke Get-GCTotalMemory -Times 1 -Exactly -ParameterFilter { $ForceFullCollection -eq $true }
+        }
+
+        It "Should log the start and the amount freed" {
+            Invoke-GarbageCollection -CorrelationId 'gc-2'
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Starting garbage collection...' -and $Level -eq 'Information' -and
+                $Component -eq 'GarbageCollection' -and $CorrelationId -eq 'gc-2'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Garbage collection completed. Freed: 200 MB' -and $CorrelationId -eq 'gc-2'
+            }
         }
     }
-    
+
+    Context "Memory pressure" {
+        It "Should warn when more than 1000 MB is in use" {
+            Mock Get-GCTotalMemory { if ($ForceFullCollection) { 800MB } else { 1001MB } }
+
+            Invoke-GarbageCollection | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq 'High memory pressure detected: 1001 MB'
+            }
+        }
+
+        It "Should not warn at exactly 1000 MB" {
+            Invoke-GarbageCollection | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Warning' }
+        }
+    }
+
+    Context "Large Object Heap" {
+        AfterEach {
+            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode = [System.Runtime.GCLargeObjectHeapCompactionMode]::Default
+        }
+
+        It "Should report and log LOH compaction when asked" {
+            $result = Invoke-GarbageCollection -CompactLOH
+
+            $result.LOHCompacted | Should -Be $true
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'LOH compaction enabled' }
+        }
+
+        It "Should not report LOH compaction by default" {
+            (Invoke-GarbageCollection).LOHCompacted | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -eq 'LOH compaction enabled' }
+        }
+
+        # Module bug (#23): -CompactLOH logs and reports compaction but never sets GCSettings.LargeObjectHeapCompactionMode
+        It "Should request a one-time LOH compaction before collecting" -Skip {
+            Invoke-GarbageCollection -CompactLOH | Out-Null
+
+            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode | Should -Be ([System.Runtime.GCLargeObjectHeapCompactionMode]::CompactOnce)
+        }
+    }
+
+    Context "WhatIf" {
+        It "Should not collect under -WhatIf and report memory unchanged" {
+            $result = Invoke-GarbageCollection -WhatIf
+
+            Should -Invoke Invoke-GCCollect -Times 0 -Exactly
+            Should -Invoke Invoke-GCWaitForPendingFinalizers -Times 0 -Exactly
+            $result.WhatIfMode | Should -Be $true
+            $result.MemoryBefore | Should -Be 1000
+            $result.MemoryAfter | Should -Be 1000
+            $result.MemoryFreed | Should -Be 0
+            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter { $Message -eq 'WhatIf: Would perform garbage collection' }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly
+        }
+    }
+
     Context "Error Handling" {
-        It "Should handle GC.Collect() failure" {
-            Mock Write-StructuredLog { }
-            Mock Invoke-GCCollect {
-                throw "Garbage collection failed"
+        It "Should log the failure at Error level and rethrow when collection fails" {
+            Mock Invoke-GCCollect { throw 'Test collection error' }
+
+            { Invoke-GarbageCollection -CorrelationId 'error-test-id' } | Should -Throw -ExpectedMessage 'Test collection error'
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Garbage collection failed: Test collection error' -and
+                $CorrelationId -eq 'error-test-id'
             }
-            
-            { Invoke-GarbageCollection } | Should -Throw
         }
-        
-        It "Should log collection failure" {
-            Mock Write-StructuredLog { }
-            Mock Invoke-GCCollect {
-                throw "Test collection error"
-            }
-            
-            try {
-                Invoke-GarbageCollection -CorrelationId 'error-test-id'
-            }
-            catch {
-                # Expected to throw
-            }
-            
-            Should -Invoke Write-StructuredLog -Times 1
-        }
-        
-        It "Should handle memory measurement failure" {
-            Mock Write-StructuredLog { }
-            Mock Invoke-GCCollect { }
-            Mock Invoke-GCWaitForPendingFinalizers { }
-            Mock Get-GCTotalMemory {
-                throw "Memory measurement failed"
-            }
-            
-            { Invoke-GarbageCollection } | Should -Throw "*Memory measurement failed*"
+
+        It "Should stop when the memory measurement fails" {
+            Mock Get-GCTotalMemory { throw 'Memory measurement failed' }
+
+            { Invoke-GarbageCollection } | Should -Throw -ExpectedMessage '*Memory measurement failed*'
+            Should -Invoke Invoke-GCCollect -Times 0 -Exactly
         }
     }
 }
