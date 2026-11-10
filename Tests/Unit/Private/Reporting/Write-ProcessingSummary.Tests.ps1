@@ -1,224 +1,108 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Unit tests for Write-ProcessingSummary.ps1: parameters, logging and CSV export.
-# Write-ProcessingSummary.Scenarios.Tests.ps1 covers what is logged for each kind of result.
+# Unit tests for Write-ProcessingSummary.ps1: parameters, the opening log line, and result shapes
+# that carry only some of the optional keys. Write-ProcessingSummary.Scenarios.Tests.ps1 covers what
+# is logged for each kind of full result.
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
+
+    # Placeholder for the logging function defined in another file: Pester can only mock a command
+    # that exists
+    function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 }
 
 Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
-    BeforeAll {
-        # Placeholders for logging functions defined in other files: Pester can only mock a command
-        # that exists
-        function Write-StructuredLog {
-            param($Message, $Level, $Component, $CorrelationId)
-            Write-Host "Mock Write-StructuredLog: [$Level] $Message" -ForegroundColor Yellow
-        }
-        
-        function Write-StructuredLogEntry {
-            param($Message, $Level, $Component, $CorrelationId, $Details)
-            Write-Host "Mock Write-StructuredLogEntry: [$Level] $Message" -ForegroundColor Yellow
-        }
-        
-        function Format-LogMessage {
-            param($Message, $Level, $Component, $CorrelationId)
-            return "[$Level] $Message"
-        }
-        
-        function Get-LoggingSystemState {
-            return @{ LogPath = "" }
-        }
-    }
-    
+
     BeforeEach {
-        # Mock console and file operations
-        Mock Add-Content { }
-        Mock Write-Warning { }
-        Mock Write-Error { }
-        Mock Write-Information { }
-        Mock Write-Debug { }
-        Mock Write-Verbose { }
-        Mock Write-Host { }
-        Mock Write-Output { }
-        
-        Mock Write-StructuredLog { Write-Host "Mock Write-StructuredLog called" } -Verifiable
+        Mock Write-StructuredLog { }
 
-        Mock Export-Csv { }
-
-        Mock Write-Host { }
-        Mock Write-Output { }
-        
-        # Sample processing statistics with TimeSpan objects
-        $script:TestStatistics = [PSCustomObject]@{
+        # Only the two keys every result carries
+        $script:MinimalResults = [PSCustomObject]@{
             TotalObjectsProcessed = 150
-            OrphanedSIDsFound = 12
-            OrphanedSIDsRemoved = 8
-            ErrorCount = 2
             ProcessingDuration = [TimeSpan]::FromMinutes(15)
-            StartTime = Get-Date
-            EndTime = (Get-Date).AddMinutes(15)
         }
-        
-        # Test data with StreamingManager for CSV export tests
-        $script:TestStatisticsWithStreaming = [PSCustomObject]@{
-            TotalObjectsProcessed = 150
-            OrphanedSIDsFound = 12
-            OrphanedSIDsRemoved = 8
-            ErrorCount = 2
-            ProcessingDuration = [TimeSpan]::FromMinutes(15)
-            StartTime = Get-Date
-            EndTime = (Get-Date).AddMinutes(15)
-            StreamingManager = [PSCustomObject]@{
-                Summary = [PSCustomObject]@{
-                    TotalResults = 12
-                }
-            }
-        }
-        
-        # Stand-in for the streaming manager's ExportToCsv method
-        Add-Member -InputObject $script:TestStatisticsWithStreaming.StreamingManager -MemberType ScriptMethod -Name ExportToCsv -Value { 
-            param($path) 
-            # Reaches the Export-Csv mock, so the export can be asserted
-            Export-Csv -Path $path -InputObject @() -NoTypeInformation
-        }
-        
-        # Sample orphaned SIDs
-        $script:TestOrphanedSIDs = @(
-            [PSCustomObject]@{
-                SID = 'S-1-5-21-1234567890-987654321-1122334455-1001'
-                ObjectPath = 'OU=TestOU,DC=domain,DC=com'
-                ObjectType = 'organizationalUnit'
-                Removed = $true
-            },
-            [PSCustomObject]@{
-                SID = 'S-1-5-21-1234567890-987654321-1122334455-1002'
-                ObjectPath = 'CN=TestUser,OU=Users,DC=domain,DC=com'
-                ObjectType = 'user'
-                Removed = $false
-            }
-        )
-        
-        # Sample errors
-        $script:TestErrors = @(
-            [PSCustomObject]@{
-                Timestamp = Get-Date
-                Level = 'Error'
-                Message = 'Failed to process object: Access denied'
-                Exception = 'System.UnauthorizedAccessException'
-            }
-        )
     }
-    
+
     Context "Parameter Validation" {
-        It "Should accept valid ProcessingResults parameter" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics } | Should -Not -Throw
-        }
-
-        It "Should accept valid OutputPath parameter" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -OutputPath "C:\temp\test.csv" } | Should -Not -Throw
-        }
-
-        It "Should accept AutomationMode switch" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode } | Should -Not -Throw
-        }
-
-        It "Should accept CorrelationId parameter" {
-            { Write-ProcessingSummary -ProcessingResults $script:TestStatistics -CorrelationId "test-123" } | Should -Not -Throw
-        }
-    }
-    
-    Context "Console Output" {
-        It "Should display processing summary to console" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics
-            
-            Should -Invoke Write-StructuredLog -Scope It
-        }
-        
-        It "Should display orphaned SIDs summary when provided" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics
-            
-            Should -Invoke Write-StructuredLog -Scope It
-        }
-        
-        It "Should display error summary when errors provided" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics
-            
-            Should -Invoke Write-StructuredLog -Scope It
-        }
-    }
-    
-    Context "CSV Export" {
-        It "Should export to CSV when OutputPath specified" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatisticsWithStreaming -OutputPath "C:\temp\test.csv"
-            
-            Should -Invoke Export-Csv -Times 1 -Exactly -Scope It
-        }
-        
-        It "Should not export to CSV when OutputPath not specified" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics
-            
-            Should -Invoke Export-Csv -Times 0 -Exactly -Scope It
-        }
-    }
-    
-    Context "Automation Mode" {
-        It "Should output structured data in automation mode" {
-            Mock Write-Information { }
-            
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode
-            
-            Should -Invoke Write-Information -Times 1
-        }
-        
-        It "Should not display console output in automation mode" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics -AutomationMode
-            
-            Should -Invoke Write-StructuredLog -Scope It
-        }
-    }
-    
-    Context "Structured Logging" {
-        It "Should log processing summary" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics
-            
-            Should -Invoke Write-StructuredLog -Scope It
-        }
-        
-        It "Should log with correct parameters" {
-            Write-ProcessingSummary -ProcessingResults $script:TestStatistics
-            
-            Should -Invoke Write-StructuredLog -Scope It
-        }
-    }
-    
-    Context "Error Handling" {
-        It "Should handle missing ProcessingResults gracefully" {
+        It "Should reject a null ProcessingResults" {
             { Write-ProcessingSummary -ProcessingResults $null } | Should -Throw
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly
         }
-        
-        It "Should handle invalid OutputPath gracefully" {
-            # Use streaming data and mock the ExportToCsv method to throw
-            $TestDataWithError = $script:TestStatisticsWithStreaming.PSObject.Copy()
-            Add-Member -InputObject $TestDataWithError.StreamingManager -MemberType ScriptMethod -Name ExportToCsv -Value { 
-                param($path) 
-                throw "Access denied"
-            } -Force
-            
-            { Write-ProcessingSummary -ProcessingResults $TestDataWithError -OutputPath "Z:\invalid\path.csv" } | Should -Not -Throw
+    }
+
+    Context "Opening and closing log lines" {
+        It "Should log the start and the end of the summary under the given correlation ID" {
+            Write-ProcessingSummary -ProcessingResults $script:MinimalResults -CorrelationId "test-123"
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Generating processing summary' -and $CorrelationId -eq 'test-123' -and $Component -eq 'Summary'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Processing summary completed' -and $CorrelationId -eq 'test-123'
+            }
         }
-        
-        It "Should log errors during CSV export" {
-            # Use streaming data and mock the ExportToCsv method to throw
-            $TestDataWithError = $script:TestStatisticsWithStreaming.PSObject.Copy()
-            Add-Member -InputObject $TestDataWithError.StreamingManager -MemberType ScriptMethod -Name ExportToCsv -Value { 
-                param($path) 
-                throw "Access denied"
-            } -Force
-            
-            Write-ProcessingSummary -ProcessingResults $TestDataWithError -OutputPath "Z:\invalid\path.csv"
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $Level -eq 'Error'
-            } -Scope It
+
+        It "Should generate a correlation ID when none is given" {
+            Write-ProcessingSummary -ProcessingResults $script:MinimalResults
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Generating processing summary' -and
+                $CorrelationId -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            }
+        }
+    }
+
+    Context "Results with only the required keys" {
+        It "Should log the totals and leave out the optional lines" {
+            Write-ProcessingSummary -ProcessingResults $script:MinimalResults
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Total objects processed: 150' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Processing duration: 00:15:00.000' }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Processing rate:*' -or $Message -like 'Peak memory usage:*' -or
+                $Message -like 'Processing errors:*' -or $Message -like 'Orphaned SIDs found:*'
+            }
+        }
+
+        It "Should report a clean directory and not export when nothing was streamed" {
+            Write-ProcessingSummary -ProcessingResults $script:MinimalResults -OutputPath (Join-Path $TestDrive 'none.csv')
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like 'No orphaned SIDs found.*' }
+            Test-Path (Join-Path $TestDrive 'none.csv') | Should -BeFalse
+        }
+
+        It "Should report Success in automation mode when no error count is present" {
+            $script:Captured = [System.Collections.Generic.List[string]]::new()
+            Mock Write-Information { $script:Captured.Add($MessageData) }
+
+            Write-ProcessingSummary -ProcessingResults $script:MinimalResults -AutomationMode
+
+            $json = $script:Captured[1] | ConvertFrom-Json
+            $json.Status | Should -Be 'Success'
+            $json.Summary.TotalObjectsProcessed | Should -Be 150
+            $json.Summary.Duration | Should -Be '00:15:00'
+            $json.Summary.PSObject.Properties.Name | Should -Not -Contain 'OrphanedSIDsFound'
+        }
+    }
+
+    Context "Removal results" {
+        It "Should count a single removal" {
+            $results = [PSCustomObject]@{
+                TotalObjectsProcessed = 1
+                ProcessingDuration = [TimeSpan]::FromSeconds(1)
+                RemovalResults = @([PSCustomObject]@{ ObjectDN = 'CN=A,DC=contoso,DC=com'; Success = $true })
+            }
+
+            Write-ProcessingSummary -ProcessingResults $results
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Removal operations attempted: 1' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Successful removals: 1' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Failed removals: 0' }
+        }
+
+        It "Should log no removal summary when there were no removals" {
+            Write-ProcessingSummary -ProcessingResults $script:MinimalResults
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -eq '=== REMOVAL SUMMARY ===' }
         }
     }
 }

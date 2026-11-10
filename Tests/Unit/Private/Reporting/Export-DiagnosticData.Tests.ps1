@@ -6,169 +6,148 @@
     Unit tests for the Export-DiagnosticData function
 
 .DESCRIPTION
-    Tests Export-DiagnosticData parameter validation, diagnostic data collection,
-    the files it writes, and its error handling.
-
-.NOTES
-    Author: Jeffrey Stuhr
+    Tests Export-DiagnosticData parameter validation, the diagnostic package it writes under
+    TestDrive, and its error handling. Only its logging and log-summary collaborators are mocked.
 #>
 
 BeforeAll {
-    $functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\Reporting\Export-DiagnosticData.ps1"
+    . (Join-Path $PSScriptRoot "..\..\..\..\Private\Reporting\Export-DiagnosticData.ps1")
 
-    if (Test-Path $functionPath) {
-        . $functionPath
-    } else {
-        Write-Warning "Could not find Export-DiagnosticData.ps1 at expected path: $functionPath"
-    }
-
-    # Placeholder for a function defined in another file: Pester can only mock a command that exists
-    function Get-LogFileSummary {
-        param() 
-        return @{} 
-    }
+    # Placeholders for functions defined in other files: Pester can only mock a command that exists
+    function Get-LogFileSummary { param() }
+    function Write-StructuredLogEntry { param($Message, $Level, $Component, $CorrelationId, $LogPath, [hashtable]$Details) }
 }
 
 Describe "Export-DiagnosticData" -Tag "Unit", "Private", "Reporting" {
 
     BeforeEach {
-        # Mock system commands and functions
-        Mock Test-Path { return $true }
-        Mock New-Item { return [PSCustomObject]@{ FullName = $Path } }
-        Mock Join-Path { return "$Path\$ChildPath" }
-        Mock Out-File { }
-        Mock Copy-Item { }
-        Mock Get-Module { 
-            return @(
-                [PSCustomObject]@{ 
-                    Name = 'TestModule'
-                    Version = [Version]'1.0.0'
-                    ModuleType = 'Script'
-                    Path = 'C:\TestModule.psm1' 
-                }
-            )
-        }
-        Mock Get-Process {
-            return [PSCustomObject]@{
-                Id = $PID
-                WorkingSet64 = 104857600
-                PrivateMemorySize64 = 52428800
-                VirtualMemorySize64 = 209715200
-                PagedMemorySize64 = 52428800
-                NonpagedSystemMemorySize64 = 0
-                PeakWorkingSet64 = 104857600
-                TotalProcessorTime = [TimeSpan]::FromSeconds(30)
-                UserProcessorTime = [TimeSpan]::FromSeconds(20)
-            }
-        }
-        Mock Get-ExecutionPolicy { return "RemoteSigned" }
-        Mock Get-Location { return [PSCustomObject]@{ Path = "C:\Test" } }
-        Mock ConvertTo-Json { return '{"test": "data"}' }
-        Mock Write-Verbose { }
+        Mock Get-LogFileSummary { [PSCustomObject]@{ TotalLines = 42; ErrorCount = 3 } }
+        Mock Write-StructuredLogEntry { }
         Mock Write-Error { }
-        Mock Get-Command { 
-            if ($Name -eq 'Get-LogFileSummary') {
-                return [PSCustomObject]@{ Name = 'Get-LogFileSummary' }
-            } else {
-                return $null 
-            }
-        }
-        Mock Get-LogFileSummary { 
-            return @{
-                TotalLogFiles = 5
-                TotalSizeMB = 15.2
-                ErrorCount = 10
-                WarningCount = 25
-            }
-        }
-        Mock Get-ChildItem { 
-            return @(
-                [PSCustomObject]@{ Name = "test.json"; Length = 1024 }
-            )
-        }
-        Mock Measure-Object { return [PSCustomObject]@{ Sum = 1024 } }
-
-        # Initialize script-level variables
-        $script:LogPath = "C:\Logs\test.log"
-        
-        # Mock Get-Date with different behaviors for different format parameters
-        Mock Get-Date {
-            if ($Format -eq 'yyyyMMdd-HHmmss') {
-                return "20250723-143045"
-            } elseif ($Format -eq 'yyyy-MM-ddTHH:mm:ss.fffffffK') {
-                return "2025-07-23T14:30:45.1234567+00:00"
-            } else {
-                return [DateTime]::Parse('2025-07-23 14:30:45')
-            }
-        }
+        # A real PathInfo carries its provider and drive, which take minutes to serialize at depth 10
+        Mock Get-Location { 'C:\Diagnostics\Location' }
+        $script:LogPath = $null
+        $script:OutputRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString())
     }
 
     Context "Parameter Validation" {
-        It "Should accept valid OutputPath parameter" {
-            { Export-DiagnosticData -OutputPath "C:\ValidPath" } | Should -Not -Throw
+        It "Should reject a null OutputPath" {
+            { Export-DiagnosticData -OutputPath $null } | Should -Throw
         }
 
-        It "Should handle null or empty OutputPath validation" {
-            # The ValidateNotNullOrEmpty attribute should handle these cases
-            try {
-                Export-DiagnosticData -OutputPath $null
-                $false | Should -Be $true  # Should not reach this line
-            } catch {
-                # PowerShell 7 says "The argument is null or empty"; Windows PowerShell 5.1 says
-                # "Cannot bind argument to parameter Path because it is an empty string"
-                $_.Exception.Message | Should -Match "null or empty|empty string"
+        It "Should reject an OutputPath that is not a valid path" {
+            { Export-DiagnosticData -OutputPath 'C:\bad|path' } | Should -Throw -ExpectedMessage '*OutputPath must be a valid directory path*'
+        }
+    }
+
+    Context "Diagnostic package" {
+        It "Should create the output directory when it does not exist" {
+            Test-Path $script:OutputRoot | Should -BeFalse
+
+            Export-DiagnosticData -OutputPath $script:OutputRoot
+
+            Test-Path $script:OutputRoot -PathType Container | Should -BeTrue
+        }
+
+        It "Should return a timestamped package directory under the output path" {
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot
+
+            Split-Path $result -Parent | Should -Be $script:OutputRoot
+            Split-Path $result -Leaf | Should -Match '^Diagnostic-\d{8}-\d{6}$'
+            Test-Path $result -PathType Container | Should -BeTrue
+        }
+
+        It "Should write the diagnostic, session, module and summary files" {
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot
+
+            @((Get-ChildItem $result -File).Name | Sort-Object) |
+                Should -Be @('diagnostic-data.json', 'loaded-modules.json', 'package-summary.json', 'powershell-info.json')
+        }
+
+        It "Should record the correlation ID, process and log summary in diagnostic-data.json" {
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot -CorrelationId 'diag-123'
+
+            $data = Get-Content (Join-Path $result 'diagnostic-data.json') -Raw | ConvertFrom-Json
+            $data.CorrelationId | Should -Be 'diag-123'
+            $data.SystemInfo.ProcessId | Should -Be $PID
+            $data.SystemInfo.MachineName | Should -Be $env:COMPUTERNAME
+            $data.MemoryUsage.WorkingSetMB | Should -BeGreaterThan 0
+            $data.LogInfo.TotalLines | Should -Be 42
+            $data.PowerShellConfiguration.CurrentLocation | Should -Be 'C:\Diagnostics\Location'
+        }
+
+        It "Should list the loaded modules in loaded-modules.json" {
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot
+
+            $modules = Get-Content (Join-Path $result 'loaded-modules.json') -Raw | ConvertFrom-Json
+            $modules.Name | Should -Contain 'Pester'
+        }
+
+        It "Should copy the current log file into the package" {
+            $script:LogPath = Join-Path $TestDrive 'current.log'
+            Set-Content -Path $script:LogPath -Value 'log line one'
+
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot
+
+            Get-Content (Join-Path $result 'current-log.log') | Should -Be 'log line one'
+        }
+
+        It "Should list every file and the correlation ID in package-summary.json" {
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot -CorrelationId 'diag-456'
+
+            $summary = Get-Content (Join-Path $result 'package-summary.json') -Raw | ConvertFrom-Json
+            $summary.CorrelationId | Should -Be 'diag-456'
+            $summary.PackagePath | Should -Be $result
+            @($summary.FilesIncluded | Sort-Object) | Should -Be @('diagnostic-data.json', 'loaded-modules.json', 'powershell-info.json')
+        }
+
+        It "Should log the export with its path and file count" {
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot -CorrelationId 'diag-789'
+
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and
+                $Component -eq 'Diagnostics' -and
+                $CorrelationId -eq 'diag-789' -and
+                $Details.ExportPath -eq $result -and
+                $Details.FilesExported -eq 3
             }
         }
 
-        It "Should accept valid CorrelationId parameter" {
-            $testCorrelationId = [System.Guid]::NewGuid().ToString()
-            { Export-DiagnosticData -OutputPath "C:\Test" -CorrelationId $testCorrelationId } | Should -Not -Throw
-        }
-    }
-    
-    Context "Core Functionality" {
-        It "Should create timestamped diagnostic directory" {
-            $result = Export-DiagnosticData -OutputPath "C:\Test"
+        It "Should record the failure in LogInfo when the log summary throws" {
+            Mock Get-LogFileSummary { throw 'summary unavailable' }
 
-            Should -Invoke New-Item -ParameterFilter { 
-                $Path -like "*Diagnostic-20250723-143045*" -and $ItemType -eq "Directory" 
-            } -Times 1 -Scope It
-        }
-        
-        It "Should collect system information" {
-            Export-DiagnosticData -OutputPath "C:\Test"
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot
 
-            Should -Invoke Get-Process -Times 1 -Scope It
+            $data = Get-Content (Join-Path $result 'diagnostic-data.json') -Raw | ConvertFrom-Json
+            $data.LogInfo.Error | Should -Be 'Log summary unavailable: summary unavailable'
         }
 
-        It "Should export diagnostic data files" {
-            Export-DiagnosticData -OutputPath "C:\Test"
+        It "Should create nothing under -WhatIf" {
+            New-Item -Path $script:OutputRoot -ItemType Directory | Out-Null
 
-            # -Times without -Exactly is a minimum: at least diagnostic-data.json, powershell-info.json
-            # and loaded-modules.json are written
-            Should -Invoke Out-File -Times 3 -Scope It
-        }
+            $result = Export-DiagnosticData -OutputPath $script:OutputRoot -WhatIf
 
-        It "Should return the diagnostic package path" {
-            $result = Export-DiagnosticData -OutputPath "C:\Test"
-
-            $result | Should -BeLike "*Diagnostic-20250723-143045*"
+            $result | Should -BeNullOrEmpty
+            @(Get-ChildItem $script:OutputRoot).Count | Should -Be 0
         }
     }
 
     Context "Error Handling" {
-        It "Should handle directory creation failure" {
-            Mock New-Item { throw "Access denied" } -ParameterFilter { $ItemType -eq "Directory" }
+        It "Should rethrow when the output directory cannot be created" {
+            Mock New-Item { throw "Access denied" } -ParameterFilter { $Path -eq $script:OutputRoot }
 
-            { Export-DiagnosticData -OutputPath "C:\Test" } | Should -Throw
+            { Export-DiagnosticData -OutputPath $script:OutputRoot } | Should -Throw -ExpectedMessage '*Access denied*'
         }
 
-        It "Should handle missing logging functions gracefully" {
-            # Report Write-StructuredLogEntry as unavailable
-            Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Write-StructuredLogEntry' }
-            Mock New-Item { return [PSCustomObject]@{ FullName = $Path } } -ParameterFilter { $ItemType -eq "Directory" }
+        It "Should log the failure and rethrow when a package file cannot be written" {
+            Mock Out-File { throw "Disk full" }
 
-            { Export-DiagnosticData -OutputPath "C:\Test" } | Should -Not -Throw
+            { Export-DiagnosticData -OutputPath $script:OutputRoot -CorrelationId 'diag-err' } | Should -Throw -ExpectedMessage '*Disk full*'
+
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Details.ErrorMessage -eq 'Disk full' -and $CorrelationId -eq 'diag-err'
+            }
+            Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter { $Message -eq 'Diagnostic export failed: Disk full' }
         }
     }
 }

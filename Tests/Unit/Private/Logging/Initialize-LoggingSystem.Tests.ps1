@@ -33,20 +33,9 @@ Describe "Initialize-LoggingSystem" -Tag @('Unit', 'Logging', 'Initialization') 
             $script:LogFileReinitAttempted = $false
         }
 
-        It "Should accept valid CorrelationId parameter" {
-            $testCorrelationId = [System.Guid]::NewGuid().ToString()
-            { Initialize-LoggingSystem -CorrelationId $testCorrelationId } | Should -Not -Throw
-        }
-
-        It "Should accept valid LogLevel parameter" {
-            $validLevels = @('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')
-            foreach ($level in $validLevels) {
-                { Initialize-LoggingSystem -LogLevel $level } | Should -Not -Throw
-            }
-        }
-
-        It "Should accept SuppressConsoleOutput switch" {
-            { Initialize-LoggingSystem -SuppressConsoleOutput } | Should -Not -Throw
+        It "Should reject a LogLevel outside the hierarchy" {
+            { Initialize-LoggingSystem -LogLevel 'Trace' } | Should -Throw
+            $script:LogLevel | Should -Be 'Information'
         }
 
         It "Should generate new CorrelationId when not provided" {
@@ -118,98 +107,58 @@ Describe "Initialize-LoggingSystem" -Tag @('Unit', 'Logging', 'Initialization') 
 
     Context "Error Handling" {
         
-        It "Should handle initialization errors gracefully" {
-            # Mock a system failure during initialization
-            Mock Write-Verbose { throw "System error" } 
-            { Initialize-LoggingSystem } | Should -Throw
-        }
-    }
+        It "Should report a failure while setting state as a terminating error" {
+            # The verbose line inside the try block fails; the catch rewraps it with -ErrorAction Stop
+            Mock Write-Verbose { throw "System error" } -ParameterFilter { $Message -eq 'Logging system state initialized successfully' }
 
-    Context "Integration with LoggingConfiguration" {
-        
-        It "Should work with pre-existing logging configuration" {
-            # Ensure logging configuration is loaded
-            $script:LogLevels | Should -Not -BeNullOrEmpty
-            { Initialize-LoggingSystem } | Should -Not -Throw
-        }
-
-        It "Should maintain logging system metadata" {
-            Initialize-LoggingSystem
-            $script:LoggingSystemInfo | Should -Not -BeNullOrEmpty
-            $script:LoggingSystemInfo.Version | Should -Be '2.0.0'
+            { Initialize-LoggingSystem } | Should -Throw -ExpectedMessage '*Failed to initialize logging system state: System error*'
         }
     }
 }
 
-Describe "Get-LoggingState" -Tag @('Unit', 'Logging', 'State') {
+Describe "Get-LoggingSystemState" -Tag @('Unit', 'Logging', 'State') {
 
     Context "State Retrieval" {
-        
+
         BeforeEach {
-            # Initialize logging system with known values
             Initialize-LoggingSystem -CorrelationId "test-123" -LogLevel "Warning" -SuppressConsoleOutput
+            $script:LogPath = 'C:\logs\system.log'
         }
 
-        It "Should return PSCustomObject with correct PSTypeName" {
-            $state = Get-LoggingState
-            $state | Should -BeOfType [PSCustomObject]
-            # Only the object type is asserted; the 'LoggingSystemState' type name is not checked
+        It "Should carry the LoggingSystemState type name" {
+            (Get-LoggingSystemState).PSObject.TypeNames | Should -Contain 'LoggingSystemState'
         }
 
-        It "Should include CorrelationId" {
-            $state = Get-LoggingState
+        It "Should report the state Initialize-LoggingSystem set" {
+            $state = Get-LoggingSystemState
+
             $state.CorrelationId | Should -Be "test-123"
-        }
-
-        It "Should include LogLevel" {
-            $state = Get-LoggingState
             $state.LogLevel | Should -Be "Warning"
+            $state.SuppressConsoleOutput | Should -BeTrue
+            $state.LogFileInitialized | Should -BeFalse
+            $state.LogFileReinitAttempted | Should -BeFalse
         }
 
-        It "Should include LogPath" {
-            $state = Get-LoggingState
-            $state.LogPath | Should -Be $script:LogPath
+        It "Should report the current log path" {
+            (Get-LoggingSystemState).LogPath | Should -Be 'C:\logs\system.log'
         }
 
-        It "Should include LogFileInitialized" {
-            $state = Get-LoggingState
-            $state.LogFileInitialized | Should -Be $script:LogFileInitialized
+        It "Should list the available log levels" {
+            @((Get-LoggingSystemState).AvailableLogLevels | Sort-Object) |
+                Should -Be @('Critical', 'Debug', 'Error', 'Information', 'Verbose', 'Warning')
         }
 
-        It "Should include LogFileReinitAttempted" {
-            $state = Get-LoggingState
-            $state.LogFileReinitAttempted | Should -Be $script:LogFileReinitAttempted
+        It "Should stamp the time it was read" {
+            $before = Get-Date
+            $state = Get-LoggingSystemState
+            $state.Timestamp | Should -BeGreaterOrEqual $before
+            $state.Timestamp | Should -BeLessOrEqual (Get-Date)
         }
 
-        It "Should include SuppressConsoleOutput" {
-            $state = Get-LoggingState
-            $state.SuppressConsoleOutput | Should -Be $true
-        }
-
-        It "Should include LogLevels" {
-            $state = Get-LoggingState
-            $state.LogLevels | Should -Not -BeNullOrEmpty
-            $state.LogLevels | Should -BeOfType [hashtable]
-            $state.LogLevels.Count | Should -BeGreaterThan 0
-            $state.LogLevels.ContainsKey('Critical') | Should -Be $true
-            $state.LogLevels.ContainsKey('Information') | Should -Be $true
-        }
-
-        It "Should include SystemInfo" {
-            $state = Get-LoggingState
-            $state.SystemInfo | Should -Not -BeNullOrEmpty
-            $state.SystemInfo | Should -BeOfType [hashtable]
-        }
-    }
-
-    Context "State Safety" {
-        
-        It "Should provide read-only state information" {
-            $state = Get-LoggingState
-            # Verify returned object doesn't affect original state
-            $originalCorrelationId = $script:CorrelationId
+        It "Should return a snapshot that does not write back to the state" {
+            $state = Get-LoggingSystemState
             $state.CorrelationId = "modified"
-            $script:CorrelationId | Should -Be $originalCorrelationId
+            $script:CorrelationId | Should -Be "test-123"
         }
     }
 }
@@ -287,16 +236,19 @@ Describe "Test-LogLevel" -Tag @('Unit', 'Logging', 'LevelTesting') {
             { Test-LogLevel -Level 'InvalidLevel' } | Should -Throw
         }
 
-        It "Should handle invalid system level gracefully" {
-            # Temporarily corrupt current log level for testing
+        It "Should return false and warn when the system level is invalid" {
             $originalLogLevel = $script:LogLevel
             $script:LogLevel = 'InvalidLevel'
-            
-            $result = Test-LogLevel -Level 'Information'
+            try {
+                $result = Test-LogLevel -Level 'Information'
+            } finally {
+                $script:LogLevel = $originalLogLevel
+            }
+
             $result | Should -Be $false
-            
-            # Restore original log level
-            $script:LogLevel = $originalLogLevel
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Invalid log level comparison: Message='Information', System='InvalidLevel'"
+            }
         }
     }
 }

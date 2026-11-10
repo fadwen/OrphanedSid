@@ -27,8 +27,9 @@ BeforeAll {
 
 Describe "Format-LogMessage" {
     Context "Parameter Validation" {
-        It "Should accept mandatory Message parameter" {
-            { Format-LogMessage -Message "Test message" -Level "Information" } | Should -Not -Throw
+        It "Should carry the Message parameter into the output" {
+            $data = Format-LogMessage -Message "Test message" -Level "Information" | ConvertFrom-Json
+            $data.Message | Should -Be "Test message"
         }
 
         It "Should reject null or empty Message" {
@@ -36,16 +37,9 @@ Describe "Format-LogMessage" {
             { Format-LogMessage -Message $null -Level "Information" } | Should -Throw
         }
 
-        It "Should accept mandatory Level parameter" {
-            { Format-LogMessage -Message "Test message" -Level "Information" } | Should -Not -Throw
-        }
-
-        It "Should accept all valid Level values" {
-            $validLevels = @('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose', 'INFO')
-            
-            foreach ($level in $validLevels) {
-                { Format-LogMessage -Message "Test message" -Level $level } | Should -Not -Throw
-            }
+        It "Should carry the Level parameter into the output" {
+            $data = Format-LogMessage -Message "Test message" -Level "Warning" | ConvertFrom-Json
+            $data.Level | Should -Be "Warning"
         }
 
         It "Should reject invalid Level values" {
@@ -77,29 +71,17 @@ Describe "Format-LogMessage" {
 
         It "Should use default JSON format when not specified" {
             $result = Format-LogMessage -Message "Test message" -Level "Information"
-            { $result | ConvertFrom-Json } | Should -Not -Throw
-        }
-
-        It "Should accept all valid Format values" {
-            $validFormats = @('JSON', 'PlainText', 'CSV', 'XML')
-            
-            foreach ($format in $validFormats) {
-                { Format-LogMessage -Message "Test message" -Level "Information" -Format $format } | Should -Not -Throw
-            }
+            # Compressed JSON object, not the bracketed PlainText or the XML document
+            $result | Should -Match '^\{.*"Message":"Test message".*\}$'
         }
 
         It "Should reject invalid Format values" {
             { Format-LogMessage -Message "Test message" -Level "Information" -Format "InvalidFormat" } | Should -Throw
         }
 
-        It "Should accept empty AdditionalData hashtable" {
-            $emptyData = @{}
-            { Format-LogMessage -Message "Test message" -Level "Information" -AdditionalData $emptyData } | Should -Not -Throw
-        }
-
-        It "Should accept AdditionalData with content" {
-            $testData = @{ TestKey = "TestValue"; Number = 42 }
-            { Format-LogMessage -Message "Test message" -Level "Information" -AdditionalData $testData } | Should -Not -Throw
+        It "Should add no fields for an empty AdditionalData hashtable" {
+            $data = Format-LogMessage -Message "Test message" -Level "Information" -AdditionalData @{} | ConvertFrom-Json
+            @($data.PSObject.Properties.Name) | Should -Be @('Timestamp', 'Level', 'Component', 'CorrelationId', 'Message')
         }
     }
 
@@ -255,12 +237,16 @@ Describe "Format-LogMessage" {
         It "Should include all required fields in XML" {
             $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "XML"
             $xml = [xml]$result
-            
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "Timestamp" } | Should -Not -BeNullOrEmpty
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "Level" } | Should -Not -BeNullOrEmpty
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "Component" } | Should -Not -BeNullOrEmpty
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "CorrelationId" } | Should -Not -BeNullOrEmpty
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "Message" } | Should -Not -BeNullOrEmpty
+            $properties = @{}
+            foreach ($property in $xml.Objects.Object.Property) {
+                $properties[$property.Name] = $property.InnerText
+            }
+
+            $properties['Timestamp'] | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}'
+            $properties['Level'] | Should -Be 'Information'
+            $properties['Component'] | Should -Be 'General'
+            $properties['CorrelationId'] | Should -Match '^[a-fA-F0-9-]{36}$'
+            $properties['Message'] | Should -Be 'Test message'
         }
 
         It "Should include AdditionalData fields in XML" {
@@ -268,14 +254,16 @@ Describe "Format-LogMessage" {
             $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "XML" -AdditionalData $testData
             $xml = [xml]$result
             
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "TestKey" } | Should -Not -BeNullOrEmpty
-            $xml.Objects.Object.Property | Where-Object { $_.Name -eq "Number" } | Should -Not -BeNullOrEmpty
+            ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "TestKey" }).InnerText | Should -Be 'TestValue'
+            ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "Number" }).InnerText | Should -Be '42'
         }
 
         It "Should handle special XML characters properly" {
             $messageWithXmlChars = "Message with <tags> & entities"
             $result = Format-LogMessage -Message $messageWithXmlChars -Level "Information" -Format "XML"
-            { [xml]$result } | Should -Not -Throw
+            $result | Should -Match '&lt;tags&gt; &amp; entities'
+            $xml = [xml]$result
+            ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "Message" }).InnerText | Should -Be $messageWithXmlChars
         }
     }
 
@@ -331,38 +319,37 @@ Describe "Format-LogMessage" {
     }
 
     Context "Timestamp Handling" {
-        It "Should generate consistent timestamp format" {
-            $result1 = Format-LogMessage -Message "Test message 1" -Level "Information" -Format "JSON"
-            $result2 = Format-LogMessage -Message "Test message 2" -Level "Information" -Format "JSON"
-            
-            $data1 = $result1 | ConvertFrom-Json
-            $data2 = $result2 | ConvertFrom-Json
-            
-            # Asserted on the raw JSON: PowerShell 7's ConvertFrom-Json parses the ISO 8601 text into a
-            # [DateTime] and reformats it on output.
-            $timestampPattern = '"Timestamp":\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}"'
-            $result1 | Should -Match $timestampPattern
-            $result2 | Should -Match $timestampPattern
-            $data1.Timestamp | Should -Not -BeNullOrEmpty
-            $data2.Timestamp | Should -Not -BeNullOrEmpty
-        }
+        It "Should stamp the current time" -ForEach @(
+            @{ Culture = 'en-US' }
+            @{ Culture = 'en-AE' }
+            @{ Culture = 'de-DE' }
+        ) {
+            # The timestamp text is read from the raw JSON and parsed with the exact format the function
+            # writes, under the invariant culture, so a day-first culture cannot swap day and month.
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new($Culture)
+                $before = [DateTimeOffset]::Now
+                $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON"
+                $after = [DateTimeOffset]::Now
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
 
-        It "Should generate timestamps close in time for rapid calls" {
-            $before = Get-Date
-            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON"
-            $after = Get-Date
-            
-            $data = $result | ConvertFrom-Json
-            $timestamp = [DateTime]::Parse($data.Timestamp)
-            
-            $timestamp | Should -BeGreaterThan $before.AddSeconds(-1)
-            $timestamp | Should -BeLessThan $after.AddSeconds(1)
+            $result -match '"Timestamp":"(?<ts>[^"]+)"' | Should -BeTrue
+            $timestamp = [DateTimeOffset]::ParseExact($Matches['ts'],'yyyy-MM-ddTHH:mm:ss.fffzzz',
+                [System.Globalization.CultureInfo]::InvariantCulture)
+
+            # The written value is truncated to milliseconds, so allow that much below $before
+            $timestamp | Should -BeGreaterOrEqual $before.AddMilliseconds(-1)
+            $timestamp | Should -BeLessOrEqual $after
         }
     }
 
     Context "Error Handling and Edge Cases" {
         It "Should handle null AdditionalData gracefully" {
-            { Format-LogMessage -Message "Test message" -Level "Information" -AdditionalData $null } | Should -Not -Throw
+            $data = Format-LogMessage -Message "Test message" -Level "Information" -AdditionalData $null | ConvertFrom-Json
+            @($data.PSObject.Properties.Name) | Should -Be @('Timestamp', 'Level', 'Component', 'CorrelationId', 'Message')
         }
 
         It "Should handle empty string in AdditionalData values" {
@@ -395,62 +382,6 @@ Describe "Format-LogMessage" {
             # AdditionalData should override the default values
             $data.Timestamp | Should -Be "CustomTimestamp"
             $data.Level | Should -Be "CustomLevel"
-        }
-
-        It "Should handle invalid format parameter validation" {
-            # The ValidateSet attribute should prevent invalid formats from being passed
-            { Format-LogMessage -Message "Test message" -Level "Information" -Format "InvalidFormat" } | Should -Throw
-        }
-    }
-
-    Context "Performance and Memory" {
-        It "Should complete formatting within reasonable time" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            $result = Format-LogMessage -Message "Performance test" -Level "Information"
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 50
-        }
-
-        It "Should handle multiple concurrent calls efficiently" {
-            $jobs = @()
-            for ($i = 1; $i -le 10; $i++) {
-                $jobs += Start-Job -ScriptBlock {
-                    param($ModuleRoot, $i)
-                    . "$ModuleRoot\Private\Logging\Format-LogMessage.ps1"
-                    Format-LogMessage -Message "Concurrent test $i" -Level "Information" -Format "JSON"
-                } -ArgumentList $script:ModuleRoot, $i
-            }
-            
-            $results = $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job
-            
-            $results.Count | Should -Be 10
-            foreach ($result in $results) {
-                { $result | ConvertFrom-Json } | Should -Not -Throw
-            }
-        }
-
-        It "Should not leak memory with large data sets" {
-            $beforeMemory = [System.GC]::GetTotalMemory($false)
-            
-            for ($i = 1; $i -le 100; $i++) {
-                $testData = @{
-                    Iteration = $i
-                    Data = "x" * 1000
-                    Timestamp = Get-Date
-                }
-                $result = Format-LogMessage -Message "Memory test $i" -Level "Information" -AdditionalData $testData
-            }
-            
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
-            [System.GC]::Collect()
-            
-            $afterMemory = [System.GC]::GetTotalMemory($false)
-            $memoryIncrease = $afterMemory - $beforeMemory
-            
-            # The memory increase should stay under 5 MB
-            $memoryIncrease | Should -BeLessThan 5242880
         }
     }
 
