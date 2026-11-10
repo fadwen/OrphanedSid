@@ -164,6 +164,14 @@ function Write-ProcessingSummary {
 
     process {
         try {
+            # Invoke-MainProcessingLogic returns a hashtable, whose keys PSObject.Properties does not
+            # list; read the names from whichever shape arrived
+            $resultKeys = if ($ProcessingResults -is [System.Collections.IDictionary]) {
+                @($ProcessingResults.Keys)
+            } else {
+                @($ProcessingResults.PSObject.Properties.Name)
+            }
+
             # Display processing summary
             Write-StructuredLog "Processing summary details:" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             Write-StructuredLog "=== PROCESSING SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
@@ -171,16 +179,16 @@ function Write-ProcessingSummary {
             Write-StructuredLog "Processing duration: $($ProcessingResults.ProcessingDuration.ToString('hh\:mm\:ss\.fff'))" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
 
             # Handle different result types
-            if ($ProcessingResults.PSObject.Properties.Name -contains 'ObjectsPerSecond') {
+            if ($resultKeys -contains 'ObjectsPerSecond') {
                 Write-StructuredLog "Processing rate: $([Math]::Round($ProcessingResults.ObjectsPerSecond, 2)) objects/second" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             }
 
-            if ($ProcessingResults.PSObject.Properties.Name -contains 'PeakMemoryUsageMB') {
+            if ($resultKeys -contains 'PeakMemoryUsageMB') {
                 Write-StructuredLog "Peak memory usage: $($ProcessingResults.PeakMemoryUsageMB) MB" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             }
 
             # Check if this is a restore operation
-            if ($ProcessingResults.PSObject.Properties.Name -contains 'SuccessfulRestores') {
+            if ($resultKeys -contains 'SuccessfulRestores') {
                 # Restore operation summary
                 Write-StructuredLog "=== RESTORE SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "Successful restores: $($ProcessingResults.SuccessfulRestores)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
@@ -209,12 +217,19 @@ function Write-ProcessingSummary {
                 }
             } else {
                 # Standard discovery/removal operation summary
-                if ($ProcessingResults.PSObject.Properties.Name -contains 'ProcessingErrors') {
+                if ($resultKeys -contains 'ProcessingErrors') {
                     Write-StructuredLog "Processing errors: $($ProcessingResults.ProcessingErrors)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
 
-                if ($ProcessingResults.PSObject.Properties.Name -contains 'OrphanedSIDsFound') {
+                if ($resultKeys -contains 'OrphanedSIDsFound') {
                     Write-StructuredLog "Orphaned SIDs found: $($ProcessingResults.OrphanedSIDsFound)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                }
+
+                if ($resultKeys -contains 'UnverifiedSIDsFound') {
+                    Write-StructuredLog "Unverified SIDs (lookup failed, not removed): $($ProcessingResults.UnverifiedSIDsFound)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    if ($ProcessingResults.UnverifiedSIDsFound -gt 0) {
+                        Write-StructuredLog "$($ProcessingResults.UnverifiedSIDsFound) SID(s) could not be verified because a directory lookup failed. They are marked VerificationStatus Unverified in the results and were not removed; re-run once the domain controller is reachable and the account can read the targets." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+                    }
                 }
             }
 
@@ -254,12 +269,12 @@ function Write-ProcessingSummary {
                 }
             } else {
                 # Handle different operation types appropriately
-                if ($ProcessingResults.PSObject.Properties.Name -contains 'SuccessfulRestores') {
+                if ($resultKeys -contains 'SuccessfulRestores') {
                     # This is a restore operation with no results - shouldn't happen but handle gracefully
                     Write-StructuredLog "No restore operations were performed." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 } else {
                     # This is a discovery/removal operation
-                    if ($ProcessingResults.PSObject.Properties.Name -contains 'ProcessingErrors' -and $ProcessingResults.ProcessingErrors -gt 0) {
+                    if ($resultKeys -contains 'ProcessingErrors' -and $ProcessingResults.ProcessingErrors -gt 0) {
                         Write-StructuredLog "Consider reviewing the error log for detailed information." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                     } else {
                         Write-StructuredLog "No orphaned SIDs found. Active Directory ACLs appear to be clean." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
@@ -272,7 +287,7 @@ function Write-ProcessingSummary {
                 $automationOutput = [PSCustomObject]@{
                     CorrelationId = $CorrelationId
                     ProcessingResults = $ProcessingResults
-                    Summary = if ($ProcessingResults.PSObject.Properties.Name -contains 'SuccessfulRestores') {
+                    Summary = if ($resultKeys -contains 'SuccessfulRestores') {
                         # Restore operation summary
                         @{
                             TotalObjectsProcessed = $ProcessingResults.TotalObjectsProcessed
@@ -289,26 +304,30 @@ function Write-ProcessingSummary {
                             Duration = $ProcessingResults.ProcessingDuration.ToString()
                         }
 
-                        if ($ProcessingResults.PSObject.Properties.Name -contains 'OrphanedSIDsFound') {
+                        if ($resultKeys -contains 'OrphanedSIDsFound') {
                             $summaryData.OrphanedSIDsFound = $ProcessingResults.OrphanedSIDsFound
                         }
 
-                        if ($ProcessingResults.PSObject.Properties.Name -contains 'ProcessingErrors') {
+                        if ($resultKeys -contains 'UnverifiedSIDsFound') {
+                            $summaryData.UnverifiedSIDsFound = $ProcessingResults.UnverifiedSIDsFound
+                        }
+
+                        if ($resultKeys -contains 'ProcessingErrors') {
                             $summaryData.ProcessingErrors = $ProcessingResults.ProcessingErrors
                         }
 
-                        if ($ProcessingResults.PSObject.Properties.Name -contains 'PeakMemoryUsageMB') {
+                        if ($resultKeys -contains 'PeakMemoryUsageMB') {
                             $summaryData.PeakMemoryMB = $ProcessingResults.PeakMemoryUsageMB
                         }
 
                         $summaryData
                     }
-                    Status = if ($ProcessingResults.PSObject.Properties.Name -contains 'SuccessfulRestores') {
+                    Status = if ($resultKeys -contains 'SuccessfulRestores') {
                         if ($ProcessingResults.FailedRestores -eq 0) { "Success" } else { "Warning" }
                     } else {
-                        if ($ProcessingResults.PSObject.Properties.Name -contains 'ProcessingErrors' -and $ProcessingResults.ProcessingErrors -eq 0) {
+                        if ($resultKeys -contains 'ProcessingErrors' -and $ProcessingResults.ProcessingErrors -eq 0) {
                             "Success"
-                        } elseif ($ProcessingResults.PSObject.Properties.Name -contains 'ProcessingErrors') {
+                        } elseif ($resultKeys -contains 'ProcessingErrors') {
                             "Warning"
                         } else {
                             "Success"

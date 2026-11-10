@@ -20,9 +20,9 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Test-SIDFormat { param($SID) }
     function Test-WellKnownSID { param($SID) }
-    function Test-OrphanedSID { param($SID) }
+    function Test-OrphanedSID { param($SID, $CorrelationId) }
     function Get-SIDAnalysis { param($SIDString, $CurrentDomainSID) }
-    function New-OrphanedSIDResult { param($ObjectDN, $ObjectClass, $OrphanedSID, $AccessRule, $LikelySource, $Confidence, $Notes, $ProcessingMethod, $CorrelationId) }
+    function New-OrphanedSIDResult { param($ObjectDN, $ObjectClass, $OrphanedSID, $AccessRule, $LikelySource, $Confidence, $Notes, $ProcessingMethod, $VerificationStatus, $VerificationError, $CorrelationId) }
 
     $script:dn = 'CN=Finance Share,OU=Groups,DC=contoso,DC=com'
     $script:orphanSid = 'S-1-5-21-111-222-333-9001'
@@ -148,10 +148,16 @@ Describe 'Test-AccessRuleForOrphanedSID' -Tag 'Unit', 'SID', 'Private' {
         Mock Write-StructuredLog { }
         Mock Test-SIDFormat { $SID -match '^S-1-\d+(-\d+)+$' }
         Mock Test-WellKnownSID { $SID -eq 'S-1-5-18' }
-        Mock Test-OrphanedSID { $SID -eq $script:orphanSid }
+        Mock Test-OrphanedSID {
+            $status = if ($SID -eq $script:orphanSid) { 'Orphaned' } else { 'Exists' }
+            [PSCustomObject]@{ PSTypeName = 'SIDLookupResult'; SID = $SID; Status = $status; IsOrphaned = ($status -eq 'Orphaned'); ErrorMessage = $null }
+        }
         Mock Get-SIDAnalysis { [PSCustomObject]@{ LikelySource = 'Deleted Account'; Confidence = 'High'; Notes = 'same domain' } }
         Mock New-OrphanedSIDResult {
-            $r = [OrphanedSIDResult]::new(); $r.ObjectDN = $ObjectDN; $r.OrphanedSID = $OrphanedSID; $r.LikelySource = $LikelySource; $r.Confidence = $Confidence; $r
+            $r = [OrphanedSIDResult]::new(); $r.ObjectDN = $ObjectDN; $r.OrphanedSID = $OrphanedSID; $r.LikelySource = $LikelySource; $r.Confidence = $Confidence
+            if ($VerificationStatus) { $r.VerificationStatus = $VerificationStatus }
+            $r.VerificationError = $VerificationError
+            $r
         }
         $script:orphanRule = [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]$script:orphanSid; ActiveDirectoryRights = 'GenericRead' }
         $script:validRule = [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]'S-1-5-21-111-222-333-1105' }
@@ -169,6 +175,34 @@ Describe 'Test-AccessRuleForOrphanedSID' -Tag 'Unit', 'SID', 'Private' {
             $ObjectDN -eq $script:dn -and $ObjectClass -eq 'group' -and $AccessRule -eq $script:orphanRule -and
             $Notes -eq 'same domain' -and $ProcessingMethod -eq 'Identity-Resolution' -and $CorrelationId -eq 'rule-1'
         }
+    }
+
+    It 'Marks an orphaned result as verified' {
+        $result = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn
+
+        $result.VerificationStatus | Should -Be 'Orphaned'
+    }
+
+    It 'Builds an Unverified result, without analysis, when the lookup failed' {
+        Mock Test-OrphanedSID {
+            [PSCustomObject]@{ PSTypeName = 'SIDLookupResult'; SID = $SID; Status = 'Unverified'; IsOrphaned = $false; ErrorMessage = 'Get-ADObject: The server is not operational' }
+        }
+
+        $result = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn -CorrelationId 'rule-2'
+
+        $result | Should -BeOfType [OrphanedSIDResult]
+        $result.OrphanedSID | Should -Be $script:orphanSid
+        $result.VerificationStatus | Should -Be 'Unverified'
+        $result.VerificationError | Should -Be 'Get-ADObject: The server is not operational'
+        $result.Confidence | Should -Be 'Low'
+        Should -Invoke Get-SIDAnalysis -Times 0 -Exactly
+        Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like "UNVERIFIED SID: $($script:orphanSid)*not operational*" -and $CorrelationId -eq 'rule-2' }
+    }
+
+    It 'Passes its correlation ID to the orphan check' {
+        $null = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn -CorrelationId 'rule-3'
+
+        Should -Invoke Test-OrphanedSID -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'rule-3' }
     }
 
     It 'Returns nothing for a SID that still resolves' {

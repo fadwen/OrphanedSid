@@ -19,8 +19,27 @@ the object's distinguished name, the unresolvable SID, the rights it still grant
 analysis of where the SID probably came from.
 The same rows are written to -OutputPath as
 CSV when that parameter is given.
-A summary (objects processed, orphaned SIDs found,
+A summary (objects processed, orphaned SIDs found, unverified SIDs,
 duration, peak memory) goes to the console and the log.
+
+A SID is reported orphaned only when every directory lookup completed and none found it.
+When no lookup found the SID but at least one failed for another reason, such as a timeout,
+access denied or an unreachable domain controller, the SID may still belong to a live
+principal. It is listed with VerificationStatus Unverified, Confidence Low and a
+VerificationError that names each failed lookup, so it can be re-checked.
+Remove-OrphanedSid never removes an unverified SID.
+Unverified results are not cached, so a later object or a later run looks the SID up again.
+
+A SID from a trusted domain can only be checked by that domain.
+When its domain controllers answer that the principal is gone, the SID is reported orphaned
+with LikelySource Foreign Domain/Trust; review those rows before a removal, since the owner
+sits outside the domain being cleaned.
+When they cannot be reached or the trust is broken, the SID is reported Unverified, and each
+such lookup waits for the trust to time out (about 40 seconds per SID in testing).
+
+An account that cannot read a principal gets no error from Active Directory, only an empty
+search, so missing read permission alone does not make a SID unverified.
+Run the command as an account that can read every object in scope.
 
 Results stream to batch files in the temp directory while the run is in progress so memory
 stays flat on large OUs; the files are removed when the command finishes unless
@@ -261,7 +280,10 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:para>One object per orphaned access control entry, with `ObjectDN`, `ObjectClass`, `OrphanedSID`,
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
-`ActionTaken`, `CorrelationId` and `Timestamp`.</maml:para>
+`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`.
+
+`VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
+`Unverified` when a lookup failed; `VerificationError` then names each failed lookup.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>
@@ -276,6 +298,7 @@ Requires the RSAT ActiveDirectory module and read access to the objects under -S
 TROUBLESHOOTING:
 - Common issues: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Common-Issues.md
 - Security descriptors: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Descriptor-Issues.md
+- Unverified SIDs: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Orphaned-SID-Issues.md
 - Memory: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Performance/Memory-Management.md</maml:para>
       </maml:alert>
     </maml:alertSet>
@@ -315,6 +338,20 @@ USE CASE: Periodic compliance evidence</maml:para>
           <maml:para>DESCRIPTION: Pipes OUs in and groups the findings by SID
 OUTPUT: The SIDs that appear most often across the domain
 USE CASE: Deciding which deleted principals left the widest footprint</maml:para>
+        </maml:introduction>
+        <dev:code />
+        <dev:remarks />
+      </command:example>
+      <command:example>
+        <maml:title>--------- EXAMPLE 4 ---------</maml:title>
+        <maml:introduction>
+          <maml:para>$results = Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com'
+$results | Where-Object VerificationStatus -eq 'Unverified' |
+        Select-Object ObjectDN, OrphanedSID, VerificationError</maml:para>
+          <maml:para>&#x80;</maml:para>
+          <maml:para>DESCRIPTION: Lists the SIDs a failed directory lookup left unverified, with the reason
+OUTPUT: One row per unverified entry, naming each lookup that failed
+USE CASE: Re-checking after a domain controller outage or a permissions problem before cleanup</maml:para>
         </maml:introduction>
         <dev:code />
         <dev:remarks />
@@ -366,6 +403,18 @@ orphaned entry, validates each SID against the protected and well-known SID list
 Clixml backup of the object's ACL, and removes the orphaned entries.
 The backup for a run
 lands in a timestamped folder so a whole run can be undone with Restore-OrphanedSidBackup.
+
+Only SIDs that every directory lookup confirmed missing are removed.
+When a lookup fails for a reason other than "not found", such as a timeout, access denied or an
+unreachable domain controller, the SID may still belong to a live principal: it is marked
+Unverified, left in place, and named in a warning together with the lookup that failed.
+The summary reports how many SIDs were unverified.
+Re-run once the domain controller is reachable and the account can read the targets.
+
+A SID from a trusted domain is removed only when that domain answers that the principal no
+longer exists; an unreachable trusted domain leaves the SID unverified and in place.
+Run Find-OrphanedSid or -WhatIf first and review entries with LikelySource Foreign Domain/Trust:
+their owners sit outside the domain being cleaned.
 
 The command has ConfirmImpact High: it asks once before changing anything.
 -WhatIf previews
@@ -691,11 +740,12 @@ LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 Requires the RSAT ActiveDirectory module and write access to the security descriptor of
 every object under -SearchBase (Modify Permissions).
 SIDs in ProtectedSIDs and SIDs that
-match WellKnownSIDPatterns are never removed.
+match WellKnownSIDPatterns are never removed, and neither are SIDs a failed lookup left unverified.
 
 TROUBLESHOOTING:
 - Backups: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Backup-Restore-Issues.md
-- Security validation: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Validation-Guide.md</maml:para>
+- Security validation: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Security-Validation-Guide.md
+- Unverified SIDs: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Security/Orphaned-SID-Issues.md</maml:para>
       </maml:alert>
     </maml:alertSet>
     <command:examples>

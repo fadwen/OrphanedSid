@@ -152,5 +152,38 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             $parameters | Should -Contain 'BackupData'
             $parameters | Should -Contain 'ExpectedObjectDN'
         }
+
+        It 'Reports a SID whose directory lookups fail as Unverified, never as orphaned, and does not cache it' {
+            # A failed lookup was once reported as orphaned and removed. This runs the loaded module's
+            # own Test-OrphanedSID, Test-AccessRuleForOrphanedSID and New-OrphanedSIDResult together,
+            # so a change to any of their contracts shows here even when each unit test still passes.
+            # The public commands import the ActiveDirectory module first, which defines the
+            # not-found exception type the catch clauses name; without RSAT the stub defines it.
+            . "$script:ModuleRoot\Tests\TestHelpers\ADCmdletStubs.ps1"
+            Mock Write-StructuredLog { } -ModuleName OrphanedSid
+            Mock Invoke-ADOperationWithRetry { throw 'Unable to contact the server. The server is not operational' } -ModuleName OrphanedSid
+
+            $outcome = & (Get-Module OrphanedSid) {
+                $sid = 'S-1-5-21-3623811015-3361044348-30300820-9013'
+                $script:SIDValidationCache = @{}
+                $rule = [PSCustomObject]@{
+                    IdentityReference     = [System.Security.Principal.SecurityIdentifier]$sid
+                    ActiveDirectoryRights = 'GenericRead'
+                    AccessControlType     = 'Allow'
+                }
+                [PSCustomObject]@{
+                    Lookup = Test-OrphanedSID -SID $sid
+                    Result = Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN 'CN=Share,DC=contoso,DC=com'
+                    Cached = $script:SIDValidationCache.ContainsKey($sid)
+                }
+            }
+
+            $outcome.Lookup.Status | Should -Be 'Unverified'
+            $outcome.Lookup.IsOrphaned | Should -BeFalse
+            $outcome.Lookup.ErrorMessage | Should -BeLike '*Get-ADObject:*not operational*'
+            $outcome.Result.VerificationStatus | Should -Be 'Unverified'
+            $outcome.Result.VerificationError | Should -BeLike '*not operational*'
+            $outcome.Cached | Should -BeFalse
+        }
     }
 }

@@ -177,6 +177,7 @@ function Find-OrphanedSIDsInObject {
                 SkippedSIDs = 0
                 WellKnownSIDsSkipped = 0
                 OrphanedSIDsFound = 0
+                UnverifiedSIDsFound = 0
                 ErrorsEncountered = 0
                 AccessRulesRetrieved = 0
                 ProcessingMethod = "Orchestrated-Workflow"
@@ -230,8 +231,12 @@ function Find-OrphanedSIDsInObject {
 
                         if ($orphanedResult) {
                             $results.Add($orphanedResult)
-                            $processingStats.OrphanedSIDsFound++
-                            Write-StructuredLog "Orphaned SID detected and result object created for $objectDN" -Level Verbose -CorrelationId $CorrelationId
+                            if ($orphanedResult.VerificationStatus -eq 'Unverified') {
+                                $processingStats.UnverifiedSIDsFound++
+                            } else {
+                                $processingStats.OrphanedSIDsFound++
+                            }
+                            Write-StructuredLog "$($orphanedResult.VerificationStatus) SID result object created for $objectDN" -Level Verbose -CorrelationId $CorrelationId
                         }
 
                         $processingStats.ProcessedSIDs++

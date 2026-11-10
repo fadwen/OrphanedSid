@@ -72,6 +72,15 @@ function Test-OrphanedSID {
         is essential for identifying SIDs that should be removed from ACLs during
         security cleanup operations.
 
+        OUTCOMES:
+        - Orphaned: every lookup completed and none found the SID, or it was found only
+          among deleted objects
+        - Exists: a lookup found a live principal with the SID
+        - Unverified: nothing found the SID, but at least one lookup failed for a reason
+          other than "not found" (timeout, access denied, unreachable domain controller).
+          ErrorMessage names each failure. Unverified SIDs are never removed and are not
+          cached, so a later call performs the lookups again.
+
         BUSINESS VALUE:
         - Enables accurate identification of orphaned SIDs for security cleanup
         - Reduces false positives through comprehensive validation methods
@@ -113,28 +122,30 @@ function Test-OrphanedSID {
         PS> Test-OrphanedSID -SID "S-1-5-21-1234567890-1234567890-1234567890-1001"
 
         DESCRIPTION: Basic orphaned SID test for domain user
-        OUTPUT: $true if SID is orphaned, $false if valid
+        OUTPUT: SIDLookupResult whose Status is Orphaned, Exists or Unverified
         USE CASE: Security audit to identify unused ACL entries
 
     .EXAMPLE
         PS> @('S-1-5-21-123-456-789-1001', 'S-1-5-32-544') | Test-OrphanedSID
 
         DESCRIPTION: Pipeline processing of multiple SIDs
-        OUTPUT: Boolean results for each SID
+        OUTPUT: One SIDLookupResult for each SID
         USE CASE: Bulk validation during ACL cleanup operations
 
     .EXAMPLE
-        PS> Test-OrphanedSID -SID "S-1-5-21-123-456-789-1001" -CorrelationId $correlationId
+        PS> $lookup = Test-OrphanedSID -SID "S-1-5-21-123-456-789-1001" -CorrelationId $correlationId
+        PS> if ($lookup.Status -eq 'Unverified') { $lookup.ErrorMessage }
 
-        DESCRIPTION: Orphaned test with correlation tracking
-        OUTPUT: Boolean result with correlated logging
+        DESCRIPTION: Orphaned test with correlation tracking, reading why a SID could not be verified
+        OUTPUT: The lookup failures, such as an unreachable domain controller
         USE CASE: Enterprise audit operations requiring full traceability
 
     .INPUTS
         [String] - SID string values via pipeline
 
     .OUTPUTS
-        [Boolean] - $true if SID is orphaned, $false if valid and exists in AD
+        [SIDLookupResult] - PSCustomObject with SID, Status (Orphaned, Exists, Unverified),
+        IsOrphaned and ErrorMessage
 
     .NOTES
         Author: Jeffrey Stuhr
@@ -160,7 +171,7 @@ function Test-OrphanedSID {
         .\Troubleshooting\Security\Orphaned-SID-Issues.md
     #>
     [CmdletBinding()]
-    [OutputType([bool])]
+    [OutputType('SIDLookupResult')]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
@@ -178,16 +189,20 @@ function Test-OrphanedSID {
     }
 
     process {
+        # A lookup that throws anything other than "not found" proves nothing about the SID. Each such
+        # failure is collected here; with any present, the SID is Unverified rather than Orphaned.
+        $lookupFailures = [System.Collections.Generic.List[string]]::new()
+
         try {
             Write-StructuredLog "Testing SID for orphaned status: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
 
             # Validate SID format first using Test-SIDFormat module
             if (-not (Test-SIDFormat -SID $SID -CorrelationId $CorrelationId)) {
-                Write-StructuredLog "SID format invalid - treating as orphaned: $SID" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
-                return $true  # Invalid SIDs are considered orphaned
+                Write-StructuredLog "SID format invalid - cannot be verified: $SID" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                return New-SIDLookupResult -SID $SID -Status 'Unverified' -ErrorMessage 'The SID is not in a valid format, so no lookup was made'
             }
 
-            # Check cache first for performance
+            # Check cache first for performance. Only Orphaned and Exists are ever cached.
             $script:SIDValidationCacheLookups++
             if ($script:SIDValidationCache.ContainsKey($SID)) {
                 $script:SIDValidationCacheHits++
@@ -203,15 +218,16 @@ function Test-OrphanedSID {
 
                 if ($adObject) {
                     Write-StructuredLog "SID found in AD via Get-ADObject: $($adObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                    $script:SIDValidationCache[$SID] = $false
-                    return $false  # Not orphaned
+                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
+                    return $script:SIDValidationCache[$SID]
                 }
             }
             catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
                 Write-StructuredLog "SID not found via Get-ADObject: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
             catch {
-                Write-StructuredLog "Get-ADObject lookup failed for SID $SID : $($_.Exception.Message)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                $lookupFailures.Add("Get-ADObject: $($_.Exception.Message)")
+                Write-StructuredLog "Get-ADObject lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
 
             # Method 1a: Check for deleted objects specifically
@@ -221,16 +237,19 @@ function Test-OrphanedSID {
                 } -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId
 
                 if ($deletedObject) {
+                    # A tombstone is positive evidence of deletion, so it settles the question even when
+                    # an earlier lookup failed
                     Write-StructuredLog "SID found in deleted objects: $($deletedObject.DistinguishedName) - treating as orphaned" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                    $script:SIDValidationCache[$SID] = $true
-                    return $true  # Treat deleted objects as orphaned for ACL cleanup
+                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Orphaned'
+                    return $script:SIDValidationCache[$SID]
                 }
             }
             catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
                 Write-StructuredLog "SID not found in deleted objects: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
             catch {
-                Write-StructuredLog "Deleted objects lookup failed for SID $SID : $($_.Exception.Message)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                $lookupFailures.Add("Get-ADObject -IncludeDeletedObjects: $($_.Exception.Message)")
+                Write-StructuredLog "Deleted objects lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
 
             # Method 2: Try direct SecurityIdentifier translation
@@ -240,15 +259,16 @@ function Test-OrphanedSID {
 
                 if ($ntAccount -and $ntAccount.Value -and -not $ntAccount.Value.StartsWith('S-1-')) {
                     Write-StructuredLog "SID successfully translated to account name: $($ntAccount.Value)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                    $script:SIDValidationCache[$SID] = $false
-                    return $false  # Not orphaned
+                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
+                    return $script:SIDValidationCache[$SID]
                 }
             }
             catch [System.Security.Principal.IdentityNotMappedException] {
                 Write-StructuredLog "SID could not be translated - likely orphaned: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
             catch {
-                Write-StructuredLog "SecurityIdentifier translation failed for $SID : $($_.Exception.Message)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                $lookupFailures.Add("SecurityIdentifier.Translate: $($_.Exception.Message)")
+                Write-StructuredLog "SecurityIdentifier translation failed for $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
 
             # Method 3: Try specific object type lookups
@@ -266,8 +286,8 @@ function Test-OrphanedSID {
 
                     if ($result) {
                         Write-StructuredLog "SID found via $($objectType.CmdLet): $($result.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                        $script:SIDValidationCache[$SID] = $false
-                        return $false  # Not orphaned
+                        $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
+                        return $script:SIDValidationCache[$SID]
                     }
                 }
                 catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
@@ -275,22 +295,89 @@ function Test-OrphanedSID {
                     continue
                 }
                 catch {
-                    Write-StructuredLog "$($objectType.CmdLet) lookup failed for $SID : $($_.Exception.Message)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                    $lookupFailures.Add("$($objectType.CmdLet): $($_.Exception.Message)")
+                    Write-StructuredLog "$($objectType.CmdLet) lookup failed for $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
                 }
             }
 
-            # If all methods fail, consider it orphaned
+            # Nothing found the SID, but a lookup that failed might have. Unverified is not cached, so
+            # a transient failure does not decide the answer for every later object in the run.
+            if ($lookupFailures.Count -gt 0) {
+                $failureText = $lookupFailures -join '; '
+                Write-StructuredLog "SID could not be verified - $($lookupFailures.Count) lookup(s) failed: $SID ($failureText)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                return New-SIDLookupResult -SID $SID -Status 'Unverified' -ErrorMessage $failureText
+            }
+
+            # Every lookup completed and none found the SID
             Write-StructuredLog "SID could not be resolved - marking as orphaned: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-            $script:SIDValidationCache[$SID] = $true
-            return $true  # Orphaned
+            $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Orphaned'
+            return $script:SIDValidationCache[$SID]
 
         }
         catch {
+            # An unexpected failure proves nothing about the SID. Reporting it orphaned would put a live
+            # principal's access in the removal path, so it is Unverified and is not cached.
             Write-StructuredLog "Error testing SID for orphaned status $SID : $($_.Exception.Message)" -Level Error -Component 'SIDDetection' -CorrelationId $CorrelationId
-            # Assume orphaned on error for safety
-            $script:SIDValidationCache[$SID] = $true
-            return $true
+            return New-SIDLookupResult -SID $SID -Status 'Unverified' -ErrorMessage $_.Exception.Message
         }
+    }
+}
+
+
+function New-SIDLookupResult {
+    <#
+    .SYNOPSIS
+        Creates the result Test-OrphanedSID returns for one SID
+
+    .DESCRIPTION
+        Private factory for the three outcomes of an orphaned-SID check:
+
+        - Orphaned: every lookup completed and none found the SID, or the SID was found only among
+          deleted objects. Safe to report and to remove.
+        - Exists: a lookup found a live principal with the SID.
+        - Unverified: no lookup found the SID, but at least one failed for a reason other than
+          "not found" (timeout, access denied, unreachable domain controller), so the SID may still
+          belong to a live principal. Reported for re-checking, never removed.
+
+    .PARAMETER SID
+        The SID string that was tested.
+
+    .PARAMETER Status
+        Orphaned, Exists or Unverified.
+
+    .PARAMETER ErrorMessage
+        For Unverified, the failures that prevented a verdict. Empty otherwise.
+
+    .OUTPUTS
+        [PSCustomObject] with PSTypeName SIDLookupResult and properties SID, Status, IsOrphaned and
+        ErrorMessage.
+
+    .NOTES
+        TROUBLESHOOTING:
+        - For unverified SIDs: .\Troubleshooting\Security\Orphaned-SID-Issues.md
+    #>
+    [CmdletBinding()]
+    [OutputType('SIDLookupResult')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Factory function: builds an object and changes no state')]
+    param(
+        [Parameter(Mandatory)]
+        [string]$SID,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Orphaned', 'Exists', 'Unverified')]
+        [string]$Status,
+
+        [Parameter()]
+        [string]$ErrorMessage
+    )
+
+    [PSCustomObject]@{
+        PSTypeName   = 'SIDLookupResult'
+        SID          = $SID
+        Status       = $Status
+        IsOrphaned   = ($Status -eq 'Orphaned')
+        ErrorMessage = $ErrorMessage
     }
 }
 
@@ -445,8 +532,9 @@ function Get-SIDValidationCacheStat {
 
     if ($script:SIDValidationCache) {
         $totalEntries = $script:SIDValidationCache.Count
-        $orphanedCount = ($script:SIDValidationCache.Values | Where-Object { $_ -eq $true }).Count
-        $validCount = ($script:SIDValidationCache.Values | Where-Object { $_ -eq $false }).Count
+        # The cache holds SIDLookupResult objects; Unverified results are never cached
+        $orphanedCount = @($script:SIDValidationCache.Values | Where-Object { $_.Status -eq 'Orphaned' }).Count
+        $validCount = @($script:SIDValidationCache.Values | Where-Object { $_.Status -eq 'Exists' }).Count
 
         return [PSCustomObject]@{
             PSTypeName = 'SIDValidationCacheStats'

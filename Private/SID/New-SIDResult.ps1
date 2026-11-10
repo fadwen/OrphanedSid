@@ -98,6 +98,14 @@ function New-OrphanedSIDResult {
         Method used to detect the orphaned SID for audit and troubleshooting purposes.
         Examples: "Enhanced-ACL-Retrieval", "Identity-Resolution", "NTAccount-Translation-Failed"
 
+    .PARAMETER VerificationStatus
+        Orphaned (default) when every lookup completed and none found the SID; Unverified when a
+        lookup failed, so the SID may still belong to a live principal. Unverified results are
+        reported for re-checking and are never removed.
+
+    .PARAMETER VerificationError
+        For Unverified results, the lookup failures that prevented a verdict.
+
     .PARAMETER CorrelationId
         Unique identifier for tracking this operation across logs and audit trails.
         Generated automatically if not provided.
@@ -193,6 +201,13 @@ function New-OrphanedSIDResult {
         [string]$ProcessingMethod = "Standard",
 
         [Parameter()]
+        [ValidateSet('Orphaned', 'Unverified')]
+        [string]$VerificationStatus = 'Orphaned',
+
+        [Parameter()]
+        [string]$VerificationError,
+
+        [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
@@ -214,6 +229,8 @@ function New-OrphanedSIDResult {
         $result.LikelySource = $LikelySource
         $result.Confidence = $Confidence
         $result.AnalysisNotes = $Notes
+        $result.VerificationStatus = $VerificationStatus
+        $result.VerificationError = $VerificationError
 
         # Add processing metadata
         Add-ProcessingMetadata -Result $result -ProcessingMethod $ProcessingMethod -CorrelationId $CorrelationId

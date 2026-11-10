@@ -30,8 +30,23 @@ LONG DESCRIPTION
 
 HOW RESULTS ARE REPORTED
     Each command writes its results to the pipeline as objects. -OutputPath additionally
-    writes the same rows as CSV. A summary (objects processed, orphaned SIDs found, duration,
-    peak memory) goes to the console and to the log file.
+    writes the same rows as CSV. A summary (objects processed, orphaned SIDs found, unverified
+    SIDs, duration, peak memory) goes to the console and to the log file.
+
+UNVERIFIED SIDS
+    A SID is reported orphaned only when every directory lookup completed and none found it.
+    When no lookup found the SID but at least one failed for another reason, such as a
+    timeout, access denied or an unreachable domain controller, the SID may still belong to a
+    live principal. Find-OrphanedSid lists it with VerificationStatus Unverified and a
+    VerificationError naming each failed lookup. Remove-OrphanedSid never removes it, and logs
+    a warning naming it. Unverified results are not cached, so the next lookup tries again.
+
+    A SID from a trusted domain can only be checked by that domain. When it answers that the
+    principal is gone, the SID is orphaned (LikelySource Foreign Domain/Trust). When its domain
+    controllers cannot be reached or the trust is broken, the SID is unverified, and each such
+    lookup waits for the trust to time out. Missing read permission does not make a SID
+    unverified: Active Directory returns an empty search, not an error. Run the commands as an
+    account that can read every object in scope.
 
     Logs go to .\Logs\<Command>_<yyyyMMdd_HHmmss>.log under the current directory unless
     -LogPath is given. Every line carries the run's correlation ID, so one run can be pulled

@@ -40,6 +40,7 @@ class StreamingResultsManager : System.IDisposable {
             TotalResults = 0
             BatchFiles = @()
             OrphanedSIDsFound = 0
+            UnverifiedSIDsFound = 0
             ObjectsProcessed = 0
             LastUpdate = Get-Date
         }
@@ -83,6 +84,7 @@ class StreamingResultsManager : System.IDisposable {
             TotalResults = 0
             BatchFiles = @()
             OrphanedSIDsFound = 0
+            UnverifiedSIDsFound = 0
             ObjectsProcessed = 0
             LastUpdate = Get-Date
         }
@@ -119,7 +121,9 @@ class StreamingResultsManager : System.IDisposable {
         $this.Summary.TotalResults++
 
         # Update summary statistics
-        if ($result.PSObject.Properties.Name -contains 'OrphanedSID') {
+        if ($result.PSObject.Properties.Name -contains 'VerificationStatus' -and $result.VerificationStatus -eq 'Unverified') {
+            $this.Summary.UnverifiedSIDsFound++
+        } elseif ($result.PSObject.Properties.Name -contains 'OrphanedSID') {
             $this.Summary.OrphanedSIDsFound++
         }
         $this.Summary.ObjectsProcessed++
