@@ -27,16 +27,6 @@
 BeforeAll {
     . "$PSScriptRoot\..\TestHelpers\ADCmdletStubs.ps1"
 
-    # ADCmdletStubs does not cover the type-specific lookups Test-OrphanedSID makes
-    foreach ($name in 'Get-ADGroup', 'Get-ADComputer') {
-        if (-not (Get-Command -Name $name -ErrorAction SilentlyContinue)) {
-            $null = New-Item -Path "Function:\global:$name" -Value {
-                param($Identity, $Filter, $Properties, $Server)
-                throw "$($MyInvocation.MyCommand.Name) stub reached unmocked"
-            }
-        }
-    }
-
     # The Access property on ObjectSecurity is added by this module's type data
     Import-Module Microsoft.PowerShell.Security
 

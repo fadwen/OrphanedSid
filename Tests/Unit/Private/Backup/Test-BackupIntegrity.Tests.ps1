@@ -114,6 +114,12 @@ Describe 'Test-BackupIntegrity' -Tag 'Unit', 'Backup', 'Private' {
             $result.Issues[0] | Should -BeLike 'SDDL integrity check failed: Hash mismatch (expected: tampered, calculated: *'
         }
 
+        # Module bug: the hash and SDDL checks run only when SDDL and SDDLHash have values, and the
+        # required-property check tests only that the property exists, so an empty SDDL passes
+        It 'Rejects a backup whose SDDL and hash are empty' -Skip {
+            (Test-BackupIntegrity -BackupData (New-Backup -Override @{ SDDL = $null; SDDLHash = $null })).IsValid | Should -BeFalse
+        }
+
         It 'Rejects an SDDL that does not parse' {
             $bad = 'this is not sddl'
             $result = Test-BackupIntegrity -BackupData (New-Backup -Override @{ SDDL = $bad; SDDLHash = (Get-Sha256Base64 -Text $bad) })

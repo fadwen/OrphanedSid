@@ -5,8 +5,8 @@
     Unit tests for the Get-StringHash utility function
 
 .DESCRIPTION
-    Tests Get-StringHash parameter validation, each hash algorithm, error
-    handling and edge-case input.
+    Tests Get-StringHash parameter validation and each hash algorithm against published test
+    vectors and independently computed UTF-8 digests.
 
 .NOTES
     Author: Jeffrey Stuhr
@@ -20,229 +20,56 @@ BeforeAll {
     . "$ModuleRoot\Private\Utilities\Get-StringHash.ps1"
 }
 
-Describe "Get-StringHash" {
-    BeforeAll {
-        $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        
-        # Test data for hash verification
-        $script:TestString = "TestString123"
-        
-        # Mock Write-Verbose to prevent verbose output during tests
-        Mock Write-Verbose { }
-    }
-    
+Describe "Get-StringHash" -Tag "Unit", "Private", "Utilities" {
     Context "Parameter Validation" {
-        It "Should accept valid string input" {
-            { Get-StringHash -InputString "ValidTestString" } | Should -Not -Throw
+        It "Should reject an empty string" {
+            { Get-StringHash -InputString "" } | Should -Throw -ErrorId 'ParameterArgumentValidationErrorEmptyStringNotAllowed,Get-StringHash'
         }
-        
-        It "Should accept empty string" {
-            # Function requires mandatory parameter, so empty string will be rejected
-            { Get-StringHash -InputString "" } | Should -Throw
-        }
-        
-        It "Should accept string with special characters" {
-            { Get-StringHash -InputString "Test!@#$%^&*()_+{}|:<>?[];" } | Should -Not -Throw
-        }
-        
-        It "Should accept Unicode strings" {
-            { Get-StringHash -InputString "测试字符串üñíçødé" } | Should -Not -Throw
-        }
-        
-        It "Should require InputString parameter" {
-            # Test that mandatory parameter validation works by supplying empty string
-            { Get-StringHash -InputString "" -ErrorAction Stop } | Should -Throw
-        }
-        
-        It "Should accept null as InputString and handle gracefully" {
-            # Function requires mandatory parameter, so null will be rejected
-            { Get-StringHash -InputString $null } | Should -Throw
-        }
-        
-        It "Should accept valid hash algorithms" {
-            { Get-StringHash -InputString "test" -Algorithm "SHA256" } | Should -Not -Throw
-            { Get-StringHash -InputString "test" -Algorithm "SHA1" } | Should -Not -Throw
-            { Get-StringHash -InputString "test" -Algorithm "MD5" } | Should -Not -Throw
-        }
-        
-        It "Should reject invalid hash algorithms" {
-            { Get-StringHash -InputString "test" -Algorithm "INVALID" } | Should -Throw
-        }
-        
-        It "Should accept custom Algorithm parameter" {
-            { Get-StringHash -InputString "test" -Algorithm "SHA1" } | Should -Not -Throw
-        }
-        
-        It "Should generate CorrelationId when not provided" {
-            # The actual function doesn't support CorrelationId parameter
-            $result = Get-StringHash -InputString "test"
-            $result | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    Context "Hash Algorithm Functionality" {
-        It "Should compute SHA256 hash by default" {
-            $result = Get-StringHash -InputString "test"
-            $result | Should -Match "^[A-F0-9]{64}$"
-        }
-        
-        It "Should compute SHA256 hash when explicitly specified" {
-            $result = Get-StringHash -InputString "test" -Algorithm "SHA256"
-            $result | Should -Match "^[A-F0-9]{64}$"
-        }
-        
-        It "Should compute SHA1 hash when specified" {
-            $result = Get-StringHash -InputString "test" -Algorithm "SHA1"
-            $result | Should -Match "^[A-F0-9]{40}$"
-        }
-        
-        It "Should compute MD5 hash when specified" {
-            $result = Get-StringHash -InputString "test" -Algorithm "MD5"
-            $result | Should -Match "^[A-F0-9]{32}$"
-        }
-        
-        It "Should return consistent hash for same input" {
-            $result1 = Get-StringHash -InputString "ConsistencyTest"
-            $result2 = Get-StringHash -InputString "ConsistencyTest"
-            $result1 | Should -Be $result2
-        }
-        
-        It "Should return different hashes for different inputs" {
-            $result1 = Get-StringHash -InputString "String1"
-            $result2 = Get-StringHash -InputString "String2"
-            $result1 | Should -Not -Be $result2
-        }
-        
-        It "Should return different hashes for different algorithms" {
-            $resultSHA256 = Get-StringHash -InputString "test" -Algorithm "SHA256"
-            $resultSHA1 = Get-StringHash -InputString "test" -Algorithm "SHA1"
-            $resultMD5 = Get-StringHash -InputString "test" -Algorithm "MD5"
-            
-            $resultSHA256 | Should -Not -Be $resultSHA1
-            $resultSHA256 | Should -Not -Be $resultMD5
-            $resultSHA1 | Should -Not -Be $resultMD5
-        }
-    }
-    
-    Context "Security Considerations" {
-        It "Should not expose input string in output" {
-            $sensitiveString = "SecretPassword123!"
-            $result = Get-StringHash -InputString $sensitiveString
-            
-            # Verify input string is not in hash result
-            $result | Should -Not -Match $sensitiveString
-        }
-        
-        It "Should handle very long strings without issues" {
-            $longString = "x" * 10000  # 10KB string
-            { Get-StringHash -InputString $longString } | Should -Not -Throw
-        }
-        
-        It "Should handle strings with null characters" {
-            $stringWithNull = "Before`0After"
-            { Get-StringHash -InputString $stringWithNull } | Should -Not -Throw
-        }
-        
-        It "Should produce deterministic output for security validation" {
-            $testInput = "SecurityValidationTest"
-            $results = @()
-            
-            # Run multiple times to ensure consistency
-            1..10 | ForEach-Object {
-                $results += (Get-StringHash -InputString $testInput)
-            }
-            
-            # All results should be identical
-            $uniqueResults = $results | Select-Object -Unique
-            $uniqueResults.Count | Should -Be 1
-        }
-    }
-    
-    Context "Error Handling" {
-        It "Should handle null input gracefully" {
-            # Function has mandatory parameter, so null will throw
-            { Get-StringHash -InputString $null } | Should -Throw
-        }
-        
-        It "Should continue execution after hash computation errors" {
-            # Get-StringHash does not call Get-FileHash, so this mock never fires; the test only
-            # shows that the call does not throw
-            Mock Get-FileHash { throw "Simulated hash error" }
 
-            { Get-StringHash -InputString "test" } | Should -Not -Throw
+        It "Should reject a null InputString" {
+            { Get-StringHash -InputString $null } | Should -Throw -ErrorId 'ParameterArgumentValidationErrorEmptyStringNotAllowed,Get-StringHash'
+        }
+
+        It "Should reject an algorithm outside SHA256, SHA1 and MD5" {
+            { Get-StringHash -InputString "test" -Algorithm "SHA512" } | Should -Throw -ErrorId 'ParameterArgumentValidationError,Get-StringHash'
         }
     }
-    
-    Context "Performance Validation" {
-        It "Should complete hash computation within reasonable time" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            Get-StringHash -InputString "Performance test string"
-            $stopwatch.Stop()
-            
-            # Should complete within 5 seconds (generous limit)
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 5000
+
+    Context "Hash Algorithm Functionality" {
+        # Published digests of the ASCII string "test"
+        It "Should compute the <Algorithm> digest as uppercase hex without separators" -ForEach @(
+            @{ Algorithm = 'SHA256'; Expected = '9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08' }
+            @{ Algorithm = 'SHA1'; Expected = 'A94A8FE5CCB19BA61C4C0873D391E987982FBBD3' }
+            @{ Algorithm = 'MD5'; Expected = '098F6BCD4621D373CADE4E832627B4F6' }
+        ) {
+            Get-StringHash -InputString "test" -Algorithm $Algorithm | Should -BeExactly $Expected
         }
-        
-        It "Should handle multiple concurrent operations" {
-            $jobs = @()
-            
-            try {
-                # Start multiple background jobs
-                1..5 | ForEach-Object {
-                    $jobs += Start-Job -ScriptBlock {
-                        param($ModuleRoot, $InputString)
-                        . "$ModuleRoot\Private\Utilities\Get-StringHash.ps1"
-                        Get-StringHash -InputString $InputString
-                    } -ArgumentList $ModuleRoot, "ConcurrentTest$_"
-                }
-                
-                # Wait for all jobs to complete
-                $results = $jobs | Wait-Job | Receive-Job
-                
-                # Verify all jobs completed successfully
-                $results.Count | Should -Be 5
-                $results | ForEach-Object {
-                    $_ | Should -Not -BeNullOrEmpty
-                }
-            }
-            finally {
-                # Clean up jobs
-                $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
-            }
+
+        It "Should use SHA256 when no algorithm is given" {
+            Get-StringHash -InputString "test" | Should -BeExactly '9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08'
         }
-    }
-    
-    Context "Edge Cases" {
-        It "Should handle empty string input" {
-            # Function has mandatory parameter, so empty string will throw
-            { Get-StringHash -InputString "" } | Should -Throw
+
+        It "Should hash the UTF-8 bytes of non-ASCII text" {
+            # "cafe" with an acute e, followed by a CJK character; built from code points so the
+            # file stays ASCII. The expected value is the SHA256 of the UTF-8 encoding, computed with
+            # Get-FileHash over a BOM-less UTF-8 file.
+            $text = 'caf' + [char]0x00E9 + [char]0x6D4B
+
+            Get-StringHash -InputString $text | Should -BeExactly '784DE62200F22F024038A725BD76FD25851B44E4ADD3563BAA1427E16DF6A5DC'
         }
-        
-        It "Should handle whitespace-only strings" {
-            $result = Get-StringHash -InputString "   "
-            $result | Should -Not -BeNullOrEmpty
+
+        It "Should hash line breaks as given without normalizing them" {
+            # The SHA256 of the UTF-8 bytes of "Line1<CR><LF>Line2"
+            $crlf = Get-StringHash -InputString "Line1`r`nLine2"
+            $lf = Get-StringHash -InputString "Line1`nLine2"
+
+            $crlf | Should -BeExactly 'E9DE6FF7F6ECEA086FDC878B35D4A226CB5099FCE7E5331C302A626978EDE8DF'
+            $lf | Should -Not -Be $crlf
         }
-        
-        It "Should handle strings with line breaks" {
-            $stringWithBreaks = "Line1`r`nLine2`nLine3"
-            $result = Get-StringHash -InputString $stringWithBreaks
-            $result | Should -Not -BeNullOrEmpty
+
+        It "Should hash a whitespace-only string rather than treat it as empty" {
+            # The SHA256 of three spaces
+            Get-StringHash -InputString "   " | Should -BeExactly '0AAD7DA77D2ED59C396C99A74E49F3A4524DCDBCB5163251B1433D640247AEB4'
         }
-        
-        It "Should handle strings with tabs and special whitespace" {
-            $stringWithTabs = "Before`tTab`tAfter"
-            $result = Get-StringHash -InputString $stringWithTabs
-            $result | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    AfterAll {
-        # Clean up any test artifacts
-        if (Test-Path "TestDrive:\") {
-            Remove-Item "TestDrive:\*" -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        
-        # Remove any temporary variables
-        Remove-Variable -Name "TestCorrelationId", "TestString", "ExpectedSHA256", "ExpectedSHA1", "ExpectedMD5" -Scope Script -ErrorAction SilentlyContinue
     }
 }

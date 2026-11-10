@@ -85,5 +85,35 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
             $result.ErrorMessage | Should -BeLike '*Backup validation failed*hash mismatch*'
             Should -Invoke Set-ObjectACL -Times 0 -Exactly
         }
+
+        It 'Stops before touching the ACL when the target fails validation, listing every issue' {
+            Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; Issues = @('not found', 'no access') } }
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true } }
+
+            $result = Restore-IndividualObject -TargetObjectDN $script:backup.ObjectDN -BackupData $script:backup -BackupFile 'C:\Backup\host1.xml' -CorrelationId 'test' -WarningAction SilentlyContinue
+
+            $result.Success | Should -BeFalse
+            $result.ErrorMessage | Should -Be 'Target validation failed: not found; no access'
+            Should -Invoke Set-ObjectACL -Times 0 -Exactly
+        }
+    }
+
+    Context 'What it hands to its helpers' {
+        It 'Validates the backup against the target at the requested level and checks write permission' {
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true; ModificationsApplied = 1 } }
+
+            Restore-IndividualObject -TargetObjectDN $script:backup.ObjectDN -BackupData $script:backup -BackupFile 'C:\Backup\host1.xml' -ValidationLevel 'Comprehensive' -CorrelationId 'corr-7' | Out-Null
+
+            Should -Invoke Test-BackupIntegrity -Times 1 -Exactly -ParameterFilter {
+                $ExpectedObjectDN -eq $script:backup.ObjectDN -and $ValidationLevel -eq 'Comprehensive' -and
+                $BackupData.SDDL -eq $script:backup.SDDL -and $CorrelationId -eq 'corr-7'
+            }
+            Should -Invoke Get-RestorationTarget -Times 1 -Exactly -ParameterFilter {
+                $TargetObjectDN -eq $script:backup.ObjectDN -and $CheckPermissions -and $CorrelationId -eq 'corr-7'
+            }
+            Should -Invoke Set-ObjectACL -Times 1 -Exactly -ParameterFilter {
+                $TargetObjectDN -eq $script:backup.ObjectDN -and -not $VerifyApplication -and $CorrelationId -eq 'corr-7'
+            }
+        }
     }
 }

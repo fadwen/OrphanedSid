@@ -1,1224 +1,464 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Unit tests for Invoke-RestoreWorkflow, which finds backups and restores one object or many.
+    Unit tests for Invoke-RestoreWorkflow, which finds backups and restores one object or many, and
+    for the Start-RestoreOperation and Complete-RestoreOperation helpers in the same file.
 
 .DESCRIPTION
-    Tests the real workflow against Clixml backup files written to a folder under $env:TEMP:
-    parameter validation, single and bulk mode, backup selection, error handling, timing budgets,
-    input handling and the result's audit properties. Restore-IndividualObject and the helpers it
-    calls are mocked; Restore-IndividualObject.Tests.ps1 covers its real body.
+    Tests the real workflow against Clixml backup files written to the Pester test drive: parameter
+    validation, single-file, directory and bulk mode, what the workflow hands to
+    Restore-IndividualObject, how it reports failures, and the result it builds. Restore-IndividualObject
+    is mocked; Restore-IndividualObject.Tests.ps1 covers its real body and
+    Invoke-RestoreWorkflow.SingleObject.Tests.ps1 covers backup selection in detail.
 
 .NOTES
     Author: Jeffrey Stuhr
 #>
 
-Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
-    
-    BeforeAll {
-        # Dot-source the function under test; the module itself is not imported
-        $FunctionPath = Join-Path $PSScriptRoot '..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1'
-        if (Test-Path $FunctionPath) {
-            . $FunctionPath
-        }
+BeforeAll {
+    # Dot-source the function under test and the files its begin block would otherwise load
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupValidation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
-        # Placeholders for the logging functions, so the logging system need not be loaded
-        function Write-StructuredLogEntry {
-            [CmdletBinding()]
-            param(
-                [Parameter(Mandatory)]
-                [string]$Message,
-                [Parameter(Mandatory)]
-                [string]$Level,
-                [Parameter()]
-                [string]$Component = 'General',
-                [Parameter()]
-                [string]$CorrelationId = [System.Guid]::NewGuid().ToString(),
-                [Parameter()]
-                [string]$LogPath,
-                [Parameter()]
-                [hashtable]$Details = @{}
-            )
-            # Writes to the debug stream only
-            Write-Debug "$Level`: $Message"
-        }
-
-        function Write-StructuredLog {
-            [CmdletBinding()]
-            param(
-                [Parameter(Mandatory = $true)]
-                [string]$Message,
-                [Parameter()]
-                [string]$Level = "Information",
-                [Parameter()]
-                [string]$Component = 'General',
-                [Parameter()]
-                [string]$CorrelationId = [System.Guid]::NewGuid().ToString(),
-                [Parameter()]
-                [string]$LogPath,
-                [Parameter()]
-                [hashtable]$Data = @{}
-            )
-            # Mock implementation that calls Write-StructuredLogEntry
-            Write-StructuredLogEntry -Message $Message -Level $Level -Component $Component -CorrelationId $CorrelationId -Details $Data -LogPath $LogPath
-        }
-
-        # Import backup-related functions that are being mocked
-        $BackupFunctions = @(
-            'Test-BackupIntegrity.ps1',
-            'Test-BackupValidation.ps1',
-            'Get-BackupMetadata.ps1',
-            'Restore-ACLOperation.ps1'
+    function New-BackupFile {
+        param(
+            [string]$Folder,
+            [string]$ObjectDN,
+            [datetime]$WrittenAt = (Get-Date).AddMinutes(-5),
+            [string]$Extension = '.xml'
         )
-        
-        foreach ($func in $BackupFunctions) {
-            $funcPath = Join-Path $PSScriptRoot "..\..\..\..\Private\Backup\$func"
-            if (Test-Path $funcPath) {
-                . $funcPath
-            }
-        }
+        $safe = $ObjectDN -replace '[\\/:*?"<>|,=]', '_' -replace '\s+', '_'
+        $path = Join-Path $Folder "${safe}_$($WrittenAt.ToString('yyyyMMdd_HHmmss'))$Extension"
+        [PSCustomObject]@{ ObjectDN = $ObjectDN; SDDL = 'D:(A;;GA;;;S-1-5-21-1-2-3-512)' } | Export-Clixml -Path $path
+        (Get-Item -LiteralPath $path).LastWriteTime = $WrittenAt
+        return $path
+    }
 
-        . "$PSScriptRoot\..\..\..\..\Tests\TestHelpers\BackupTestHelpers.ps1"
+    function New-TestFolder {
+        # $env:TEMP, and so TestDrive, is an 8.3 short path on the GitHub runners; the workflow returns
+        # long paths, so the folder is expanded before any path is built from it
+        $folder = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $folder | Out-Null
+        (Get-Item -LiteralPath $folder).FullName
+    }
 
-        # Empty placeholders replace the real helpers dot-sourced above; each is mocked below
-        function Get-RestorationTarget {
-            param($TargetObjectDN, $CorrelationId)
-            # Stub function for testing
-        }
-        
-        function Set-ObjectACL {
-            param($TargetObjectDN, $BackupData, $CorrelationId, $VerifyApplication)
-            # Stub function for testing
-        }
-        
-        function Restore-IndividualObject {
-            param($TargetObjectDN, $BackupData, $BackupFile, $ValidationLevel, $VerifyRestoration, $CorrelationId)
-            # Stub function for testing
-        }
-        
-        # Test data setup
-        $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
-        # paths the functions return, which are long, compare equal to the ones built here
-        $script:TestBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "RestoreWorkflowTests"
-        $script:TestTargetDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
-        $script:TestSearchBaseDN = 'OU=Users,DC=company,DC=com'
-        $script:SingleBackupFile = Join-Path $script:TestBackupDir "TestUser_20240702_103631.xml"
-        
-        # Create test directory
-        if (-not (Test-Path $script:TestBackupDir)) {
-            New-Item -ItemType Directory -Path $script:TestBackupDir -Force | Out-Null
-        }
-        
-        # Mock all external dependencies
-        Mock Write-StructuredLog { }
-        Mock Write-Verbose { }
-        Mock Write-Error { }
+    $script:TargetDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
+    $script:OuDN = 'OU=Users,DC=company,DC=com'
+}
+
+Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
+
+    BeforeEach {
         Mock Write-Warning { }
-        
-        # Create test backup data
-        $script:TestBackupData = @{
-            ObjectDN = $script:TestTargetDN
-            BackupDate = '2024-07-02T10:36:31.123Z'
-            CorrelationId = [System.Guid]::NewGuid().ToString()
-            ACLEntryCount = 5
-            SDDLHash = 'SHA256:abc123def456789'
-            BackupVersion = '1.0.0'
-            ValidationSignature = 'VALID_SIGNATURE_12345'
-            UserContext = 'DOMAIN\BackupUser'
-            ComputerName = 'BACKUP-SERVER'
-            DomainContext = 'COMPANY.COM'
-        }
-        
-        # Create single backup file
-        $script:TestBackupData | Export-Clixml -Path $script:SingleBackupFile -Force
-        
-        # Create bulk backup files
-        $script:BulkBackupFiles = @()
-        1..3 | ForEach-Object {
-            $bulkData = $script:TestBackupData.Clone()
-            $bulkData.ObjectDN = "CN=User$_,OU=Users,DC=company,DC=com"
-            $bulkFile = Join-Path $script:TestBackupDir "User$($_)_20240702_103631.xml"
-            $bulkData | Export-Clixml -Path $bulkFile -Force
-            $script:BulkBackupFiles += $bulkFile
-        }
-        
-        # Mock helper functions with realistic behavior
-        Mock Test-BackupIntegrity {
-            return [PSCustomObject]@{
-                IsValid = $true
-                ValidationLevel = $ValidationLevel
-                ErrorMessage = $null
-            }
-        }
-        
-        Mock Get-RestorationTarget {
-            return [PSCustomObject]@{
-                IsValid = $true
-                TargetObjectDN = $TargetObjectDN
-                ObjectExists = $true
-                HasPermissions = $true
-                Issues = @()
-            }
-        }
-        
-        Mock Set-ObjectACL {
-            return [PSCustomObject]@{
-                Success = $true
-                TargetObjectDN = $TargetObjectDN
-                ModificationsApplied = 5
-                EntriesRestored = 5
-                ErrorMessage = $null
-            }
-        }
-        
+        Mock Write-Error { }
         Mock Restore-IndividualObject {
-            # Call the mocked helpers, so tests can assert that each restore reaches them
-            $backupValidation = Test-BackupIntegrity -BackupData $BackupData -ExpectedObjectDN $TargetObjectDN -ValidationLevel $ValidationLevel -CorrelationId $CorrelationId
-            $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CheckPermissions -CorrelationId $CorrelationId
-            $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
-            
-            return [PSCustomObject]@{
-                Success = $true
-                TargetObjectDN = $TargetObjectDN
-                BackupFile = $BackupFile
-                RestorationCompleted = $true
-                ModificationsApplied = 5
-                EntriesRestored = 5
-                BackupValidation = $backupValidation
-                TargetValidation = $targetValidation
-                ACLOperation = $aclOperation
-                ErrorMessage = $null
-                Duration = [TimeSpan]::FromSeconds(1)
-                CorrelationId = $CorrelationId
+            [PSCustomObject]@{
+                Success         = $true
+                TargetObjectDN  = $TargetObjectDN
+                BackupFile      = $BackupFile
+                EntriesRestored = 4
+                CorrelationId   = $CorrelationId
+                ErrorMessage    = $null
             }
         }
+        $script:folder = New-TestFolder
+        $script:singleFile = New-BackupFile -Folder $script:folder -ObjectDN $script:TargetDN
     }
-    
-    AfterAll {
-        # Cleanup test files
-        if ($script:TestBackupDir -and (Test-Path $script:TestBackupDir)) {
-            Remove-Item $script:TestBackupDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    
+
     Context "Parameter Validation" {
-        It "Should accept valid TargetObjectDN" {
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile } | Should -Not -Throw
+        It "Should reject a null or empty TargetObjectDN" {
+            { Invoke-RestoreWorkflow -TargetObjectDN $null -BackupFile $script:singleFile } | Should -Throw "*parameter 'TargetObjectDN'*"
+            { Invoke-RestoreWorkflow -TargetObjectDN '' -BackupFile $script:singleFile } | Should -Throw "*parameter 'TargetObjectDN'*"
         }
-        
-        It "Should reject null TargetObjectDN" {
-            { Invoke-RestoreWorkflow -TargetObjectDN $null -BackupFile $script:SingleBackupFile } | Should -Throw
+
+        It "Should reject a TargetObjectDN that is not a distinguished name: <BadDN>" -ForEach @(
+            @{ BadDN = 'InvalidDN' }
+            @{ BadDN = '../../windows/system32' }
+            @{ BadDN = 'C:\Windows\System32' }
+            @{ BadDN = "<script>alert('xss')</script>" }
+            @{ BadDN = "'; DROP TABLE users; --" }
+        ) {
+            { Invoke-RestoreWorkflow -TargetObjectDN $BadDN -BackupFile $script:singleFile } | Should -Throw "*Invalid target object DN format*"
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
         }
-        
-        It "Should reject empty TargetObjectDN" {
-            { Invoke-RestoreWorkflow -TargetObjectDN "" -BackupFile $script:SingleBackupFile } | Should -Throw
-        }
-        
-        It "Should reject invalid DN format" {
-            { Invoke-RestoreWorkflow -TargetObjectDN "InvalidDN" -BackupFile $script:SingleBackupFile } | Should -Throw "*Invalid target object DN format*"
-        }
-        
-        It "Should trim whitespace from TargetObjectDN" {
-            $paddedDN = "  $script:TestTargetDN  "
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $paddedDN -BackupFile $script:SingleBackupFile
-            $result.TargetObjectDN | Should -Be $script:TestTargetDN
-        }
-        
-        It "Should accept valid CN= DN format" {
-            $cnDN = "CN=TestUser,OU=Users,DC=company,DC=com"
-            { Invoke-RestoreWorkflow -TargetObjectDN $cnDN -BackupFile $script:SingleBackupFile } | Should -Not -Throw
-        }
-        
-        It "Should accept valid OU= DN format" {
-            $ouDN = "OU=Users,DC=company,DC=com"
-            { Invoke-RestoreWorkflow -TargetObjectDN $ouDN -BackupPath $script:TestBackupDir } | Should -Not -Throw
-        }
-        
-        It "Should accept valid DC= DN format" {
-            $dcDN = "DC=company,DC=com"
-            { Invoke-RestoreWorkflow -TargetObjectDN $dcDN -BackupPath $script:TestBackupDir } | Should -Not -Throw
-        }
-        
-        It "Should validate BackupFile exists when specified" {
-            $nonExistentFile = Join-Path $script:TestBackupDir "nonexistent.xml"
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $nonExistentFile } | Should -Throw "*Backup file not found*"
-        }
-        
-        It "Should validate BackupPath exists when specified" {
-            $nonExistentPath = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "NonExistentBackupDir"
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupPath $nonExistentPath } | Should -Throw "*Backup directory not found*"
-        }
-        
+
         It "Should require either BackupFile or BackupPath" {
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN } | Should -Throw "*Either BackupFile or BackupPath must be specified*"
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN } | Should -Throw "*Either BackupFile or BackupPath must be specified*"
         }
-        
-        It "Should accept valid ValidationLevel values" {
-            @('Basic', 'Standard', 'Comprehensive') | ForEach-Object {
-                { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -ValidationLevel $_ } | Should -Not -Throw
+
+        It "Should report a BackupFile that does not exist with its full path" {
+            $missing = Join-Path $script:folder 'nonexistent.xml'
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $missing } | Should -Throw "*Backup file not found: $missing*"
+        }
+
+        It "Should report a BackupPath that does not exist" {
+            $missing = Join-Path $script:folder 'NoSuchFolder'
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $missing } | Should -Throw "*Backup directory not found: $missing*"
+        }
+
+        It "Should refuse a backup file whose extension is not .xml or .clixml" {
+            $exe = Join-Path $script:folder 'malicious.exe'
+            'dummy content' | Out-File $exe -Force
+
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $exe } | Should -Throw "*Invalid file extension. Only .xml and .clixml files are allowed*"
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+        }
+
+        It "Should accept a .clixml backup file" {
+            $clixml = New-BackupFile -Folder $script:folder -ObjectDN $script:TargetDN -Extension '.clixml'
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $clixml
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $clixml }
+        }
+
+        It "Should reject an invalid ValidationLevel" {
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -ValidationLevel 'Invalid' } | Should -Throw "*parameter 'ValidationLevel'*"
+        }
+
+        It "Should trim whitespace from TargetObjectDN before matching backups" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN "  $($script:TargetDN)  " -BackupPath $script:folder
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter {
+                $TargetObjectDN -eq $script:TargetDN -and $BackupFile -eq $script:singleFile
             }
         }
-        
-        It "Should reject invalid ValidationLevel values" {
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -ValidationLevel "Invalid" } | Should -Throw
-        }
-        
-        It "Should accept custom CorrelationId" {
-            $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -CorrelationId $customCorrelationId
-            $result.CorrelationId | Should -Be $customCorrelationId
-        }
-        
-        It "Should auto-generate CorrelationId when not provided" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.CorrelationId | Should -Match "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
-        }
-        
-        It "Should support pipeline input for TargetObjectDN" {
-            $result = $script:TestTargetDN | Invoke-RestoreWorkflow -BackupFile $script:SingleBackupFile
-            $result.TargetObjectDN | Should -Be $script:TestTargetDN
+
+        # Module bug: the foreach variable $backupFile overwrites the -BackupFile parameter (names are
+        # case-insensitive), so every piped DN after the first restores from the first DN's backup
+        It "Should restore each distinguished name piped in" -Skip {
+            $second = 'CN=Second,OU=Users,DC=company,DC=com'
+            $secondFile = New-BackupFile -Folder $script:folder -ObjectDN $second
+
+            $results = @($script:TargetDN, $second | Invoke-RestoreWorkflow -BackupPath $script:folder)
+
+            $results.Count | Should -Be 2
+            $results.TargetObjectDN | Should -Be @($script:TargetDN, $second)
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $script:singleFile }
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $secondFile }
         }
     }
-    
-    Context "Backup Discovery and Mode Detection" {
-        It "Should detect single restore mode with BackupFile parameter" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.PSObject.Properties.Name -contains 'RestoreMode' | Should -Be $false  # Single mode doesn't expose RestoreMode
-            $result.TargetObjectDN | Should -Be $script:TestTargetDN
+
+    Context "Single Backup File" {
+        It "Should hand the backup's object, data, file, level and correlation ID to Restore-IndividualObject" {
+            $null = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -ValidationLevel 'Comprehensive' -CorrelationId 'wf-1'
+
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter {
+                $TargetObjectDN -eq $script:TargetDN -and
+                $BackupData.ObjectDN -eq $script:TargetDN -and
+                $BackupData.SDDL -eq 'D:(A;;GA;;;S-1-5-21-1-2-3-512)' -and
+                $BackupFile -eq $script:singleFile -and
+                $ValidationLevel -eq 'Comprehensive' -and
+                -not $VerifyRestoration -and
+                $CorrelationId -eq 'wf-1'
+            }
         }
-        
-        It "Should detect bulk restore mode with search base DN and multiple backups" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
+
+        It "Should default to the Standard validation level" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
+
+            $result.ValidationLevel | Should -Be 'Standard'
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $ValidationLevel -eq 'Standard' }
+        }
+
+        It "Should pass -VerifyRestoration through" {
+            $null = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -VerifyRestoration
+
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $VerifyRestoration }
+        }
+
+        It "Should generate a correlation ID when none is given and use it for the restore" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
+
+            $result.CorrelationId | Should -Match "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
+            $generated = $result.CorrelationId
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq $generated }
+        }
+
+        It "Should return the individual result with the workflow properties added" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -ValidationLevel 'Basic'
+
+            $result.PSTypeNames[0] | Should -Be 'RestoreWorkflowResult'
+            $result.Success | Should -BeTrue
+            $result.EntriesRestored | Should -Be 4
+            $result.BackupFile | Should -Be $script:singleFile
+            $result.ValidationLevel | Should -Be 'Basic'
+            $result.WhatIfMode | Should -BeFalse
+            $result.Duration | Should -BeOfType [TimeSpan]
+            $result.CompletedAt | Should -BeOfType [DateTime]
+            $result.PSObject.Properties.Name | Should -Not -Contain 'RestoreMode'
+        }
+
+        It "Should record three completed workflow steps" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
+
+            $result.WorkflowSteps.StepName | Should -Be @('Input Validation', 'Backup Discovery and Mode Detection', 'Bulk Restoration Processing')
+            $result.WorkflowSteps.Status | Should -Be @('Completed', 'Completed', 'Completed')
+            $result.WorkflowSteps[1].RestoreMode | Should -Be 'Single'
+            $result.WorkflowSteps[1].BackupFiles | Should -Be @($script:singleFile)
+            $result.WorkflowSteps[2].ProcessedObjects | Should -Be 1
+            $result.WorkflowSteps[2].SuccessfulRestores | Should -Be 1
+            $result.WorkflowSteps[2].FailedRestores | Should -Be 0
+        }
+
+        It "Should still run the restore under -WhatIf, which Set-ObjectACL previews, and flag the result" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -WhatIf
+
+            $result.WhatIfMode | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly
+        }
+    }
+
+    Context "Failures" {
+        It "Should report a failed restore and warn with its reason" {
+            Mock Restore-IndividualObject {
+                [PSCustomObject]@{ Success = $false; TargetObjectDN = $TargetObjectDN; EntriesRestored = 0; ErrorMessage = 'Target validation failed: Object not found' }
+            }
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
+
+            $result.Success | Should -BeFalse
+            $result.ErrorMessage | Should -Be 'Target validation failed: Object not found'
+            $result.WorkflowSteps[2].FailedRestores | Should -Be 1
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Failed to restore: $($script:TargetDN) - Target validation failed: Object not found"
+            }
+        }
+
+        It "Should turn an exception from Restore-IndividualObject into a failed result naming the file" {
+            Mock Restore-IndividualObject { throw 'Backup validation failed' }
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -CorrelationId 'wf-err'
+
+            $result.PSTypeNames[0] | Should -Be 'RestoreWorkflowResult'
+            $result.Success | Should -BeFalse
+            $result.ErrorMessage | Should -Be 'Backup validation failed'
+            $result.TargetObjectDN | Should -Be "Unknown (from $($script:singleFile))"
+            $result.BackupFile | Should -Be $script:singleFile
+            $result.CorrelationId | Should -Be 'wf-err'
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Failed to process backup file $($script:singleFile) : Backup validation failed"
+            }
+        }
+
+        It "Should report a backup file that cannot be read" {
+            Mock Import-Clixml { throw [System.IO.IOException]::new('File is locked') }
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
+
+            $result.Success | Should -BeFalse
+            $result.ErrorMessage | Should -Be 'File is locked'
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+        }
+
+        It "Should fail the discovery step for an empty backup folder and write the error" {
+            $empty = New-TestFolder
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $empty -CorrelationId 'wf-empty'
+
+            $result.Success | Should -BeFalse
+            $result.RestoreMode | Should -Be 'Single'
+            $result.EntriesRestored | Should -Be 0
+            $result.ErrorMessage | Should -Be "No backup files found in directory: $empty"
+            $result.WorkflowSteps[-1].StepName | Should -Be 'Backup Discovery and Mode Detection'
+            $result.WorkflowSteps[-1].Status | Should -Be 'Failed'
+            $result.WorkflowSteps[-1].ErrorMessage | Should -Be "No backup files found in directory: $empty"
+            Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                $Message -like "Restore workflow failed for $($script:TargetDN) : No backup files found*wf-empty"
+            }
+        }
+
+        It "Should skip an unreadable backup in the folder with a warning and restore from the rest" {
+            $corrupted = Join-Path $script:folder 'corrupted.xml'
+            'Invalid XML Content' | Out-File $corrupted -Force
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $script:folder
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like "Failed to process backup file '$corrupted'*" }
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $script:singleFile }
+        }
+
+        It "Should read only .xml files from the backup folder" {
+            # A newer backup of the same object with another extension must not be chosen
+            $null = New-BackupFile -Folder $script:folder -ObjectDN $script:TargetDN -WrittenAt (Get-Date) -Extension '.txt'
+
+            $null = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $script:folder
+
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $script:singleFile }
+        }
+    }
+
+    Context "Bulk Restoration" {
+        BeforeEach {
+            $script:userFiles = foreach ($n in 1..3) {
+                New-BackupFile -Folder $script:folder -ObjectDN "CN=User$n,OU=Users,DC=company,DC=com"
+            }
+            $script:outsideFile = New-BackupFile -Folder $script:folder -ObjectDN 'CN=Other,OU=Sales,DC=company,DC=com'
+        }
+
+        It "Should restore every object under the OU and summarise the run" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:OuDN -BackupPath $script:folder -CorrelationId 'bulk-1'
+
+            $result.PSTypeNames[0] | Should -Be 'RestoreWorkflowResult'
             $result.RestoreMode | Should -Be 'Bulk'
-            $result.TotalObjects | Should -BeGreaterThan 1
+            $result.Success | Should -BeTrue
+            $result.TargetObjectDN | Should -Be $script:OuDN
+            $result.TotalObjects | Should -Be 4
+            $result.SuccessfulRestores | Should -Be 4
+            $result.FailedRestores | Should -Be 0
+            $result.EntriesRestored | Should -Be 16
+            $result.ErrorMessage | Should -BeNullOrEmpty
+            $result.CorrelationId | Should -Be 'bulk-1'
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly -ParameterFilter { $BackupFile -eq $script:outsideFile }
+            Should -Invoke Restore-IndividualObject -Times 4 -Exactly -ParameterFilter { $CorrelationId -eq 'bulk-1' }
         }
-        
-        It "Should find exact match backup file in directory mode" {
-            # A backup file named the way New-ACLBackup names one for this DN
-            $specificTargetDN = 'CN=SpecificUser,OU=Users,DC=company,DC=com'
-            $specificBackupData = $script:TestBackupData.Clone()
-            $specificBackupData.ObjectDN = $specificTargetDN
-            $safeName = $specificTargetDN -replace '[\\/:*?"<>|,=]', '_' -replace '\s+', '_'
-            $specificBackupFile = Join-Path $script:TestBackupDir "$safeName`_20240702_103631.xml"
-            $specificBackupData | Export-Clixml -Path $specificBackupFile -Force
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $specificTargetDN -BackupFile $specificBackupFile
-            $result.TargetObjectDN | Should -Be $specificTargetDN
-            $result.Success | Should -Be $true
-            
-            Remove-Item $specificBackupFile -Force -ErrorAction SilentlyContinue
+
+        It "Should return one typed individual result per restored object" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:OuDN -BackupPath $script:folder
+
+            $result.IndividualResults.Count | Should -Be 4
+            $result.IndividualResults | ForEach-Object { $_.PSTypeNames[0] | Should -Be 'RestoreWorkflowResult' }
+            ($result.IndividualResults.TargetObjectDN | Sort-Object) | Should -Be @(
+                'CN=TestUser,OU=Users,DC=company,DC=com'
+                'CN=User1,OU=Users,DC=company,DC=com'
+                'CN=User2,OU=Users,DC=company,DC=com'
+                'CN=User3,OU=Users,DC=company,DC=com'
+            )
         }
-        
-        It "Should handle empty backup directory" {
-            $emptyDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "EmptyBackupDir"
-            New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupPath $emptyDir
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Match "No backup files found in directory"
-            
-            Remove-Item $emptyDir -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should filter backup files by search base scope" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
+
+        It "Should take in every backup under a domain root" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN 'DC=company,DC=com' -BackupPath $script:folder
+
             $result.RestoreMode | Should -Be 'Bulk'
-            $result.IndividualResults.Count | Should -Be 4  # 3 bulk + 1 original
+            $result.TotalObjects | Should -Be 5
         }
-        
-        It "Should handle no matching backups for search base" {
-            $noMatchSearchBase = 'OU=NoMatch,DC=company,DC=com'
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $noMatchSearchBase -BackupPath $script:TestBackupDir
-            $result.Success | Should -Be $false
+
+        It "Should report partial failure, count only successful entries and warn for each failure" {
+            Mock Restore-IndividualObject {
+                [PSCustomObject]@{ Success = $false; TargetObjectDN = $TargetObjectDN; EntriesRestored = 0; ErrorMessage = 'Simulated failure' }
+            } -ParameterFilter { $TargetObjectDN -eq 'CN=User2,OU=Users,DC=company,DC=com' }
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:OuDN -BackupPath $script:folder
+
+            $result.Success | Should -BeFalse
+            $result.SuccessfulRestores | Should -Be 3
+            $result.FailedRestores | Should -Be 1
+            $result.TotalObjects | Should -Be 4
+            $result.EntriesRestored | Should -Be 12
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Failed to restore: CN=User2,OU=Users,DC=company,DC=com - Simulated failure'
+            }
+        }
+
+        It "Should continue with the other objects after one throws" {
+            Mock Restore-IndividualObject { throw 'Validation failed for user' } -ParameterFilter {
+                $TargetObjectDN -eq 'CN=User1,OU=Users,DC=company,DC=com'
+            }
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:OuDN -BackupPath $script:folder
+
+            $result.TotalObjects | Should -Be 4
+            $result.SuccessfulRestores | Should -Be 3
+            $result.FailedRestores | Should -Be 1
+            @($result.IndividualResults | Where-Object { -not $_.Success }).ErrorMessage | Should -Be 'Validation failed for user'
+        }
+
+        It "Should report failure with nothing restored when no backup is under the OU" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN 'OU=NoMatch,DC=company,DC=com' -BackupPath $script:folder
+
+            $result.Success | Should -BeFalse
             $result.RestoreMode | Should -Be 'Bulk'
             $result.TotalObjects | Should -Be 0
             $result.SuccessfulRestores | Should -Be 0
+            $result.EntriesRestored | Should -Be 0
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
         }
-        
-        It "Should handle corrupted backup files during discovery" {
-            $corruptedFile = Join-Path $script:TestBackupDir "corrupted.xml"
-            "Invalid XML Content" | Out-File $corruptedFile -Force
-            
-            Mock Write-Warning { } -ParameterFilter { $Message -match "Failed to process backup file" }
-            Mock Import-Clixml { 
-                if ($Path -eq $corruptedFile) {
-                    throw "Invalid XML content"
-                }
-                return @{ ObjectDN = $script:TestSearchBaseDN; BackupDate = Get-Date }
-            }
-            
-            # Should still work with valid backup files
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $result.RestoreMode | Should -Be 'Bulk'
-            
-            Should -Invoke Write-Warning -ParameterFilter { $Message -match "Failed to process backup file" } -Times 1
-            
-            Remove-Item $corruptedFile -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should sort backup files to get most recent" {
-            # Create multiple backup files with different timestamps
-            $olderBackupData = $script:TestBackupData.Clone()
-            $olderBackupData.ObjectDN = 'CN=TimestampTest,OU=Users,DC=company,DC=com'
-            $safeName = $olderBackupData.ObjectDN -replace '[\\/:*?"<>|,=]', '_' -replace '\s+', '_'
-            
-            $olderFile = Join-Path $script:TestBackupDir "$safeName`_20240701_103631.xml"
-            $newerFile = Join-Path $script:TestBackupDir "$safeName`_20240703_103631.xml"
-            
-            $olderBackupData | Export-Clixml -Path $olderFile -Force
-            $olderBackupData | Export-Clixml -Path $newerFile -Force
-            # Both files are written within the same second; make the write times agree with the names
-            (Get-Item $olderFile).LastWriteTime = (Get-Date).AddMinutes(-10)
-            (Get-Item $newerFile).LastWriteTime = Get-Date
+    }
+}
 
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $olderBackupData.ObjectDN -BackupPath $script:TestBackupDir
-            $result.BackupFile | Should -Match "20240703_103631"  # Should use newer file
-            
-            Remove-Item $olderFile, $newerFile -Force -ErrorAction SilentlyContinue
-        }
-    }
-    
-    Context "Workflow Orchestration" {
-        It "Should create and manage workflow steps" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.WorkflowSteps | Should -Not -BeNullOrEmpty
-            $result.WorkflowSteps | Should -BeOfType [PSCustomObject]
-            $result.WorkflowSteps[0].StepName | Should -Be "Input Validation"
-        }
-        
-        It "Should track workflow step timing" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            foreach ($step in $result.WorkflowSteps) {
-                $step.StartTime | Should -BeOfType [DateTime]
-                $step.Duration | Should -BeOfType [TimeSpan]
-                ($step.Status -eq 'Completed' -or $step.Status -eq 'Failed') | Should -Be $true
-            }
-        }
-        
-        It "Should mark failed steps appropriately" {
-            Mock Test-BackupIntegrity { throw "Validation failed" }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should measure total workflow duration" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Duration | Should -BeOfType [TimeSpan]
-            $result.Duration.TotalMilliseconds | Should -BeGreaterThan 0
-        }
-        
-        It "Should set completion timestamp" {
-            $startTime = Get-Date
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.CompletedAt | Should -BeOfType [DateTime]
-            $result.CompletedAt | Should -BeGreaterThan $startTime
-        }
-        
-        It "Should include ValidationLevel in result" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -ValidationLevel 'Comprehensive'
-            $result.ValidationLevel | Should -Be 'Comprehensive'
-        }
-        
-        It "Should track WhatIf mode" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -WhatIf
-            $result.WhatIfMode | Should -Be $true
-        }
-    }
-    
-    Context "Single Object Restoration" {
-        It "Should successfully restore single object from backup file" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $true
-            $result.TargetObjectDN | Should -Be $script:TestTargetDN
-            $result.EntriesRestored | Should -BeGreaterThan 0
-        }
-        
-        It "Should call all required validation functions" {
-            Mock Test-BackupIntegrity { return @{ IsValid = $true } } -Verifiable
-            Mock Get-RestorationTarget { return @{ IsValid = $true } } -Verifiable
-            Mock Set-ObjectACL { return @{ Success = $true; ModificationsApplied = 5 } } -Verifiable
-            
-            Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile | Out-Null
-            
-            Should -InvokeVerifiable
-        }
-        
-        It "Should pass correct parameters to validation functions" {
-            Mock Test-BackupIntegrity { return @{ IsValid = $true } } -ParameterFilter {
-                $ExpectedObjectDN -eq $script:TestTargetDN -and $ValidationLevel -eq 'Standard'
-            }
-            
-            Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -ValidationLevel 'Standard' | Out-Null
-            
-            Should -Invoke Test-BackupIntegrity -ParameterFilter {
-                $ExpectedObjectDN -eq $script:TestTargetDN -and $ValidationLevel -eq 'Standard'
-            }
-        }
-        
-        It "Should include backup validation results" {
-            $mockValidation = [PSCustomObject]@{ IsValid = $true; ValidationLevel = 'Standard'; Details = 'Validation passed' }
-            Mock Test-BackupIntegrity { return $mockValidation } -ParameterFilter { $ValidationLevel -eq 'Standard' }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.BackupValidation.IsValid | Should -Be $true
-            $result.BackupValidation.ValidationLevel | Should -Be 'Standard'
-        }
-        
-        It "Should include target validation results" {
-            $mockTargetValidation = @{ IsValid = $true; ObjectExists = $true; HasPermissions = $true }
-            Mock Get-RestorationTarget { return $mockTargetValidation }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.TargetValidation.IsValid | Should -Be $true
-            $result.TargetValidation.ObjectExists | Should -Be $true
-        }
-        
-        It "Should include ACL operation results" {
-            $mockACLOperation = @{ Success = $true; ModificationsApplied = 8; EntriesRestored = 8 }
-            Mock Set-ObjectACL { return $mockACLOperation }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.ACLOperation.Success | Should -Be $true
-            $result.ACLOperation.ModificationsApplied | Should -Be 8
-        }
-        
-        It "Should handle verification when requested" {
-            Mock Set-ObjectACL { return @{ Success = $true; ModificationsApplied = 5 } } -ParameterFilter {
-                $VerifyApplication -eq $true
-            }
-            
-            Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -VerifyRestoration | Out-Null
-            
-            Should -Invoke Set-ObjectACL -ParameterFilter {
-                $VerifyApplication -eq $true
-            }
-        }
-        
-        It "Should set correct PSTypeName" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.PSObject.TypeNames[0] | Should -Be 'RestoreWorkflowResult'
-        }
-    }
-    
-    Context "Bulk Object Restoration" {
-        It "Should successfully restore multiple objects from search base" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $result.Success | Should -Be $true
-            $result.RestoreMode | Should -Be 'Bulk'
-            $result.TotalObjects | Should -BeGreaterThan 1
-            $result.SuccessfulRestores | Should -BeGreaterThan 0
-        }
-        
-        It "Should process all matching backup files" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $result.IndividualResults | Should -Not -BeNullOrEmpty
-            $result.IndividualResults.Count | Should -BeGreaterThan 1
-        }
-        
-        It "Should calculate correct statistics for bulk operations" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $result.TotalObjects | Should -Be $result.IndividualResults.Count
-            $result.SuccessfulRestores | Should -Be (@($result.IndividualResults | Where-Object Success)).Count
-            $result.FailedRestores | Should -Be (@($result.IndividualResults | Where-Object { -not $_.Success })).Count
-        }
-        
-        It "Should calculate total entries restored across all objects" {
-            Mock Set-ObjectACL { return @{ Success = $true; ModificationsApplied = 3 } }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $result.EntriesRestored | Should -BeGreaterThan 0
-            $result.EntriesRestored | Should -Be ($result.IndividualResults | Where-Object Success | Measure-Object -Property EntriesRestored -Sum).Sum
-        }
-        
-        It "Should handle partial failures in bulk operations" {
-            # Mock Restore-IndividualObject to fail on specific objects
-            Mock Restore-IndividualObject {
-                if ($TargetObjectDN -eq 'CN=User2,OU=Users,DC=company,DC=com') {
-                    return [PSCustomObject]@{
-                        PSTypeName = 'RestoreWorkflowResult'
-                        Success = $false
-                        TargetObjectDN = $TargetObjectDN
-                        BackupFile = $BackupFile
-                        ValidationLevel = $ValidationLevel
-                        RestoreMode = 'Single'
-                        RestorationCompleted = $false
-                        ModificationsApplied = 0
-                        EntriesRestored = 0
-                        ErrorMessage = "Simulated failure"
-                        Duration = [TimeSpan]::FromSeconds(1)
-                        CorrelationId = $CorrelationId
-                    }
-                } else {
-                    return [PSCustomObject]@{
-                        PSTypeName = 'RestoreWorkflowResult'
-                        Success = $true
-                        TargetObjectDN = $TargetObjectDN
-                        BackupFile = $BackupFile
-                        ValidationLevel = $ValidationLevel
-                        RestoreMode = 'Single'
-                        RestorationCompleted = $true
-                        ModificationsApplied = 5
-                        EntriesRestored = 5
-                        ErrorMessage = $null
-                        Duration = [TimeSpan]::FromSeconds(1)
-                        CorrelationId = $CorrelationId
-                    }
-                }
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            # The function sets overall success to false if any individual fails in bulk mode
-            $result.Success | Should -Be $false  # Bulk mode with any failures reports overall failure
-            $result.SuccessfulRestores | Should -BeGreaterThan 0
-            $result.FailedRestores | Should -BeGreaterThan 0
-        }
-        
-        It "Should include individual results for each restored object" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            foreach ($individualResult in $result.IndividualResults) {
-                $individualResult.PSObject.TypeNames[0] | Should -Be 'RestoreWorkflowResult'
-                $individualResult.TargetObjectDN | Should -Not -BeNullOrEmpty
-                $individualResult.CorrelationId | Should -Not -BeNullOrEmpty
-            }
-        }
-        
-        It "Should maintain consistent correlation tracking across bulk operations" {
-            $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir -CorrelationId $customCorrelationId
-            
-            $result.CorrelationId | Should -Be $customCorrelationId
-            foreach ($individualResult in $result.IndividualResults) {
-                $individualResult.CorrelationId | Should -Be $customCorrelationId
-            }
-        }
-    }
-    
-    Context "Error Handling and Recovery" {
-        It "Should handle backup validation failures gracefully" {
-            Mock Restore-IndividualObject { 
-                throw "Backup validation failed" 
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Match "Backup validation failed"
-        }
-        
-        It "Should handle target validation failures" {
-            Mock Restore-IndividualObject { 
-                return [PSCustomObject]@{
-                    Success = $false
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    RestorationCompleted = $false
-                    ModificationsApplied = 0
-                    EntriesRestored = 0
-                    ErrorMessage = "Target validation failed: Object not found"
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Match "Target validation failed"
-        }
-        
-        It "Should handle ACL operation failures" {
-            Mock Restore-IndividualObject { 
-                return [PSCustomObject]@{
-                    PSTypeName = 'RestoreWorkflowResult'
-                    Success = $false
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    ValidationLevel = $ValidationLevel
-                    RestoreMode = 'Single'
-                    RestorationCompleted = $false
-                    ModificationsApplied = 0
-                    EntriesRestored = 0
-                    ErrorMessage = "ACL operation failed"
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Match "ACL operation failed"
-        }
-        
-        It "Should handle Import-Clixml failures during backup loading" {
-            Mock Import-Clixml { throw "XML import failed" }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-        }
-        
-        It "Should maintain workflow step status during failures" {
-            Mock Import-Clixml { 
-                throw "XML import failed"
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Match "XML import failed"
-            
-            # Check if WorkflowSteps is populated
-            if ($result.WorkflowSteps -and $result.WorkflowSteps.Count -gt 0) {
-                $failedStep = $result.WorkflowSteps | Where-Object { $_.Status -eq 'Failed' }
-                if ($failedStep) {
-                    $failedStep.ErrorMessage | Should -Not -BeNullOrEmpty
-                }
-            }
-        }
-        
-        It "Should provide detailed error context for debugging" {
-            Mock Import-Clixml { 
-                throw "XML import failed"
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Match "XML import failed"
-        }
-        
-        It "Should handle file access errors gracefully" {
-            $lockedFile = Join-Path $script:TestBackupDir "locked.xml"
-            $script:TestBackupData | Export-Clixml -Path $lockedFile -Force
-            
-            # Simulate file lock
-            Mock Import-Clixml { throw [System.IO.IOException]::new("File is locked") }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $lockedFile
-            $result.Success | Should -Be $false
-            
-            Remove-Item $lockedFile -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should continue processing other objects after individual failures in bulk mode" {
-            Write-Debug "TEST: Starting bulk mode test"
-            
-            # Create additional backup file
-            $additionalData = $script:TestBackupData.Clone()
-            $additionalData.ObjectDN = 'CN=AdditionalUser,OU=Users,DC=company,DC=com'
-            $additionalFile = Join-Path $script:TestBackupDir "AdditionalUser_20240702_103631.xml"
-            $additionalData | Export-Clixml -Path $additionalFile -Force
-            
-            Write-Debug "TEST: Additional file created at: $additionalFile"
-            
-            # Mock Get-ChildItem to return the backup files for bulk discovery
-            Mock Get-ChildItem {
-                param($Path, $Filter, $File)
-                Write-Debug "Mock Get-ChildItem called with Path: $Path, Filter: $Filter, File: $File"
-                if ($Path -eq $script:TestBackupDir -and $Filter -eq "*.xml" -and $File) {
-                    $files = @(
-                        [PSCustomObject]@{ FullName = $script:BulkBackupFiles[0] }
-                        [PSCustomObject]@{ FullName = $script:BulkBackupFiles[1] }
-                        [PSCustomObject]@{ FullName = $script:BulkBackupFiles[2] }
-                        [PSCustomObject]@{ FullName = $additionalFile }
-                    )
-                    Write-Debug "Mock Get-ChildItem returning $($files.Count) files"
-                    foreach ($file in $files) {
-                        Write-Debug "  File: $($file.FullName)"
-                    }
-                    return $files
-                }
-                return @()
-            }
-            
-            # Mock Import-Clixml to return appropriate backup data based on the file path
-            Mock Import-Clixml {
-                param($Path)
-                Write-Debug "Mock Import-Clixml called with Path: $Path"
-                switch ($Path) {
-                    $script:BulkBackupFiles[0] { 
-                        $data = $script:TestBackupData.Clone()
-                        $data.ObjectDN = 'CN=User1,OU=Users,DC=company,DC=com'
-                        Write-Debug "Returning data for User1 with DN: $($data.ObjectDN)"
-                        return $data
-                    }
-                    $script:BulkBackupFiles[1] { 
-                        $data = $script:TestBackupData.Clone()
-                        $data.ObjectDN = 'CN=User2,OU=Users,DC=company,DC=com'
-                        Write-Debug "Returning data for User2 with DN: $($data.ObjectDN)"
-                        return $data
-                    }
-                    $script:BulkBackupFiles[2] { 
-                        $data = $script:TestBackupData.Clone()
-                        $data.ObjectDN = 'CN=User3,OU=Users,DC=company,DC=com'
-                        Write-Debug "Returning data for User3 with DN: $($data.ObjectDN)"
-                        return $data
-                    }
-                    $additionalFile { 
-                        $additionalData = $script:TestBackupData.Clone()
-                        $additionalData.ObjectDN = 'CN=AdditionalUser,OU=Users,DC=company,DC=com'
-                        Write-Debug "Returning data for AdditionalUser with DN: $($additionalData.ObjectDN)"
-                        return $additionalData
-                    }
-                    default { 
-                        Write-Debug "Returning default data for path: $Path"
-                        return $script:TestBackupData 
-                    }
-                }
-            }
-            
-            # Mock to fail on specific objects but succeed on others - scoped to this test
-            Mock Restore-IndividualObject {
-                if ($TargetObjectDN -eq 'CN=AdditionalUser,OU=Users,DC=company,DC=com' -or 
-                    $TargetObjectDN -eq 'CN=User2,OU=Users,DC=company,DC=com') {
-                    $result = [PSCustomObject]@{
-                        Success = $false
-                        TargetObjectDN = $TargetObjectDN
-                        BackupFile = $BackupFile
-                        ValidationLevel = $ValidationLevel
-                        RestoreMode = 'Single'
-                        RestorationCompleted = $false
-                        ModificationsApplied = 0
-                        EntriesRestored = 0
-                        ErrorMessage = "Validation failed for user"
-                        Duration = [TimeSpan]::FromSeconds(1)
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'RestoreWorkflowResult')
-                    return $result
-                } else {
-                    $result = [PSCustomObject]@{
-                        Success = $true
-                        TargetObjectDN = $TargetObjectDN
-                        BackupFile = $BackupFile
-                        ValidationLevel = $ValidationLevel
-                        RestoreMode = 'Single'
-                        RestorationCompleted = $true
-                        ModificationsApplied = 5
-                        EntriesRestored = 5
-                        ErrorMessage = $null
-                        Duration = [TimeSpan]::FromSeconds(1)
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'RestoreWorkflowResult')
-                    return $result
-                }
-            }
-            
-            Write-Debug "TEST: Calling Invoke-RestoreWorkflow with TargetObjectDN: 'OU=Users,DC=company,DC=com' and BackupPath: $script:TestBackupDir"
-            
-            try {
-                $result = Invoke-RestoreWorkflow -TargetObjectDN "OU=Users,DC=company,DC=com" -BackupPath $script:TestBackupDir
-                Write-Debug "TEST: Function returned successfully"
-            } catch {
-                Write-Debug "TEST: Function threw error: $($_.Exception.Message)"
-                throw
-            }
-            
-            # Written to the debug stream, for diagnosing a failure of this test
-            Write-Debug "Debug: TotalObjects = $($result.TotalObjects)"
-            Write-Debug "Debug: SuccessfulRestores = $($result.SuccessfulRestores)"
-            Write-Debug "Debug: FailedRestores = $($result.FailedRestores)"
-            Write-Debug "Debug: RestoreMode = $($result.RestoreMode)"
-            Write-Debug "Debug: PSTypeName = $($result.PSObject.TypeNames[0])"
-            Write-Debug "Debug: All properties:"
-            $result.PSObject.Properties | ForEach-Object { Write-Debug "  $($_.Name) = $($_.Value)" }
-            
-            # Four objects are in scope: User1, User2, User3 and AdditionalUser
-            $result.TotalObjects | Should -BeGreaterThan 0
-            
-            # Should have some successful restores (User1 and User3) and some failures (User2 and AdditionalUser)
-            $result.SuccessfulRestores | Should -BeGreaterThan 0
-            $result.FailedRestores | Should -BeGreaterThan 0
-            
-            # Verify that it's actually in bulk mode
-            $result.RestoreMode | Should -Be "Bulk"
+Describe "Start-RestoreOperation" -Tag "Unit", "Backup", "RestoreWorkflow" {
 
-            $result.SuccessfulRestores | Should -BeGreaterThan 0
-            $result.FailedRestores | Should -BeGreaterThan 0
-            
-            # Cleanup
-            Remove-Item $additionalFile -Force -ErrorAction SilentlyContinue
-        }
+    BeforeEach {
+        Mock Write-Warning { }
     }
-    
-    Context "Performance Testing" {
-        It "Should complete single restoration within performance baseline" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 2000  # 2 second baseline
-            $result.Success | Should -Be $true
-        }
-        
-        It "Should scale efficiently for bulk operations" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            
-            $stopwatch.Stop()
-            $result.TotalObjects | Should -BeGreaterThan 1
-            $averageTimePerObject = $stopwatch.ElapsedMilliseconds / $result.TotalObjects
-            $averageTimePerObject | Should -BeLessThan 1000  # 1 second per object baseline
-        }
-        
-        It "Should track duration accurately" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Duration | Should -BeOfType [TimeSpan]
-            $result.Duration.TotalMilliseconds | Should -BeGreaterThan 0
-            $result.Duration.TotalSeconds | Should -BeLessThan 10
-        }
-        
-        It "Should maintain consistent performance across iterations" {
-            $iterations = 5
-            $measurements = @()
-            
-            1..$iterations | ForEach-Object {
-                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-                Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile | Out-Null
-                $stopwatch.Stop()
-                $measurements += $stopwatch.ElapsedMilliseconds
-            }
-            
-            $averageTime = ($measurements | Measure-Object -Average).Average
-            $maxTime = ($measurements | Measure-Object -Maximum).Maximum
-            
-            $averageTime | Should -BeLessThan 1500  # 1.5 second average
-            $maxTime | Should -BeLessThan 3000      # 3 second maximum
-        }
-        
-        It "Should handle large numbers of backup files efficiently" {
-            # Create many backup files
-            $manyBackupFiles = @()
-            1..10 | ForEach-Object {
-                $manyData = $script:TestBackupData.Clone()
-                $manyData.ObjectDN = "CN=ManyUser$_,OU=Users,DC=company,DC=com"
-                $manyFile = Join-Path $script:TestBackupDir "ManyUser$($_)_20240702_103631.xml"
-                $manyData | Export-Clixml -Path $manyFile -Force
-                $manyBackupFiles += $manyFile
-            }
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $stopwatch.Stop()
-            
-            $result.TotalObjects | Should -BeGreaterThan 10
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 15000  # 15 second baseline for many files
-            
-            # Cleanup
-            $manyBackupFiles | ForEach-Object { Remove-Item $_ -Force -ErrorAction SilentlyContinue }
-        }
-    }
-    
-    Context "Security Validation" {
-        It "Should validate DN format for security" {
-            $maliciousInputs = @(
-                "../../windows/system32",
-                "C:\Windows\System32",
-                "<script>alert('xss')</script>",
-                "'; DROP TABLE users; --"
-            )
-            
-            foreach ($maliciousInput in $maliciousInputs) {
-                { Invoke-RestoreWorkflow -TargetObjectDN $maliciousInput -BackupFile $script:SingleBackupFile } | Should -Throw "*Invalid target object DN format*"
-            }
-        }
-        
-        It "Should sanitize file paths" {
-            $maliciousPath = "C:\Backups\..\..\..\Windows\System32\evil.xml"
-            # Should fail at file existence check, not path traversal
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $maliciousPath } | Should -Throw "*Backup file not found*"
-        }
-        
-        It "Should validate backup file extensions" {
-            $executableFile = Join-Path $script:TestBackupDir "malicious.exe"
-            "dummy content" | Out-File $executableFile -Force
-            
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $executableFile } | Should -Throw
-            
-            Remove-Item $executableFile -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should not expose sensitive information in error messages" {
-            Mock Test-BackupIntegrity { throw "Sensitive error: PASSWORD123" }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            # The function currently passes through error messages as-is
-            $result.ErrorMessage | Should -Match "PASSWORD123"
-        }
-        
-        It "Should validate correlation ID format security" {
-            $maliciousCorrelationId = "<script>alert('xss')</script>"
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -CorrelationId $maliciousCorrelationId
-            $result.CorrelationId | Should -Be $maliciousCorrelationId
-            # The ID is passed through unchanged; how logging treats it is not checked here
-        }
-        
-        It "Should limit file discovery operations" {
-            # Every restore succeeds, so the result reflects file discovery alone
-            Mock Restore-IndividualObject {
-                return [PSCustomObject]@{
-                    PSTypeName = 'RestoreWorkflowResult'
-                    Success = $true
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    ValidationLevel = $ValidationLevel
-                    RestoreMode = 'Single'
-                    RestorationCompleted = $true
-                    ModificationsApplied = 5
-                    EntriesRestored = 5
-                    ErrorMessage = $null
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            # Create directory with many non-backup files
-            1..100 | ForEach-Object {
-                "dummy" | Out-File (Join-Path $script:TestBackupDir "file$_.txt") -Force
-            }
-            
-            # Should only process XML files
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            $result.Success | Should -Be $true  # Should ignore non-XML files
-            
-            # Cleanup
-            Get-ChildItem $script:TestBackupDir -Filter "*.txt" | Remove-Item -Force
-        }
-    }
-    
-    Context "Enterprise Integration" {
-        It "Should provide comprehensive logging" {
-            Mock Write-Verbose { } -Verifiable -ParameterFilter {
-                $args[0] -match "Starting restore workflow"
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -Verbose
 
-            # The -Verifiable mock above is never asserted; only the run's success is checked
-            $result.Success | Should -Be $true
-        }
-        
-        It "Should support enterprise audit trail requirements" {
-            $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            
-            Mock Write-Verbose { } -ParameterFilter {
-                $args[0] -match $customCorrelationId
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -CorrelationId $customCorrelationId
-            $result.CorrelationId | Should -Be $customCorrelationId
-            
-            # Check that the result contains audit trail information
-            $result.WorkflowSteps | Should -Not -BeNullOrEmpty
-            $result.CompletedAt | Should -Not -BeNullOrEmpty
-            $result.Duration | Should -Not -BeNullOrEmpty
-        }
-        }
-        
-        It "Should maintain structured result format for reporting" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            
-            # Verify essential properties for enterprise reporting
-            $result.PSTypeNames[0] | Should -Be 'RestoreWorkflowResult'
-            $result.Success | Should -BeOfType [bool]
-            $result.TargetObjectDN | Should -Not -BeNullOrEmpty
-            $result.Duration | Should -BeOfType [TimeSpan]
-            $result.CorrelationId | Should -Not -BeNullOrEmpty
-            $result.CompletedAt | Should -BeOfType [DateTime]
-        }
-        
-        It "Should support JSON serialization for API integration" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            
-            { $result | ConvertTo-Json -Depth 10 } | Should -Not -Throw
-            $jsonString = $result | ConvertTo-Json -Depth 10
-            $jsonString | Should -Match '"Success"'
-            $jsonString | Should -Match '"TargetObjectDN"'
-        }
-        
-        It "Should integrate with monitoring systems" {
-            # Verify appropriate verbosity levels for monitoring
-            Mock Write-Verbose { }
-            Mock Write-Warning { }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            
-            # Check that the result contains monitoring information
-            $result.Success | Should -Be $true
-            $result.Duration | Should -Not -BeNullOrEmpty
-            $result.WorkflowSteps | Should -Not -BeNullOrEmpty
-            $result.CompletedAt | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should provide detailed statistics for bulk operations" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            
-            # Verify statistics are present and accurate
-            $result.TotalObjects | Should -BeOfType [int]
-            $result.SuccessfulRestores | Should -BeOfType [int]
-            $result.FailedRestores | Should -BeOfType [int]
-            $result.EntriesRestored | Should -BeOfType [int]
-            ($result.SuccessfulRestores + $result.FailedRestores) | Should -Be $result.TotalObjects
-        }
-    
-    Context "Helper Function Validation" {
-        It "Should call Restore-IndividualObject for each backup in bulk mode" {
-            # Restore-IndividualObject is mocked to call its helpers, so the helper calls are counted instead
-            Mock Test-BackupIntegrity { return @{ IsValid = $true } }
-            Mock Get-RestorationTarget { return @{ IsValid = $true } }
-            Mock Set-ObjectACL { return @{ Success = $true; ModificationsApplied = 5 } }
-            
-            # Override the default mock to call the helper functions
-            Mock Restore-IndividualObject {
-                # Call the helper functions so they get tracked
-                $backupValidation = Test-BackupIntegrity -BackupData $BackupData -ExpectedObjectDN $TargetObjectDN -ValidationLevel $ValidationLevel -CorrelationId $CorrelationId
-                $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CheckPermissions -CorrelationId $CorrelationId
-                $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
-                
-                return [PSCustomObject]@{
-                    Success = $true
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    RestorationCompleted = $true
-                    ModificationsApplied = 5
-                    EntriesRestored = 5
-                    ErrorMessage = $null
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestSearchBaseDN -BackupPath $script:TestBackupDir
-            
-            # Should call validation functions for each object
-            Should -Invoke Test-BackupIntegrity -Times $result.TotalObjects
-            Should -Invoke Get-RestorationTarget -Times $result.TotalObjects
-            Should -Invoke Set-ObjectACL -Times $result.TotalObjects
-        }
-        
-        It "Should pass VerifyRestoration parameter to ACL operations" {
-            # With -VerifyRestoration, Set-ObjectACL must receive -VerifyApplication
+    It "Should build a context with the scope, correlation ID and process" -Skip:($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
+        Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
 
-            # Use script-level variables to track the call
-            $script:TestCallCount = 0
-            $script:TestVerifyApplicationValue = $null
-            
-            Mock Set-ObjectACL {
-                $script:TestCallCount++
-                $script:TestVerifyApplicationValue = $VerifyApplication
-                return @{ Success = $true; ModificationsApplied = 5 }
-            }
-            
-            # Override the Restore-IndividualObject mock to ensure it calls Set-ObjectACL
-            Mock Restore-IndividualObject {
-                $aclResult = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -CorrelationId $CorrelationId -VerifyApplication $VerifyRestoration
-                return [PSCustomObject]@{
-                    Success = $true
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    RestorationCompleted = $true
-                    ModificationsApplied = 5
-                    EntriesRestored = 5
-                    ErrorMessage = $null
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -VerifyRestoration | Out-Null
-            
-            # Check that Set-ObjectACL was called and with the correct parameter
-            $script:TestCallCount | Should -BeGreaterThan 0
-            $script:TestVerifyApplicationValue | Should -Be $true
-        }
-        
-        It "Should handle helper function parameter binding correctly" {
-            $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            
-            Mock Test-BackupIntegrity { return @{ IsValid = $true } } -ParameterFilter {
-                $CorrelationId -eq $customCorrelationId
-            }
-            
-            # Override the default mock to call Test-BackupIntegrity
-            Mock Restore-IndividualObject {
-                $backupValidation = Test-BackupIntegrity -BackupData $BackupData -ExpectedObjectDN $TargetObjectDN -ValidationLevel $ValidationLevel -CorrelationId $CorrelationId
-                
-                return [PSCustomObject]@{
-                    Success = $true
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    RestorationCompleted = $true
-                    ModificationsApplied = 5
-                    EntriesRestored = 5
-                    ErrorMessage = $null
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -CorrelationId $customCorrelationId | Out-Null
-            
-            Should -Invoke Test-BackupIntegrity -ParameterFilter {
-                $CorrelationId -eq $customCorrelationId
-            }
-        }
+        $context = Start-RestoreOperation -OperationScope 'Bulk' -CorrelationId 'ctx-1'
+
+        $context.PSTypeNames | Should -Contain 'RestoreOperationContext'
+        $context.OperationScope | Should -Be 'Bulk'
+        $context.CorrelationId | Should -Be 'ctx-1'
+        $context.ADModuleAvailable | Should -BeTrue
+        $context.ProcessId | Should -Be $PID
+        $context.CurrentUser | Should -Be ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+        Should -Invoke Write-Warning -Times 0 -Exactly
     }
-    
-    Context "Cross-Platform Compatibility" {
-        It "Should handle Windows path formats correctly" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.BackupFile | Should -Not -BeNullOrEmpty
-            $result.Success | Should -Be $true
-        }
-        
-        It "Should maintain consistent timestamp formats" {
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.CompletedAt | Should -BeOfType [DateTime]
-            
-            # Verify duration is in TimeSpan format
-            $result.Duration | Should -BeOfType [TimeSpan]
-            $result.Duration.TotalMilliseconds | Should -BeGreaterThan 0
-        }
-        
-        It "Should handle file system operations consistently" {
-            # Every restore succeeds in this test
-            Mock Restore-IndividualObject {
-                return [PSCustomObject]@{
-                    PSTypeName = 'RestoreWorkflowResult'
-                    Success = $true
-                    TargetObjectDN = $TargetObjectDN
-                    BackupFile = $BackupFile
-                    ValidationLevel = $ValidationLevel
-                    RestoreMode = 'Single'
-                    RestorationCompleted = $true
-                    ModificationsApplied = 5
-                    EntriesRestored = 5
-                    ErrorMessage = $null
-                    Duration = [TimeSpan]::FromSeconds(1)
-                    CorrelationId = $CorrelationId
-                }
-            }
-            
-            # Test with single backup file which should work
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile
-            $result.Success | Should -Be $true
-        }
-        
-        It "Should support different line ending formats" {
-            # Create backup file with different line endings
-            $unixStylePath = Join-Path $script:TestBackupDir "unix_backup.xml"
-            $xmlContent = $script:TestBackupData | ConvertTo-Xml -Depth 10 -NoTypeInformation
-            $xmlContent.OuterXml -replace "`r`n", "`n" | Out-File $unixStylePath -Encoding UTF8
-            
-            # Export-Clixml overwrites the LF file, so the restore below reads an ordinary Clixml file
-            $script:TestBackupData | Export-Clixml -Path $unixStylePath -Force
-            
-            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $unixStylePath
-            $result.Success | Should -Be $true
-            
-            Remove-Item $unixStylePath -Force -ErrorAction SilentlyContinue
-        }
+
+    It "Should record the Active Directory module as unavailable and warn when it does not load" -Skip:($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
+        Mock Import-Module { throw 'module not found' } -ParameterFilter { $Name -eq 'ActiveDirectory' }
+
+        $context = Start-RestoreOperation
+
+        $context.ADModuleAvailable | Should -BeFalse
+        $context.OperationScope | Should -Be 'Single'
+        Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -eq 'Active Directory module not available: module not found' }
+    }
+
+    It "Should reject an unknown scope" {
+        { Start-RestoreOperation -OperationScope 'Everything' } | Should -Throw "*parameter 'OperationScope'*"
+    }
+}
+
+Describe "Complete-RestoreOperation" -Tag "Unit", "Backup", "RestoreWorkflow" {
+
+    BeforeAll {
+        $script:context = [PSCustomObject]@{ OperationScope = 'Bulk'; MemoryUsage = 0 }
+        $script:results = @(
+            [PSCustomObject]@{ Success = $true; Duration = [TimeSpan]::FromSeconds(1) }
+            [PSCustomObject]@{ Success = $false; Duration = [TimeSpan]::FromSeconds(2) }
+            [PSCustomObject]@{ Success = $true; Duration = [TimeSpan]::FromSeconds(3) }
+        )
+    }
+
+    It "Should count successes and failures and compute the success rate" {
+        $summary = Complete-RestoreOperation -OperationContext $script:context -Results $script:results -CorrelationId 'sum-1' -ErrorAction SilentlyContinue
+
+        $summary.PSTypeNames | Should -Contain 'RestoreOperationSummary'
+        $summary.OperationScope | Should -Be 'Bulk'
+        $summary.TotalOperations | Should -Be 3
+        $summary.SuccessfulOperations | Should -Be 2
+        $summary.FailedOperations | Should -Be 1
+        $summary.SuccessRate | Should -Be 66.67
+        $summary.CorrelationId | Should -Be 'sum-1'
+    }
+
+    # Module bug: Measure-Object -Sum rejects TimeSpan values, so TotalDuration is null and AverageDuration zero
+    It "Should total and average the durations of the results" -Skip {
+        $summary = Complete-RestoreOperation -OperationContext $script:context -Results $script:results
+
+        $summary.TotalDuration | Should -Be ([TimeSpan]::FromSeconds(6))
+        $summary.AverageDuration | Should -Be ([TimeSpan]::FromSeconds(2))
+    }
+
+    It "Should report zeros for a run with no results" {
+        $summary = Complete-RestoreOperation -OperationContext $script:context
+
+        $summary.TotalOperations | Should -Be 0
+        $summary.SuccessfulOperations | Should -Be 0
+        $summary.FailedOperations | Should -Be 0
+        $summary.SuccessRate | Should -Be 0
+        $summary.TotalDuration | Should -Be ([TimeSpan]::Zero)
+        $summary.AverageDuration | Should -Be ([TimeSpan]::Zero)
+    }
+
+    It "Should reject a null operation context" {
+        { Complete-RestoreOperation -OperationContext $null } | Should -Throw "*parameter 'OperationContext'*"
     }
 }

@@ -1,4 +1,4 @@
-﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
 <#
@@ -52,15 +52,15 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
 
     Context 'Parameter validation' {
         It 'Rejects an empty ObjectDN' {
-            { New-ACLBackup -ObjectDN '' -ACL $script:acl -BackupPath $script:backupDir } | Should -Throw
+            { New-ACLBackup -ObjectDN '' -ACL $script:acl -BackupPath $script:backupDir } | Should -Throw -ExpectedMessage "*Cannot validate argument on parameter 'ObjectDN'*"
         }
 
         It 'Rejects a null ACL' {
-            { New-ACLBackup -ObjectDN $script:dn -ACL $null -BackupPath $script:backupDir } | Should -Throw
+            { New-ACLBackup -ObjectDN $script:dn -ACL $null -BackupPath $script:backupDir } | Should -Throw -ExpectedMessage "*Cannot validate argument on parameter 'ACL'*"
         }
 
         It 'Rejects an empty BackupPath' {
-            { New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath '' } | Should -Throw
+            { New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath '' } | Should -Throw -ExpectedMessage "*Cannot validate argument on parameter 'BackupPath'*"
         }
 
         It 'Throws for a whitespace ObjectDN and writes nothing' {
@@ -94,7 +94,7 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             $data.CorrelationId | Should -Be 'bk-1'
             $data.BackupMethod | Should -Be 'New-ACLBackup'
             $data.UserContext | Should -Be $env:USERNAME
-            [datetime]::Parse($data.BackupDate) | Should -BeOfType [datetime]
+            $data.BackupDate | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
         }
 
         It 'Trims the DN before using it' {

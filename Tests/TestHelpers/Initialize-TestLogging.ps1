@@ -22,13 +22,14 @@ $loggingFiles = @(
     "Initialize-LoggingSystem.ps1"
 )
 
+# A missing file or a failed initialization stops the caller's BeforeAll. A warning here let the
+# tests run against whatever logger happened to be loaded and pass for the wrong reason.
 foreach ($file in $loggingFiles) {
     $filePath = Join-Path $loggingRoot $file
-    if (Test-Path $filePath) {
-        . $filePath
-    } else {
-        Write-Warning "Could not find logging file: $filePath"
+    if (-not (Test-Path $filePath)) {
+        Write-Error "Could not find logging file: $filePath" -ErrorAction Stop
     }
+    . $filePath
 }
 
 # Initialize logging system with test defaults
@@ -63,11 +64,9 @@ try {
     }
     
     # Initialize the logging system (only needs LogLevel and SuppressConsoleOutput)
-    if (Get-Command Initialize-LoggingSystem -ErrorAction SilentlyContinue) {
-        Initialize-LoggingSystem -LogLevel "Debug" -SuppressConsoleOutput
-    }
-    
+    Initialize-LoggingSystem -LogLevel "Debug" -SuppressConsoleOutput -ErrorAction Stop
+
     Write-Verbose "Test logging initialized to: $testLogFile"
 } catch {
-    Write-Warning "Failed to initialize test logging system: $($_.Exception.Message)"
+    Write-Error "Failed to initialize test logging system: $($_.Exception.Message)" -ErrorAction Stop
 }

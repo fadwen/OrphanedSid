@@ -18,18 +18,20 @@
     Provides safe mock implementations and test data generation.
 #>
 
-# Stub logger: dot-sourcing this file replaces any Write-StructuredLog already defined in the
-# caller's scope with one that writes to the verbose stream only
-function Write-StructuredLog {
-    param(
-        [string]$Message,
-        [string]$Level = 'Information',
-        [string]$CorrelationId,
-        [string]$Component,
-        [hashtable]$Data,
-        [hashtable]$Details
-    )
-    Write-Verbose "[$Level] $Message - CorrelationId: $CorrelationId"
+# Stub logger, defined only when no Write-StructuredLog exists yet. Unguarded, dot-sourcing this file
+# replaced a real logger the caller had already loaded, so tests of logging passed against the stub.
+if (-not (Get-Command -Name Write-StructuredLog -ErrorAction SilentlyContinue)) {
+    function Write-StructuredLog {
+        param(
+            [string]$Message,
+            [string]$Level = 'Information',
+            [string]$CorrelationId,
+            [string]$Component,
+            [hashtable]$Data,
+            [hashtable]$Details
+        )
+        Write-Verbose "[$Level] $Message - CorrelationId: $CorrelationId"
+    }
 }
 
 function New-TestBackupMetadata {

@@ -10,30 +10,30 @@ function Get-MaliciousInputTestCases {
     
     $testCases = @{
         CommandInjection = @(
-            @{ Input = 'OU=Test & net user hacker /add'; ShouldBlock = $true; Description = 'Command injection with net user' }
-            @{ Input = 'OU=Test | powershell -Command "Remove-Item C:\*"'; ShouldBlock = $true; Description = 'PowerShell command injection' }
-            @{ Input = 'OU=Test ; Start-Process calc.exe'; ShouldBlock = $true; Description = 'Process start injection' }
-            @{ Input = 'OU=Test && echo malicious'; ShouldBlock = $true; Description = 'Command chaining injection' }
-            @{ Input = 'OU=Test `$(Invoke-Expression "Get-Process")'; ShouldBlock = $true; Description = 'PowerShell subexpression injection' }
+            @{ TestInput = 'OU=Test & net user hacker /add'; ShouldBlock = $true; Description = 'Command injection with net user' }
+            @{ TestInput = 'OU=Test | powershell -Command "Remove-Item C:\*"'; ShouldBlock = $true; Description = 'PowerShell command injection' }
+            @{ TestInput = 'OU=Test ; Start-Process calc.exe'; ShouldBlock = $true; Description = 'Process start injection' }
+            @{ TestInput = 'OU=Test && echo malicious'; ShouldBlock = $true; Description = 'Command chaining injection' }
+            @{ TestInput = 'OU=Test `$(Invoke-Expression "Get-Process")'; ShouldBlock = $true; Description = 'PowerShell subexpression injection' }
         )
         
         ScriptInjection = @(
-            @{ Input = 'OU=Test"; Invoke-Expression "Remove-Item C:\*"'; ShouldBlock = $true; Description = 'Script block injection' }
-            @{ Input = 'OU=Test`r`nInvoke-Command { Get-Process }'; ShouldBlock = $true; Description = 'Multi-line script injection' }
-            @{ Input = 'OU=Test -EncodedCommand UwB0AGEAcgB0AC0AUAByAG8AYwBlAHMAcwAgAGMAYQBsAGMALgBlAHgAZQA='; ShouldBlock = $true; Description = 'Encoded command injection' }
+            @{ TestInput = 'OU=Test"; Invoke-Expression "Remove-Item C:\*"'; ShouldBlock = $true; Description = 'Script block injection' }
+            @{ TestInput = 'OU=Test`r`nInvoke-Command { Get-Process }'; ShouldBlock = $true; Description = 'Multi-line script injection' }
+            @{ TestInput = 'OU=Test -EncodedCommand UwB0AGEAcgB0AC0AUAByAG8AYwBlAHMAcwAgAGMAYQBsAGMALgBlAHgAZQA='; ShouldBlock = $true; Description = 'Encoded command injection' }
         )
         
         PathTraversal = @(
-            @{ Input = 'OU=Test\..\..\..\Windows\System32\config'; ShouldBlock = $true; Description = 'Windows path traversal' }
-            @{ Input = 'OU=Test/../../../etc/passwd'; ShouldBlock = $true; Description = 'Unix path traversal' }
-            @{ Input = 'OU=Test\..\..\..\..\secrets.txt'; ShouldBlock = $true; Description = 'Deep path traversal' }
-            @{ Input = 'OU=Test%2e%2e%2fWindows%2fSystem32'; ShouldBlock = $true; Description = 'URL encoded path traversal' }
+            @{ TestInput = 'OU=Test\..\..\..\Windows\System32\config'; ShouldBlock = $true; Description = 'Windows path traversal' }
+            @{ TestInput = 'OU=Test/../../../etc/passwd'; ShouldBlock = $true; Description = 'Unix path traversal' }
+            @{ TestInput = 'OU=Test\..\..\..\..\secrets.txt'; ShouldBlock = $true; Description = 'Deep path traversal' }
+            @{ TestInput = 'OU=Test%2e%2e%2fWindows%2fSystem32'; ShouldBlock = $true; Description = 'URL encoded path traversal' }
         )
         
         SQLInjection = @(
-            @{ Input = "OU=Test'; DROP TABLE Users; --"; ShouldBlock = $true; Description = 'SQL injection with table drop' }
-            @{ Input = "OU=Test' OR '1'='1"; ShouldBlock = $true; Description = 'SQL injection authentication bypass' }
-            @{ Input = "OU=Test'; EXEC xp_cmdshell('net user hacker /add'); --"; ShouldBlock = $true; Description = 'SQL injection with command execution' }
+            @{ TestInput = "OU=Test'; DROP TABLE Users; --"; ShouldBlock = $true; Description = 'SQL injection with table drop' }
+            @{ TestInput = "OU=Test' OR '1'='1"; ShouldBlock = $true; Description = 'SQL injection authentication bypass' }
+            @{ TestInput = "OU=Test'; EXEC xp_cmdshell('net user hacker /add'); --"; ShouldBlock = $true; Description = 'SQL injection with command execution' }
         )
     }
     
@@ -62,7 +62,7 @@ function Test-InputForMaliciousContent {
         IsValid = $true
         RiskLevel = 'Low'
         Threats = @()
-        Input = $InputString
+        InputString = $InputString
         ValidationType = $ValidationType
     }
     

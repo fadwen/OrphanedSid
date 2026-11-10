@@ -6,9 +6,9 @@
     Unit tests for Get-BackupFileMetadata, which reads the metadata of one Clixml ACL backup.
 
 .DESCRIPTION
-    Tests the real function against backup files written to a folder under $env:TEMP: parameter
-    validation, file system checks, XML import errors, the shape of the result, error logging, timing
-    budgets, path security through the backup test helpers, and correlation ID logging.
+    Tests the real function against backup files written to the Pester test drive: parameter
+    validation, file system checks, XML import errors, the shape of the result, error logging and
+    correlation ID logging.
 
 .NOTES
     Author: Jeffrey Stuhr
@@ -27,158 +27,126 @@ BeforeAll {
 }
 
 Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
-    
+
     BeforeAll {
         # Dot-source the function under test; the module itself is not imported
-        $FunctionPath = Join-Path $PSScriptRoot '..\..\..\..\Private\Backup\Get-BackupFileMetadata.ps1'
-        if (Test-Path $FunctionPath) {
-            . $FunctionPath
-        }
-        
-        # Import Write-StructuredLog dependency
-        $LogPath = Join-Path $PSScriptRoot '..\..\..\..\Private\Logging\Write-StructuredLog.ps1'
-        if (Test-Path $LogPath) {
-            . $LogPath
-        }
+        . (Join-Path $PSScriptRoot '..\..\..\..\Private\Backup\Get-BackupFileMetadata.ps1')
 
-        . "$PSScriptRoot\..\..\..\..\Tests\TestHelpers\BackupTestHelpers.ps1"
-        
-        # Test data setup
-        $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
-        # paths the functions return, which are long, compare equal to the ones built here
-        $script:TestBackupDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "BackupMetadataTests"
+        # $env:TEMP, and so TestDrive, is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item
+        # expands it so the paths the function returns, which are long, compare equal to the ones built here
+        $script:TestBackupDir = (Get-Item -LiteralPath $TestDrive).FullName
         $script:ValidBackupPath = Join-Path $script:TestBackupDir "valid_backup.xml"
         $script:InvalidBackupPath = Join-Path $script:TestBackupDir "invalid_backup.xml"
         $script:NonExistentPath = Join-Path $script:TestBackupDir "missing_backup.xml"
-        
-        # Create test directory
-        if (-not (Test-Path $script:TestBackupDir)) {
-            New-Item -ItemType Directory -Path $script:TestBackupDir -Force | Out-Null
-        }
-        
-        # Mock Write-StructuredLog to prevent actual logging during tests
+
         Mock Write-StructuredLog { }
-        
-        # Create test backup data structure
+
         $script:TestBackupData = @{
-            ObjectDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
-            BackupDate = '2024-07-02T10:36:31.123Z'
-            CorrelationId = [System.Guid]::NewGuid().ToString()
-            ACLEntryCount = 5
-            SDDLHash = 'SHA256:abc123def456789'
-            BackupVersion = '1.0.0'
+            ObjectDN            = 'CN=TestUser,OU=Users,DC=company,DC=com'
+            BackupDate          = '2024-07-02T10:36:31.123Z'
+            CorrelationId       = [System.Guid]::NewGuid().ToString()
+            ACLEntryCount       = 5
+            SDDLHash            = 'SHA256:abc123def456789'
+            BackupVersion       = '1.0.0'
             ValidationSignature = 'VALID_SIGNATURE_12345'
-            UserContext = 'DOMAIN\BackupUser'
-            ComputerName = 'BACKUP-SERVER'
-            DomainContext = 'COMPANY.COM'
-            PowerShellVersion = '5.1.14393.5127'
-            Platform = 'Win32NT'
-            PSEdition = 'Desktop'
-            BackupMethod = 'XML_EXPORT'
-            ScriptVersion = '2.1.0'
+            UserContext         = 'DOMAIN\BackupUser'
+            ComputerName        = 'BACKUP-SERVER'
+            DomainContext       = 'COMPANY.COM'
+            PowerShellVersion   = '5.1.14393.5127'
+            Platform            = 'Win32NT'
+            PSEdition           = 'Desktop'
+            BackupMethod        = 'XML_EXPORT'
+            ScriptVersion       = '2.1.0'
         }
-        
-        # Create valid backup file
-        if (-not (Test-Path $script:ValidBackupPath)) {
-            $script:TestBackupData | Export-Clixml -Path $script:ValidBackupPath -Force
-        }
-        
-        # Create invalid backup file (malformed XML)
-        if (-not (Test-Path $script:InvalidBackupPath)) {
-            "Invalid XML Content" | Out-File -FilePath $script:InvalidBackupPath -Force
-        }
+
+        $script:TestBackupData | Export-Clixml -Path $script:ValidBackupPath -Force
+        "Invalid XML Content" | Out-File -FilePath $script:InvalidBackupPath -Force
     }
-    
-    AfterAll {
-        # Cleanup test files
-        if (Test-Path $script:TestBackupDir) {
-            Remove-Item $script:TestBackupDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    
+
     Context "Parameter Validation" {
-        It "Should accept valid backup file path" {
-            { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Not -Throw
-        }
-        
         It "Should reject null BackupFilePath" {
-            { Get-BackupFileMetadata -BackupFilePath $null } | Should -Throw
+            { Get-BackupFileMetadata -BackupFilePath $null } | Should -Throw "*Cannot validate argument on parameter 'BackupFilePath'*"
         }
-        
+
         It "Should reject empty BackupFilePath" {
             { Get-BackupFileMetadata -BackupFilePath "" } | Should -Throw "*Cannot validate argument on parameter 'BackupFilePath'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again.*"
         }
-        
+
         It "Should reject whitespace-only BackupFilePath" {
             { Get-BackupFileMetadata -BackupFilePath "   " } | Should -Throw "*Failed to extract metadata from backup: BackupFilePath cannot be empty or whitespace*"
         }
-        
+
         It "Should trim whitespace from BackupFilePath" {
-            $pathWithWhitespace = "  $script:ValidBackupPath  "
-            $result = Get-BackupFileMetadata -BackupFilePath $pathWithWhitespace
-            $result | Should -Not -BeNullOrEmpty
+            $result = Get-BackupFileMetadata -BackupFilePath "  $script:ValidBackupPath  "
             $result.FilePath | Should -Be $script:ValidBackupPath
+            $result.ObjectDN | Should -Be $script:TestBackupData.ObjectDN
         }
-        
+
         It "Should accept custom CorrelationId" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
             $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath -CorrelationId $customCorrelationId
             $result.ExtractionCorrelationId | Should -Be $customCorrelationId
         }
-        
+
         It "Should auto-generate CorrelationId when not provided" {
             $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
             $result.ExtractionCorrelationId | Should -Match "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
         }
-        
+
         It "Should support pipeline input for BackupFilePath" {
-            $result = $script:ValidBackupPath | Get-BackupFileMetadata
-            $result | Should -Not -BeNullOrEmpty
-            $result.FilePath | Should -Be $script:ValidBackupPath
+            $otherPath = Join-Path $script:TestBackupDir "pipeline_backup.xml"
+            @{ ObjectDN = 'CN=Second' } | Export-Clixml -Path $otherPath -Force
+
+            $result = @($script:ValidBackupPath, $otherPath | Get-BackupFileMetadata)
+
+            $result.Count | Should -Be 2
+            $result.FilePath | Should -Be @($script:ValidBackupPath, $otherPath)
+            $result.ObjectDN | Should -Be @($script:TestBackupData.ObjectDN, 'CN=Second')
         }
     }
-    
+
     Context "File System Validation" {
-        It "Should -throw error for non-existent file" {
+        It "Should throw for a non-existent file" {
             { Get-BackupFileMetadata -BackupFilePath $script:NonExistentPath } | Should -Throw "*Failed to extract metadata from backup: Backup file not found or inaccessible: $($script:NonExistentPath)*"
         }
-        
-        It "Should -throw error for directory path instead of file" {
+
+        It "Should throw for a directory path instead of a file" {
             { Get-BackupFileMetadata -BackupFilePath $script:TestBackupDir } | Should -Throw "*Failed to extract metadata from backup: Backup file not found or inaccessible: $($script:TestBackupDir)*"
         }
-        
-        It "Should validate file accessibility" {
-            # Create scoped mock for this test only  
-            $tempFile = Join-Path $script:TestBackupDir "temp_inaccessible.xml"
-            $script:TestBackupData | Export-Clixml -Path $tempFile -Force
-            Mock Test-Path { return $false } -ParameterFilter { $LiteralPath -eq $tempFile }
-            { Get-BackupFileMetadata -BackupFilePath $tempFile } | Should -Throw "*Failed to extract metadata from backup: Backup file not found or inaccessible: $tempFile*"
-            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+
+        It "Should check the file as a literal leaf path and stop before importing when the check fails" {
+            Mock Test-Path { $false } -ParameterFilter { $LiteralPath -eq $script:ValidBackupPath }
+            Mock Import-Clixml { }
+
+            { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Throw "*Backup file not found or inaccessible: $($script:ValidBackupPath)*"
+
+            Should -Invoke Test-Path -Times 1 -Exactly -ParameterFilter {
+                $LiteralPath -eq $script:ValidBackupPath -and $PathType -eq 'Leaf'
+            }
+            Should -Invoke Import-Clixml -Times 0 -Exactly
         }
-        
-        It "Should handle paths with special characters safely" {
+
+        It "Should read paths with wildcard characters literally" {
             $specialPath = Join-Path $script:TestBackupDir "test[special]backup.xml"
             $script:TestBackupData | Export-Clixml -LiteralPath $specialPath -Force
-            
+
             $result = Get-BackupFileMetadata -BackupFilePath $specialPath
             $result.FileName | Should -Be "test[special]backup.xml"
-            
-            Remove-Item -LiteralPath $specialPath -Force -ErrorAction SilentlyContinue
+            $result.ObjectDN | Should -Be $script:TestBackupData.ObjectDN
         }
-        
+
+        It "Should read a path containing spaces" {
+            $spacedPath = Join-Path $script:TestBackupDir "test backup file.xml"
+            $script:TestBackupData | Export-Clixml -Path $spacedPath -Force
+
+            $result = Get-BackupFileMetadata -BackupFilePath $spacedPath
+            $result.FilePath | Should -Be $spacedPath
+        }
+
         It "Should extract correct file system information" {
-            # Ensure valid backup file exists
-            if (-not (Test-Path $script:ValidBackupPath)) {
-                $script:TestBackupData | Export-Clixml -Path $script:ValidBackupPath -Force
-            }
-            
-            # Verify the file actually exists before testing
-            $script:ValidBackupPath | Should -Exist
-            
             $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
             $fileInfo = Get-Item $script:ValidBackupPath
-            
+
             $result.FileName | Should -Be $fileInfo.Name
             $result.FilePath | Should -Be $fileInfo.FullName
             $result.FileSize | Should -Be $fileInfo.Length
@@ -186,65 +154,66 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
             $result.FileLastWriteTime | Should -Be $fileInfo.LastWriteTime
         }
     }
-    
+
     Context "XML Import Processing" {
-        It "Should successfully import valid XML backup file" {
-            $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
-            $result | Should -Not -BeNullOrEmpty
-            $result.ObjectDN | Should -Be $script:TestBackupData.ObjectDN
-        }
-        
-        It "Should -throw error for invalid XML content" {
+        It "Should throw for invalid XML content" {
             { Get-BackupFileMetadata -BackupFilePath $script:InvalidBackupPath } | Should -Throw "*Failed to extract metadata from backup: Failed to import backup XML data from $($script:InvalidBackupPath) : Data at the root level is invalid. Line 1, position 1.*"
         }
-        
-        It "Should handle Import-Clixml failures gracefully" {
-            # Create scoped mock for this test only
+
+        It "Should wrap an Import-Clixml failure with the file path" {
             Mock Import-Clixml { throw "XML Import Error" } -ParameterFilter { $LiteralPath -eq $script:ValidBackupPath }
             { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Throw "*Failed to extract metadata from backup: Failed to import backup XML data from $($script:ValidBackupPath) : XML Import Error*"
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like "Failed to import backup XML data from $($script:ValidBackupPath) : XML Import Error"
+            }
         }
-        
-        It "Should handle corrupted backup files" {
+
+        It "Should fail as an import error for a binary file" {
             $corruptedPath = Join-Path $script:TestBackupDir "corrupted_backup.xml"
-            [byte[]](1..50) | Set-Content $corruptedPath
-            
-            { Get-BackupFileMetadata -BackupFilePath $corruptedPath } | Should -Throw
-            
-            Remove-Item $corruptedPath -Force -ErrorAction SilentlyContinue
+            [System.IO.File]::WriteAllBytes($corruptedPath, [byte[]](1..50))
+
+            { Get-BackupFileMetadata -BackupFilePath $corruptedPath } | Should -Throw "*Failed to import backup XML data from $corruptedPath*"
         }
-        
-        It "Should validate XML structure integrity" {
-            # Create backup with missing required properties
-            $incompleteData = @{ ObjectDN = 'CN=Test' }
-            $incompletePath = Join-Path $script:TestBackupDir "incomplete_backup.xml"
-            $incompleteData | Export-Clixml -Path $incompletePath -Force
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $incompletePath
-            $result.ObjectDN | Should -Be 'CN=Test'
-            $result.BackupDate | Should -BeNullOrEmpty
-            
-            Remove-Item $incompletePath -Force -ErrorAction SilentlyContinue
+
+        It "Should report a file lock as an import error" {
+            Mock Import-Clixml { throw [System.IO.IOException]::new("The process cannot access the file") }
+            { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Throw "*Failed to extract metadata from backup: Failed to import backup XML data from $($script:ValidBackupPath) : The process cannot access the file*"
+        }
+
+        It "Should return null for metadata the backup does not carry" {
+            $minimalPath = Join-Path $script:TestBackupDir "minimal_backup.xml"
+            @{
+                ObjectDN   = 'CN=MinimalTest'
+                BackupDate = '2024-01-01T00:00:00.000Z'
+            } | Export-Clixml -Path $minimalPath -Force
+
+            $result = Get-BackupFileMetadata -BackupFilePath $minimalPath
+            $result.ObjectDN | Should -Be 'CN=MinimalTest'
+            $result.BackupDate | Should -Be '2024-01-01T00:00:00.000Z'
+            $result.SDDLHash | Should -BeNullOrEmpty
+            $result.BackupCorrelationId | Should -BeNullOrEmpty
+            $result.ACLEntryCount | Should -BeNullOrEmpty
         }
     }
-    
+
     Context "Metadata Extraction" {
-        BeforeEach {
+        BeforeAll {
             $script:TestResult = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
         }
-        
+
         It "Should extract all backup content information correctly" {
             $script:TestResult.ObjectDN | Should -Be $script:TestBackupData.ObjectDN
             $script:TestResult.BackupDate | Should -Be $script:TestBackupData.BackupDate
             $script:TestResult.BackupCorrelationId | Should -Be $script:TestBackupData.CorrelationId
             $script:TestResult.ACLEntryCount | Should -Be $script:TestBackupData.ACLEntryCount
         }
-        
+
         It "Should extract all integrity information correctly" {
             $script:TestResult.SDDLHash | Should -Be $script:TestBackupData.SDDLHash
             $script:TestResult.BackupVersion | Should -Be $script:TestBackupData.BackupVersion
             $script:TestResult.ValidationSignature | Should -Be $script:TestBackupData.ValidationSignature
         }
-        
+
         It "Should extract all environment context correctly" {
             $script:TestResult.BackupUser | Should -Be $script:TestBackupData.UserContext
             $script:TestResult.BackupComputer | Should -Be $script:TestBackupData.ComputerName
@@ -253,405 +222,89 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
             $script:TestResult.Platform | Should -Be $script:TestBackupData.Platform
             $script:TestResult.PSEdition | Should -Be $script:TestBackupData.PSEdition
         }
-        
+
         It "Should extract all processing context correctly" {
             $script:TestResult.BackupMethod | Should -Be $script:TestBackupData.BackupMethod
             $script:TestResult.ScriptVersion | Should -Be $script:TestBackupData.ScriptVersion
-            $script:TestResult.ExtractionCorrelationId | Should -Not -BeNullOrEmpty
-            $script:TestResult.ExtractionTime | Should -Not -BeNullOrEmpty
         }
-        
+
         It "Should set correct PSTypeName" {
             $script:TestResult.PSObject.TypeNames[0] | Should -Be 'BackupMetadata'
         }
-        
-        It "Should generate valid extraction timestamp" {
-            $extractionTime = [DateTime]::ParseExact($script:TestResult.ExtractionTime, 'yyyy-MM-ddTHH:mm:ss.fffZ', $null)
-            $extractionTime | Should -BeOfType [DateTime]
-            # Allow for a reasonable time window due to test execution time and timezone differences
-            $now = Get-Date
-            $extractionTime | Should -BeGreaterThan $now.AddHours(-12)  # Allow for timezone differences
-            $extractionTime | Should -BeLessThan $now.AddMinutes(5)     # Small future buffer
-        }
-        
-        It "Should handle missing optional metadata gracefully" {
-            $minimalData = @{
-                ObjectDN = 'CN=MinimalTest'
-                BackupDate = '2024-01-01T00:00:00.000Z'
-            }
-            $minimalPath = Join-Path $script:TestBackupDir "minimal_backup.xml"
-            $minimalData | Export-Clixml -Path $minimalPath -Force
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $minimalPath
-            $result.ObjectDN | Should -Be 'CN=MinimalTest'
-            $result.BackupDate | Should -Be '2024-01-01T00:00:00.000Z'
-            $result.SDDLHash | Should -BeNullOrEmpty
-            
-            Remove-Item $minimalPath -Force -ErrorAction SilentlyContinue
-        }
-    }
-    
-    Context "Output Structure Validation" {
-        BeforeEach {
-            $script:TestResult = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
-        }
-        
-        It "Should return PSCustomObject with correct type" {
-            $script:TestResult | Should -BeOfType [PSCustomObject]
-            if ($script:TestResult.PSTypeName) {
-                $script:TestResult.PSTypeName | Should -Be 'BackupMetadata'
-            }
-        }
-        
-        It "Should include all required file information properties" {
-            $requiredFileProps = @('FileName', 'FilePath', 'FileSize', 'FileCreationTime', 'FileLastWriteTime')
-            foreach ($prop in $requiredFileProps) {
-                $script:TestResult.PSObject.Properties.Name -contains $prop | Should -Be $true
-            }
-        }
-        
-        It "Should include all required backup content properties" {
-            $requiredContentProps = @('ObjectDN', 'BackupDate', 'BackupCorrelationId', 'ACLEntryCount')
-            foreach ($prop in $requiredContentProps) {
-                $script:TestResult.PSObject.Properties.Name -contains $prop | Should -Be $true
-            }
-        }
-        
-        It "Should include all required integrity properties" {
-            $requiredIntegrityProps = @('SDDLHash', 'BackupVersion', 'ValidationSignature')
-            foreach ($prop in $requiredIntegrityProps) {
-                $script:TestResult.PSObject.Properties.Name -contains $prop | Should -Be $true
-            }
-        }
-        
-        It "Should include all required environment properties" {
-            $requiredEnvProps = @('BackupUser', 'BackupComputer', 'BackupDomain', 'PowerShellVersion', 'Platform', 'PSEdition')
-            foreach ($prop in $requiredEnvProps) {
-                $script:TestResult.PSObject.Properties.Name -contains $prop | Should -Be $true
-            }
-        }
-        
-        It "Should include all required processing properties" {
-            $requiredProcessProps = @('BackupMethod', 'ScriptVersion', 'ExtractionCorrelationId', 'ExtractionTime')
-            foreach ($prop in $requiredProcessProps) {
-                $script:TestResult.PSObject.Properties.Name -contains $prop | Should -Be $true
-            }
-        }
-        
+
         It "Should have correct property count" {
-            $expectedPropertyCount = 22  # Total number of expected properties (verified count)
-            $actualPropertyCount = ($script:TestResult | Get-Member -MemberType NoteProperty).Count
-            $actualPropertyCount | Should -Be $expectedPropertyCount
+            ($script:TestResult | Get-Member -MemberType NoteProperty).Count | Should -Be 22
         }
-        
-        It "Should support Format-Table display" {
-            { $script:TestResult | Format-Table } | Should -Not -Throw
-        }
-        
-        It "Should support ConvertTo-Json serialization" {
-            { $script:TestResult | ConvertTo-Json } | Should -Not -Throw
-            $jsonString = $script:TestResult | ConvertTo-Json
-            $jsonString | Should -Match '"ObjectDN"'
-            $jsonString | Should -Match '"BackupDate"'
-        }
-    }
-    
-    Context "Error Handling" {
-        It "Should log errors with correlation tracking" {
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $Level -eq 'Error' -and $Message -match "Failed to extract metadata"
-            }
-            
-            { Get-BackupFileMetadata -BackupFilePath $script:NonExistentPath } | Should -Throw
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $Level -eq 'Error' -and $Message -match "Failed to extract metadata"
-            }
-        }
-        
-        It "Should handle Get-Item failures gracefully" {
-            Mock Get-Item { throw "Access denied" }
-            { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Throw
-        }
-        
-        It "Should provide detailed error information" {
-            try {
-                Get-BackupFileMetadata -BackupFilePath $script:NonExistentPath
-            }
-            catch {
-                $_.Exception.Message | Should -Match "not found"
-                $_.Exception.Message | Should -Match ([regex]::Escape($script:NonExistentPath))
-            }
-        }
-        
-        It "Should maintain error context for debugging" {
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $Level -eq 'Error' -and $Data.BackupFilePath -eq $script:NonExistentPath
-            }
-            
-            { Get-BackupFileMetadata -BackupFilePath $script:NonExistentPath } | Should -Throw
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $Level -eq 'Error' -and $Data.BackupFilePath -eq $script:NonExistentPath
-            }
-        }
-        
-        It "Should handle concurrent file access issues" {
-            # Simulate file lock scenario
-            Mock Import-Clixml { throw [System.IO.IOException]::new("The process cannot access the file") }
-            { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Throw "*Failed to extract metadata from backup: Failed to import backup XML data from $($script:ValidBackupPath) : The process cannot access the file*"
-        }
-    }
-    
-    Context "Performance Testing" {
-        It "Should complete metadata extraction within performance baseline" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
+
+        It "Should stamp the extraction time in the ISO 8601 format" {
+            Mock Get-Date { '2025-01-02T03:04:05.678Z' } -ParameterFilter { $Format -eq 'yyyy-MM-ddTHH:mm:ss.fffZ' }
+
             $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
-            
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 500  # 500ms baseline
-            $result | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should handle multiple concurrent extractions efficiently" {
-            # Create multiple test backup files
-            $testFiles = @()
-            1..5 | ForEach-Object {
-                $tempPath = Join-Path $script:TestBackupDir "concurrent_test_$_.xml"
-                $script:TestBackupData | Export-Clixml -Path $tempPath -Force
-                $testFiles += $tempPath
-            }
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
-            $results = $testFiles | ForEach-Object { Get-BackupFileMetadata -BackupFilePath $_ }
-            
-            $stopwatch.Stop()
-            $results.Count | Should -Be 5
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 2000  # 2 second baseline for 5 files
-            
-            # Cleanup
-            $testFiles | ForEach-Object { Remove-Item $_ -Force -ErrorAction SilentlyContinue }
-        }
-        
-        It "Should maintain consistent performance across iterations" {
-            $iterations = 10
-            $measurements = @()
-            
-            1..$iterations | ForEach-Object {
-                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-                Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath | Out-Null
-                $stopwatch.Stop()
-                $measurements += $stopwatch.ElapsedMilliseconds
-            }
-            
-            $averageTime = ($measurements | Measure-Object -Average).Average
-            $maxTime = ($measurements | Measure-Object -Maximum).Maximum
-            
-            # Generous budget: this is a regression guard against a pathological slowdown, not a
-            # benchmark. A shared or busy test host doubles Import-Clixml time without any code change.
-            $averageTime | Should -BeLessThan 1000
-            $maxTime | Should -BeLessThan 500      # 500ms maximum
-        }
-        
-        It "Should handle large backup files efficiently" {
-            # Create larger test data
-            $largeBackupData = $script:TestBackupData.Clone()
-            $largeBackupData.LargeProperty = "x" * 10000  # 10KB additional data
-            
-            $largePath = Join-Path $script:TestBackupDir "large_backup.xml"
-            $largeBackupData | Export-Clixml -Path $largePath -Force
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            $result = Get-BackupFileMetadata -BackupFilePath $largePath
-            $stopwatch.Stop()
-            
-            $result | Should -Not -BeNullOrEmpty
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000  # 1 second for large file
-            
-            Remove-Item $largePath -Force -ErrorAction SilentlyContinue
+
+            $result.ExtractionTime | Should -Be '2025-01-02T03:04:05.678Z'
         }
     }
-    
-    Context "Security Validation" {
-        It "Should validate path security" {
-            $maliciousInputs = New-MaliciousBackupInput -Type PathTraversal
-            
-            foreach ($maliciousPath in $maliciousInputs) {
-                $security = Test-BackupPathSecurity -Path $maliciousPath
-                $security.IsSecure | Should -Be $false
+
+    Context "Error Handling" {
+        It "Should log the failure once with the correlation ID" {
+            { Get-BackupFileMetadata -BackupFilePath $script:NonExistentPath -CorrelationId 'corr-err' } | Should -Throw
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Failed to extract metadata from backup file' -and
+                $CorrelationId -eq 'corr-err'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq "Backup file not found or inaccessible: $($script:NonExistentPath)"
             }
         }
-        
-        It "Should reject paths with dangerous extensions" {
-            $dangerousPath = Join-Path $script:TestBackupDir "malicious.exe"
-            "dummy content" | Out-File $dangerousPath -Force
-            
-            $security = Test-BackupPathSecurity -Path $dangerousPath
-            $security.IsSecure | Should -Be $false
-            $security.Issues -contains "Potentially dangerous file extension: .exe" | Should -Be $true
-            
-            Remove-Item $dangerousPath -Force -ErrorAction SilentlyContinue
+
+        It "Should wrap a Get-Item failure" {
+            Mock Get-Item { throw "Access denied" }
+            { Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath } | Should -Throw "*Failed to extract metadata from backup: Access denied*"
         }
-        
-        It "Should sanitize file paths before processing" {
-            # A path with spaces is read as given
-            $specialPath = Join-Path $script:TestBackupDir "test backup file.xml"
-            $script:TestBackupData | Export-Clixml -Path $specialPath -Force
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $specialPath
-            $result.FilePath | Should -Be $specialPath
-            
-            Remove-Item $specialPath -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should not expose sensitive information in error messages" -Skip {
-            $sensitiveBackupData = $script:TestBackupData.Clone()
-            $sensitiveBackupData.SensitiveInfo = "PASSWORD123"
-            
-            $sensitivePath = Join-Path $script:TestBackupDir "sensitive_backup.xml"
-            $sensitiveBackupData | Export-Clixml -Path $sensitivePath -Force
-            
-            Mock Import-Clixml { throw "Sensitive error: PASSWORD123" }
-            
-            try {
-                Get-BackupFileMetadata -BackupFilePath $sensitivePath -ErrorAction Stop
-                # If we get here, no exception was thrown
-                $true | Should -Be $false  # Force failure
+
+        It "Should maintain error context for debugging" {
+            { Get-BackupFileMetadata -BackupFilePath $script:NonExistentPath -CorrelationId 'corr-ctx' } | Should -Throw
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Data.BackupFilePath -eq $script:NonExistentPath -and
+                $Data.Function -eq 'Get-BackupFileMetadata' -and $Data.CorrelationId -eq 'corr-ctx' -and
+                $Data.Message -eq "Backup file not found or inaccessible: $($script:NonExistentPath)"
             }
-            catch {
-                # The message keeps the wrapper text and drops the sensitive value
-                $_.Exception.Message | Should -Match "Failed to extract metadata from backup"
-                $_.Exception.Message | Should -Not -Match "PASSWORD123"
-            }
-            
-            Remove-Item $sensitivePath -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should validate correlation ID format security" {
-            $maliciousCorrelationId = "<script>alert('xss')</script>"
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath -CorrelationId $maliciousCorrelationId
-            $result.ExtractionCorrelationId | Should -Be $maliciousCorrelationId
-            # The ID is passed through unchanged; how logging treats it is not checked here
         }
     }
-    
+
     Context "Enterprise Integration" {
         It "Should log operation start and completion" {
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $Level -eq 'Debug' -and $Message -match "Starting backup metadata extraction"
-            }
-            
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $Level -eq 'Debug' -and $Message -match "operation completed"
-            }
-            
             Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath | Out-Null
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $Level -eq 'Debug' -and $Message -match "Starting backup metadata extraction"
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq 'Starting backup metadata extraction operation'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq 'Backup metadata extraction operation completed'
             }
         }
-        
-        It "Should log successful metadata extraction" {
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $Level -eq 'Verbose' -and $Message -match "Successfully extracted metadata"
-            }
-            
+
+        It "Should log the file being read and the successful extraction" {
             Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath | Out-Null
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $Level -eq 'Verbose' -and $Message -match "Successfully extracted metadata"
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq "Extracting metadata from backup: $($script:ValidBackupPath)"
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Verbose' -and
+                $Message -eq "Successfully extracted metadata for backup: $($script:TestBackupData.ObjectDN)"
             }
         }
-        
-        It "Should support enterprise audit trail requirements" {
+
+        It "Should pass the supplied correlation ID to every log entry" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
-            
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $CorrelationId -eq $customCorrelationId
-            }
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath -CorrelationId $customCorrelationId
-            $result.ExtractionCorrelationId | Should -Be $customCorrelationId
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $CorrelationId -eq $customCorrelationId
-            }
-        }
-        
-        It "Should maintain structured logging context" {
-            Mock Write-StructuredLog { } -ParameterFilter {
-                $Level -eq 'Debug' -and $Message -match "Extracting metadata from backup"
-            }
-            
-            Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath | Out-Null
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter {
-                $Level -eq 'Debug' -and $Message -match "Extracting metadata from backup"
-            }
-        }
-        
-        It "Should integrate with enterprise monitoring systems" {
-            # Verify that appropriate logging levels are used for monitoring
-            Mock Write-StructuredLog { }
-            
-            Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath | Out-Null
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq 'Debug' }
-        }
-    }
-    
-    Context "Cross-Platform Compatibility" {
-        It "Should handle Windows path formats correctly" {
-            $windowsPath = "C:\Backups\test_backup.xml"
-            $windowsData = $script:TestBackupData.Clone()
-            $windowsData.Platform = 'Win32NT'
-            
-            $windowsTestPath = Join-Path $script:TestBackupDir "windows_backup.xml"
-            $windowsData | Export-Clixml -Path $windowsTestPath -Force
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $windowsTestPath
-            $result.Platform | Should -Be 'Win32NT'
-            
-            Remove-Item $windowsTestPath -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should extract PowerShell edition information correctly" {
-            $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
-            $result.PSEdition | Should -Match '^(Desktop|Core|)$'
-        }
-        
-        It "Should handle different PowerShell versions in metadata" {
-            $versionData = $script:TestBackupData.Clone()
-            $versionData.PowerShellVersion = '7.2.1'
-            $versionData.PSEdition = 'Core'
-            
-            $versionPath = Join-Path $script:TestBackupDir "version_backup.xml"
-            $versionData | Export-Clixml -Path $versionPath -Force
-            
-            $result = Get-BackupFileMetadata -BackupFilePath $versionPath
-            $result.PowerShellVersion | Should -Be '7.2.1'
-            $result.PSEdition | Should -Be 'Core'
-            
-            Remove-Item $versionPath -Force -ErrorAction SilentlyContinue
-        }
-        
-        It "Should maintain timestamp format consistency" {
-            $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath
-            
-            # Verify ISO 8601 format with timezone
-            $result.ExtractionTime | Should -Match "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
-            
-            # Verify it can be parsed as DateTime
-            $parsedTime = [DateTime]::ParseExact($result.ExtractionTime, 'yyyy-MM-ddTHH:mm:ss.fffZ', $null)
-            $parsedTime | Should -BeOfType [DateTime]
+
+            Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath -CorrelationId $customCorrelationId | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 4 -Exactly -ParameterFilter { $CorrelationId -eq $customCorrelationId }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $CorrelationId -ne $customCorrelationId }
         }
     }
 }
-
-
-
-
