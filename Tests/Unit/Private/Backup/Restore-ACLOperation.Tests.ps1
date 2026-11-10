@@ -179,7 +179,7 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             }
         }
 
-        # Module bug: Set-ObjectACL reads $targetValidation.ErrorMessage, but Get-RestorationTarget reports
+        # Module bug (#16): Set-ObjectACL reads $targetValidation.ErrorMessage, but Get-RestorationTarget reports
         # its reasons in Issues, so the failure message never says why the target was rejected
         It "Should report the reasons Get-RestorationTarget gives for rejecting the target" -Skip {
             Mock Get-RestorationTarget {

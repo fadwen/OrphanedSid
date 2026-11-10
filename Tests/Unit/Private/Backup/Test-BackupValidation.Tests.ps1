@@ -181,7 +181,7 @@ Describe "Test-BackupValidation" -Tag "Unit", "Backup", "Validation" {
             $result.Issues[0] | Should -BeLike 'Invalid SDDL format:*'
         }
 
-        # Module bug: the SDDL checks run only when SDDL and SDDLHash have values, and the required-property
+        # Module bug (#13): the SDDL checks run only when SDDL and SDDLHash have values, and the required-property
         # check tests only that the property exists, so a backup with an empty SDDL is reported valid
         It "Should reject a backup whose SDDL and hash are empty" -Skip {
             $result = Test-BackupValidation -BackupData (New-Backup -Override @{ SDDL = $null; SDDLHash = $null }) -ValidationLevel Standard

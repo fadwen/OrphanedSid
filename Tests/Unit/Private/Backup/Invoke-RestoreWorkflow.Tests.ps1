@@ -127,7 +127,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             }
         }
 
-        # Module bug: the foreach variable $backupFile overwrites the -BackupFile parameter (names are
+        # Module bug (#17): the foreach variable $backupFile overwrites the -BackupFile parameter (names are
         # case-insensitive), so every piped DN after the first restores from the first DN's backup
         It "Should restore each distinguished name piped in" -Skip {
             $second = 'CN=Second,OU=Users,DC=company,DC=com'
@@ -439,7 +439,7 @@ Describe "Complete-RestoreOperation" -Tag "Unit", "Backup", "RestoreWorkflow" {
         $summary.CorrelationId | Should -Be 'sum-1'
     }
 
-    # Module bug: Measure-Object -Sum rejects TimeSpan values, so TotalDuration is null and AverageDuration zero
+    # Module bug (#18): Measure-Object -Sum rejects TimeSpan values, so TotalDuration is null and AverageDuration zero
     It "Should total and average the durations of the results" -Skip {
         $summary = Complete-RestoreOperation -OperationContext $script:context -Results $script:results
 

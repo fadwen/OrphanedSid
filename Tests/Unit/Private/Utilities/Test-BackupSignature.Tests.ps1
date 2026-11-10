@@ -78,7 +78,7 @@ Describe "Test-BackupSignature" -Tag "Unit", "Private", "Utilities" {
             $result.SecurityRisk | Should -Be $true
         }
 
-        # Module bug: -contains compares culture-aware, which ignores an embedded null character, so "PSSecurityBackup`0_v2.1" is accepted as PSSecurityBackup_v2.1
+        # Module bug (#18): -contains compares culture-aware, which ignores an embedded null character, so "PSSecurityBackup`0_v2.1" is accepted as PSSecurityBackup_v2.1
         It "Should reject a signature with an embedded null character" -Skip {
             $result = Test-BackupSignature -Signature "PSSecurityBackup`0_v2.1"
 

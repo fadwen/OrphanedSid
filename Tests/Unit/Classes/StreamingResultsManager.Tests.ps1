@@ -199,7 +199,7 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager.Dispose()
         }
 
-        # Module bug: GetAllResults flushes (which clears CurrentResults) and then returns CurrentResults in WhatIf mode, so it always returns nothing
+        # Module bug (#14): GetAllResults flushes (which clears CurrentResults) and then returns CurrentResults in WhatIf mode, so it always returns nothing
         It "Should return every added result in WhatIf mode" -Skip {
             $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $true)
             1..3 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }

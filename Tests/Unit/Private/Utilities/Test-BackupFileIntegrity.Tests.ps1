@@ -266,7 +266,7 @@ Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
             }
         }
 
-        # Module bug: the hash is compared with -ne, which ignores case, so a Base64 hash that differs from the computed one only in letter case is accepted
+        # Module bug (#12): the hash is compared with -ne, which ignores case, so a Base64 hash that differs from the computed one only in letter case is accepted
         It "Should reject a hash that differs from the computed one only in case" -Skip {
             $sddl = 'O:BAG:SYD:(A;;GA;;;SY)'
             $file = New-BackupFile -Override @{ SDDL = $sddl; SDDLHash = (Get-SddlHash -Sddl $sddl).ToLowerInvariant() }
