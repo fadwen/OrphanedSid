@@ -1,7 +1,5 @@
-﻿# Test-ValidDistinguishedName Tests - Pester 3.4.x Compatible
+﻿# Test-ValidDistinguishedName Tests
 
-# Import the function under test
-# Import dependencies
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -23,10 +21,8 @@ BeforeAll {
 Describe "Test-ValidDistinguishedName" {
     
     BeforeEach {
-        # Set up test environment for clean execution
         $env:PESTER_TESTING = $true
-        
-        # Initialize comprehensive test data for DN validation
+
         $script:testData = @{
             ValidDNs = @(
                 'CN=TestUser,OU=Users,DC=contoso,DC=com'
@@ -69,7 +65,6 @@ Describe "Test-ValidDistinguishedName" {
             )
         }
         
-        # Mock dependencies to prevent noise during testing
         Mock Write-StructuredLog { }
         Mock Write-ADOperationSecurityLog { }
         Mock Write-Verbose { }
@@ -278,7 +273,6 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $unicodeDN
             
-            # Should -be valid for Unicode characters
             $result | Should -Be $true
         }
         
@@ -287,7 +281,6 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $escapedDN
             
-            # Should -be valid for properly escaped characters
             $result | Should -Be $true
         }
         
@@ -296,7 +289,6 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $quotedDN
             
-            # Should -be valid for quoted values
             $result | Should -Be $true
         }
         
@@ -318,7 +310,7 @@ Describe "Test-ValidDistinguishedName" {
         }
         
         It "Should validate against maximum DN length limits" {
-            # Create a very long but valid DN
+            # Well formed, but longer than the DN length limit
             $longDN = 'CN=' + ('A' * 500) + ',OU=' + ('B' * 500) + ',DC=' + ('C' * 500) + ',DC=com'
             
             $result = Test-ValidDistinguishedName -DistinguishedName $longDN
@@ -510,7 +502,6 @@ Describe "Test-ValidDistinguishedName" {
             )
             
             foreach ($dn in $specialCharDNs) {
-                # Should -Not -throw exceptions
                 { $dn | Test-ValidDistinguishedName } | Should -Not -Throw
             }
         }

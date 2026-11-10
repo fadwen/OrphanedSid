@@ -7,8 +7,8 @@
     unit testing of functions that depend on the logging infrastructure.
 
 .NOTES
-    This script should be called at the beginning of test files
-    that test functions with logging dependencies.
+    Dot-source this script from a test file's BeforeAll. It sets $script: variables the
+    logging functions read, which a call with & would discard.
 #>
 [CmdletBinding()]
 param()

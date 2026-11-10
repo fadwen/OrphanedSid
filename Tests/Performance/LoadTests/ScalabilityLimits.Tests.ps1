@@ -1,10 +1,7 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test configuration
-# Import test helpers
-# Mock wrapper function to prevent actual script execution
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
@@ -19,6 +16,9 @@ BeforeAll {
 
     . "$PSScriptRoot\..\..\TestHelpers\BackupTestHelpers.ps1"
 
+    # A simulator, not the module: it returns figures computed from its parameters for each
+    # -MockBehavior scenario, so the tests check those figures against thresholds and do not
+    # measure OrphanedSid itself
     function Invoke-ScalabilityLimitTest {
         param(
             [string]$MockBehavior = 'Normal',
@@ -29,7 +29,7 @@ BeforeAll {
         )
         
         # Calculate base metrics
-        $baseProcessingTime = 10  # Reduced from 100ms to make scaling more linear
+        $baseProcessingTime = 10  # Small fixed overhead, so total time scales close to linearly
         $timePerObject = if ($EnableOptimizations) { 0.05 } else { 0.1 }
         $concurrencyFactor = if ($ConcurrentThreads -gt 1) { 1 / [math]::Log($ConcurrentThreads + 1) } else { 1 }
         
@@ -41,7 +41,7 @@ BeforeAll {
                     Success = $true
                     ObjectsProcessed = $ObjectCount
                     ProcessingTimeMs = $expectedTime
-                    TimeMs = $expectedTime  # Add alias for compatibility
+                    TimeMs = $expectedTime  # Same value as ProcessingTimeMs, for tests that read TimeMs
                     ConcurrentThreads = $ConcurrentThreads
                     ThroughputPerSecond = [math]::Floor(1000 / $timePerObject)  # Keep consistent throughput
                     MemoryUsageMB = 50 + ($ObjectCount * 0.05)  # More realistic memory scaling
@@ -68,7 +68,7 @@ BeforeAll {
                     Success = $true
                     ObjectsProcessed = $ObjectCount
                     ProcessingTimeMs = $expectedTime
-                    TimeMs = $expectedTime  # Add alias for compatibility
+                    TimeMs = $expectedTime  # Same value as ProcessingTimeMs, for tests that read TimeMs
                     ConcurrentThreads = $ConcurrentThreads
                     ThroughputPerSecond = [math]::Floor($ObjectCount / ($expectedTime / 1000))
                     MemoryUsageMB = 50 + ($ObjectCount * 0.0008)  # Better memory efficiency
@@ -95,7 +95,7 @@ BeforeAll {
                     Success = $true
                     ObjectsProcessed = $ObjectCount
                     ProcessingTimeMs = $expectedTime
-                    TimeMs = $expectedTime  # Add alias for compatibility
+                    TimeMs = $expectedTime  # Same value as ProcessingTimeMs, for tests that read TimeMs
                     ConcurrentThreads = $ConcurrentThreads
                     ThroughputPerSecond = [math]::Floor($ObjectCount / ($expectedTime / 1000))
                     MemoryUsageMB = 50 + ($ObjectCount * 0.002)  # Higher memory usage
@@ -152,7 +152,7 @@ BeforeAll {
                     Success = $cpuConstraint -ge 0.3
                     ObjectsProcessed = $effectiveObjects
                     ProcessingTimeMs = $expectedTime
-                    TimeMs = $expectedTime  # Add alias for compatibility
+                    TimeMs = $expectedTime  # Same value as ProcessingTimeMs, for tests that read TimeMs
                     ConcurrentThreads = $ConcurrentThreads
                     ThroughputPerSecond = [math]::Floor($effectiveObjects / ($expectedTime / 1000))
                     MemoryUsageMB = 50 + ($ObjectCount * 0.001)
@@ -169,7 +169,7 @@ BeforeAll {
                         IO = [math]::Min(60, 15 + ($ObjectCount * 0.002))
                         Network = [math]::Min(50, 10 + ($ObjectCount * 0.001))
                     }
-                    CPUThrottling = $true  # Changed from CPUPressure
+                    CPUThrottling = $true
                     ConstraintHit = $cpuConstraint -lt 1.0
                 }
             }
@@ -299,7 +299,7 @@ BeforeAll {
 Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", "Scalability" {
     
     BeforeAll {
-        # Mock all external dependencies to prevent actual execution
+        # The simulator calls none of these; the mocks stop a stray call reaching AD, the console or disk
         Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
         Mock Get-ADDomain { return @{ DNSRoot = 'contoso.com'; DistinguishedName = 'DC=contoso,DC=com' } }
         Mock Write-Host { }
@@ -312,7 +312,6 @@ Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", 
         Mock New-Item { }
         Mock Out-File { }
         Mock Export-Csv { }
-        # Mock external dependencies that are actually cmdlets/functions
         Mock Write-Verbose { }
         Mock Write-Information { }
         Mock Get-Process { return @{ WorkingSet = 104857600; VirtualMemorySize = 209715200; Handles = 1250 } }
@@ -341,7 +340,7 @@ Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", 
             $timeRatio32 = $results[2].TimeMs / $results[1].TimeMs
             $sizeRatio = 2.0  # Double the size
             
-            # Should -be close to linear (within 20% variance)
+            # Should be close to linear (within 20% variance)
             [math]::Abs($timeRatio21 - $sizeRatio) / $sizeRatio | Should -BeLessThan 0.20
         }
         
@@ -412,7 +411,7 @@ Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", 
                 }
             }
             
-            # Logarithmic Should -be most efficient, quadratic least
+            # Logarithmic should be most efficient, quadratic least
             $avgLogEfficiency = ($efficiencies['Logarithmic'] | Measure-Object -Average).Average
             $avgQuadEfficiency = ($efficiencies['Quadratic'] | Measure-Object -Average).Average
             
@@ -519,7 +518,7 @@ Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", 
             $optimalThreads = ($results | Where-Object { $_.Efficiency -eq $maxEfficiency }).Threads
             
             $optimalThreads | Should -BeGreaterThan 1
-            $optimalThreads | Should -BeLessThan 16  # Should -be in sweet spot
+            $optimalThreads | Should -BeLessThan 16  # Should be in the sweet spot
         }
         
         It "Should validate concurrent scaling with different object counts" {
@@ -599,7 +598,7 @@ Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", 
             $expectedTimeRatio = 4.0  # 4x objects
             $actualTimeRatio = $scaledResult.ProcessingTimeMs / $baselineResult.ProcessingTimeMs
             
-            # Linear scaling Should -be close to expected ratio
+            # Linear scaling should be close to expected ratio
             [math]::Abs($actualTimeRatio - $expectedTimeRatio) / $expectedTimeRatio | Should -BeLessThan 0.20
         }
         
@@ -678,7 +677,7 @@ Describe "Scalability Limits Performance Tests" -Tag "Performance", "LoadTest", 
                 $improvements += $improvement
             }
             
-            # Optimization benefits Should -be consistent across sizes
+            # Optimization benefits should be consistent across sizes
             $avgImprovement = ($improvements | Measure-Object -Average).Average
             $maxVariation = ($improvements | Measure-Object -Maximum).Maximum - ($improvements | Measure-Object -Minimum).Minimum
             

@@ -4,13 +4,11 @@ Describe "Test-PathTraversal" {
         # Set environment variable to suppress warnings during testing
         $env:PESTER_TESTING = $true
         
-        # Dot-source the function under test
         . "$PSScriptRoot\..\..\..\..\Private\Security\Test-PathTraversal.ps1"
-        
-        # Dot-source the Write-StructuredLog function so we can mock it
+
+        # Pester can only mock a command that exists, so the real Write-StructuredLog is loaded first
         . "$PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1"
 
-        # Mock Write-StructuredLog
         Mock Write-StructuredLog { }
 
         # Create test directory structure for path traversal testing
@@ -191,8 +189,8 @@ Describe "Test-PathTraversal" {
                 if (Test-Path $linkPath) {
                     $result = Test-PathTraversal -Path $linkPath -BasePath $script:TestBasePath
                     
-                    # Enhanced behavior: The function now resolves symbolic links to their targets
-                    # Since the target (C:\Windows) is outside our test base path, it Should -be unsafe
+                    # The function resolves a symbolic link to its target; C:\Windows lies outside
+                    # the base path, so the link is unsafe
                     $result.ValidationResults[0].IsSymbolicLink | Should -Be $true
                     $result.ValidationResults[0].FinalTargetPath | Should -Be $targetPath
                     $result.ValidationResults[0].IsWithinBasePath | Should -Be $false
@@ -210,7 +208,7 @@ Describe "Test-PathTraversal" {
                 Remove-Item $linkPath -Force -Recurse -ErrorAction SilentlyContinue
             }
             catch {
-                # Skip test if unable to create symbolic link (insufficient privileges)
+                # Without the privilege to create a link, the test warns and passes rather than failing
                 Write-Warning "Skipping symbolic link test: $($_.Exception.Message)"
                 # Ensure cleanup even if test fails
                 Remove-Item $linkPath -Force -Recurse -ErrorAction SilentlyContinue

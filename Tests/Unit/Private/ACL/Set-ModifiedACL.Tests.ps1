@@ -8,8 +8,7 @@
 .DESCRIPTION
     Tests the real function with its three collaborators mocked: Test-ValidDistinguishedName decides
     whether the target exists, Invoke-ADOperationWithRetry runs the Set-Acl and Get-Acl script
-    blocks, and Write-StructuredLog records. The earlier version of this file defined its own
-    Set-ModifiedACL and tested that, so none of the function's branches were covered.
+    blocks, and Write-StructuredLog records.
 #>
 
 BeforeAll {

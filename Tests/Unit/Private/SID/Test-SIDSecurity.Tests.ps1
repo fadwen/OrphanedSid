@@ -1,15 +1,14 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Test-SIDSecurity Enterprise Security Testing" {
     BeforeAll {
-        # Import the module containing the functions to test
+        # Dot-source the classes and functions under test rather than importing the module
         $ModuleRoot = Split-Path -Path (Split-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -Parent) -Parent
         $PrivatePath = Join-Path -Path $ModuleRoot -ChildPath 'Private'
         
-        # Import required classes first
+        # Classes first: the functions below use them as type literals
         . (Join-Path -Path $ModuleRoot -ChildPath 'Classes\SecurityValidationResult.ps1')
         . (Join-Path -Path $ModuleRoot -ChildPath 'Classes\SIDAnalysisResult.ps1')
     
-        # Import required functions
         . (Join-Path -Path $PrivatePath -ChildPath 'SID\Test-SIDSecurity.ps1')
         . (Join-Path -Path $PrivatePath -ChildPath 'Logging\Write-SecurityLog.ps1')
         . (Join-Path -Path $PrivatePath -ChildPath 'Logging\Write-StructuredLog.ps1')
@@ -17,7 +16,6 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
         . (Join-Path -Path $PrivatePath -ChildPath 'SID\Test-SIDFormat.ps1')
         . (Join-Path -Path $PrivatePath -ChildPath 'SID\Get-SIDAnalysis.ps1')
         
-        # Import the function and set up configuration
         . "$PSScriptRoot\..\..\..\..\Private\SID\Test-SIDSecurity.ps1"
         
         # Create mock configuration for testing  
@@ -89,7 +87,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             }
         } -ModuleName $null
         
-        # Define stub functions for mocking
+        # Pester can only mock a command that exists, and neither of these is loaded above
         function Global:Format-LogMessage { }
         function Global:Write-SecurityStructuredLogEntry { }
         
@@ -271,7 +269,6 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
         It "Should generate CorrelationId when not provided" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
-            # CorrelationId Should -be auto-generated
         }
 
         It "Should reject null or empty SIDString" {
@@ -322,11 +319,11 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $protectedSID = "S-1-5-18"
             $result = Test-SIDSecurity -SIDString $protectedSID
             
-            # Protected SIDs Should -be blocked
+            # Protected SIDs are blocked
             $result.IsValid | Should -Be $false
             $result.RiskLevel | Should -Be "Critical"
-            
-            # Should have security logs for the protected SID validation
+
+            # The block is written to the security log
             $securityLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation'
             }
@@ -338,11 +335,10 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             $result = Test-SIDSecurity -SIDString $protectedSID -CorrelationId $correlationId
             
-            # Protected SID Should -be blocked
             $result.IsValid | Should -Be $false
             $result.RiskLevel | Should -Be "Critical"
-            
-            # Should have audit logs with correlation ID
+
+            # The security log entries carry the caller's correlation ID
             $auditLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.CorrelationId -eq $correlationId -and 
                 $_.SecurityEventType -eq 'DataValidation'
@@ -358,7 +354,6 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             # Override Test-WellKnownSID mock for this context to include Domain Admins
             Mock Test-WellKnownSID {
                 param($SID, $CorrelationId)
-                # Return true for well-known SIDs including Domain Admins for this test context
                 switch -Regex ($SID) {
                     '^S-1-5-18$' { return $true }     # Local System
                     '^S-1-5-19$' { return $true }     # Local Service
@@ -377,7 +372,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $wellKnownSID = "S-1-5-21-123456789-123456789-123456789-512"  # Domain Admins pattern
             $result = Test-SIDSecurity -SIDString $wellKnownSID -ValidationLevel 'Standard'
             
-            # Should -be blocked due to well-known status - but risk level Should -be High, not Critical
+            # Blocked as well-known, but rated High rather than Critical
             $result.IsValid | Should -Be $false
             $result.RiskLevel | Should -Be "High"
             ($result.Issues -contains "Well-known SID detected - removal may impact system security") | Should -Be $true
@@ -396,8 +391,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $wellKnownSID = "S-1-5-21-123456789-123456789-123456789-512"
             $result = Test-SIDSecurity -SIDString $wellKnownSID -ValidationLevel 'Basic'
             
-            # Basic validation might allow well-known SIDs if not in protected list
-            # Behavior depends on specific implementation
+            # Only checks that a result is returned; whether Basic allows the SID is not asserted
             $result | Should -Not -Be $null
         }
 
@@ -423,9 +417,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $highRiskSID = "S-1-5-21-123456789-123456789-123456789-512"  # Domain Admins
             $result = Test-SIDSecurity -SIDString $highRiskSID -ValidationLevel 'Strict'
             
-            # Updated expectations based on actual function behavior
+            # The requirement is asserted through the Issues text, not RequiresElevatedConfirmation
             $result.RiskLevel | Should -Be "High"
-            # Note: RequiresElevatedConfirmation depends on actual implementation
             ($result.Issues -contains "High-risk SID requires elevated confirmation for removal") | Should -Be $true
         }
 
@@ -434,7 +427,6 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $result = Test-SIDSecurity -SIDString $mediumRiskSID -ValidationLevel 'Strict'
             
             $result.RiskLevel | Should -Be "Medium"
-            # RequiresElevatedConfirmation behavior may vary based on implementation
         }
 
         It "Should allow Low risk SIDs for removal" {
@@ -654,12 +646,11 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $result = Test-SIDSecurity -SIDString $testSID
             
-            # Use more explicit checks
             $result.Issues.Count | Should -BeGreaterThan -1
             $result.BlockedSIDs.Count | Should -BeGreaterThan -1
             $result.AllowedSIDs.Count | Should -BeGreaterThan -1
             
-            # Collections Should -be arrays (check if they support array operations)
+            # The collections are arrays, even when empty
             ($result.Issues -is [Array]) | Should -Be $true
             ($result.BlockedSIDs -is [Array]) | Should -Be $true
             ($result.AllowedSIDs -is [Array]) | Should -Be $true
@@ -690,11 +681,11 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $result = Test-SIDSecurity -SIDString $testSID
             
-            # Verify the function handled the error gracefully
+            # A failed analysis fails closed: the SID is invalid and rated Critical
             $result.IsValid | Should -Be $false
             $result.RiskLevel | Should -Be "Critical"
-            
-            # Should have security logs even during errors
+
+            # The security log is still written when analysis fails
             $errorLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation'
             }
@@ -739,7 +730,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             { Test-SIDSecurity -SIDString $testSID } | Should -Not -Throw
             
-            # Function should still return a valid result even if logging fails
+            # A logging failure does not stop validation from returning a result
             $result = Test-SIDSecurity -SIDString $testSID
             $result | Should -Not -Be $null
             $result.IsValid | Should -Not -Be $null  # SID validation should still work
@@ -783,7 +774,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $executionTimes += $time.TotalMilliseconds
             }
             
-            # Strict Should -Not -be more than 5x slower than Basic
+            # Strict is no more than five times slower than Basic
             $executionTimes[2] | Should -BeLessThan ($executionTimes[0] * 5)
         }
 
@@ -866,16 +857,16 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
 
         It "Should categorize SIDs correctly into blocked, allowed, and requires approval" {
             $mixedSIDs = @(
-                "S-1-5-18",                                           # Should -be blocked (protected)
+                "S-1-5-18",                                           # Blocked (protected)
                 "S-1-5-21-123456789-123456789-123456789-512",       # May require approval (high risk)
-                "S-1-5-80-123456789-123456789-123456789-123456789-123456789"  # Should -be allowed (low risk)
+                "S-1-5-80-123456789-123456789-123456789-123456789-123456789"  # Allowed (low risk)
             )
             
             $result = Get-SIDRiskAssessment -SIDList $mixedSIDs
             
             $result.BlockedSIDs.Count | Should -BeGreaterThan 0
             $result.AllowedSIDs.Count | Should -BeGreaterThan 0
-            # RequiresApproval count may vary based on validation level
+            # The RequiresApproval count is not asserted; it depends on the validation level
         }
 
         It "Should provide actionable recommendations" {
@@ -934,11 +925,10 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             
             $result = Get-SIDRiskAssessment -SIDList $testSIDs
             
-            # Verify the function works correctly (primary concern)
             $result | Should -Not -Be $null
             $result.TotalSIDs | Should -Be 2
-            
-            # Should have some security logs (at least one for risk assessment)
+
+            # At least one successful RiskAssessment entry in the security log
             $riskLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'RiskAssessment' -and 
                 $_.Outcome -eq 'Success' 
@@ -965,17 +955,15 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
 
         It "Should support SOX compliance requirements" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-            # Note: The actual function may not have ComplianceFramework parameter
-            # This tests the conceptual compliance support
+            # Test-SIDSecurity has no compliance-framework parameter; this checks only that the
+            # security log entries carry the validation level and a correlation ID
             $result = Test-SIDSecurity -SIDString $testSID -ValidationLevel 'Strict'
-            
-            # Verify audit logging supports compliance
-            $auditLogs = $global:SecurityLogCalls | Where-Object { 
-                $_.SecurityEventType -eq 'DataValidation' 
+
+            $auditLogs = $global:SecurityLogCalls | Where-Object {
+                $_.SecurityEventType -eq 'DataValidation'
             }
             $auditLogs.Count | Should -BeGreaterThan 0
-            
-            # SOX requires detailed audit trails
+
             $auditLogs[0].SecurityContext.ValidationLevel | Should -Not -BeNullOrEmpty
             $auditLogs[0].CorrelationId | Should -Not -BeNullOrEmpty
         }
@@ -984,7 +972,6 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             $result = Test-SIDSecurity -SIDString $testSID -ValidationLevel 'Strict'
             
-            # HIPAA requires security validation logging
             $securityLogs = $global:SecurityLogCalls | Where-Object { 
                 $_.SecurityEventType -eq 'DataValidation' 
             }
@@ -1000,7 +987,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
             $auditLogs = $global:SecurityLogCalls | Where-Object { $_.CorrelationId -eq $correlationId }
             $auditLogs.Count | Should -BeGreaterThan 0
             
-            # Compliance requires comprehensive context
+            # The entry names the SID, the component and when it was written
             $context = $auditLogs[0].SecurityContext
             $context.SIDString | Should -Be $testSID
             $context.Component | Should -Be 'SIDSecurity'
@@ -1009,10 +996,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
 
         It "Should support custom compliance frameworks" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
-            # Test that the logging framework can support custom compliance
             { Test-SIDSecurity -SIDString $testSID -ValidationLevel 'Strict' } | Should -Not -Throw
-            
-            # Verify extensible logging supports custom frameworks
+
             $logs = $global:SecurityLogCalls
             $logs.Count | Should -BeGreaterThan 0
         }
@@ -1044,7 +1029,7 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
         It "Should support enterprise security validation settings" {
             $securitySettings = $script:Config.SecurityValidation
             
-            # Verify configuration is being used
+            # Reads back the test configuration from BeforeAll; Test-SIDSecurity is not called
             $securitySettings.RequireElevatedConfirmation | Should -Be $true
             $securitySettings.AllowWellKnownSIDRemoval | Should -Be $false
             $securitySettings.ComplianceFrameworks | Should -Not -BeNullOrEmpty
@@ -1072,8 +1057,8 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $sid = $_
                 Start-Job -ScriptBlock {
                     param($SIDString)
-                    # This would need the full function loaded in the job context
-                    # For testing purposes, we simulate concurrent access
+                    # A job starts without this session's functions, so it does not call
+                    # Test-SIDSecurity; it only echoes the SID after a random delay
                     Start-Sleep -Milliseconds (Get-Random -Minimum 10 -Maximum 100)
                     return $SIDString
                 } -ArgumentList $sid
@@ -1115,11 +1100,10 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
         It "Should maintain security boundaries during validation" {
             $testSID = "S-1-5-21-123456789-123456789-123456789-1001"
             
-            # Should not execute any code embedded in SID string
+            # Only checks that a well-formed SID returns a result; nothing here detects
+            # executed code or started processes
             $result = Test-SIDSecurity -SIDString $testSID
-            
-            # Verify no external processes were started
-            # (This is a conceptual test - actual implementation would depend on security controls)
+
             $result | Should -Not -Be $null
         }
 
@@ -1130,7 +1114,6 @@ Describe "Test-SIDSecurity Enterprise Security Testing" {
                 $results = Get-SIDRiskAssessment -SIDList $enterpriseScale
             }
             
-            # Should handle enterprise scale efficiently
             $executionTime.TotalSeconds | Should -BeLessThan 30
         }
     }

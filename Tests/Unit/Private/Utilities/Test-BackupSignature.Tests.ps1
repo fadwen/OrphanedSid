@@ -2,31 +2,18 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Pester tests for Test-BackupSignature utility function
+    Unit tests for the Test-BackupSignature utility function
 
 .DESCRIPTION
-    Comprehensive tests for Test-BackupSignature function including parameter validation,
-    signature verification, security validation, and error handling.
+    Tests Test-BackupSignature parameter validation, signature verification,
+    input that should be rejected, and error handling.
 
 .NOTES
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Created Date: July 15, 2025
-    Last Modified: July 15, 2025
-    Version: 1.0.0
-    
-    Test Framework: Pester 3.4.x
-    PowerShell Version: 5.1+
-    
-    TROUBLESHOOTING:
-    - For test failures: .\Troubleshooting\Testing\Unit-Test-Issues.md
-    - For signature issues: .\Troubleshooting\Security\Signature-Validation-Issues.md
-    - For security errors: .\Troubleshooting\Security\Backup-Security-Issues.md
 #>
 
-# Import module and dependencies
-# Import specific private function for testing
 BeforeAll {
     $ModuleRoot = (Get-Item $PSScriptRoot).Parent.Parent.Parent.Parent.FullName
 
@@ -35,7 +22,6 @@ BeforeAll {
 
 Describe "Test-BackupSignature" {
     BeforeAll {
-        # Set up test correlation ID for tracking
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
         
         # Define valid signatures for testing
@@ -56,25 +42,23 @@ Describe "Test-BackupSignature" {
             "BadSignature"
         )
         
-        # Mock Write-Verbose to prevent verbose output during tests
         Mock Write-Verbose { }
         Mock Write-Warning { }
     }
     
     Context "Parameter Validation" {
         It "Should require Signature parameter" {
-            # Use timeout approach since PowerShell prompts for mandatory parameters
+            # Omitting a mandatory parameter makes PowerShell prompt for it, so the call runs in a job
+            # and the test checks that the job is blocked waiting for input
             $job = Start-Job -ScriptBlock {
                 $ModuleRoot = $args[0]
                 . "$ModuleRoot\Private\Utilities\Test-BackupSignature.ps1"
                 Test-BackupSignature
             } -ArgumentList $ModuleRoot
             
-            # Wait briefly then check if job is waiting for input
             Start-Sleep -Seconds 1
-            $job.State | Should -Be "Blocked"  # Should -be waiting for parameter input
-            
-            # Clean up
+            $job.State | Should -Be "Blocked"
+
             $job | Stop-Job | Remove-Job
         }
         
@@ -327,10 +311,11 @@ Describe "Test-BackupSignature" {
         }
         
         It "Should handle signature containing null characters" {
-            # PowerShell treats null characters as string terminators, so this effectively becomes "PSSecurityBackup_v2.1"
+            # -contains compares culture-aware, and culture-aware comparison ignores an embedded null
+            # character, so this matches "PSSecurityBackup_v2.1"
             $nullCharSignature = "PSSecurityBackup`0_v2.1"
             $result = Test-BackupSignature -Signature $nullCharSignature
-            $result.Valid | Should -Be $true  # Null char causes string truncation, resulting in valid signature
+            $result.Valid | Should -Be $true
             $result.SecurityRisk | Should -Be $false
         }
         
@@ -406,7 +391,7 @@ Describe "Test-BackupSignature" {
                 $results += Test-BackupSignature -Signature $signature
             }
             
-            # All results Should -be identical (except CorrelationId)
+            # All results should be identical apart from CorrelationId
             $validResults = $results | Where-Object { $_.Valid -eq $true }
             $securityRiskResults = $results | Where-Object { $_.SecurityRisk -eq $false }
             
@@ -447,17 +432,16 @@ Describe "Test-BackupSignature" {
         }
         
         It "Should work with Get-StringHash correlation pattern" {
-            # Test that correlation ID format is compatible with other utilities
             $result = Test-BackupSignature -Signature "PSSecurityBackup_v2.1"
             
-            # Should -be valid GUID format
+            # A GUID, in the format the other utilities use
             { [System.Guid]::Parse($result.CorrelationId) } | Should -Not -Throw
         }
         
         It "Should support logging integration scenarios" {
             $result = Test-BackupSignature -Signature "InvalidSignature"
             
-            # Result Should -contain all necessary information for logging
+            # The result carries everything a log entry needs
             $result.Valid | Should -Be $false
             $result.SecurityRisk | Should -Be $true
             $result.CorrelationId | Should -Not -BeNullOrEmpty

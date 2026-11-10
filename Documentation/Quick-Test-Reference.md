@@ -25,9 +25,10 @@ Set-Location <repository root>
 Invoke-Pester ./Tests
 ```
 
-`Tests/Unit` covers the classes, the private functions and the three public commands;
-`Tests/Integration` runs the discovery, removal and restore workflows end to end against mocked
-directory responses; `Tests/Performance` holds the throughput, memory and scalability checks.
+`Tests/Unit` covers the classes, the private functions and the three public commands.
+`Tests/Integration` (discovery, removal and restore scenarios) and `Tests/Performance`
+(throughput, memory and scalability) run against stand-in functions defined in each file and
+execute no module code, so a change to the module is caught by `Tests/Unit`, not by them.
 See [Tests/Pester-Test-Mapping.md](../Tests/Pester-Test-Mapping.md) for what each folder covers.
 
 ## Run one file

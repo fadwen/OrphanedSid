@@ -7,8 +7,7 @@
 
 .DESCRIPTION
     Tests the real function. Test-ValidDistinguishedName, Invoke-ADOperationWithRetry, Get-Acl and
-    Write-StructuredLog are mocked. The earlier version of this file defined its own
-    Get-ACLForRemoval and tested that.
+    Write-StructuredLog are mocked.
 #>
 
 BeforeAll {

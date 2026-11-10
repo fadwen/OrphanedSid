@@ -1,6 +1,4 @@
-﻿# Pester 3.4 tests for Write-SecurityStructuredLogEntry.ps1
-# Import the script content for testing
-# Import dependencies
+﻿# Unit tests for Write-SecurityStructuredLogEntry.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -17,7 +15,6 @@ BeforeAll {
 
 Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security') {
 
-    # Mock all dependencies inside Describe block
     BeforeAll {
     Mock Write-Verbose { }
         Mock Write-Warning { }
@@ -36,7 +33,7 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
         Mock Out-File { }
         Mock Join-Path { return "C:\temp\emergency.log" }
         
-        # Create a simple Format-LogMessage function for testing since it doesn't exist
+        # A simple stand-in for Format-LogMessage, whose file this test does not load
         function Format-LogMessage {
             param($Message, $Level, $Component, $CorrelationId, $AdditionalData)
             return "[$Level] [$Component] $Message (ID: $CorrelationId)"
@@ -215,7 +212,7 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
         }
 
         It "Should always write security logs regardless of system configuration" {
-            # Even with system suppression, security logs Should -be written
+            # Even with console output suppressed, security logs should be written
             Mock Get-LoggingSystemState { 
                 return [PSCustomObject]@{
                     CorrelationId = "test"
@@ -232,7 +229,6 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
     Context "Performance Characteristics" {
         
         It "Should have minimal validation for performance" {
-            # Security logging Should -be fast - minimal validation to test direct execution
             { Write-SecurityStructuredLogEntry -Message "Performance test" } | Should -Not -Throw
         }
     }

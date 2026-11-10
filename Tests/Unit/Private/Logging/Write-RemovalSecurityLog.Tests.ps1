@@ -1,10 +1,7 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Write-RemovalSecurityLog.Tests.ps1 - Unit Tests for Write-RemovalSecurityLog Function
-# Tests security audit logging for SID removal operations with comprehensive validation
+# Unit tests for Write-RemovalSecurityLog: security audit logging for SID removal operations
 
-# Import the function under test and its dependencies directly
-# Import dependencies
 BeforeAll {
     # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
     # this placeholder is what the Mock below replaces when the file runs on its own.
@@ -33,13 +30,11 @@ BeforeAll {
 
 Describe "Write-RemovalSecurityLog" -Tag @('Unit', 'Logging', 'Security') {
     BeforeEach {
-        # Override the problematic global Write-StructuredLog mock
+        # Both collaborators are mocked so no log entry is written
         Mock Write-StructuredLog {
             param([string]$Level, [string]$Message, [string]$Component, [hashtable]$Data = @{})
-            # Silent mock - just return success
         }
-        
-        # Mock the dependency on Write-SecurityLog  
+
         Mock Write-SecurityLog { }
     }
 

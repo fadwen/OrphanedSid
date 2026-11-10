@@ -2,20 +2,13 @@
 
 <#
 .SYNOPSIS
-    Pester 3.4 tests for Format-LogMessage function
+    Unit tests for the Format-LogMessage function
 
 .DESCRIPTION
-    Tests the Format-LogMessage function for proper parameter handling,
-    message formatting, output format variations, and enterprise compliance.
-
-.NOTES
-    Uses Pester 3.4 test framework with enterprise PowerShell standards
-    Validates message formatting according to specified styles and requirements
+    Tests the Format-LogMessage function for parameter handling, message
+    formatting and each output format.
 #>
 
-# Import testing framework and dependencies
-# Import test helpers if available
-# Import function under test
 BeforeAll {
     $script:ModuleRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 
@@ -456,7 +449,7 @@ Describe "Format-LogMessage" {
             $afterMemory = [System.GC]::GetTotalMemory($false)
             $memoryIncrease = $afterMemory - $beforeMemory
             
-            # Memory increase Should -be reasonable (less than 5MB for this test)
+            # The memory increase should stay under 5 MB
             $memoryIncrease | Should -BeLessThan 5242880
         }
     }

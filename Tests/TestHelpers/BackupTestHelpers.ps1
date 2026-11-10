@@ -18,7 +18,8 @@
     Provides safe mock implementations and test data generation.
 #>
 
-# Mock structured logging function
+# Stub logger: dot-sourcing this file replaces any Write-StructuredLog already defined in the
+# caller's scope with one that writes to the verbose stream only
 function Write-StructuredLog {
     param(
         [string]$Message,
@@ -28,7 +29,6 @@ function Write-StructuredLog {
         [hashtable]$Data,
         [hashtable]$Details
     )
-    # Mock implementation - just write to verbose stream
     Write-Verbose "[$Level] $Message - CorrelationId: $CorrelationId"
 }
 
@@ -431,5 +431,3 @@ function Assert-BackupResultStructure {
     return $validation
 }
 
-# Functions are automatically available when dot-sourced
-# No Export-ModuleMember needed for script files

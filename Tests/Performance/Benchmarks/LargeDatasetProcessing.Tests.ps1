@@ -1,10 +1,7 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test configuration
-# Import test helpers
-# Mock wrapper function to prevent actual script execution
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
@@ -19,6 +16,9 @@ BeforeAll {
 
     . "$PSScriptRoot\..\..\TestHelpers\BackupTestHelpers.ps1"
 
+    # A simulator, not the module: it returns figures computed from its parameters for each
+    # -MockBehavior scenario, so the tests check those figures against thresholds and do not
+    # measure OrphanedSid itself
     function Invoke-LargeDatasetProcessingTest {
         param(
             [string]$MockBehavior = 'Success',
@@ -33,9 +33,9 @@ BeforeAll {
                     Success = $true
                     ProcessedObjects = $DatasetSize
                     ExecutionTimeMs = ($DatasetSize * 2.5)  # Simulated 2.5ms per object
-                    MemoryUsageMB = [math]::Min(($DatasetSize / 15), 400)  # Reduced to stay under 512MB threshold
+                    MemoryUsageMB = [math]::Min(($DatasetSize / 15), 400)  # Capped below the 512MB threshold
                     ThroughputPerSecond = [math]::Round($DatasetSize / (($DatasetSize * 2.5) / 1000), 2)
-                    PeakMemoryMB = [math]::Min(($DatasetSize / 12), 500)  # Reduced to stay under 640MB (512*1.25)
+                    PeakMemoryMB = [math]::Min(($DatasetSize / 12), 500)  # Capped below 640MB (512 * 1.25)
                     GCCollections = [math]::Ceiling($DatasetSize / 1000)
                 }
             }
@@ -99,7 +99,7 @@ BeforeAll {
 Describe "Large Dataset Processing Performance Tests" -Tag "Performance", "Benchmark", "LargeDataset" {
     
     BeforeAll {
-        # Mock all external dependencies to prevent actual execution
+        # The simulator calls none of these; the mocks stop a stray call reaching AD, the console or disk
         Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
         Mock Get-ADDomain { return @{ DNSRoot = 'contoso.com'; DistinguishedName = 'DC=contoso,DC=com' } }
         Mock Write-Host { }
@@ -148,7 +148,7 @@ Describe "Large Dataset Processing Performance Tests" -Tag "Performance", "Bench
             $result5K = Invoke-LargeDatasetProcessingTest -DatasetSize 5000 -MockBehavior 'Success'
             
             $scalingFactor = $result5K.ExecutionTimeMs / $result1K.ExecutionTimeMs
-            $expectedScaling = 5.0  # 5x data Should -be ~5x time
+            $expectedScaling = 5.0  # 5x data should take about 5x the time
             
             $scalingFactor | Should -BeLessThan ($expectedScaling * 1.5)  # Allow 50% overhead
             $scalingFactor | Should -BeGreaterThan ($expectedScaling * 0.8)  # Minimum 80% efficiency
@@ -259,7 +259,7 @@ Describe "Large Dataset Processing Performance Tests" -Tag "Performance", "Bench
             $minThroughput = ($throughputs | Measure-Object -Minimum).Minimum
             $maxThroughput = ($throughputs | Measure-Object -Maximum).Maximum
             
-            # Throughput variance Should -be reasonable (within 3x range)
+            # Throughput variance should be reasonable (within 3x range)
             ($maxThroughput / $minThroughput) | Should -BeLessThan 3.0
         }
     }

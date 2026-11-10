@@ -1,40 +1,28 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Invoke-RestoreWorkflow function
+    Unit tests for Invoke-RestoreWorkflow, which finds backups and restores one object or many.
 
 .DESCRIPTION
-    This test suite provides comprehensive validation of the Invoke-RestoreWorkflow function,
-    including parameter validation, workflow orchestration, backup discovery, restoration logic,
-    error handling, performance testing, and security validation.
+    Tests the real workflow against Clixml backup files written to a folder under $env:TEMP:
+    parameter validation, single and bulk mode, backup selection, error handling, timing budgets,
+    input handling and the result's audit properties. Restore-IndividualObject and the helpers it
+    calls are mocked; Restore-IndividualObject.Tests.ps1 covers its real body.
 
 .NOTES
     Author: Jeffrey Stuhr
-    Total Tests: 78 comprehensive tests across 10 test contexts
-    
-    Test Coverage Areas:
-    # Parameter validation and input processing
-    # Backup discovery and mode detection
-    # Workflow orchestration and step management
-    # Single and bulk restoration workflows
-    # Error handling and recovery mechanisms
-    # Performance testing and scalability validation
-    # Security validation and input sanitization
-    # Enterprise integration and logging verification
-    # Helper function validation (Restore-IndividualObject, etc.)
-    # Cross-platform compatibility testing
 #>
 
 Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
     
     BeforeAll {
-        # Import the Invoke-RestoreWorkflow function directly
+        # Dot-source the function under test; the module itself is not imported
         $FunctionPath = Join-Path $PSScriptRoot '..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1'
         if (Test-Path $FunctionPath) {
             . $FunctionPath
         }
 
-        # Create mock logging functions to handle dependencies
+        # Placeholders for the logging functions, so the logging system need not be loaded
         function Write-StructuredLogEntry {
             [CmdletBinding()]
             param(
@@ -51,7 +39,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
                 [Parameter()]
                 [hashtable]$Details = @{}
             )
-            # Mock implementation - just output to console for testing
+            # Writes to the debug stream only
             Write-Debug "$Level`: $Message"
         }
 
@@ -90,10 +78,9 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             }
         }
 
-        # Import test helpers
         . "$PSScriptRoot\..\..\..\..\Tests\TestHelpers\BackupTestHelpers.ps1"
-        
-        # Create stub functions for functions that don't exist but are being mocked
+
+        # Empty placeholders replace the real helpers dot-sourced above; each is mocked below
         function Get-RestorationTarget {
             param($TargetObjectDN, $CorrelationId)
             # Stub function for testing
@@ -186,7 +173,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
         
         Mock Restore-IndividualObject {
-            # Call the actual helper functions so they can be tested
+            # Call the mocked helpers, so tests can assert that each restore reaches them
             $backupValidation = Test-BackupIntegrity -BackupData $BackupData -ExpectedObjectDN $TargetObjectDN -ValidationLevel $ValidationLevel -CorrelationId $CorrelationId
             $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CheckPermissions -CorrelationId $CorrelationId
             $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
@@ -308,7 +295,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
         
         It "Should find exact match backup file in directory mode" {
-            # Create a specific backup file that Should -match
+            # A backup file named the way New-ACLBackup names one for this DN
             $specificTargetDN = 'CN=SpecificUser,OU=Users,DC=company,DC=com'
             $specificBackupData = $script:TestBackupData.Clone()
             $specificBackupData.ObjectDN = $specificTargetDN
@@ -826,7 +813,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
                 throw
             }
             
-            # Debug output to understand what's happening
+            # Written to the debug stream, for diagnosing a failure of this test
             Write-Debug "Debug: TotalObjects = $($result.TotalObjects)"
             Write-Debug "Debug: SuccessfulRestores = $($result.SuccessfulRestores)"
             Write-Debug "Debug: FailedRestores = $($result.FailedRestores)"
@@ -835,7 +822,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             Write-Debug "Debug: All properties:"
             $result.PSObject.Properties | ForEach-Object { Write-Debug "  $($_.Name) = $($_.Value)" }
             
-            # The function should process at least 4 objects (User1, User2, User3, AdditionalUser)
+            # Four objects are in scope: User1, User2, User3 and AdditionalUser
             $result.TotalObjects | Should -BeGreaterThan 0
             
             # Should have some successful restores (User1 and User3) and some failures (User2 and AdditionalUser)
@@ -844,8 +831,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             
             # Verify that it's actually in bulk mode
             $result.RestoreMode | Should -Be "Bulk"
-            
-            # Should have some successful restores (User1 and User3) and some failures (User2 and AdditionalUser)
+
             $result.SuccessfulRestores | Should -BeGreaterThan 0
             $result.FailedRestores | Should -BeGreaterThan 0
             
@@ -966,11 +952,11 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -CorrelationId $maliciousCorrelationId
             $result.CorrelationId | Should -Be $maliciousCorrelationId
-            # Function should accept it but downstream logging should sanitize
+            # The ID is passed through unchanged; how logging treats it is not checked here
         }
         
         It "Should limit file discovery operations" {
-            # Override the previous mock to ensure all operations succeed
+            # Every restore succeeds, so the result reflects file discovery alone
             Mock Restore-IndividualObject {
                 return [PSCustomObject]@{
                     PSTypeName = 'RestoreWorkflowResult'
@@ -1008,14 +994,10 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
                 $args[0] -match "Starting restore workflow"
             }
             
-            # Mock the function to run with verbose preference
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $script:SingleBackupFile -Verbose
-            
-            # Should have verbose logging calls
+
+            # The -Verifiable mock above is never asserted; only the run's success is checked
             $result.Success | Should -Be $true
-            
-            # Note: Verifiable mocks don't work well with dot-sourced functions
-            # Just verify the function executed successfully
         }
         
         It "Should support enterprise audit trail requirements" {
@@ -1083,7 +1065,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
     
     Context "Helper Function Validation" {
         It "Should call Restore-IndividualObject for each backup in bulk mode" {
-            # Since Restore-IndividualObject is internal, we verify through its dependencies
+            # Restore-IndividualObject is mocked to call its helpers, so the helper calls are counted instead
             Mock Test-BackupIntegrity { return @{ IsValid = $true } }
             Mock Get-RestorationTarget { return @{ IsValid = $true } }
             Mock Set-ObjectACL { return @{ Success = $true; ModificationsApplied = 5 } }
@@ -1117,9 +1099,8 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
         
         It "Should pass VerifyRestoration parameter to ACL operations" {
-            # For this test, we need to ensure that when -VerifyRestoration is used,
-            # Set-ObjectACL is called with -VerifyApplication parameter
-            
+            # With -VerifyRestoration, Set-ObjectACL must receive -VerifyApplication
+
             # Use script-level variables to track the call
             $script:TestCallCount = 0
             $script:TestVerifyApplicationValue = $null
@@ -1202,7 +1183,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
         
         It "Should handle file system operations consistently" {
-            # Override the previous mock to ensure all operations succeed - scoped to this test
+            # Every restore succeeds in this test
             Mock Restore-IndividualObject {
                 return [PSCustomObject]@{
                     PSTypeName = 'RestoreWorkflowResult'
@@ -1231,7 +1212,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $xmlContent = $script:TestBackupData | ConvertTo-Xml -Depth 10 -NoTypeInformation
             $xmlContent.OuterXml -replace "`r`n", "`n" | Out-File $unixStylePath -Encoding UTF8
             
-            # Convert back to proper format for Import-Clixml
+            # Export-Clixml overwrites the LF file, so the restore below reads an ordinary Clixml file
             $script:TestBackupData | Export-Clixml -Path $unixStylePath -Force
             
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TestTargetDN -BackupFile $unixStylePath

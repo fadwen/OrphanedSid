@@ -1,15 +1,13 @@
 #Requires -Version 5.1
 
-# Integration test for Find-UnknownSID removal workflow - Pester 3.4 compatible
+# Removal workflow scenarios. These tests exercise Invoke-FindUnknownSIDScript, a stand-in defined
+# below that returns canned removal results, or the output a test registers with Set-MockBehavior.
+# No OrphanedSid code runs here; Remove-OrphanedSid has its own tests under Tests/Unit/Public. The
+# name is left over from Find-UnknownSID.ps1, the script the module replaced.
 param()
 
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test helpers
-# Load test configuration
-# Mock behavior management
-# Test configuration
-# Mock wrapper function to prevent actual script execution
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testHelpersPath = Join-Path $PSScriptRoot "..\..\TestHelpers"
@@ -102,10 +100,9 @@ BeforeAll {
 Describe "Complete Removal Workflow" {
     
     BeforeAll {
-        # Clear any existing mock behavior
         Clear-MockBehavior
-        
-        # Mock AD cmdlets to prevent actual AD operations
+
+        # The stand-in calls none of these; the mocks stop a stray call reaching AD, the console or disk
         Mock Get-ADDomain { 
             return @{ DNSRoot = "contoso.com"; NetBIOSName = "CONTOSO" }
         }
@@ -129,7 +126,6 @@ Describe "Complete Removal Workflow" {
     }
     
     AfterAll {
-        # Clean up test files
         if (Test-Path $script:TestOutputPath) { Remove-Item $script:TestOutputPath -Force }
         if (Test-Path $script:TestBackupPath) { Remove-Item $script:TestBackupPath -Force }
     }

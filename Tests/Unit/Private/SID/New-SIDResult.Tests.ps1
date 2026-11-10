@@ -1,9 +1,7 @@
-# New-SIDResult.Tests.ps1 - Pester 3.4.x Compatible
-# Tests for New-SIDResult private function module (New-OrphanedSIDResult and related functions)
+# New-SIDResult.Tests.ps1
+# Tests for Private/SID/New-SIDResult.ps1 (New-OrphanedSIDResult and related functions)
 
-# Create minimal stubs for missing dependencies FIRST
-# Load required classes and functions
-# Load SID functions
+# Stubs Write-StructuredLog and Test-SIDFormat, then loads the classes and the Private/SID functions
 BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
 

@@ -1,9 +1,5 @@
 #Requires -Version 5.1
 
-# Import test helpers
-# Import the module classes
-# Import the function under test
-# Import dependency functions
 BeforeAll {
     # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
     # this placeholder is what the Mock below replaces when the file runs on its own.
@@ -24,7 +20,8 @@ Describe "Invoke-MemoryCheck" {
     BeforeEach {
         $script:mockMemoryManager = [MemoryManager]::new(1024, 25, 'test-correlation-id')
         
-        # Mock the wrapper functions
+        # Pester cannot mock a .NET static method, so the function reads [System.GC] through
+        # these wrappers
         Mock Get-SystemGCTotalMemory { return 500MB }
         Mock Get-SystemGCCollectionCount { return 10 }
         Mock Write-StructuredLog { }
@@ -230,11 +227,11 @@ Describe "Invoke-MemoryCheck" {
         }
 
         It "Should still perform monitoring in WhatIf mode" {
-            # Test WhatIf parameter availability instead of execution
+            # -WhatIf is never passed: this checks that the parameter exists and that a normal
+            # call still measures memory
             $command = Get-Command Invoke-MemoryCheck
             $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
-            
-            # Test normal execution
+
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
             
             $result.CurrentMemoryMB | Should -Be 500

@@ -1,30 +1,17 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Test-BackupValidation function
+    Unit tests for Test-BackupValidation and its sibling functions in Test-BackupValidation.ps1.
 
 .DESCRIPTION
-    This test suite provides comprehensive validation of the Test-BackupValidation function,
-    including parameter validation, data validation, schema verification, constraint checking,
-    security validation, performance testing, and cross-platform compatibility.
+    Covers Test-BackupValidation at the Basic, Standard and Comprehensive levels, Test-BackupFormat
+    and Get-BackupMetadata, using in-memory backup objects whose SDDL hashes are computed here.
+    Test-BackupIntegrity is covered in Test-BackupIntegrity.Tests.ps1.
 
 .NOTES
     Author: Jeffrey Stuhr
-    Total Tests: 58 comprehensive tests across 8 test contexts
-    
-    Test Coverage Areas:
-    # Parameter validation and input processing
-    # Backup data schema validation
-    # Content integrity and constraint checking
-    # Metadata validation and consistency verification
-    # Security validation and signature checking
-    # Bulk validation workflows
-    # Error handling and recovery mechanisms
-    # Performance testing and scalability validation
-    # Cross-platform compatibility testing
 #>
 
-# Import the function under test - Test the actual function from the module
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupValidation.ps1"
 }
@@ -36,7 +23,6 @@ Describe "Test-BackupValidation Functions" -Tag "Unit", "Backup", "Validation" {
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
         $script:TestObjectDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
         
-        # Mock all external dependencies
         Mock Write-Verbose { }
         Mock Write-Error { }
         Mock Write-Warning { }
@@ -630,7 +616,7 @@ Describe "Test-BackupValidation Functions" -Tag "Unit", "Backup", "Validation" {
             # Use actually malformed SDDL that will fail parsing
             $invalidSDDLData = $script:ValidBackupData.PSObject.Copy()
             $invalidSDDLData.SDDL = "O:INVALID_SDDL_FORMAT"  # This will fail CommonSecurityDescriptor parsing
-            # Update the hash to match the new invalid SDDL so we get to SDDL validation
+            # Hash the invalid SDDL so the hash check passes and validation reaches the SDDL check
             $sddlBytes = [System.Text.Encoding]::UTF8.GetBytes($invalidSDDLData.SDDL)
             $sha256 = [System.Security.Cryptography.SHA256]::Create()
             try {
@@ -659,7 +645,7 @@ Describe "Test-BackupValidation Functions" -Tag "Unit", "Backup", "Validation" {
         It "Should handle malformed date strings" {
             $malformedDateData = $script:ValidBackupData.PSObject.Copy()
             $malformedDateData.BackupDate = "Not a date"
-            # Ensure SDDL is valid and hash matches so we can get to the date validation
+            # A valid SDDL with a matching hash, so validation reaches the date check
             $malformedDateData.SDDL = "O:BAG:BAD:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)"
             $sddlBytes = [System.Text.Encoding]::UTF8.GetBytes($malformedDateData.SDDL)
             $sha256 = [System.Security.Cryptography.SHA256]::Create()
@@ -739,7 +725,7 @@ Describe "Test-BackupValidation Functions" -Tag "Unit", "Backup", "Validation" {
             $finalMemory = [System.GC]::GetTotalMemory($false)
             $memoryIncrease = $finalMemory - $initialMemory
             
-            # Memory increase Should -be reasonable (less than 10MB for 20 operations)
+            # Less than 10MB retained after 20 rounds of the three functions
             $memoryIncrease | Should -BeLessThan (10 * 1024 * 1024)
         }
     }
@@ -774,10 +760,9 @@ Describe "Test-BackupValidation Functions" -Tag "Unit", "Backup", "Validation" {
             $job = Start-Job -ScriptBlock {
                 param($BackupData, $FunctionPath)
                 
-                # Import all functions from the module
+                # A job starts without this session's functions, so the file is dot-sourced again
                 . $FunctionPath
-                
-                # Run the validation
+
                 $result = Test-BackupValidation -BackupData $BackupData -ValidationLevel Comprehensive
                 return $result
                 
@@ -893,7 +878,7 @@ Describe "Test-BackupValidation Functions" -Tag "Unit", "Backup", "Validation" {
             $formatResult = Test-BackupFormat -BackupData $script:ValidBackupData
             $metadataResult = Get-BackupMetadata -BackupData $script:ValidBackupData
             
-            # Results Should -be consistent regardless of platform
+            # Results are the same regardless of platform
             $integrityResult.IsValid | Should -Be $true
             $formatResult.IsValid | Should -Be $true
             $metadataResult.IsValid | Should -Be $true

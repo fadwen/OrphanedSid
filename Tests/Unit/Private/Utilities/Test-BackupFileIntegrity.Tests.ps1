@@ -2,30 +2,17 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Test-BackupFileIntegrity function
+    Unit tests for the Test-BackupFileIntegrity function
 
 .DESCRIPTION
-    This test suite provides comprehensive validation of the Test-BackupFileIntegrity function,
-    including parameter validation, integrity checking, file validation, corruption detection,
-    security verification, performance testing, and cross-platform compatibility.
+    Tests Test-BackupFileIntegrity against backup files written to a temporary folder:
+    parameter validation, file existence, the SHA256 hash check, SDDL format and metadata
+    validation, the result's shape, error handling, performance and security.
 
 .NOTES
     Author: Jeffrey Stuhr
-    Total Tests: 63 comprehensive tests across various contexts
-    
-    Test Coverage Areas:
-    # Parameter validation and input processing
-    # File integrity verification
-    # Checksum validation and corruption detection
-    # Metadata integrity verification
-    # Security signature validation
-    # Bulk integrity checking workflows
-    # Error handling and recovery mechanisms
-    # Performance testing and scalability validation
-    # Cross-platform compatibility testing
 #>
 
-# Import test helpers only (no main script needed for isolated function testing)
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\BackupTestHelpers.ps1"
 }
@@ -33,13 +20,11 @@ BeforeAll {
 Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
     
     BeforeAll {
-        # Import required dependencies
         $script:ProjectRoot = Join-Path $PSScriptRoot '..\..\..\..'
-        
-        # Source the logging function (required dependency)
+
+        # Loaded so Write-StructuredLog exists to be mocked below
         . (Join-Path $script:ProjectRoot 'Private\Logging\Write-StructuredLog.ps1')
-        
-        # Source the target function
+
         . (Join-Path $script:ProjectRoot 'Private\Utilities\Test-BackupFileIntegrity.ps1')
         
         # Test data setup
@@ -54,7 +39,6 @@ Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
             New-Item -ItemType Directory -Path $script:TestBackupDir -Force | Out-Null
         }
         
-        # Mock all external dependencies
         Mock Write-StructuredLog { }
         Mock Write-Verbose { }
         Mock Write-Error { }
@@ -315,7 +299,7 @@ Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
                 Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             }
             
-            # If there were resource leaks, this would likely cause issues
+            # After repeated runs, a further validation still succeeds
             $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
             $result.IsValid | Should -Be $true
         }
@@ -555,8 +539,7 @@ Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
         }
         
         It "Should handle file lock scenarios" {
-            # This would typically require file locking, which is hard to simulate
-            # We'll mock Import-Clixml to simulate the failure
+            # A real lock is hard to arrange, so Import-Clixml throws the IOException a lock would raise
             Mock Import-Clixml { throw [System.IO.IOException]::new("File is locked") }
             
             $result = Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile
@@ -657,17 +640,16 @@ Describe "Test-BackupFileIntegrity" -Tag "Unit", "Backup", "Integrity" {
             $finalMemory = [System.GC]::GetTotalMemory($false)
             $memoryIncrease = $finalMemory - $initialMemory
             
-            # Memory increase Should -be reasonable (less than 5MB for 10 validations)
+            # The memory increase should stay under 5 MB for 10 validations
             $memoryIncrease | Should -BeLessThan (5 * 1024 * 1024)
         }
         
         It "Should scale validation time linearly with file size" {
-            # This test assumes file I/O is the primary factor in performance
+            # Only the small backup file is timed; how the time grows with file size is not measured
             $startTime = Get-Date
             Test-BackupFileIntegrity -BackupFilePath $script:ValidBackupFile | Out-Null
             $smallFileTime = (Get-Date) - $startTime
             
-            # Small file should complete quickly
             $smallFileTime.TotalMilliseconds | Should -BeLessThan 100
         }
     }

@@ -2,10 +2,10 @@
 
 <#
 .SYNOPSIS
-    Pester 3.4 tests for the Private/System/Invoke-ResourceDisposal.ps1 functions
+    Pester tests for the Private/System/Invoke-ResourceDisposal.ps1 functions
 
 .DESCRIPTION
-    Covers the two disposal functions the main script relies on during its end block:
+    Covers the two disposal functions that release resources at the end of a run:
     - Invoke-ResourceCleanup: disposes the MemoryManager and any additional IDisposable resources
     - Invoke-ResourceDisposal: disposes an arbitrary set of resources and reports counts
 
@@ -13,25 +13,23 @@
     These tests use a small IDisposable test double so no real resources are touched.
 
 .NOTES
-    PowerShell Version: 5.1+ (Windows PowerShell)
-    Pester Version: 3.4.x
+    PowerShell Version: 5.1+
 
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 #>
 
-# The MemoryManager class is a typed parameter of Invoke-ResourceCleanup, so it must be defined
-# before that file is parsed.
-# IDisposable test double. Records whether Dispose ran and can be told to fail.
 BeforeAll {
     $projectRoot = Join-Path $PSScriptRoot '..\..\..\..'
 
+    # The MemoryManager class is a typed parameter of Invoke-ResourceCleanup, so it must be defined
+    # before that file is parsed.
     . (Join-Path $projectRoot 'Classes\MemoryManager.ps1')
 
     . (Join-Path $projectRoot 'Private\System\Invoke-ResourceDisposal.ps1')
 
-    # Stub so the function under test can be mocked. The parameter names are what the
+    # Stub so Write-StructuredLog can be mocked. The parameter names are what the
     # -ParameterFilter blocks below bind to, so they are declared even though unused here.
     # Defined unconditionally: another test file may leave a global Write-StructuredLog with different
     # parameter names, and a mock built on that one binds the filter variables to the wrong arguments.
@@ -40,6 +38,7 @@ BeforeAll {
         param($Message, $Level, $Component, $CorrelationId, $Data)
     }
 
+    # IDisposable test double. Records whether Dispose ran and can be told to fail.
     class DisposableProbe : System.IDisposable {
         [bool]$Disposed = $false
         [bool]$ThrowOnDispose = $false

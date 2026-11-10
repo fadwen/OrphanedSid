@@ -9,12 +9,9 @@
 
 .NOTES
     Author: Jeffrey Stuhr
-    Test Framework: Pester 3.4.x
-    Last Updated: 2025-01-27
 #>
 
-# Define mock functions first to avoid dependency issues
-# Now import the function under test
+# Stubs the collaborators, then dot-sources the function under test
 BeforeAll {
     function Write-StructuredLog { 
         param($Message, $Level, $CorrelationId) 

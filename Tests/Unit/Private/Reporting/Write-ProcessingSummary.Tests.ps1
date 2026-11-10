@@ -1,13 +1,14 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Import the function under test directly
-# Test suite for Write-ProcessingSummary function
+# Unit tests for Write-ProcessingSummary.ps1: parameters, logging and CSV export.
+# Write-ProcessingSummary.Scenarios.Tests.ps1 covers what is logged for each kind of result.
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
 }
 
 Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
     BeforeAll {
-        # Robust mocking approach - Mock the core logging functions
+        # Placeholders for logging functions defined in other files: Pester can only mock a command
+        # that exists
         function Write-StructuredLog {
             param($Message, $Level, $Component, $CorrelationId)
             Write-Host "Mock Write-StructuredLog: [$Level] $Message" -ForegroundColor Yellow
@@ -39,13 +40,10 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
         Mock Write-Host { }
         Mock Write-Output { }
         
-        # Mock the logging function explicitly
         Mock Write-StructuredLog { Write-Host "Mock Write-StructuredLog called" } -Verifiable
-        
-        # Mock Export-Csv
+
         Mock Export-Csv { }
-        
-        # Mock console output
+
         Mock Write-Host { }
         Mock Write-Output { }
         
@@ -76,10 +74,10 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
             }
         }
         
-        # Mock StreamingManager.ExportToCsv method
+        # Stand-in for the streaming manager's ExportToCsv method
         Add-Member -InputObject $script:TestStatisticsWithStreaming.StreamingManager -MemberType ScriptMethod -Name ExportToCsv -Value { 
             param($path) 
-            # This will be tracked by the Export-Csv mock we already have
+            # Reaches the Export-Csv mock, so the export can be asserted
             Export-Csv -Path $path -InputObject @() -NoTypeInformation
         }
         

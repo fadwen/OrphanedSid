@@ -1,5 +1,5 @@
-# TestHelpers/ADMockFactory.ps1
-# Active Directory testing mock factory
+# Active Directory mock factory: an in-memory domain with OUs, users, groups and orphaned SIDs.
+# New-ADMocks calls Mock, so it must run inside a Pester block such as BeforeAll.
 
 class ADMockFactory {
     static [hashtable] $MockData = @{
@@ -323,7 +323,6 @@ class ADMockFactory {
     }
 }
 
-# Mock AD PowerShell cmdlets
 function New-ADMocks {
     <#
     .SYNOPSIS
@@ -481,5 +480,3 @@ function Reset-ADMocks {
     [ADMockFactory]::Reset()
 }
 
-# Functions available for dot-sourcing in tests
-# New-ADMocks, Get-MockOrphanedSIDs, Reset-ADMocks

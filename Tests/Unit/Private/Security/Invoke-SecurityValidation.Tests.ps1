@@ -1,7 +1,5 @@
 #Requires -Version 5.1
 
-# Dot source the function
-# Import required dependencies
 BeforeAll {
     $script:TestPath = $PSScriptRoot
 
@@ -20,7 +18,6 @@ BeforeAll {
 
 Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
     BeforeAll {
-        # Mock all external dependencies
         Mock Write-StructuredLog { } -ModuleName $null
     }
 

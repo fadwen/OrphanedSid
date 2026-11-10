@@ -14,11 +14,11 @@ Tests/
 │   ├── Public/             One file per exported command
 │   └── Private/<Area>/     One file per private function, mirroring Private/<Area>/
 ├── Integration/
-│   ├── EndToEnd/           Discovery, removal and restore workflows against mocked AD responses
-│   └── SystemIntegration/  AD access, backup and restore, and logging across function boundaries
+│   ├── EndToEnd/           Discovery, removal and restore scenarios against in-file stand-ins
+│   └── SystemIntegration/  AD access, backup and restore, and logging scenarios, likewise
 ├── Performance/
-│   ├── Benchmarks/         Throughput, memory baseline, large dataset processing
-│   └── LoadTests/          Concurrency, memory pressure, resource cleanup, scalability limits
+│   ├── Benchmarks/         Throughput, memory baseline, large dataset processing (simulated)
+│   └── LoadTests/          Concurrency, memory pressure, resource cleanup, scalability (simulated)
 ├── TestHelpers/            Shared stubs and factories, dot-sourced from BeforeAll
 ├── TestData/               Configurations, fixtures, mock responses, sample data, malicious inputs
 └── PSScriptAnalyzerSettings.psd1   Relaxed analyzer rules for Tests/ and Tools/
@@ -50,12 +50,19 @@ between module functions names only parameters the callee declares.
 
 ## Integration and performance
 
+None of these files runs module code. Each defines a stand-in function in its `BeforeAll`
+(`Invoke-FindUnknownSIDScript`, named after the `Find-UnknownSID.ps1` script the module replaced,
+or an `Invoke-*Test` simulator) that returns canned results or figures computed from its
+parameters, and the tests assert on those. The Active Directory and file cmdlets they mock are
+never called by the stand-ins. They document the expected scenarios; the behaviour of the module
+itself is covered under `Unit/`.
+
 | Folder | Covers |
 | --- | --- |
-| `Integration/EndToEnd` | Complete discovery, removal and restore workflows with `Get-ADObject`, `Set-ADObject`, `New-ADUser` and the rest mocked |
-| `Integration/SystemIntegration` | Active Directory access patterns, backup and restore round trips, and the logging system across function boundaries |
-| `Performance/Benchmarks` | Large dataset processing, memory usage baseline, throughput measurement |
-| `Performance/LoadTests` | Concurrent operations, memory pressure, resource cleanup, scalability limits |
+| `Integration/EndToEnd` | Discovery, removal and restore scenarios, including edge cases registered per test with `Set-MockBehavior` |
+| `Integration/SystemIntegration` | Active Directory access, backup and restore, and logging scenarios |
+| `Performance/Benchmarks` | Simulated large dataset processing, memory usage baseline, throughput measurement |
+| `Performance/LoadTests` | Simulated concurrent operations, memory pressure, resource cleanup, scalability limits |
 
 ## Helpers
 
@@ -80,7 +87,9 @@ between module functions names only parameters the callee declares.
 
 ## Conventions
 
-- `#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }` at the top of every file.
+For new test files; not every existing file follows the first and fourth points.
+
+- `#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }` at the top of the file.
 - Setup in `BeforeAll` or `BeforeEach`; nothing at the file's top level.
 - `Should -Be` operator form; `Should -Invoke` for mock assertions, with `-Scope` only when the
   call happens in setup; `Should -Throw "*text*"` with `[` and `]` escaped.

@@ -1,9 +1,7 @@
-# Test-SIDFormat.Tests.ps1 - Pester 3.4.x Compatible
-# Tests for Test-SIDFormat private function
+# Test-SIDFormat.Tests.ps1
+# Tests for the Test-SIDFormat private function
 
-# Create minimal stubs for missing dependencies FIRST
-# Load required classes and functions
-# Load SID functions
+# Stubs Write-StructuredLog, then loads the classes and the Private/SID functions
 BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
 

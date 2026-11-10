@@ -1,13 +1,12 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Define mock functions first to prevent parameter prompting
-# Import the function to test AFTER defining mocks
-# Import required logging function
-# Test configuration for various operation types
 BeforeAll {
     function Write-StructuredLog {
         param($Level, $Message, $Data)
-        # Mock implementation - do nothing  
     }
+
+    # Stand-in for Private/Operations/Invoke-OperationWithRetry.ps1, which Invoke-ADOperationWithRetry
+    # delegates to. It retries server-down and 'Temporary' failures with a 10 ms delay so retry
+    # tests run quickly.
 
     function Invoke-OperationWithRetry {
         param(
@@ -18,7 +17,6 @@ BeforeAll {
             [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
         )
         
-        # Implement proper retry logic for testing
         $attempt = 0
         $lastError = $null
         
@@ -62,6 +60,7 @@ BeforeAll {
 
     . "$PSScriptRoot\..\..\..\..\Private\Logging\Write-ADOperationSecurityLog.ps1"
 
+    # Script blocks for the operation types the tests run
     $testConfig = @{
         SuccessOperation = {
             return @{
@@ -101,26 +100,23 @@ BeforeAll {
 
 Describe "Invoke-ADOperationWithRetry" {
     
-    # Set up Pester 3.4.x mocks for logging functions
     BeforeAll {
     Mock Write-ADOperationSecurityLog { }
         Mock Write-StructuredLog { }
     }
     
     BeforeEach {
-        # Reset attempt counter for each test
         $script:AttemptCount = 0
-        
-        # Clear mock call tracking
+
         $global:MockCalls = @()
     }
     
     Context "Parameter Validation and Input Security" {
         It "Should validate mandatory ScriptBlock parameter" {
-            # In Pester 3.4.x, we need to test this differently to avoid parameter prompting
+            # Passes $null explicitly; omitting a mandatory parameter would prompt for it
             try {
                 $result = Invoke-ADOperationWithRetry -ScriptBlock $null
-                # If we get here without error, the test should fail
+                # Reaching this line means the call did not throw
                 $false | Should -Be $true
             }
             catch {
@@ -208,7 +204,7 @@ Describe "Invoke-ADOperationWithRetry" {
                 Invoke-ADOperationWithRetry -ScriptBlock $testConfig.PersistentFailureOperation -MaxRetries 3
             }
             catch { }
-            # The retry logic is in Invoke-OperationWithRetry, so we test the wrapper behavior
+            # Asserts nothing: the retry count belongs to Invoke-OperationWithRetry, which is stubbed here
         }
         
         It "Should handle operations that eventually succeed" {

@@ -1,5 +1,5 @@
-# SecurityTestHelpers.ps1 - Pester 3.4 Compatible Security Testing Functions
-# PowerShell 5.1 compatible security testing infrastructure
+# Security test helpers: malicious input test cases, a pattern-based input checker, mock
+# credentials and a mock AD environment. Dot-source from a test's BeforeAll.
 
 function Get-MaliciousInputTestCases {
     [CmdletBinding()]
@@ -66,7 +66,7 @@ function Test-InputForMaliciousContent {
         ValidationType = $ValidationType
     }
     
-    # Define malicious patterns (simplified for PowerShell 5.1 compatibility)
+    # Case-insensitive regex patterns per validation type
     $patterns = @{
         CommandInjection = @(
             '&.*net user',
@@ -185,8 +185,7 @@ function Write-SecurityTestLog {
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] [$TestName] $Message"
     
-    # In a real implementation, this might write to a file or event log
-    # For testing, we'll just output to verbose stream
+    # Test log entries go to the verbose stream only
     Write-Verbose $logEntry
 }
 
@@ -194,7 +193,6 @@ function Get-TestDataPath {
     [CmdletBinding()]
     param()
     
-    # Return the TestData directory path relative to current script
     $testRoot = Split-Path -Parent $PSScriptRoot
     return Join-Path $testRoot 'TestData'
 }
@@ -255,6 +253,3 @@ function Get-MockADEnvironment {
         )
     }
 }
-
-# Export functions (not using Export-ModuleMember for dot-sourcing compatibility)
-# Functions are available when dot-sourced

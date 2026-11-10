@@ -2,24 +2,17 @@
 
 <#
 .SYNOPSIS
-    Pester 3.4 tests for Invoke-GarbageCollection Private/System functionality
+    Pester tests for the Invoke-GarbageCollection private function
 
 .DESCRIPTION
-    Comprehensive test suite for garbage collection functionality:
-    - Invoke-GarbageCollection: Memory cleanup and garbage collection operations
+    Tests Invoke-GarbageCollection: memory cleanup and garbage collection operations.
 
 .NOTES
-    PowerShell Version: 5.1+ (Windows PowerShell)
-    Pester Version: 3.4.x (Legacy compatible)
-    Test Framework: Enterprise-grade validation with mocking
+    PowerShell Version: 5.1+
 
     Author: Jeffrey Stuhr
-    Last Updated: January 15, 2025
 #>
 
-# Source the Invoke-GarbageCollection function
-# Stub Write-StructuredLog for mocking
-# Stub .NET static methods that can't be mocked in Pester 3.4
 BeforeAll {
     $functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
 
@@ -32,10 +25,11 @@ BeforeAll {
     if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
         function Write-StructuredLog {
             param($Message, $Level, $Component, $CorrelationId)
-            # Stub implementation for testing
         }
     }
 
+    # Pester cannot mock a .NET static method, so Invoke-GarbageCollection.ps1 calls [System.GC]
+    # through wrapper functions the tests mock. These definitions apply only if a wrapper is missing.
     if (-not (Get-Command Invoke-GCCollect -ErrorAction SilentlyContinue)) {
         function Invoke-GCCollect { [System.GC]::Collect() }
     }
@@ -139,7 +133,7 @@ Describe "Invoke-GarbageCollection" {
         It "Should perform final collection after finalizers" {
             Invoke-GarbageCollection
             
-            # Should -be called twice: initial collection + final collection
+            # Called twice: the initial collection and the one after finalizers
             Should -Invoke Invoke-GCCollect -Times 2
         }
         

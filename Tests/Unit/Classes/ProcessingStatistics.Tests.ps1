@@ -1,6 +1,5 @@
 #Requires -Version 5.1
 
-# Import the class
 BeforeAll {
     . $PSScriptRoot\..\..\..\Classes\ProcessingStatistics.ps1
 }
@@ -294,7 +293,7 @@ Describe "ProcessingStatistics Class Tests" {
             $script:testStats.StartTime = Get-Date
             $script:testStats.EndTime = (Get-Date).AddHours(-1)
             
-            # Duration calculation should handle negative values
+            # The Duration property accepts a negative TimeSpan
             $script:testStats.Duration = $script:testStats.EndTime - $script:testStats.StartTime
             $script:testStats.Duration.TotalHours | Should -BeLessThan 0
         }

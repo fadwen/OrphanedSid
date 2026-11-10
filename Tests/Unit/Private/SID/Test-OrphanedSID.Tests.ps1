@@ -1,11 +1,8 @@
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Test-OrphanedSID.Tests.ps1 - Pester 3.4.x Compatible
-# Tests for Test-OrphanedSID private function
+# Test-OrphanedSID.Tests.ps1
+# Tests for the Test-OrphanedSID private function
 
-# Create minimal stubs for missing dependencies FIRST
-# Load required classes and functions
-# Load SID functions
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     # Test-OrphanedSID has catch clauses typed [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException].
@@ -96,8 +93,6 @@ Describe "Test-OrphanedSID Function Tests" {
         }
         
         It "Should return a SIDLookupResult for well-known SID" {
-            # For AD context, well-known Windows SIDs may be considered "orphaned" 
-            # since they're not AD objects (this is the actual function behavior)
             $wellKnownSID = 'S-1-5-32-544'  # Administrators group
             $result = Test-OrphanedSID -SID $wellKnownSID
             
@@ -196,13 +191,11 @@ Describe "Test-OrphanedSID Function Tests" {
     
     Context "Cache Management Integration" {
         It "Should work with Clear-SIDValidationCache function" {
-            # Clear cache Should -be available
             Get-Command Clear-SIDValidationCache -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
             { Clear-SIDValidationCache } | Should -Not -Throw
         }
         
         It "Should work with Get-SIDValidationCacheStat function" {
-            # Cache statistics Should -be available
             Get-Command Get-SIDValidationCacheStat -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
             $stats = Get-SIDValidationCacheStat
             $stats | Should -Not -BeNullOrEmpty
@@ -212,17 +205,13 @@ Describe "Test-OrphanedSID Function Tests" {
         It "Should benefit from caching on repeated calls" {
             $testSID = 'S-1-5-32-544'
             
-            # First call
             $time1 = Measure-Command { $result1 = Test-OrphanedSID -SID $testSID }
-            
-            # Second call Should -be faster due to caching
             $time2 = Measure-Command { $result2 = Test-OrphanedSID -SID $testSID }
-            
-            # Results Should -be consistent
+
+            # The cached call returns the same status. Timing is measured but not asserted: the
+            # second call is usually faster, but lookup time varies too much to rely on.
             $result1.Status | Should -Be $result2.Status
-            
-            # Second call should generally be faster (cached)
-            # Note: This may not always be true due to AD variability
+
             $result2.PSTypeNames | Should -Contain 'SIDLookupResult'
         }
     }
@@ -296,7 +285,7 @@ Describe "Test-OrphanedSID Function Tests" {
                 $results += Test-OrphanedSID -SID $testSID
             }
             
-            # All results Should -be the same
+            # Every call returns the same status
             $results.Count | Should -Be 3
             $results[0].Status | Should -Be $results[1].Status
             $results[1].Status | Should -Be $results[2].Status

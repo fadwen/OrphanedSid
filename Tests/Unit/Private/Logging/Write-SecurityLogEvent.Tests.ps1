@@ -1,6 +1,4 @@
-﻿# Pester 3.4 tests for Write-SecurityLogEvent.ps1
-# Create stubs for missing functions that the function depends on
-# Import the script content for testing
+﻿# Unit tests for Write-SecurityLogEvent.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -8,6 +6,7 @@ BeforeAll {
 
     $modulePath = "$here\..\..\..\..\Private\Logging\$sut"
 
+    # Placeholders for collaborators defined in other files: Pester can only mock a command that exists
     function Protect-LogMessage {
         param([string]$Message)
         return $Message
@@ -15,7 +14,6 @@ BeforeAll {
 
     function Write-StructuredLogEntry {
         param($Message, $Level, $Component, $Data, $CorrelationId)
-        # Stub implementation - just return success
     }
 
     . $modulePath
@@ -23,7 +21,6 @@ BeforeAll {
 
 Describe "Write-SecurityLogEvent" -Tag @('Unit', 'Logging', 'Security') {
 
-    # Mock dependencies inside Describe block for Pester 3.4 compatibility
     BeforeAll {
     Mock Protect-LogMessage {
             param([string]$Message)
@@ -32,7 +29,7 @@ Describe "Write-SecurityLogEvent" -Tag @('Unit', 'Logging', 'Security') {
         
         Mock Write-StructuredLogEntry {
             param($Message, $Level, $Component, $Data, $CorrelationId)
-            # Mock implementation - just return success
+            # Discards the entry
         }
     }
 

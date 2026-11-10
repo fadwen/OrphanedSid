@@ -3,21 +3,16 @@
 
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Export-DiagnosticData function
+    Unit tests for the Export-DiagnosticData function
 
 .DESCRIPTION
-    Tests Export-DiagnosticData functionality including parameter validation,
-    diagnostic data collection, file system operations, and enterprise features.
+    Tests Export-DiagnosticData parameter validation, diagnostic data collection,
+    the files it writes, and its error handling.
 
 .NOTES
     Author: Jeffrey Stuhr
-    Version: 1.0.0
-    Last Updated: 2025-07-23
-    Pester Version: 3.4.x (PowerShell 5.1 compatible)
 #>
 
-# Import the function to test
-# Create stub for Get-LogFileSummary to enable mocking
 BeforeAll {
     $functionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\Reporting\Export-DiagnosticData.ps1"
 
@@ -27,7 +22,8 @@ BeforeAll {
         Write-Warning "Could not find Export-DiagnosticData.ps1 at expected path: $functionPath"
     }
 
-    function Get-LogFileSummary { 
+    # Placeholder for a function defined in another file: Pester can only mock a command that exists
+    function Get-LogFileSummary {
         param() 
         return @{} 
     }
@@ -148,9 +144,8 @@ Describe "Export-DiagnosticData" -Tag "Unit", "Private", "Reporting" {
         It "Should export diagnostic data files" {
             Export-DiagnosticData -OutputPath "C:\Test"
 
-            # Based on function analysis: diagnostic-data.json, powershell-info.json, loaded-modules.json
-            # package-summary.json is also created = 4 total
-            # But our mock might be preventing the 4th one, so let's check for at least 3
+            # -Times without -Exactly is a minimum: at least diagnostic-data.json, powershell-info.json
+            # and loaded-modules.json are written
             Should -Invoke Out-File -Times 3 -Scope It
         }
 
@@ -169,9 +164,8 @@ Describe "Export-DiagnosticData" -Tag "Unit", "Private", "Reporting" {
         }
 
         It "Should handle missing logging functions gracefully" {
-            # Mock Get-Command to return null for logging functions
+            # Report Write-StructuredLogEntry as unavailable
             Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Write-StructuredLogEntry' }
-            # Reset the New-Item mock for this test to not throw
             Mock New-Item { return [PSCustomObject]@{ FullName = $Path } } -ParameterFilter { $ItemType -eq "Directory" }
 
             { Export-DiagnosticData -OutputPath "C:\Test" } | Should -Not -Throw

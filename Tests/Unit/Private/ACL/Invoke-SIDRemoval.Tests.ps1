@@ -8,8 +8,7 @@
 .DESCRIPTION
     Tests the real function against an ACL double: an object with an Access collection of ACEs and a
     RemoveAccessRuleSpecific method that removes from that collection and records the call, which is
-    all the function uses of System.DirectoryServices.ActiveDirectorySecurity. The earlier version of
-    this file defined its own Invoke-SIDRemoval with a different parameter set and tested that.
+    all the function uses of System.DirectoryServices.ActiveDirectorySecurity.
 #>
 
 BeforeAll {

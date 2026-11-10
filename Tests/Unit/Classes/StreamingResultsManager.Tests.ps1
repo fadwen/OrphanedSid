@@ -1,6 +1,5 @@
 #Requires -Version 5.1
 
-# Import the class
 BeforeAll {
     $ModuleRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 

@@ -1,33 +1,21 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
-# Stub so this file runs on its own: the real Write-StructuredLog needs the whole logging system
-# loaded, and every call in Get-BackupFileMetadata is mocked below anyway.
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Get-BackupFileMetadata function
+    Unit tests for Get-BackupFileMetadata, which reads the metadata of one Clixml ACL backup.
 
 .DESCRIPTION
-    This test suite provides comprehensive validation of the Get-BackupFileMetadata function,
-    including parameter validation, metadata extraction functionality, error handling,
-    performance testing, and security validation.
+    Tests the real function against backup files written to a folder under $env:TEMP: parameter
+    validation, file system checks, XML import errors, the shape of the result, error logging, timing
+    budgets, path security through the backup test helpers, and correlation ID logging.
 
 .NOTES
     Author: Jeffrey Stuhr
-    Total Tests: 63 comprehensive tests across 9 test contexts
-    
-    Test Coverage Areas:
-    # Parameter validation and sanitization
-    # Core metadata extraction functionality  
-    # File system validation and error handling
-    # XML import processing and error recovery
-    # Output structure and type validation
-    # Performance and scalability testing
-    # Security validation and malicious input protection
-    # Enterprise integration and logging verification
-    # Cross-platform compatibility testing
 #>
 
+# Stub so this file runs on its own: the real Write-StructuredLog needs the whole logging system
+# loaded, and every call in Get-BackupFileMetadata is mocked below anyway.
 BeforeAll {
     if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
         function Write-StructuredLog {
@@ -41,7 +29,7 @@ BeforeAll {
 Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
     
     BeforeAll {
-        # Import the Get-BackupFileMetadata function directly  
+        # Dot-source the function under test; the module itself is not imported
         $FunctionPath = Join-Path $PSScriptRoot '..\..\..\..\Private\Backup\Get-BackupFileMetadata.ps1'
         if (Test-Path $FunctionPath) {
             . $FunctionPath
@@ -53,7 +41,6 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
             . $LogPath
         }
 
-        # Import test helpers
         . "$PSScriptRoot\..\..\..\..\Tests\TestHelpers\BackupTestHelpers.ps1"
         
         # Test data setup
@@ -509,7 +496,7 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
         }
         
         It "Should sanitize file paths before processing" {
-            # Test with path containing special characters that Should -be handled safely
+            # A path with spaces is read as given
             $specialPath = Join-Path $script:TestBackupDir "test backup file.xml"
             $script:TestBackupData | Export-Clixml -Path $specialPath -Force
             
@@ -534,7 +521,7 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
                 $true | Should -Be $false  # Force failure
             }
             catch {
-                # The error message Should -contain the safe version without sensitive data
+                # The message keeps the wrapper text and drops the sensitive value
                 $_.Exception.Message | Should -Match "Failed to extract metadata from backup"
                 $_.Exception.Message | Should -Not -Match "PASSWORD123"
             }
@@ -547,7 +534,7 @@ Describe "Get-BackupFileMetadata" -Tag "Unit", "Backup", "Metadata" {
             
             $result = Get-BackupFileMetadata -BackupFilePath $script:ValidBackupPath -CorrelationId $maliciousCorrelationId
             $result.ExtractionCorrelationId | Should -Be $maliciousCorrelationId
-            # The function should accept it but logging should sanitize it
+            # The ID is passed through unchanged; how logging treats it is not checked here
         }
     }
     

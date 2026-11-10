@@ -1,5 +1,4 @@
-﻿# Pester 3.4 tests for Initialize-LoggingConfiguration.ps1
-# Import the script content for testing
+﻿# Unit tests for Initialize-LoggingConfiguration.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -12,7 +11,6 @@ BeforeAll {
 
 Describe "Initialize-LoggingConfiguration" -Tag @('Unit', 'Logging', 'Configuration') {
 
-    # Mock dependencies that may not be present during testing
     BeforeAll {
     Mock Write-Verbose { } -Verifiable
     }

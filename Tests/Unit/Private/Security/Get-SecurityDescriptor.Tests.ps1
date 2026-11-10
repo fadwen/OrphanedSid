@@ -10,14 +10,8 @@
 
 .NOTES
     Author: Jeffrey Stuhr
-    Test Framework: Pester 3.4.x
-    Last Updated: 2025-01-27
 #>
 
-# Define mock functions first to avoid dependency issues
-# Pester 3.4 can only mock a command that exists. Stub Get-ADObject when the RSAT
-# ActiveDirectory module is not installed so the Mock calls below have something to replace.
-# Now import the function under test
 BeforeAll {
     function Write-StructuredLog {
         param($Message, $Level = 'Information', $CorrelationId, $Data)
@@ -30,6 +24,7 @@ BeforeAll {
         }
     }
 
+    # Pester can only mock a command that exists, so Get-ADObject is stubbed when RSAT is absent.
     # The shared stubs, not a local global Get-ADObject: a global defined here with a shorter
     # parameter list outlived the file, and Mock then built later files' Get-ADObject mocks from it,
     # so -IncludeDeletedObjects never reached the mock body.
@@ -41,14 +36,12 @@ BeforeAll {
 Describe "Get-ObjectAccessRule Tests" {
     
     BeforeEach {
-        # Reset test state
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
         $script:LogCalls = @()
         
-        # Mock ActiveDirectory module cmdlets  
+        # Get-Acl returns two non-inherited rules for any AD: path
         Mock Get-Acl {
             param($Path)
-            # Mock should respond to AD: paths
             if ($Path -like "AD:\*") {
                 return [PSCustomObject]@{
                     Owner = "DOMAIN\Administrator"
@@ -64,7 +57,7 @@ Describe "Get-ObjectAccessRule Tests" {
                             IdentityReference = "DOMAIN\TestUser"
                             AccessControlType = "Allow"
                             ActiveDirectoryRights = "ReadProperty"
-                            IsInherited = $false  # Changed to false so both rules are returned
+                            IsInherited = $false
                         }
                     )
                 }
@@ -84,7 +77,6 @@ Describe "Get-ObjectAccessRule Tests" {
     Context "Parameter Validation" {
         
         It "Should accept valid ADObject parameter" {
-            # Test that the function works with valid input
             $testObject = [PSCustomObject]@{
                 DistinguishedName = "CN=TestUser,OU=Users,DC=domain,DC=com"
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
@@ -133,25 +125,20 @@ Describe "Get-ObjectAccessRule Tests" {
             $result | Should -Not -BeNullOrEmpty
             $result.Count | Should -Be 2
             
-            # Verify Get-Acl was called 
             Should -Invoke Get-Acl -Times 1
         }
         
         It "Should filter inherited rules when IncludeInherited is false" {
-            # Create test object
             $testObject = [PSCustomObject]@{
                 DistinguishedName = "CN=TestUser,OU=Users,DC=domain,DC=com"
                 nTSecurityDescriptor = @(0x01, 0x00, 0x14, 0x80)
             }
-            
-            # Since our main mock already has both rules as non-inherited (IsInherited = $false)
-            # and this test is about filtering inherited rules, let's create a separate test object
-            # that would have inherited rules to filter. But since our mock doesn't distinguish,
-            # this test will succeed with the main mock that returns 2 non-inherited rules.
-            
+
+            # The Get-Acl mock returns no inherited rules, so this checks only that the two
+            # non-inherited rules survive the filter, not that an inherited rule is removed
+
             $result = Get-ObjectAccessRule -ADObject $testObject -IncludeInherited:$false
-            
-            # Should return the 2 non-inherited rules from our main mock
+
             $result.Count | Should -Be 2
             $result[0].IsInherited | Should -Be $false
             $result[1].IsInherited | Should -Be $false
@@ -261,7 +248,7 @@ Describe "Get-ObjectAccessRule Tests" {
     Context "Pipeline Support" {
         
         BeforeEach {
-            # Reset mock call tracking for this context
+            # Replaces the Get-Acl mock for this context
             Mock Get-Acl {
                 param($Path)
                 if ($Path -like "AD:\*") {
@@ -311,13 +298,10 @@ Describe "Get-ObjectAccessRule Tests" {
             
             $results = $testObjects | Get-ObjectAccessRule
             
-            # Debug output shows Results count = 2, and DistinguishedName is empty
-            # This suggests the function returns 1 access rule per input object (not 2)
-            # And the DistinguishedName is not being set correctly in the returned objects
+            # One access rule comes back per piped object
             $results.Count | Should -Be 2
-            
-            # Get-Acl is being called 4 times (likely 2 per object due to method fallback)
-            # In Pester 3.4.x, we can't use -AtLeast, so let's just verify it was called
+
+            # Requires at least one Get-Acl call; the count is not pinned
             Should -Invoke Get-Acl
         }
     }

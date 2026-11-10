@@ -1,6 +1,5 @@
 #Requires -Version 5.1
 
-# Import the SecurityValidationResult class
 BeforeAll {
     . "$PSScriptRoot\..\..\..\Classes\SecurityValidationResult.ps1"
 }

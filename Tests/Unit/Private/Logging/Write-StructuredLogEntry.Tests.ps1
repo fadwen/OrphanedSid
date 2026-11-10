@@ -1,12 +1,10 @@
-﻿# Write-StructuredLogEntry.Tests.ps1
-
-# Import the function being tested
+﻿# Unit tests for Write-StructuredLogEntry.ps1
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLogEntry.ps1"
 }
 
 Describe "Write-StructuredLogEntry" {
-    # Mock all external dependencies that might not exist
+    # Silence the file write and every output stream
     BeforeAll {
     Mock Add-Content { }
         Mock Write-Warning { }
@@ -19,7 +17,7 @@ Describe "Write-StructuredLogEntry" {
         # Mock Write-ConsoleLogEntry which is defined in the same file
         Mock Write-ConsoleLogEntry { }
         
-        # Mock Get-Command to simulate availability of Get-LoggingSystemState
+        # Report Get-LoggingSystemState as unavailable
         Mock Get-Command { 
             return $null 
         } -ParameterFilter { $Name -eq 'Get-LoggingSystemState' }

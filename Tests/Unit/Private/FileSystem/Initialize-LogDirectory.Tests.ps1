@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 
-# Import required modules and dependencies
-# Initialize logging for tests
+# Unit tests for Initialize-LogDirectory.ps1. The logging functions are loaded for real and the
+# logging system is initialized with console output suppressed.
 BeforeAll {
     . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1
 
@@ -230,7 +230,7 @@ Describe "Initialize-LogDirectory" {
                 
                 Test-Path $dangerousPath | Should -Be $false
                 
-                # Result Should -be a safe fallback path
+                # The result is a safe fallback path
                 $result | Should -Not -Be $null
                 $result | Should -Not -Match "windows.*system32"
             }
