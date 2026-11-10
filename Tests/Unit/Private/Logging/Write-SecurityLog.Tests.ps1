@@ -1,6 +1,4 @@
-﻿# Pester 3.4 tests for Write-SecurityLog.ps1
-# Import the script content for testing
-# Import dependencies
+﻿# Unit tests for Write-SecurityLog.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -19,7 +17,6 @@ BeforeAll {
 
 Describe "Write-SecurityLog" -Tag @('Unit', 'Logging', 'Security') {
 
-    # Mock dependencies inside Describe block
     BeforeAll {
     Mock Write-Verbose { } -Verifiable
         Mock Write-Warning { } -Verifiable
@@ -148,14 +145,12 @@ Describe "Write-SecurityLog" -Tag @('Unit', 'Logging', 'Security') {
     Context "Error Handling" {
         
         It "Should handle Write-SecurityStructuredLogEntry failures gracefully" {
-            # Mock Write-SecurityStructuredLogEntry to throw an error
             Mock Write-SecurityStructuredLogEntry { throw "Log system failure" } 
             
             { Write-SecurityLog -SecurityEventType "ObjectAccess" -Message "Test" -Outcome "Success" } | Should -Not -Throw
         }
 
         It "Should attempt fallback logging when structured logging fails" {
-            # Mock Write-SecurityStructuredLogEntry to throw an error
             Mock Write-SecurityStructuredLogEntry { throw "Log system failure" } 
             
             { Write-SecurityLog -SecurityEventType "ObjectAccess" -Message "Test" -Outcome "Success" } | Should -Not -Throw

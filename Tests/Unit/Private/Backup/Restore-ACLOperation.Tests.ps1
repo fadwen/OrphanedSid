@@ -1,36 +1,21 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-#Re#Requires -Module Pester
 
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Restore-ACLOperation function
+    Unit tests for the functions in Restore-ACLOperation.ps1, chiefly Set-ObjectACL.
 
 .DESCRIPTION
-    This test suite provides comprehensive validation of the Restore-ACLOperation function,
-    including parameter validation, ACL restoration, integrity verification, rollback operations,
-    error handling, performance testing, and security validation.
+    Tests Set-ObjectACL with Get-RestorationTarget, Confirm-RestorationSuccess and
+    ConvertFrom-BackupToACL mocked, and with Get-ADObject, Get-Acl and Set-Acl mocked so no domain is
+    needed. The contexts named after those three helpers mostly run the default mocks defined here;
+    Restore-ACLOperation.Helpers.Tests.ps1 runs their real bodies.
 
 .NOTES
     Author: Jeffrey Stuhr
-    Total Tests: 71 comprehensive tests across 9 test contexts
-    
-    Test Coverage Areas:
-    # Parameter validation and input processing
-    # ACL restoration with integrity verification
-    # Backup validation and metadata verification
-    # Individual object restoration
-    # Bulk restoration workflows
-    # Rollback and recovery mechanisms
-    # Error handling and logging validation
-    # Performance testing and scalability validation
-    # Security validation and input sanitization
-    # Cross-platform compatibility testing
 #>
 
-# Import the functions under test
-# Import test helpers
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
@@ -51,9 +36,9 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
         Mock Write-Error { }
         Mock Write-Warning { }
 
-        # Set-ObjectACL writes to the AD: drive, which does not exist on a test machine. Pester 3
-        # leaked the per-test Set-Acl mocks to the whole Describe; Pester 6 scopes them to their
-        # It, so the default success path needs its own mock here.
+        # Set-ObjectACL writes to the AD: drive, which does not exist on a test machine. A Set-Acl
+        # mock defined in an It applies to that It only, so the default success path needs its own
+        # mock here.
         Mock Set-Acl { }
         
         # Create comprehensive test backup data
@@ -97,7 +82,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
         
         # Default mock for Get-RestorationTarget that can be overridden in specific tests
         Mock Get-RestorationTarget {
-            # Check for basic DN format validation - Should -contain CN= or OU= and DC=
+            # A well-formed DN starts with CN= or OU= and contains DC=
             $isValidDNFormat = $TargetObjectDN -match '^(CN|OU)=.*,DC=' -and $TargetObjectDN -notmatch '[<>"|*?]'
             
             # Check if the DN looks malicious for security tests
@@ -412,17 +397,16 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -VerifyApplication -WhatIf 6>$null
             $result.WhatIfMode | Should -Be $true
             
-            # In WhatIf mode, verification Should -be skipped
+            # Verification is skipped under -WhatIf
             try {
                 Should -Invoke Confirm-RestorationSuccess -Times 0 -Scope It
             } catch {
-                # If the above fails, let's just verify the WhatIf mode was set
+                # A failed call-count assertion is swallowed, so only WhatIfMode decides this test
                 $result.WhatIfMode | Should -Be $true
             }
         }
         
         It "Should handle WhatIf mode correctly" {
-            # Reset mock call counts for this test
             Mock Set-Acl { }
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -WhatIf
@@ -431,11 +415,11 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $result.WhatIfMode | Should -Be $true
             ($result.ModificationsApplied -gt -1) | Should -Be $true
             
-            # Should not call Set-Acl in WhatIf mode - check local scope only
+            # Set-Acl is not called under -WhatIf
             try {
                 Should -Invoke Set-Acl -Times 0 -Scope It
             } catch {
-                # If the assertion fails, just verify WhatIf mode was set
+                # A failed call-count assertion is swallowed, so only WhatIfMode decides this test
                 $result.WhatIfMode | Should -Be $true
             }
         }
@@ -545,7 +529,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
                     TargetObjectDN = $TargetObjectDN
                     ObjectExists = $true
                     ObjectType = 'user'
-                    ACLReadable = $true  # Should -be true when Get-Acl succeeds
+                    ACLReadable = $true  # True when Get-Acl succeeds
                     AccessValidated = $true
                     Issues = @()
                     CheckedAt = Get-Date
@@ -690,7 +674,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             $result = Get-RestorationTarget -TargetObjectDN $script:TestObjectDN
             $result.ValidatedAt | Should -Not -BeNullOrEmpty
-            # ValidatedAt Should -be present and either a DateTime or reasonably close to current time
+            # ValidatedAt is present and is a DateTime
             $result.ValidatedAt -is [DateTime] | Should -Be $true
         }
     }
@@ -788,13 +772,12 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             } -Verifiable -ParameterFilter { $Path -like "AD:*" }
             
             Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData | Out-Null
-            
-            # For Pester v3 compatibility, check mock was called
+
             Should -Invoke Get-Acl -ParameterFilter { $Path -like "AD:*" } -Exactly 1
         }
         
         It "Confirm-RestorationSuccess should handle ACL read failures" {
-            # Use a special DN that triggers error condition in our global mock
+            # The Describe-level mock fails verification for a DN containing invalid-acl-read
             $errorTestDN = "CN=TestUser-invalid-acl-read,OU=Users,DC=company,DC=com"
             
             $result = Confirm-RestorationSuccess -TargetObjectDN $errorTestDN -ExpectedData $script:TestBackupData
@@ -842,7 +825,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             $strictResult = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel 'Strict'
             $permissiveResult = Confirm-RestorationSuccess -TargetObjectDN $script:TestObjectDN -ExpectedData $script:TestBackupData -ToleranceLevel 'Permissive'
             
-            # Permissive Should -be more likely to pass than strict
+            # Wherever Strict fails, Permissive must pass
             if (-not $strictResult.IsVerified) {
                 $permissiveResult.IsVerified | Should -Be $true -Because "Permissive tolerance Should -be more lenient"
             }
@@ -1188,7 +1171,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -CorrelationId $maliciousCorrelationId
             $result.CorrelationId | Should -Be $maliciousCorrelationId
-            # Function should accept it but downstream should sanitize
+            # The ID is passed through unchanged; how logging treats it is not checked here
         }
         
         It "Should limit SDDL size for security" {
@@ -1206,7 +1189,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData | Out-Null
             
-            # Removed call count assertion
+            # No assertion: the test passes whenever Set-ObjectACL does not throw
         }
         
         It "Should support correlation tracking" {
@@ -1216,7 +1199,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData -CorrelationId $customCorrelationId | Out-Null
             
-            # Removed call count assertion
+            # No assertion: the test passes whenever Set-ObjectACL does not throw
         }
         
         It "Should maintain structured result format for reporting" {
@@ -1245,7 +1228,7 @@ Describe "Restore-ACLOperation Functions" -Tag "Unit", "Backup", "RestoreACL" {
             
             Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:TestBackupData | Out-Null
             
-            # Removed call count assertion
+            # No assertion: the test passes whenever Set-ObjectACL does not throw
         }
     }
     

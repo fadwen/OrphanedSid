@@ -1,13 +1,7 @@
-﻿# Get-ADObjectsSequential         'OU=Users,DC=contoso,DC=com' = @(
-# Get-ADObjectsSequential Function Tests - Comprehensive Pester 3.4.x Compatible
+﻿# Get-ADObjectsSequential Function Tests
 
-# Import the function under test
-# Set up global test data at file level (outside Describe block)
-# Initialize call tracking arrays
-# Create mock functions at file level
-# Create script scope mock function as backup
-# Mock logging functions with call tracking
-# Additional mock functions for completeness
+# The collaborators are hand-written stubs, defined in both global and script scope, that record
+# their calls in the $Global:*Calls arrays; the tests assert on those arrays rather than on Pester mocks.
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -156,9 +150,8 @@ BeforeAll {
             Timestamp = Get-Date
         }
         
-        # Increment call counter for legacy tests
         $script:GetADObjectFromSearchBaseCallCount++
-        
+
         Write-Debug "GLOBAL MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
         
         $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
@@ -218,9 +211,8 @@ BeforeAll {
             Timestamp = Get-Date
         }
         
-        # Increment call counter for legacy tests
         $script:GetADObjectFromSearchBaseCallCount++
-        
+
         Write-Debug "SCRIPT MOCK: Get-ADObjectFromSearchBase called with SearchBase: $searchBaseKey"
         
         $containsKeyResult = $Global:TestConfig.TestObjects.ContainsKey($searchBaseKey)
@@ -248,7 +240,6 @@ BeforeAll {
             }
         } elseif ($searchBaseKey -like "*Invalid*") {
             Write-Debug "SCRIPT MOCK: Simulating error for $searchBaseKey"
-            # Handle both old and new invalid test patterns
             if ($searchBaseKey -eq 'OU=Invalid,DC=contoso,DC=com') {
                 throw "The specified domain either does not exist or could not be contacted."
             } elseif ($searchBaseKey -like 'OU=Invalid*,DC=contoso,DC=com') {
@@ -302,22 +293,18 @@ BeforeAll {
 
     function Global:Write-StructuredLog {
         param($Level, $Message, $Component, $CorrelationId, $Data)
-        # Mock implementation - just track the call
     }
 
     function script:Write-StructuredLog {
         param($Level, $Message, $Component, $CorrelationId, $Data)
-        # Mock implementation - just track the call
     }
 
     function Global:Write-SecurityStructuredLogEntry {
         param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
-        # Mock implementation - just track the call
     }
 
     function script:Write-SecurityStructuredLogEntry {
         param($SecurityEventType, $Message, $Outcome, $CorrelationId, $SecurityContext)
-        # Mock implementation - just track the call
     }
 
     function Global:Write-SecurityLog {
@@ -491,13 +478,11 @@ Describe "Get-ADObjectsSequential" {
         }
         
         It "Should log operation success with comprehensive metrics" {
-            # Clear previous debug info
+            # $Global:MockDebugInfo is written for inspection after a failure; nothing asserts on it
             $Global:MockDebugInfo = @{}
-            
-            # Explicitly create 2-element array to ensure proper count
+
             $searchBases = @($Global:TestConfig.ValidSearchBases[0], $Global:TestConfig.ValidSearchBases[1])
-            
-            # Store debug info globally for inspection
+
             $Global:MockDebugInfo.OriginalArray = $Global:TestConfig.ValidSearchBases
             $Global:MockDebugInfo.SlicedArray = $searchBases
             $Global:MockDebugInfo.SlicedCount = $searchBases.Count
@@ -508,11 +493,9 @@ Describe "Get-ADObjectsSequential" {
             $successCall = $Global:WriteSecurityLogCalls | Where-Object { $_.Outcome -eq 'Success' }
             $successCall | Should -Not -BeNullOrEmpty
             
-            # Store actual result for debugging
             $Global:MockDebugInfo.ActualSearchBaseCount = $successCall.SecurityContext.SearchBaseCount
             $Global:MockDebugInfo.ExpectedCount = @($searchBases).Count
-            
-            # Simple assertion that should pass if arrays work correctly
+
             $successCall.SecurityContext.SearchBaseCount | Should -Be @($searchBases).Count
         }
         
@@ -553,11 +536,11 @@ Describe "Get-ADObjectsSequential" {
         }
         
         It "Should provide graceful degradation when AD is unavailable" {
+            # The search base is a valid one, so this does not simulate an unavailable directory;
+            # the assertion only evaluates the result variable
             $searchBases = @($Global:TestConfig.ValidSearchBases[0])
-            # Mock the scenario where AD is completely unavailable
-            
+
             $results = Get-ADObjectsSequential -SearchBase $searchBases -ErrorAction SilentlyContinue
-            # Should -Not -throw but may return empty results
             { $results } | Should -Not -Throw
         }
     }
@@ -566,12 +549,11 @@ Describe "Get-ADObjectsSequential" {
         It "Should log processing progress for large operations" {
             $largeSearchBases = $Global:TestConfig.LargeSearchBases
             
-            # Execute with verbose logging
             $VerbosePreference = 'Continue'
             Get-ADObjectsSequential -SearchBase $largeSearchBases -Verbose
             $VerbosePreference = 'SilentlyContinue'
             
-            # Verify progress logging occurred
+            # The Write-Verbose stub records the messages
             $startMessage = $Global:WriteVerboseCalls | Where-Object { $_.Message -like "*Starting*" }
             $startMessage | Should -Not -BeNullOrEmpty
         }
@@ -583,7 +565,6 @@ Describe "Get-ADObjectsSequential" {
             $results = Get-ADObjectsSequential -SearchBase $largeSearchBases
             $stopwatch.Stop()
             
-            # Should complete within reasonable time (adjust threshold as needed)
             $stopwatch.ElapsedMilliseconds | Should -BeLessThan 10000  # 10 seconds
             $results.Count | Should -Be 140  # 50+30+25+15+20 from large search bases
         }

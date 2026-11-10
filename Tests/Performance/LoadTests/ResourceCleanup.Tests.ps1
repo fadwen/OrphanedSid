@@ -1,10 +1,7 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test configuration
-# Import test helpers
-# Mock wrapper function to prevent actual script execution
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
@@ -19,6 +16,9 @@ BeforeAll {
 
     . "$PSScriptRoot\..\..\TestHelpers\BackupTestHelpers.ps1"
 
+    # A simulator, not the module: it returns figures computed from its parameters for each
+    # -MockBehavior scenario, so the tests check those figures against thresholds and do not
+    # measure OrphanedSid itself
     function Invoke-ResourceCleanupTest {
         param(
             [string]$MockBehavior = 'Normal',
@@ -242,7 +242,7 @@ BeforeAll {
 Describe "Resource Cleanup Performance Tests" -Tag "Performance", "LoadTest", "ResourceCleanup" {
     
     BeforeAll {
-        # Mock all external dependencies to prevent actual execution
+        # The simulator calls none of these; the mocks stop a stray call reaching AD, the console or disk
         Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
         Mock Get-ADDomain { return @{ DNSRoot = 'contoso.com'; DistinguishedName = 'DC=contoso,DC=com' } }
         Mock Write-Host { }
@@ -255,7 +255,6 @@ Describe "Resource Cleanup Performance Tests" -Tag "Performance", "LoadTest", "R
         Mock New-Item { }
         Mock Out-File { }
         Mock Export-Csv { }
-        # Mock external dependencies that are actually cmdlets/functions
         Mock Write-Verbose { }
         Mock Write-Information { }
         Mock Get-Process { return @{ WorkingSet = 104857600; VirtualMemorySize = 209715200; Handles = 1250 } }
@@ -335,7 +334,7 @@ Describe "Resource Cleanup Performance Tests" -Tag "Performance", "LoadTest", "R
             $result = Invoke-ResourceCleanupTest -MockBehavior 'Normal' -ObjectCount 3000
             
             $result.GCCollections | Should -BeGreaterThan 0
-            $result.GCCollections | Should -BeLessThan 10  # Should -Not -be excessive
+            $result.GCCollections | Should -BeLessThan 10  # Should not be excessive
             $result.FinalizedObjects | Should -Be $result.ObjectsCreated
         }
         
@@ -434,7 +433,7 @@ Describe "Resource Cleanup Performance Tests" -Tag "Performance", "LoadTest", "R
             $forcedResult = Invoke-ResourceCleanupTest -MockBehavior 'ForceCleanup' -ObjectCount 1500
             
             $overhead = ($forcedResult.DisposalTimeMs - $normalResult.DisposalTimeMs) / $normalResult.DisposalTimeMs
-            $overhead | Should -BeLessThan 3.0  # Should -Not -be more than 3x slower
+            $overhead | Should -BeLessThan 3.0  # Should not be more than 3x slower
             $overhead | Should -BeGreaterThan 0.5  # Should have some overhead
         }
     }
@@ -574,7 +573,7 @@ Describe "Resource Cleanup Performance Tests" -Tag "Performance", "LoadTest", "R
             $maxTime = ($results | Measure-Object -Property DisposalTimeMs -Maximum).Maximum
             $minTime = ($results | Measure-Object -Property DisposalTimeMs -Minimum).Minimum
             
-            $maxTime | Should -BeLessThan ($minTime * 5)  # Should -Not -be more than 5x slower for 4x objects
+            $maxTime | Should -BeLessThan ($minTime * 5)  # Should not be more than 5x slower for 4x objects
         }
         
         It "Should compare cleanup methods performance" {
@@ -605,7 +604,7 @@ Describe "Resource Cleanup Performance Tests" -Tag "Performance", "LoadTest", "R
             $maxTime = ($results | Measure-Object -Maximum).Maximum
             $minTime = ($results | Measure-Object -Minimum).Minimum
             
-            # Performance Should -be consistent (within 50% variation)
+            # Performance should be consistent (within 50% variation)
             $variation = ($maxTime - $minTime) / $avgTime
             $variation | Should -BeLessThan 0.5
         }

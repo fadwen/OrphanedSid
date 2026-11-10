@@ -1,6 +1,4 @@
-﻿# Pester 3.4 tests for Initialize-LoggingSystem.ps1
-# Import the script content for testing
-# Import shared logging configuration first
+﻿# Unit tests for Initialize-LoggingSystem.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -19,7 +17,6 @@ BeforeAll {
 
 Describe "Initialize-LoggingSystem" -Tag @('Unit', 'Logging', 'Initialization') {
 
-    # Mock dependencies inside Describe block
     BeforeAll {
     Mock Write-Verbose { } -Verifiable
         Mock Write-Error { throw $Message } -Verifiable
@@ -156,7 +153,7 @@ Describe "Get-LoggingState" -Tag @('Unit', 'Logging', 'State') {
         It "Should return PSCustomObject with correct PSTypeName" {
             $state = Get-LoggingState
             $state | Should -BeOfType [PSCustomObject]
-            # Remove PSTypeName test as the function may not set it
+            # Only the object type is asserted; the 'LoggingSystemState' type name is not checked
         }
 
         It "Should include CorrelationId" {

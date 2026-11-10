@@ -1,8 +1,8 @@
-# BackupRestore Integration Tests
-# Tests backup and restore functionality integration
+# Backup and restore scenarios. These tests exercise Invoke-BackupRestoreIntegrationTest, a stand-in
+# defined below that returns a canned result per -TestType, or the output a test registers with
+# Set-MockBehavior. No OrphanedSid code runs here; the backup and restore functions have their own
+# tests under Tests/Unit/Private/Backup.
 
-# Load test configuration
-# Mock behavior storage for scenario-specific outputs
 BeforeAll {
     $testConfig = Get-Content "$PSScriptRoot\..\..\TestData\Configurations\test-config.json" -Raw | ConvertFrom-Json
 
@@ -106,13 +106,11 @@ BeforeAll {
 
 Describe "Backup and Restore Integration Tests" {
     BeforeAll {
-        # Import test helpers
         . "$PSScriptRoot\..\..\TestHelpers\SecurityTestHelpers.ps1" -ErrorAction SilentlyContinue
         . "$PSScriptRoot\..\..\TestHelpers\BackupTestHelpers.ps1" -ErrorAction SilentlyContinue
     }
 
     BeforeEach {
-        # Clear any previous mock behaviors
         Clear-MockBehavior
     }
 

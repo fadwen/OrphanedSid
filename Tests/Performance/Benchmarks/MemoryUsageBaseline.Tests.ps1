@@ -1,10 +1,7 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test configuration
-# Import test helpers
-# Mock wrapper function to prevent actual script execution
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
@@ -19,6 +16,9 @@ BeforeAll {
 
     . "$PSScriptRoot\..\..\TestHelpers\BackupTestHelpers.ps1"
 
+    # A simulator, not the module: it returns figures computed from its parameters for each
+    # -MockBehavior scenario, so the tests check those figures against thresholds and do not
+    # measure OrphanedSid itself
     function Invoke-MemoryUsageBaselineTest {
         param(
             [string]$MockBehavior = 'Normal',
@@ -120,7 +120,7 @@ BeforeAll {
 Describe "Memory Usage Baseline Performance Tests" -Tag "Performance", "Benchmark", "Memory" {
     
     BeforeAll {
-        # Mock all external dependencies to prevent actual execution
+        # The simulator calls none of these; the mocks stop a stray call reaching AD, the console or disk
         Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
         Mock Get-ADDomain { return @{ DNSRoot = 'contoso.com'; DistinguishedName = 'DC=contoso,DC=com' } }
         Mock Write-Host { }
@@ -133,10 +133,10 @@ Describe "Memory Usage Baseline Performance Tests" -Tag "Performance", "Benchmar
         Mock New-Item { }
         Mock Out-File { }
         Mock Export-Csv { }
-        # Mock external dependencies that are actually cmdlets/functions
         Mock Write-Verbose { }
         Mock Write-Information { }
-        # Note: Cannot mock static .NET methods in Pester 3.4 - functionality verified through mock functions
+        # Pester cannot mock static .NET methods such as [System.GC]::Collect, so the simulator
+        # reports memory figures itself
     }
     
     Context "Baseline Memory Requirements" {
@@ -299,8 +299,8 @@ Describe "Memory Usage Baseline Performance Tests" -Tag "Performance", "Benchmar
             $result2K.MemoryGrowthMB | Should -BeGreaterThan 0
             
             $growthRatio = $result2K.MemoryGrowthMB / $result1K.MemoryGrowthMB
-            $growthRatio | Should -BeLessThan 2.5  # Should -be roughly 2x, allow overhead
-            $growthRatio | Should -BeGreaterThan 1.5  # Should -be at least 1.5x
+            $growthRatio | Should -BeLessThan 2.5  # Roughly 2x, allowing for overhead
+            $growthRatio | Should -BeGreaterThan 1.5  # At least 1.5x
         }
         
         It "Should maintain acceptable memory growth ceiling" {

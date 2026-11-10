@@ -1,5 +1,6 @@
-# Logging System Integration Tests
-# Tests logging functionality integration
+# Logging scenarios. These tests exercise Invoke-LoggingSystemIntegrationTest, a stand-in defined
+# below that returns a canned result per -TestType. No OrphanedSid code runs here; the logging
+# functions have their own tests under Tests/Unit/Private/Logging.
 
 BeforeAll {
     $testConfig = Get-Content "$PSScriptRoot\..\..\TestData\Configurations\test-config.json" -Raw | ConvertFrom-Json
@@ -77,7 +78,6 @@ BeforeAll {
 
 Describe "Logging System Integration Tests" {
     BeforeAll {
-        # Import test helpers
         . "$PSScriptRoot\..\..\TestHelpers\SecurityTestHelpers.ps1" -ErrorAction SilentlyContinue
     }
 

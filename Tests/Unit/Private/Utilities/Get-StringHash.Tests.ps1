@@ -2,30 +2,18 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Pester tests for Get-StringHash utility function
+    Unit tests for the Get-StringHash utility function
 
 .DESCRIPTION
-    Comprehensive tests for Get-StringHash function including parameter validation,
-    error handling, hash algorithm verification, and security validation.
+    Tests Get-StringHash parameter validation, each hash algorithm, error
+    handling and edge-case input.
 
 .NOTES
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Created Date: July 15, 2025
-    Last Modified: July 15, 2025
-    Version: 1.0.0
-    
-    Test Framework: Pester 3.4.x
-    PowerShell Version: 5.1+
-    
-    TROUBLESHOOTING:
-    - For test failures: .\Troubleshooting\Testing\Unit-Test-Issues.md
-    - For function errors: .\Troubleshooting\Private\Utility-Function-Issues.md
 #>
 
-# Import module and dependencies
-# Import specific private function for testing
 BeforeAll {
     $ModuleRoot = (Get-Item $PSScriptRoot).Parent.Parent.Parent.Parent.FullName
 
@@ -34,7 +22,6 @@ BeforeAll {
 
 Describe "Get-StringHash" {
     BeforeAll {
-        # Set up test correlation ID for tracking
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
         
         # Test data for hash verification
@@ -165,7 +152,7 @@ Describe "Get-StringHash" {
                 $results += (Get-StringHash -InputString $testInput)
             }
             
-            # All results Should -be identical
+            # All results should be identical
             $uniqueResults = $results | Select-Object -Unique
             $uniqueResults.Count | Should -Be 1
         }
@@ -178,10 +165,10 @@ Describe "Get-StringHash" {
         }
         
         It "Should continue execution after hash computation errors" {
-            # Mock Get-FileHash to simulate error
+            # Get-StringHash does not call Get-FileHash, so this mock never fires; the test only
+            # shows that the call does not throw
             Mock Get-FileHash { throw "Simulated hash error" }
-            
-            # Function should handle the error gracefully
+
             { Get-StringHash -InputString "test" } | Should -Not -Throw
         }
     }

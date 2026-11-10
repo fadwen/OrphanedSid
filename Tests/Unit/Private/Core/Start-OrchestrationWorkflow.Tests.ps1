@@ -1,37 +1,24 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
-# Stub so this file runs on its own; every Write-StructuredLog call is mocked below.
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Start-OrchestrationWorkflow function
-    Full test suite for the Start-OrchestrationWorkflow function that validates workflow coordination,
-    operation delegation, parameter handling, error management, and enterprise integration patterns.
+    Pester tests for the Start-OrchestrationWorkflow private function
+
+.DESCRIPTION
+    Covers operation type routing to Invoke-MainProcessingLogic and Invoke-RestoreWorkflow,
+    parameter pass-through, correlation ID handling, logging, and error handling. Both delegates
+    are replaced by global stub functions that record their calls.
 
 .NOTES
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-10
-    Version: 2.0.0
-    PowerShell Version: 5.1+ (Compatible with Pester 3.4.x)
-
-    Test Count: 42 comprehensive tests covering all orchestration workflow functionality
-    Coverage Areas:
-    - Operation type coordination and delegation
-    - Parameter handling and validation
-    - Error handling and recovery
-    - Logging and correlation tracking
-    - Resource management and cleanup
-    - Enterprise integration patterns
-
-    TROUBLESHOOTING:
-    - Workflow coordination: .\Troubleshooting\Core\Workflow-Coordination.md
-    - Parameter handling: .\Troubleshooting\Core\Parameter-Handling.md
-    - Error handling: .\Troubleshooting\Core\Error-Handling.md
+    PowerShell Version: 5.1+
 #>
 
 BeforeAll {
+    # Stub so this file runs on its own; every Write-StructuredLog call is mocked below.
     if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
         function Write-StructuredLog {
             [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
@@ -44,7 +31,6 @@ BeforeAll {
 Describe "Start-OrchestrationWorkflow Function Tests" {
     
     BeforeAll {
-        # Import the function under test
         $functionPath = "$PSScriptRoot\..\..\..\..\Private\Core\Start-OrchestrationWorkflow.ps1"
         if (Test-Path $functionPath) {
             . $functionPath
@@ -52,7 +38,6 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             throw "Function file not found: $functionPath"
         }
         
-        # Test data setup
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
         $script:TestSearchBase = 'OU=TestUsers,DC=contoso,DC=com'
         $script:TestTargetDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
@@ -60,12 +45,11 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
     }
     
     BeforeEach {
-        # Reset mock call tracking
         $script:MockCallLog = @()
-        
-        # Create mock functions that properly handle parameter splatting
+
+        # Stand-ins for the two delegates. The function splats its Parameters hashtable, so each
+        # stub declares the keys the tests pass as individual parameters and records what bound.
         function global:Invoke-MainProcessingLogic {
-            # Parameter splatting passes individual parameters, not a hashtable
             param(
                 [string]$SearchBase,
                 [string]$CorrelationId,
@@ -110,7 +94,6 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
         }
         
         function global:Invoke-RestoreWorkflow {
-            # Parameter splatting passes individual parameters, not a hashtable
             param(
                 [string]$TargetObjectDN,
                 [string]$BackupPath,
@@ -174,8 +157,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $script:MockCallLog += $logEntry
         }
         
-        # Mock all output functions
-        Mock Write-Verbose { } 
+        Mock Write-Verbose { }
         Mock Write-Warning { }
         Mock Write-Error { }
         Mock Write-Progress { }
@@ -183,10 +165,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
     }
     
     AfterEach {
-        # Clean up global mock functions
+        # The stubs are global, so remove them before another file can pick them up
         Get-Command -Name 'Invoke-MainProcessingLogic' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
         Get-Command -Name 'Invoke-RestoreWorkflow' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue  
-        # Reset mock call log
         $script:MockCallLog = @()
     }
     
@@ -221,7 +202,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
             $mainProcessingCall | Should -Not -BeNullOrEmpty
             
-            # The function adds CorrelationId to the Parameters hashtable, so it Should -be in the splatted call
+            # The function adds CorrelationId to the Parameters hashtable, so it reaches the splatted call
             $allParams = $mainProcessingCall.Parameters
             $allParams.SearchBase | Should -Be $script:TestSearchBase
             $allParams.MaxResults | Should -Be 100
@@ -527,7 +508,8 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
         }
         
         It "Should log errors appropriately during failure" {
-            # Replace the mock function to throw an error
+            # This stub writes the error log entry itself before throwing, so the assertion below
+            # is satisfied by the stub rather than by Start-OrchestrationWorkflow's own logging
             function global:Invoke-MainProcessingLogic {
                 $script:MockCallLog += @{
                     Function = 'Write-StructuredLog'
@@ -548,7 +530,6 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             }
             catch {
-                # Expected to fail, check that error logging occurred
                 $errorLogs = $script:MockCallLog | Where-Object { 
                     $_.Function -eq 'Write-StructuredLog' -and 
                     $_.Parameters.Level -eq 'Error' 
@@ -559,8 +540,8 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
         
         It "Should maintain correlation tracking during errors" {
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
-            
-            # Replace the mock function to throw an error
+
+            # As above, the stub writes the correlated log entry itself before throwing
             function global:Invoke-MainProcessingLogic {
                 $script:MockCallLog += @{
                     Function = 'Write-StructuredLog'
@@ -692,10 +673,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 CorrelationId = $script:TestCorrelationId
             }
             
-            # Test Discovery operation (should not load restore module)
+            # Only checks that both operation types run; module loading is not observed
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
-            
-            # Test Restore operation (should attempt to load restore module)
+
             $restoreParams = @{
                 TargetObjectDN = $script:TestTargetDN
                 BackupPath = $script:TestBackupPath
@@ -711,10 +691,9 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
                 CorrelationId = $script:TestCorrelationId
             }
             
-            # Should execute without errors and complete all phases
             { Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters } | Should -Not -Throw
             
-            # Verify that both start and completion logs exist (indicating full execution)
+            # Both the start and completion log entries were written
             $startLogs = $script:MockCallLog | Where-Object { 
                 $_.Function -eq 'Write-StructuredLog' -and 
                 $_.Parameters.Message -like '*Starting orchestration workflow*'
@@ -729,50 +708,40 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
         }
         
         It "Should execute finally block even during errors" {
-            # Replace the mock function to throw an error
             function global:Invoke-MainProcessingLogic {
                 throw "Test error for finally block testing"
             }
-            
+
             $parameters = @{ SearchBase = $script:TestSearchBase }
-            
+
             try {
                 Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters
             }
             catch {
-                # Expected to fail, but finally block should still execute
-                # This would be evidenced by the completion log still being written
-                # (though in this mock scenario, we're simulating the behavior)
             }
-            
-            # The function should have attempted to execute the finally block
-            # This is structural validation rather than runtime verification
-            $true | Should -Be $true  # Placeholder for structural test
+
+            # Asserts nothing about the finally block; the completion log entry it writes is not checked
+            $true | Should -Be $true
         }
     }
     
     Context "Enterprise Integration Patterns" {
         It "Should support workflow decision routing" {
-            # Test that each operation type routes to the correct handler
+            # Each operation type routes to its handler
             $baseParams = @{ SearchBase = $script:TestSearchBase }
-            
-            # Discovery routing
+
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $baseParams
             $discoveryCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
             $discoveryCall | Should -Not -BeNullOrEmpty
             
-            # Reset for next test
             $script:MockCallLog = @()
-            
-            # Removal routing  
+
             Start-OrchestrationWorkflow -OperationType 'Removal' -Parameters $baseParams
             $removalCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
             $removalCall.Parameters.Remove | Should -Be $true
             
-            # Reset for next test
             $script:MockCallLog = @()
-            
-            # Restore routing
+
             $restoreParams = @{ TargetObjectDN = $script:TestTargetDN; BackupPath = $script:TestBackupPath }
             Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $restoreParams
             $restoreCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-RestoreWorkflow' }
@@ -788,7 +757,6 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters $parameters -CorrelationId $testCorrelationId
             
-            # Verify audit trail continuity through correlation ID tracking
             $allCalls = $script:MockCallLog
             $correlatedCalls = $allCalls | Where-Object { 
                 $_.Parameters.CorrelationId -eq $testCorrelationId 
@@ -808,7 +776,7 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             $parameters = @{
                 SearchBase = $script:TestSearchBase
                 CorrelationId = $script:TestCorrelationId
-                # Enterprise-standard parameters
+                # Keys the function has no special handling for; they pass straight through
                 RequestId = 'REQ-2025-001'
                 UserId = 'admin@contoso.com'
                 Department = 'IT Security'
@@ -819,7 +787,6 @@ Describe "Start-OrchestrationWorkflow Function Tests" {
             
             $result.Success | Should -Be $true
             
-            # Verify enterprise parameters were passed through
             $mainProcessingCall = $script:MockCallLog | Where-Object { $_.Function -eq 'Invoke-MainProcessingLogic' }
             $mainProcessingCall.Parameters.RequestId | Should -Be 'REQ-2025-001'
             $mainProcessingCall.Parameters.UserId | Should -Be 'admin@contoso.com'

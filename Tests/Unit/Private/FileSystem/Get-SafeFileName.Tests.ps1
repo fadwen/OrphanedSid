@@ -3,29 +3,18 @@
 
 <#
 .SYNOPSIS
-    Comprehensive Pester 3.4 tests for Get-SafeFileName function
+    Unit tests for the Get-SafeFileName function
 
 .DESCRIPTION
-    Enterprise-grade unit tests for the Get-SafeFileName function following PowerShell
-    community standards and enterprise testing practices. Tests filename sanitization,
-    security validation, and cross-platform compatibility.
+    Tests filename sanitization, distinguished name handling, length limits,
+    security validation and cross-platform compatibility.
 
 .NOTES
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Test Framework: Pester 3.4
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-    Last Updated: 2025-07-19
-
-    TROUBLESHOOTING:
-    - For test failures: .\Troubleshooting\Testing\Get-SafeFileName-Test-Issues.md
-    - For function issues: .\Troubleshooting\FileSystem\Filename-Generation.md
 #>
 
-# Initialize test logging system first
-# Import the function for testing
-# Import test helpers
 BeforeAll {
     # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
     # this placeholder is what the Mock below replaces when the file runs on its own.
@@ -220,7 +209,7 @@ Describe "Get-SafeFileName" {
     Context "Edge Cases and Error Handling" {
 
         It "Should handle null string gracefully" {
-            # Note: [AllowEmptyString()] attribute should allow this
+            # Passes an empty string, which the parameter's [AllowEmptyString()] lets through
             $result = Get-SafeFileName -InputString ""
             $result | Should -Be "Unknown"
         }
@@ -233,7 +222,7 @@ Describe "Get-SafeFileName" {
 
         It "Should handle string that becomes empty after sanitization" {
             $result = Get-SafeFileName -InputString "___"
-            $result | Should -Match "^Unknown_[a-f0-9]+$"  # Should -be Unknown_ followed by hex characters
+            $result | Should -Match "^Unknown_[a-f0-9]+$"  # Unknown_ followed by hex characters
         }
 
         It "Should generate unique fallback names for invalid inputs" {
@@ -279,9 +268,8 @@ Describe "Get-SafeFileName" {
                 $result | Should -Not -BeNullOrEmpty
                 $result | Should -BeOfType "string"
                 
-                # Should replace path separators and dots to make filename safe
-                $result | Should -Not -Match "[/\\]"  # No path separators allowed
-                # Dots are replaced with underscores where they form .. patterns
+                # Path separators are replaced; how dots are handled is not asserted
+                $result | Should -Not -Match "[/\\]"
             }
         }
 
@@ -297,9 +285,8 @@ Describe "Get-SafeFileName" {
                 $result | Should -Not -BeNullOrEmpty
                 $result | Should -BeOfType "string"
                 
-                # Function only replaces Windows-illegal filename characters (\/:*?"<>|)
-                # Other characters like $, ;, & are valid in Windows filenames
-                # So they Should -be preserved in the output
+                # Only Windows-illegal filename characters (\/:*?"<>|) are replaced; $, ; and & are
+                # legal in a filename and are kept. The output is not asserted beyond its type.
             }
         }
 
@@ -312,7 +299,7 @@ Describe "Get-SafeFileName" {
             
             foreach ($name in $executableNames) {
                 $result = Get-SafeFileName -InputString $name
-                $result | Should -Be $name # Should preserve but sanitize
+                $result | Should -Be $name # Executable extensions are kept unchanged
             }
         }
 
@@ -425,11 +412,10 @@ Describe "Get-SafeFileName" {
 
     Context "Logging Integration" {
         
-        # Mock Write-StructuredLog to prevent actual logging during tests
+        # Write-StructuredLog is mocked so each test can assert on what was logged
         BeforeAll {
     Mock Write-StructuredLog {
                 param($Message, $Level, $CorrelationId)
-                # Return structured data for validation
                 return @{
                     Message = $Message
                     Level = $Level  
@@ -534,7 +520,6 @@ Describe "Get-SafeFileName" {
             
             $result = Get-SafeFileName -InputString $originalString -CorrelationId $testCorrelationId
             
-            # Verify result is correctly processed
             $result | Should -Be $originalString
             $result | Should -Not -BeNullOrEmpty
         }

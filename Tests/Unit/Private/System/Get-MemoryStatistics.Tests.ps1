@@ -1,7 +1,5 @@
 #Requires -Version 5.1
 
-# Import the main script and dependencies
-# Source the MemoryManager class and Get-MemoryStatistics function
 BeforeAll {
     # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
     # this placeholder is what the Mock below replaces when the file runs on its own.
@@ -19,7 +17,6 @@ BeforeAll {
 }
 
 Describe "Get-CurrentMemoryUsage" {
-    # Mock external dependencies
     BeforeAll {
     Mock Write-StructuredLog { }
     }
@@ -75,11 +72,10 @@ Describe "Get-CurrentMemoryUsage" {
 }
 
 Describe "Get-MemoryUsageReport" {
-    # Mock external dependencies
     BeforeAll {
     Mock Write-StructuredLog { }
-        
-        # Create a real MemoryManager instance using New-Object syntax
+
+        # A real MemoryManager, not a mock
         $script:mockMemoryManager = New-Object MemoryManager(2048, 30)
     }
     
@@ -135,7 +131,7 @@ Describe "Get-MemoryUsageReport" {
 
     Context "Error Handling" {
         It "Should provide meaningful error messages" {
-            # This should work without throwing since we have proper mocks
+            # No error path is exercised; this only checks that a valid manager returns a report
             $result = Get-MemoryUsageReport -MemoryManager $script:mockMemoryManager
             $result | Should -Not -BeNullOrEmpty
         }

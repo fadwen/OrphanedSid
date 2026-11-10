@@ -1,16 +1,16 @@
-﻿# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Integration test for Active Directory connectivity and operations
+﻿# Active Directory connectivity scenarios. These tests exercise Invoke-ADIntegrationTest, a stand-in
+# defined below that returns a canned result per -TestType and calls no AD cmdlet, so the mocks in
+# each test do not change its output. No OrphanedSid code runs here.
 
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 }
 
 Describe "Active Directory Integration Tests" {
     BeforeAll {
-        # Load test configuration
         $script:config = Get-Content "$PSScriptRoot\..\..\TestData\Configurations\test-config.json" | ConvertFrom-Json
         
-        # Mock wrapper function to simulate AD integration test execution
         function Invoke-ADIntegrationTest {
             param(
                 [string]$TestType,
@@ -81,7 +81,6 @@ Describe "Active Directory Integration Tests" {
             }
         }
         
-        # Mock external cmdlets
         Mock Import-Module { }
         Mock Get-ADDomain { return @{ Name = 'contoso.com'; DNSRoot = 'contoso.com' } }
         Mock Get-ADDomainController { return @{ Name = 'DC01'; HostName = 'DC01.contoso.com' } }
@@ -270,7 +269,7 @@ Describe "Active Directory Integration Tests" {
             Mock Test-ADServiceAccount { return $false }
             $result = Invoke-ADIntegrationTest -TestType 'PermissionCheck'
             
-            $result.HasRequiredPermissions | Should -Be $true  # Mock returns success
+            $result.HasRequiredPermissions | Should -Be $true  # The stand-in ignores the mock and reports success
         }
         
         It "Should handle schema extension queries" {
@@ -305,7 +304,7 @@ Describe "Active Directory Integration Tests" {
             Mock Get-ADTrust { return @( @{ Name = 'broken.trust.com'; TrustDirection = 'Disabled' } ) }
             $result = Invoke-ADIntegrationTest -TestType 'TrustValidation'
             
-            $result.AllTrustsValid | Should -Be $true  # Mock behavior
+            $result.AllTrustsValid | Should -Be $true  # The stand-in ignores the mock and reports success
         }
     }
 }

@@ -1,11 +1,7 @@
 # Resolve-SIDIdentity Helper Functions Tests
 
-# Setup
-# Create Write-StructuredLog stub
-# Load Classes
-# Load the target file
 BeforeAll {
-    # The module root is the folder holding the manifest; Find-UnknownSID.ps1 no longer exists
+    # Walk up to the module root, the folder holding the manifest
     $rootPath = $PSScriptRoot
 
     while ($rootPath -and -not (Test-Path (Join-Path $rootPath 'OrphanedSid.psd1'))) {
@@ -59,7 +55,6 @@ Describe "Resolve-SIDIdentity Helper Functions Tests" {
         }
         
         It "Should find the root directory" {
-            # The script became the OrphanedSid module, so the manifest marks the root now
             $rootPath | Should -Not -BeNullOrEmpty
             Test-Path (Join-Path $rootPath 'OrphanedSid.psd1') | Should -Be $true
         }

@@ -7,8 +7,7 @@
 
 .DESCRIPTION
     Tests the real function with a real System.DirectoryServices.ActiveDirectorySecurity object, which
-    needs no domain to build, and a TestDrive backup folder. Only Write-StructuredLog is mocked. The
-    earlier version of this file defined its own New-ACLBackup and tested that.
+    needs no domain to build, and a TestDrive backup folder. Only Write-StructuredLog is mocked.
 
     ActiveDirectorySecurity.Access resolves identities and returns nothing on PowerShell 7 without a
     domain, so the entry count is not asserted; the SDDL and its hash are.

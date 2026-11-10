@@ -1,14 +1,14 @@
 #Requires -Version 5.1
 
-# Integration test for Find-UnknownSID restore workflow - Pester 3.4 compatible
+# Restore workflow scenarios. These tests exercise Invoke-FindUnknownSIDScript, a stand-in defined
+# below that returns a canned restore result, or the properties a test registers with
+# Set-MockBehavior. It reads no backup file, so the Get-Content mocks in the tests do not change its
+# output. No OrphanedSid code runs here; Restore-OrphanedSidBackup has its own tests under
+# Tests/Unit/Public. The name is left over from Find-UnknownSID.ps1, the script the module replaced.
 param()
 
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test helpers
-# Load test configuration
-# Track mock behavior state
-# Enhanced mock wrapper with scenario support
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testHelpersPath = Join-Path $PSScriptRoot "..\..\TestHelpers"
@@ -97,14 +97,12 @@ BeforeAll {
 
 Describe "Complete Restore Workflow Integration Tests" {
     BeforeAll {
-        # Setup test environment
         $script:TestBackupPath = "C:\Temp\TestBackup.json"
         $script:TestCorrelationId = [System.Guid]::NewGuid().ToString()
-        
-        # Clear any existing mock behavior
+
         Clear-MockBehavior
-        
-        # Mock external dependencies to prevent actual execution
+
+        # The stand-in calls none of these; the mocks stop a stray call reaching the console or disk
         Mock Test-Path { return $true } -ParameterFilter { $Path -eq $script:TestBackupPath }
         Mock Get-Content { 
             return @{
@@ -128,7 +126,6 @@ Describe "Complete Restore Workflow Integration Tests" {
     }
     
     AfterAll {
-        # Cleanup
         Clear-MockBehavior
     }
 

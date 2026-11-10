@@ -13,12 +13,10 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
     }
 
     BeforeEach {
-        # Reset mocks before each test to ensure isolation
-        # Mock Get-ADObject to avoid actual AD calls
+        # Get-ADObject returns fixed objects per search base, and throws for the error cases
         Mock Get-ADObject {
             param($SearchBase, $Filter, $Properties)
-            
-            # Simulate realistic AD objects based on search base
+
             switch -Wildcard ($SearchBase) {
                 '*Users*' {
                     return @(
@@ -62,7 +60,6 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
             }
         }
         
-        # Mock Write-Verbose to capture verbose output
         Mock Write-Verbose { }
         Mock Write-Warning { }
     }
@@ -135,27 +132,25 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         It "Should handle invalid Distinguished Name gracefully" {
             $result = Get-ADObjectFromSearchBase -SearchBase 'InvalidDN'
             
-            # Function Should -Not -throw but should warn
+            # A failed search base warns rather than throwing
             Should -Invoke Write-Warning -Exactly 1 -ParameterFilter {
                 $Message -match "Failed to retrieve objects"
             }
         }
         
         It "Should handle access denied errors gracefully" {
-            # Function Should -Not -throw and should return null/empty
             { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=AccessDenied,DC=contoso,DC=com' } | Should -Not -Throw
-            
-            # Verify warning was called (without exact count due to Pester 3.x limitations)
+
+            # Requires at least one warning; the count is not pinned
             Should -Invoke Write-Warning -ParameterFilter {
                 $Message -match "Failed to retrieve objects"
             }
         }
         
         It "Should handle server unavailable errors gracefully" {
-            # Function Should -Not -throw and should return null/empty
             { $result = Get-ADObjectFromSearchBase -SearchBase 'OU=ServerError,DC=contoso,DC=com' } | Should -Not -Throw
-            
-            # Verify warning was called (without exact count due to Pester 3.x limitations)
+
+            # Requires at least one warning; the count is not pinned
             Should -Invoke Write-Warning -ParameterFilter {
                 $Message -match "Failed to retrieve objects"
             }
@@ -212,10 +207,8 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         It "Should log verbose messages" {
             Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
             
-            # Check that specific verbose messages were called (without exact counts)
-            # Verify verbose logging is available (removed call count assertion)
+            # Asserts nothing: it only runs the function with Write-Verbose mocked. A check would be
             # Should -Invoke Write-Verbose -ParameterFilter { $Message -match "Retrieving AD objects" }
-            # Removed call count assertion for Write-Verbose
         }
     }
 

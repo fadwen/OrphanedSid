@@ -1,7 +1,5 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Calculate path to the Classes directory
-# Import the class file
 BeforeAll {
     $ModuleRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 

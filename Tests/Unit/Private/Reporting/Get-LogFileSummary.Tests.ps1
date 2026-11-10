@@ -1,8 +1,6 @@
 #Requires -Version 3.0
 
-# Import the module being tested
-# Import required dependencies
-# Import the function under test
+# Unit tests for Get-LogFileSummary.ps1 and its helper functions
 BeforeAll {
     $ModuleRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 
@@ -93,7 +91,7 @@ Describe "Get-LogFileSummary" {
         It "Should calculate health status" {
             $result = Get-LogFileSummary
             
-            # Should -be unhealthy due to error count > 0
+            # Unhealthy because the mocked log contains errors
             $result.IsHealthy | Should -Be $false
         }
         
@@ -506,8 +504,7 @@ Describe "Get-LogFileHealth" {
         
         It "Should return Excellent health status for healthy logs" {
             $result = Get-LogFileHealth
-            
-            # The function returns 'Excellent' for this specific mock setup
+
             $result.HealthStatus | Should -Be 'Excellent'
         }
         
@@ -603,7 +600,7 @@ Describe "Get-LogFileHealth" {
             $result = Get-LogFileHealth
             $validStatuses = @('Excellent', 'Good', 'Fair', 'Poor', 'Critical', 'NoLogFile', 'Error')
             
-            # The function appears to return an array - test that the first element is valid
+            # HealthStatus can arrive as an array; when it does, its first element is checked
             if ($result.HealthStatus -is [array]) {
                 ($validStatuses -contains $result.HealthStatus[0]) | Should -Be $true
             } else {
@@ -656,8 +653,7 @@ Describe "Get-LogFileHealth" {
 
 # Helper Function Tests - Get-LogFileStatistics
 Describe "Get-LogFileStatistics" -Tag "Unit", "Private", "Reporting" {
-    
-    # Mock Get-LogFileSummary for Pester 3.4 compatibility
+
     BeforeAll {
     Mock Get-LogFileSummary {
             return @{
@@ -713,7 +709,7 @@ Describe "Get-LogFileStatistics" -Tag "Unit", "Private", "Reporting" {
             $result.LogFileAge | Should -BeOfType [TimeSpan]
             $result.AnalysisTimestamp | Should -BeOfType [DateTime]
             $result.LogPath | Should -Not -BeNullOrEmpty
-            # Check that PSTypeName property exists (even if empty)
+            # Reading PSTypeName must not throw; its value is not checked
             { $result.PSTypeName } | Should -Not -Throw
         }
 
@@ -749,7 +745,7 @@ Describe "Get-LogFileStatistics" -Tag "Unit", "Private", "Reporting" {
             $result = Get-LogFileStatistics -Days 14
             
             $result.AnalysisPeriodDays | Should -Be 14
-            # Growth rate Should -be different for different periods
+            # The growth rate is spread over the requested period
             $result.AverageFileSizeGrowthMB | Should -Be 0.39  # 5.5 / 14 = 0.39 (rounded)
         }
     }

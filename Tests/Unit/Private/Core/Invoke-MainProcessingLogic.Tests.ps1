@@ -3,34 +3,20 @@
 
 <#
 .SYNOPSIS
-    Comprehensive Pester tests for Invoke-MainProcessingLogic function
+    Pester tests for the Invoke-MainProcessingLogic private function
 
 .DESCRIPTION
-    Enterprise-grade test suite for the Invoke-MainProcessingLogic function that provides comprehensive
-    validation of main orchestration logic, SID analysis workflows, batch processing capabilities,
-    error handling, progress tracking, and performance optimization.
+    Runs the discovery and removal loop with every collaborator replaced by a stub function:
+    object retrieval, orphaned SID detection, removal, memory checks and logging. Covers the
+    workflow, the result summary, error handling and how unverified SIDs are counted.
 
 .NOTES
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-10
-    Version: 1.0.0
-    PowerShell Version: 5.1+ (Compatible with Pester 3.4.x)
-
-    Test Count: 26 tests covering main processing logic functionality
-    Coverage Areas:
-    - Main orchestration workflow
-    - SID analysis and processing
-    - Batch processing capabilities
-    - Progress tracking and reporting
-    - Error handling and recovery
-    - Performance optimization
-    - Memory management during processing
+    PowerShell Version: 5.1+
 
     TROUBLESHOOTING:
-    - Processing workflows: .\Troubleshooting\Core\Processing-Workflows.md
-    - Batch processing: .\Troubleshooting\Performance\Batch-Processing.md
     - Memory management: .\Troubleshooting\Performance\Memory-Management.md
 #>
 
@@ -44,9 +30,8 @@ BeforeAll {
 Describe "Invoke-MainProcessingLogic Function Tests" {
     
     BeforeEach {
-        # Create mock StreamingResultsManager class if not already defined
+        # A stand-in StreamingResultsManager, used only when the real class is not already loaded
         if (-not ([System.Management.Automation.PSTypeName]'StreamingResultsManager').Type) {
-            # Use the same approach that worked in terminal
             class StreamingResultsManager {
                 [string] $TempDirectory
                 [int] $BatchSize
@@ -129,7 +114,7 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             }
         }
         
-        # Define simplified mock functions in BeforeEach for proper scoping
+        # Stub collaborators, redefined before every test so a test that replaces one cannot affect the next
         function Write-StructuredLog { 
             param($Message, $Level, $Component, $CorrelationId)
             return @{ Message = $Message; Level = $Level; Component = $Component }
@@ -258,7 +243,7 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
             # Mock implementation
         }
         
-        # Set the script variable to our mock (this will be overwritten by the function but we'll restore it)
+        # The function may replace this with its own StreamingResultsManager during the run
         $script:StreamingResults = $global:MockStreamingResults
         
         $script:RemovalResults = @()
@@ -353,7 +338,6 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         }
         
         It "Should handle large object collections efficiently" {
-            # Mock larger object collection
             function Get-ADObjectsSequential { 
                 param($SearchBase)
                 return 1..10 | ForEach-Object {
@@ -395,16 +379,13 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
         It "Should include streaming results summary" {
             $result = Invoke-MainProcessingLogic -SearchBase "OU=Users,DC=test,DC=com"
             
-            # The function creates a real StreamingResultsManager which may not have GetSummary properly implemented
-            # Let's check what we actually get and ensure the structure is there
             $result.StreamingSummary | Should -Not -BeNullOrEmpty
-            
-            # If the real StreamingResultsManager doesn't return Status, we need to mock differently
-            # For now, let's verify what we actually get
+
+            # The summary comes from whichever StreamingResultsManager the function used. The stub's
+            # summary carries Status; a real manager's summary does not, so Status is checked only when present.
             if ($result.StreamingSummary.PSObject.Properties.Name -contains 'Status') {
                 $result.StreamingSummary.Status | Should -Be 'Complete'
             } else {
-                # The real implementation doesn't have Status, so let's adjust our expectations
                 $result.StreamingSummary | Should -Not -BeNullOrEmpty
             }
             $result.StreamingManager | Should -Not -BeNullOrEmpty
@@ -460,7 +441,7 @@ Describe "Invoke-MainProcessingLogic Function Tests" {
                 $result.CorrelationId | Should -Be $customCorrelationId
             }
             catch {
-                # Even in error conditions, correlation ID Should -be preserved
+                # If the run throws, only the presence of an error message is checked
                 $_.Exception.Message | Should -Not -BeNullOrEmpty
             }
         }

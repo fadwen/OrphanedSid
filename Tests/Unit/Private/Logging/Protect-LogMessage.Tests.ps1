@@ -1,5 +1,4 @@
-﻿# Pester 3.4 tests for Protect-LogMessage.ps1
-# Import the script content for testing
+﻿# Unit tests for Protect-LogMessage.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -11,8 +10,7 @@ BeforeAll {
 }
 
 Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProtection') {
-    
-    # Mock external dependencies inside Describe block
+
     BeforeAll {
     Mock Write-Verbose { }
         Mock Write-Warning { }
@@ -194,7 +192,7 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
     Context "Error Handling" {
         
         BeforeEach {
-            # Mock the helper functions to throw errors for testing
+            # A failing helper drives Protect-LogMessage into its catch block
             Mock Remove-ControlCharacters { throw "Control character removal failed" }
         }
         

@@ -1,6 +1,6 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Import test helpers and initialize logging for testing
-# Import required logging functions for testing
+# Unit tests for Write-StructuredLog. Write-StructuredLogEntry and Format-LogMessage are loaded
+# for real; individual tests mock Write-StructuredLogEntry where they inspect what it receives.
   
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\Initialize-TestLogging.ps1"
@@ -20,7 +20,7 @@ Describe "Write-StructuredLog" {
             { Write-StructuredLog -Message "Test message" } | Should -Not -Throw
         }
         
-        <# SKIPPED - causes interactive prompt in Pester 3.4
+        <# SKIPPED - omitting the mandatory -Message makes an interactive host prompt for it
         It "Should require Message parameter" {
             { Write-StructuredLog } | Should -Throw
         }
@@ -132,7 +132,7 @@ Describe "Write-StructuredLog" {
         It "Should not include LogPath parameter when not provided" {
             Write-StructuredLog -Message "Test"
             
-            # Just verify that Write-StructuredLogEntry was called
+            # Only the call is asserted; the absence of -LogPath is not checked
             Should -Invoke Write-StructuredLogEntry
         }
         
@@ -380,7 +380,6 @@ Describe "Write-StructuredLog" {
             $stopwatch.Stop()
             
             $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
-            # Just verify Write-StructuredLogEntry was called
             Should -Invoke Write-StructuredLogEntry
         }
         

@@ -1,7 +1,3 @@
-# Import the main script and dependencies
-# Source the MemoryManager class and Initialize-MemoryManager function
-# Import dependencies
-# Stub Write-StructuredLog for mocking
 BeforeAll {
     $ScriptPath = $PSScriptRoot
 
@@ -18,14 +14,12 @@ BeforeAll {
     if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {
         function Write-StructuredLog {
             param($Message, $Level, $Component, $CorrelationId)
-            # Stub implementation for testing
         }
     }
 }
 
 Describe "Initialize-MemoryManager" {
     BeforeEach {
-        # Mock Write-StructuredLog to prevent output during tests
         Mock Write-StructuredLog {}
     }
 
@@ -156,29 +150,28 @@ Describe "Initialize-MemoryManager" {
         }
 
         It "Should create MemoryManager even in WhatIf mode" {
-            # Test with WhatIf preference - use reflection to avoid What-If output
+            # Only checks that -WhatIf exists; the function is not run under -WhatIf
             $command = Get-Command Initialize-MemoryManager
             $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
-            
-            # Skip actual WhatIf test to avoid output
+
             $true | Should -Be $true
         }
 
         It "Should log WhatIf simulation" {
-            # Test WhatIf capability by checking parameter, not execution
+            # Only checks that -WhatIf exists; no log output is asserted
             $command = Get-Command Initialize-MemoryManager
             $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
         }
 
         It "Should show verbose WhatIf message" {
-            # Test that WhatIf parameter is available without executing it
+            # Only checks that -WhatIf and -Verbose exist; no message is asserted
             $command = Get-Command Initialize-MemoryManager
             $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
             $command.Parameters.ContainsKey('Verbose') | Should -Be $true
         }
 
         It "Should return MemoryManager instance even in WhatIf mode" {
-            # Test parameter availability instead of execution
+            # Only checks that -WhatIf exists; the function is not run under -WhatIf
             $command = Get-Command Initialize-MemoryManager
             $command.Parameters.ContainsKey('WhatIf') | Should -Be $true
         }
@@ -193,7 +186,6 @@ Describe "Initialize-MemoryManager" {
         }
 
         It "Should use expected configuration values" {
-            # Test that configuration constants are properly defined
             $script:MemoryManagementConfig | Should -Not -BeNullOrEmpty
             $script:MemoryManagementConfig.GetType().Name | Should -Be 'Hashtable'
         }

@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 
-# Import required modules and dependencies
-# Initialize logging for tests
+# Unit tests for Test-DirectoryAccess.ps1. The logging functions are loaded for real and the logging
+# system is initialized with console output suppressed.
 BeforeAll {
     . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLogEntry.ps1
 
@@ -105,14 +105,15 @@ Describe "Test-DirectoryAccess" {
             
             $result | Should -Be $true
             
-            # Should -be able to create a test file
+            # A file can be written to the directory
             $testFile = Join-Path $script:TestNonExistentDir "writetest.tmp"
             { "test" | Out-File $testFile } | Should -Not -Throw
             Test-Path $testFile | Should -Be $true
         }
 
         It "Should return false for directory without write permission" {
-            # Mock Out-File to throw access denied error (this is what the function actually uses for write testing)
+            # The function tests write access with Out-File, so a failing Out-File stands in for a
+            # directory without write permission
             Mock Out-File { throw [System.UnauthorizedAccessException]::new("Access denied") }
             
             $result = Test-DirectoryAccess -Path $script:TestTempDir
@@ -122,12 +123,12 @@ Describe "Test-DirectoryAccess" {
 
     Context "Error Handling" {
         AfterEach {
-            # Clean up any mocks that may have been set in this context
+            # Reloads the function after each test. Pester removes mocks itself when a test ends, so
+            # this does not affect mocking.
             try {
-                # Remove mocks by re-importing the function
                 . "$PSScriptRoot\..\..\..\..\Private\FileSystem\Test-DirectoryAccess.ps1"
             } catch {
-                # Ignore import errors
+                # A failed reload is ignored
             }
         }
         
@@ -142,7 +143,7 @@ Describe "Test-DirectoryAccess" {
         It "Should handle path traversal attempts" {
             $traversalPath = Join-Path $script:TestTempDir "..\..\..\Windows\System32"
             
-            # Should -Not -throw but may return false for security
+            # Must not throw; the result may be false
             { Test-DirectoryAccess -Path $traversalPath } | Should -Not -Throw
         }
 
@@ -153,11 +154,9 @@ Describe "Test-DirectoryAccess" {
         }
 
         It "Should handle null reference exceptions" {
-            # Test with a path that might cause issues without mocking
-            # Use a path with invalid characters that might trigger exceptions
+            # An embedded null character makes the path invalid
             $problematicPath = "C:\Test`0Dir\SubDir"
-            
-            # Should handle gracefully and not throw
+
             { $result = Test-DirectoryAccess -Path $problematicPath } | Should -Not -Throw
         }
 
@@ -209,7 +208,7 @@ Describe "Test-DirectoryAccess" {
 
     Context "Logging Integration" {
         BeforeEach {
-            # Clear any existing mocks
+            # Reset the captured log messages
             Remove-Variable -Name 'LogMessages' -Scope Script -ErrorAction SilentlyContinue
             $script:LogMessages = @()
             
@@ -265,11 +264,11 @@ Describe "Test-DirectoryAccess" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
             Test-DirectoryAccess -Path $script:TestNonExistentDir -CorrelationId $customCorrelationId
             
-            # Should have logs with the correlation ID (function uses CorrelationId parameter)
-            $correlatedLog = $script:LogMessages | Where-Object { 
-                $_.ParameterFilter -and $_.ParameterFilter.ToString().Contains($customCorrelationId) 
+            # $correlatedLog filters on a property the captured entries do not have and is never
+            # asserted; the test only checks that something was logged
+            $correlatedLog = $script:LogMessages | Where-Object {
+                $_.ParameterFilter -and $_.ParameterFilter.ToString().Contains($customCorrelationId)
             }
-            # Alternative check - just verify logs were created with our function call
             $script:LogMessages.Count | Should -BeGreaterThan 0
         }
     }
@@ -381,7 +380,6 @@ Describe "Test-DirectoryAccess" {
         }
 
         It "Should handle enterprise security policies" {
-            # Test with enterprise security constraints
             $securityValidated = $false
             
             Mock Write-StructuredLog {
@@ -393,7 +391,7 @@ Describe "Test-DirectoryAccess" {
             
             Test-DirectoryAccess -Path $script:TestNonExistentDir
             
-            # Security validation should occur in enterprise context
+            # Only a Debug or Information entry is asserted; $securityValidated is not checked
             Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
         }
 

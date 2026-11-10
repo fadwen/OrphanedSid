@@ -1,6 +1,4 @@
-# Pester 3.4 tests for Write-ADOperationSecurityLog.ps1
-# Import the script content for testing
-# Import dependencies
+# Unit tests for Write-ADOperationSecurityLog.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -16,8 +14,7 @@ BeforeAll {
 Describe "Write-ADOperationSecurityLog" -Tag @('Unit', 'Logging', 'Security', 'ActiveDirectory') {
 
     BeforeEach {
-        # Reset mock call counters for each test
-        # Mock dependencies inside BeforeEach to ensure clean state
+        # Mocked per test so every call count starts at zero
         Mock Write-SecurityLog { } -Verifiable
     }
 

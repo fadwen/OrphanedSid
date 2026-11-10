@@ -1,6 +1,5 @@
 ﻿#Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Import the class file
 BeforeAll {
     $ModuleRoot = Resolve-Path "$PSScriptRoot\..\..\.."
 
@@ -92,7 +91,6 @@ Describe "MemoryManager Class Tests" -Tag "Unit", "Classes", "MemoryManager" {
                 $script:testManager.CheckMemoryUsage()
             }
             
-            # Peak Should -be updated (current memory Should -be > 0)
             $script:testManager.PeakMemoryUsage | Should -BeGreaterThan $initialPeak
         }
 
@@ -105,13 +103,11 @@ Describe "MemoryManager Class Tests" -Tag "Unit", "Classes", "MemoryManager" {
         }
 
         It "Should handle Get-Process errors gracefully" {
-            # Create manager that will trigger memory check
+            # A check interval of 1 makes the first call read the process memory
             $testManager = [MemoryManager]::new(50, 1, [System.Guid]::NewGuid().ToString())
-            
-            # Mock Get-Process to throw an error
+
             Mock Get-Process { throw "Process not found" } -ModuleName $null
-            
-            # This Should -Not -throw an exception
+
             { $testManager.CheckMemoryUsage() } | Should -Not -Throw
             
             $testManager.Dispose()
@@ -190,7 +186,6 @@ Describe "MemoryManager Class Tests" -Tag "Unit", "Classes", "MemoryManager" {
             
             $manager.Dispose()
             
-            # Timer Should -be null after dispose
             $manager.Timer | Should -BeNullOrEmpty
         }
     }
@@ -249,7 +244,6 @@ Describe "MemoryManager Class Tests" -Tag "Unit", "Classes", "MemoryManager" {
         }
 
         It "Should handle edge case with zero interval" {
-            # This tests boundary condition
             $manager = [MemoryManager]::new(100, 0, [System.Guid]::NewGuid().ToString())
             
             # Should not cause infinite loop or crash
@@ -296,13 +290,10 @@ Describe "MemoryManager Class Tests" -Tag "Unit", "Classes", "MemoryManager" {
         It "Should properly clean up resources on disposal" {
             $manager = [MemoryManager]::new(100, 10, [System.Guid]::NewGuid().ToString())
             
-            # Verify timer is running
             $manager.Timer.IsRunning | Should -Be $true
-            
-            # Dispose and verify cleanup
+
             $manager.Dispose()
-            
-            # Timer Should -be null (cleaned up)
+
             $manager.Timer | Should -BeNullOrEmpty
             $manager.Disposed | Should -Be $true
         }

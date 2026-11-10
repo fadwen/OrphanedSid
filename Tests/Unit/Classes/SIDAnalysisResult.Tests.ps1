@@ -1,6 +1,5 @@
 #Requires -Version 5.1
 
-# Import the class definition
 BeforeAll {
     . "$PSScriptRoot\..\..\..\Classes\SIDAnalysisResult.ps1"
 }

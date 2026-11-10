@@ -1,6 +1,5 @@
 #Requires -Version 5.1
 
-# Import the function under test
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Operations\Invoke-OperationWithRetry.ps1"
 }

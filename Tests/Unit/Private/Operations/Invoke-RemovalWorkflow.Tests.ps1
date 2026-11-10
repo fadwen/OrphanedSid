@@ -1,11 +1,5 @@
 #Requires -Version 5.1
 
-# Import required classes first
-# Import logging functions
-# Import ACL functions
-# Import Security functions
-# Import Backup functions
-# Import the function under test (depends on all above functions)
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Classes\RemovalOperationResult.ps1"
 
@@ -32,11 +26,10 @@ BeforeAll {
 
 Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
     
-    # Create stub functions for mocking
+    # Invoke-SecurityValidation is not dot-sourced here; a placeholder lets Pester mock it
     BeforeAll {
     function Invoke-SecurityValidation { }
-        
-        # Mock all external dependencies
+
         Mock Write-StructuredLog { }
         Mock Write-RemovalSecurityLog { }
         Mock Get-ACLForRemoval { 
@@ -185,7 +178,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
         }
         
         It "Should handle SID removal failures" {
-            # Reset all mocks to defaults first
+            # The Describe defaults, restated so this test does not depend on mocks set by earlier tests
             Mock Write-StructuredLog { }
             Mock Write-RemovalSecurityLog { }
             Mock Get-ACLForRemoval { 
@@ -216,7 +209,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
                 }
             }
             
-            # Now override the specific mock for this test
+            # The failure under test
             Mock Invoke-SIDRemoval { throw "SID removal error" }
             
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName "CN=Test,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
@@ -226,7 +219,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
         }
         
         It "Should handle ACL application failures" {
-            # Reset all mocks to defaults first
+            # The Describe defaults, restated so this test does not depend on mocks set by earlier tests
             Mock Write-StructuredLog { }
             Mock Write-RemovalSecurityLog { }
             Mock Get-ACLForRemoval { 
@@ -263,7 +256,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
                 }
             }
             
-            # Now override the specific mock for this test
+            # The failure under test
             Mock Set-ModifiedACL { [PSCustomObject]@{ Success = $false; ErrorMessage = 'Access is denied' } }
             
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName "CN=Test,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
@@ -296,7 +289,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
         It "Should support WhatIf preference" {
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName "CN=Test,DC=domain,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001") -WhatIf
             
-            # In WhatIf mode, the function Should -Not -throw errors
+            # Under -WhatIf the function still returns a result object
             $result | Should -Not -BeNullOrEmpty
         }
         

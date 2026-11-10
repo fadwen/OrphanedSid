@@ -5,7 +5,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         # Ensure PESTER_TESTING environment variable is set for clean test output
         $env:PESTER_TESTING = 'true'
 
-        # Mock logging functions to avoid dependency loading issues
+        # Placeholders for the logging functions, so the logging system need not be loaded
         function Write-StructuredLog {
             param($Message, $Level, $CorrelationId, $Component, $Data, $Details)
             # Mock implementation - suppress output during tests
@@ -16,23 +16,18 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             # Mock implementation - suppress output during tests
         }
 
-        # Import required functions directly for dot sourcing without module manifest
+        # Dot-source the function under test and its collaborator; the module itself is not imported
         $RootPath = Join-Path $PSScriptRoot '..\..\..\..'
         $PrivatePath = Join-Path $RootPath 'Private'
-        
-        # Import backup-related functions
+
         . (Join-Path $PrivatePath 'Backup\Get-BackupFileMetadata.ps1')
         . (Join-Path $PrivatePath 'Backup\Find-BackupFile.ps1')
 
-        # Import test helpers if available
         $testHelpersPath = Join-Path $PSScriptRoot '..\..\..\TestHelpers\BackupTestHelpers.ps1'
         if (Test-Path $testHelpersPath) {
             . $testHelpersPath
         }
 
-        # CRITICAL FIX FOR PESTER 3.4: Force override functions after importing
-        # Remove original functions and redefine to ensure overrides work in Pester 3.4
-        
         # Mocks, not global functions: a global Write-Information defined here outlived this file and
         # replaced the cmdlet for every test file that ran after it
         Mock Write-Verbose { }
@@ -40,8 +35,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         Mock Write-Information { }
         # Write-Progress and Write-StructuredLog are replaced per test below with tracking functions
 
-        # Let Pester handle mock cleanup automatically
-        
+        # Replaces the dot-sourced Get-BackupFileMetadata; BeforeEach replaces it again with a tracking version
         function Get-BackupFileMetadata {
             param(
                 [string]$BackupFilePath,
@@ -120,12 +114,9 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         }
     }
 
-    # Set up comprehensive mocking for backup operations - use BeforeEach for Pester 3.4 compatibility
+    # The collaborators and the file system cmdlets are replaced with plain functions that record their
+    # calls, redefined before each test so every test starts with empty call lists
     BeforeEach {
-        # CRITICAL FIX FOR PESTER 3.4: Remove and redefine functions to ensure overrides work
-        
-        # Let Pester handle mock cleanup automatically
-        
         Mock Write-Verbose { }
         Mock Write-Debug { }
         Mock Write-Information { }
@@ -417,7 +408,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         It "Should call Get-ChildItem with correct parameters" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
             
-            # Check our tracking variable instead of Should -Invoke
+            # Get-ChildItem is a tracking function rather than a mock, so its calls are read from the list
             $script:GetChildItemCalls.Count | Should -BeGreaterThan 0
             $script:GetChildItemCalls[0].Path | Should -Be 'C:\ValidBackupPath'
             $script:GetChildItemCalls[0].Filter | Should -Be '*.xml'
@@ -427,8 +418,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
 
         It "Should call Get-BackupFileMetadata for each discovered file" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Check that Get-BackupFileMetadata was called for each file
+
             $script:GetBackupMetadataCalls.Count | Should -Be 3
             $script:GetBackupMetadataCalls[0].BackupFilePath | Should -Match '\.xml$'
         }
@@ -554,8 +544,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
 
         It "Should log structured error information" {
             { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should -Throw
-            
-            # Check our tracking variable for error logs
+
             $errorLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.Level -eq 'Error' -and $_.Message -match 'Failed to scan backup directory'
             }
@@ -595,15 +584,13 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
 
         It "Should use Write-Progress for user feedback" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Check our tracking variable
+
             $script:WriteProgressCalls.Count | Should -BeGreaterThan 0
         }
 
         It "Should complete Write-Progress when finished" {
             Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Check for completion call in our tracking
+
             $completionCall = $script:WriteProgressCalls | Where-Object { $_.Completed -eq $true }
             $completionCall | Should -Not -BeNullOrEmpty
         }
@@ -613,8 +600,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         It "Should track correlation IDs consistently" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             Find-BackupFile -BackupPath 'C:\ValidBackupPath' -CorrelationId $correlationId
-            
-            # Check our tracking variable for correlation ID usage
+
             $correlationLogs = $script:WriteStructuredLogCalls | Where-Object { 
                 $_.CorrelationId -eq $correlationId
             }
@@ -662,7 +648,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         }
 
         It "Should validate ObjectDN filter for malicious patterns" {
-            # ObjectDN filter Should -be safe as it's used with -like operator
+            # The ObjectDN filter is only used as a -like pattern, so a subexpression in it is never run
             { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '$(Get-Process)' } | Should -Not -Throw
         }
     }

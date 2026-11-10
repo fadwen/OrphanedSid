@@ -1,10 +1,7 @@
 #Requires -Version 5.1
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
-# Pester 3.4 can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
-# Import test configuration
-# Import test helpers
-# Mock wrapper function to prevent actual script execution
 BeforeAll {
+    # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     $testConfigPath = Join-Path $PSScriptRoot "..\..\TestData\Configurations\test-config.json"
@@ -19,6 +16,9 @@ BeforeAll {
 
     . "$PSScriptRoot\..\..\TestHelpers\BackupTestHelpers.ps1"
 
+    # A simulator, not the module: it returns figures computed from its parameters for each
+    # -MockBehavior scenario, so the tests check those figures against thresholds and do not
+    # measure OrphanedSid itself
     function Invoke-ThroughputMeasurementTest {
         param(
             [string]$MockBehavior = 'Standard',
@@ -133,7 +133,7 @@ BeforeAll {
 Describe "Throughput Measurement Performance Tests" -Tag "Performance", "Benchmark", "Throughput" {
     
     BeforeAll {
-        # Mock all external dependencies to prevent actual execution
+        # The simulator calls none of these; the mocks stop a stray call reaching AD, the console or disk
         Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
         Mock Get-ADDomain { return @{ DNSRoot = 'contoso.com'; DistinguishedName = 'DC=contoso,DC=com' } }
         Mock Write-Host { }
