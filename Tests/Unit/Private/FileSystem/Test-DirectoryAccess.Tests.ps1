@@ -1,37 +1,24 @@
 #Requires -Version 5.1
 
-# Unit tests for Test-DirectoryAccess.ps1. The logging functions are loaded for real and the logging
-# system is initialized with console output suppressed.
+# Unit tests for Test-DirectoryAccess.ps1. Directories are created under TestDrive and
+# Write-StructuredLog is mocked so each test can assert what was logged.
 BeforeAll {
-    . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLogEntry.ps1
-
-    . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1
-
-    . $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1
-
     . $PSScriptRoot\..\..\..\..\Private\FileSystem\Test-DirectoryAccess.ps1
 
-    Initialize-LoggingSystem -LogLevel 'Debug' -SuppressConsoleOutput
+    # Placeholder for the logging function defined in another file: Pester can only mock a command
+    # that exists
+    function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 }
 
-Describe "Test-DirectoryAccess" {
+Describe "Test-DirectoryAccess" -Tag "Unit", "Private", "FileSystem" {
     BeforeEach {
-        # Create test directory for each test
-        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
-        # paths the functions return, which are long, compare equal to the ones built here
-        $script:TestTempDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "Test-DirectoryAccess-$(Get-Random)"
+        Mock Write-StructuredLog { }
+
+        # TestDrive sits under %TEMP%, which can be an 8.3 short path; expand it so the paths built
+        # here match what the function logs
+        $script:TestTempDir = Join-Path (Get-Item -LiteralPath $TestDrive).FullName ([guid]::NewGuid().ToString('N'))
         $script:TestNonExistentDir = Join-Path $script:TestTempDir "NonExistent"
-        $script:TestInvalidPath = "C:\Windows\System32\config\invalid"
-        
-        # Ensure test temp directory exists
-        New-Item -Path $script:TestTempDir -ItemType Directory -Force | Out-Null
-    }
-    
-    AfterEach {
-        # Clean up test directories
-        if (Test-Path $script:TestTempDir) {
-            Remove-Item -Path $script:TestTempDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
+        New-Item -Path $script:TestTempDir -ItemType Directory | Out-Null
     }
 
     Context "Parameter Validation" {
@@ -43,370 +30,152 @@ Describe "Test-DirectoryAccess" {
             { Test-DirectoryAccess -Path "" } | Should -Throw
         }
 
-        It "Should reject whitespace-only path" {
-            $result = Test-DirectoryAccess -Path "   "
-            $result | Should -Be $false
+        It "Should return false and warn for a whitespace-only path" {
+            Test-DirectoryAccess -Path "   " | Should -BeFalse
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq 'Directory access test failed: Path parameter was empty or null'
+            }
         }
 
-        It "Should accept valid path" {
-            $validPath = Join-Path $script:TestTempDir "ValidPath"
-            { Test-DirectoryAccess -Path $validPath } | Should -Not -Throw
-        }
+        It "Should return one result per path piped in" {
+            $paths = (Join-Path $script:TestTempDir 'A'), (Join-Path $script:TestTempDir 'B'), '..\escape'
 
-        It "Should handle long path names" {
-            $longName = "a" * 200  # Very long directory name
-            $longPath = Join-Path $script:TestTempDir $longName
-            
-            { Test-DirectoryAccess -Path $longPath } | Should -Not -Throw
-        }
+            $results = $paths | Test-DirectoryAccess
 
-        It "Should handle special characters in path" {
-            $specialPath = Join-Path $script:TestTempDir "Test Dir with spaces & symbols"
-            { Test-DirectoryAccess -Path $specialPath } | Should -Not -Throw
+            $results | Should -Be @($true, $true, $false)
         }
     }
 
     Context "Directory Creation" {
-        It "Should create non-existent directory" {
-            $result = Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            $result | Should -Be $true
-            Test-Path $script:TestNonExistentDir | Should -Be $true
+        It "Should create a non-existent directory and log the creation" {
+            Test-DirectoryAccess -Path $script:TestNonExistentDir | Should -BeTrue
+
+            Test-Path $script:TestNonExistentDir -PathType Container | Should -BeTrue
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $Message -eq "Successfully created directory: $script:TestNonExistentDir"
+            }
         }
 
-        It "Should return true for existing directory" {
-            $existingPath = $script:TestTempDir
-            $result = Test-DirectoryAccess -Path $existingPath
-            
-            $result | Should -Be $true
-        }
-
-        It "Should create nested directory structure" {
+        It "Should create a nested directory structure" {
             $nestedPath = Join-Path $script:TestNonExistentDir "Level1\Level2\Level3"
-            $result = Test-DirectoryAccess -Path $nestedPath
-            
-            $result | Should -Be $true
-            Test-Path $nestedPath | Should -Be $true
+
+            Test-DirectoryAccess -Path $nestedPath | Should -BeTrue
+
+            Test-Path $nestedPath -PathType Container | Should -BeTrue
         }
 
-        It "Should handle creation of existing directory" {
-            # Create directory first
-            New-Item -Path $script:TestNonExistentDir -ItemType Directory -Force | Out-Null
-            
-            # Test function should still return true
-            $result = Test-DirectoryAccess -Path $script:TestNonExistentDir
-            $result | Should -Be $true
+        It "Should return true for an existing directory without creating it" {
+            Test-DirectoryAccess -Path $script:TestTempDir | Should -BeTrue
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like 'Directory does not exist*' }
+        }
+
+        It "Should handle a directory name with spaces and symbols" {
+            $specialPath = Join-Path $script:TestTempDir "Test Dir with spaces & symbols"
+
+            Test-DirectoryAccess -Path $specialPath | Should -BeTrue
+            Test-Path -LiteralPath $specialPath -PathType Container | Should -BeTrue
+        }
+
+        It "Should create the directory even under -WhatIf" {
+            $WhatIfPreference = $true
+
+            Test-DirectoryAccess -Path $script:TestNonExistentDir | Should -BeTrue
+            Test-Path $script:TestNonExistentDir -PathType Container | Should -BeTrue
+        }
+
+        It "Should return false and log when the directory cannot be created" {
+            Mock New-Item { throw 'Access denied' }
+
+            Test-DirectoryAccess -Path $script:TestNonExistentDir | Should -BeFalse
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "Failed to create directory '$script:TestNonExistentDir': Access denied"
+            }
+        }
+
+        It "Should return false for a path with characters a directory name cannot hold" {
+            Test-DirectoryAccess -Path (Join-Path $script:TestTempDir 'Test<Dir|') | Should -BeFalse
         }
     }
 
     Context "Write Permission Testing" {
-        It "Should test write permission on created directory" {
-            $result = Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            $result | Should -Be $true
-            
-            # A file can be written to the directory
-            $testFile = Join-Path $script:TestNonExistentDir "writetest.tmp"
-            { "test" | Out-File $testFile } | Should -Not -Throw
-            Test-Path $testFile | Should -Be $true
+        It "Should leave no probe file behind" {
+            Test-DirectoryAccess -Path $script:TestTempDir | Should -BeTrue
+
+            @(Get-ChildItem $script:TestTempDir -Filter 'access_test_*.tmp').Count | Should -Be 0
         }
 
-        It "Should return false for directory without write permission" {
-            # The function tests write access with Out-File, so a failing Out-File stands in for a
-            # directory without write permission
+        It "Should return false and log when the probe file cannot be written" {
             Mock Out-File { throw [System.UnauthorizedAccessException]::new("Access denied") }
-            
-            $result = Test-DirectoryAccess -Path $script:TestTempDir
-            $result | Should -Be $false
-        }
-    }
 
-    Context "Error Handling" {
-        AfterEach {
-            # Reloads the function after each test. Pester removes mocks itself when a test ends, so
-            # this does not affect mocking.
-            try {
-                . "$PSScriptRoot\..\..\..\..\Private\FileSystem\Test-DirectoryAccess.ps1"
-            } catch {
-                # A failed reload is ignored
+            Test-DirectoryAccess -Path $script:TestTempDir | Should -BeFalse
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "Write access test failed for directory '$script:TestTempDir': Access denied"
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "Directory access validation failed: $script:TestTempDir"
             }
         }
-        
-        It "Should handle invalid drive paths" {
-            $invalidPath = "Z:\NonExistentDrive\TestDir"
-            $result = Test-DirectoryAccess -Path $invalidPath
-            
-            # Should handle gracefully and return false
-            $result | Should -Be $false
-        }
 
-        It "Should handle path traversal attempts" {
-            $traversalPath = Join-Path $script:TestTempDir "..\..\..\Windows\System32"
-            
-            # Must not throw; the result may be false
-            { Test-DirectoryAccess -Path $traversalPath } | Should -Not -Throw
-        }
+        It "Should return false when the probe file does not appear after the write" {
+            # The directory check still sees the directory; only the probe file is reported missing
+            Mock Test-Path { $true }
+            Mock Test-Path { $false } -ParameterFilter { $Path -like '*access_test_*.tmp' }
 
-        It "Should handle very long paths gracefully" {
-            $veryLongPath = "C:\" + ("VeryLongDirectoryName" * 20)  # Exceed MAX_PATH
-            
-            { Test-DirectoryAccess -Path $veryLongPath } | Should -Not -Throw
-        }
+            Test-DirectoryAccess -Path $script:TestTempDir | Should -BeFalse
 
-        It "Should handle null reference exceptions" {
-            # An embedded null character makes the path invalid
-            $problematicPath = "C:\Test`0Dir\SubDir"
-
-            { $result = Test-DirectoryAccess -Path $problematicPath } | Should -Not -Throw
-        }
-
-        It "Should handle existing directory correctly" {
-            # Test that the function correctly identifies an existing directory
-            # Use Windows temp directory which should always exist
-            $result = Test-DirectoryAccess -Path 'C:\Windows\Temp'
-            $result | Should -Be $true
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Write access test failed: File was not created in directory: $script:TestTempDir"
+            }
         }
     }
 
     Context "Security Validation" {
-        It "Should reject paths with invalid characters" {
-            $invalidPaths = @(
-                "C:\Test<Dir",
-                "C:\Test>Dir", 
-                "C:\Test|Dir",
-                "C:\Test`"Dir",
-                "C:\Test*Dir"
-            )
-            
-            foreach ($path in $invalidPaths) {
-                $result = Test-DirectoryAccess -Path $path
-                # Should handle gracefully, may return false
-                $result | Should -BeOfType [bool]
+        It "Should refuse a path containing '<Fragment>' without touching the file system" -ForEach @(
+            @{ Fragment = '..'; Suffix = '..\..\Windows\System32' }
+            @{ Fragment = '\\.\'; Suffix = '\\.\PhysicalDrive0' }
+            @{ Fragment = '/./'; Suffix = 'a/./b' }
+        ) {
+            Mock New-Item { }
+            # Concatenated rather than joined: Join-Path would normalize the separators away
+            $path = $script:TestTempDir + '\' + $Suffix
+
+            Test-DirectoryAccess -Path $path | Should -BeFalse
+
+            Should -Invoke New-Item -Times 0 -Exactly
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "Directory access test failed: Path contains potential traversal elements: $path"
             }
         }
+    }
 
-        It "Should validate against injection attempts" {
-            $injectionAttempts = @(
-                "C:\Test; Remove-Item C:\*",
-                "C:\Test`$(Get-Process)",
-                "C:\Test & dir"
-            )
-            
-            foreach ($injection in $injectionAttempts) {
-                { Test-DirectoryAccess -Path $injection } | Should -Not -Throw
+    Context "Unexpected errors" {
+        It "Should return false and log when an unexpected error occurs" {
+            Mock Join-Path { throw 'unexpected' }
+
+            Test-DirectoryAccess -Path $script:TestTempDir | Should -BeFalse
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Directory access test error for '$script:TestTempDir': unexpected"
             }
-        }
-
-        It "Should handle UNC path security" {
-            $uncPath = "\\invalid-server\share\testdir"
-            
-            # Should handle UNC paths without hanging or crashing
-            $result = Test-DirectoryAccess -Path $uncPath
-            $result | Should -BeOfType [bool]
         }
     }
 
     Context "Logging Integration" {
-        BeforeEach {
-            # Reset the captured log messages
-            Remove-Variable -Name 'LogMessages' -Scope Script -ErrorAction SilentlyContinue
-            $script:LogMessages = @()
-            
-            # Mock Write-StructuredLog to capture log messages
-            Mock Write-StructuredLog {
-                param($Level, $Message, $FunctionName, $OperationType, $Details)
-                $script:LogMessages += @{
-                    Level = $Level
-                    Message = $Message
-                    FunctionName = $FunctionName
-                    OperationType = $OperationType
-                    Details = $Details
-                }
-            }
-        }
-
-        It "Should log successful directory creation" {
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            # Should have logged the operation
-            $script:LogMessages.Count | Should -BeGreaterThan 0
-            $successLog = $script:LogMessages | Where-Object { $_.Level -eq 'Information' -and $_.Message -like "*created*" }
-            $successLog | Should -Not -BeNullOrEmpty
-        }
-
-        It "Should log directory access validation" {
-            Test-DirectoryAccess -Path $script:TestTempDir  # Existing directory
-            
-            # Should log validation
-            $validationLog = $script:LogMessages | Where-Object { $_.Level -eq 'Debug' -and $_.Message -like "*validat*" }
-            $validationLog | Should -Not -BeNullOrEmpty
-        }
-
-        It "Should log write permission testing" {
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            # Should log write test
-            $writeTestLog = $script:LogMessages | Where-Object { $_.Message -like "*write*" -or $_.Message -like "*permission*" }
-            $writeTestLog | Should -Not -BeNullOrEmpty
-        }
-
-        It "Should log errors appropriately" {
-            Mock Out-File { throw [System.IO.IOException]::new("Test error") }
-            
-            Test-DirectoryAccess -Path $script:TestTempDir
-            
-            # Should log the error (function logs at Warning level for caught exceptions)
-            $errorLog = $script:LogMessages | Where-Object { $_.Level -eq 'Warning' }
-            $errorLog | Should -Not -BeNullOrEmpty
-        }
-
-        It "Should include correlation IDs in logs" {
+        It "Should log every entry under the FileSystem-Utilities component and the given correlation ID" {
             $customCorrelationId = [System.Guid]::NewGuid().ToString()
+
             Test-DirectoryAccess -Path $script:TestNonExistentDir -CorrelationId $customCorrelationId
-            
-            # $correlatedLog filters on a property the captured entries do not have and is never
-            # asserted; the test only checks that something was logged
-            $correlatedLog = $script:LogMessages | Where-Object {
-                $_.ParameterFilter -and $_.ParameterFilter.ToString().Contains($customCorrelationId)
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $CorrelationId -ne $customCorrelationId -or $Component -ne 'FileSystem-Utilities'
             }
-            $script:LogMessages.Count | Should -BeGreaterThan 0
-        }
-    }
-
-    Context "Performance Requirements" {
-        It "Should complete simple directory test within reasonable time" {
-            $startTime = Get-Date
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            $endTime = Get-Date
-            $duration = ($endTime - $startTime).TotalMilliseconds
-            
-            ($duration -lt 1000) | Should -Be $true  # 1 second
-        }
-
-        It "Should handle multiple directory operations efficiently" {
-            $testPaths = 1..10 | ForEach-Object { Join-Path $script:TestTempDir "TestDir$_" }
-            
-            $startTime = Get-Date
-            foreach ($path in $testPaths) {
-                Test-DirectoryAccess -Path $path | Out-Null
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq "Directory access validation successful: $script:TestNonExistentDir"
             }
-            $endTime = Get-Date
-            $duration = ($endTime - $startTime).TotalMilliseconds
-            
-            ($duration -lt 5000) | Should -Be $true  # 5 seconds for 10 directories
-        }
-
-        It "Should process repeated operations efficiently" {
-            $testPath = Join-Path $script:TestTempDir "performance-test"
-            
-            # First call
-            $time1 = Measure-Command { Test-DirectoryAccess -Path $testPath }
-            
-            # Second call (directory exists)
-            $time2 = Measure-Command { Test-DirectoryAccess -Path $testPath }
-            
-            # Both should complete successfully
-            $time1 | Should -Not -BeNullOrEmpty
-            $time2 | Should -Not -BeNullOrEmpty
-        }
-
-        It "Should handle large directory names efficiently" {
-            $largeName = "a" * 100
-            $largePath = Join-Path $script:TestTempDir $largeName
-            
-            $startTime = Get-Date
-            $result = Test-DirectoryAccess -Path $largePath
-            $endTime = Get-Date
-            $duration = ($endTime - $startTime).TotalMilliseconds
-            
-            ($duration -lt 500) | Should -Be $true
-            $result | Should -Be $true
-        }
-    }
-
-    Context "Enterprise Integration" {
-        It "Should integrate with audit trail systems" {
-            # Test integration with enterprise logging
-            Mock Write-StructuredLog {
-                param($Message, $Level, $Component, $CorrelationId)
-                
-                # Validate enterprise logging format
-                $Level | Should -Not -BeNullOrEmpty
-                $Message | Should -Not -BeNullOrEmpty
-                $Component | Should -Be 'FileSystem-Utilities'
-            }
-            
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            # Assert that Write-StructuredLog was called
-            Should -Invoke Write-StructuredLog -ParameterFilter { $Component -eq 'FileSystem-Utilities' }
-        }
-
-        It "Should support compliance monitoring" {
-            $script:complianceData = @()
-            
-            Mock Write-StructuredLog {
-                param($Message, $Level, $Component, $CorrelationId)
-                $complianceEntry = @{
-                    EventTime = Get-Date
-                    ComponentName = $Component
-                    LogLevel = $Level
-                    LogMessage = $Message
-                }
-                $script:complianceData += $complianceEntry
-            }
-            
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            # Should have compliance data
-            $script:complianceData.Count | Should -BeGreaterThan 0
-            $script:complianceData[0].ComponentName | Should -Be 'FileSystem-Utilities'
-        }
-
-        It "Should integrate with monitoring systems" {
-            # Test monitoring integration
-            $monitoringCalled = $false
-            
-            Mock Write-StructuredLog {
-                param($Level, $Message, $FunctionName, $OperationType, $Details)
-                if ($Level -eq 'Information' -and $Message -like "*directory*") {
-                    $script:monitoringCalled = $true
-                }
-            }
-            
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            $script:monitoringCalled | Should -Be $true
-        }
-
-        It "Should handle enterprise security policies" {
-            $securityValidated = $false
-            
-            Mock Write-StructuredLog {
-                param($Message, $Level, $Component, $CorrelationId)
-                if ($Level -eq 'Debug' -and $Message -like "*Testing directory access*") {
-                    $script:securityValidated = $true
-                }
-            }
-            
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            # Only a Debug or Information entry is asserted; $securityValidated is not checked
-            Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
-        }
-
-        It "Should support configuration management integration" {
-            # Test configuration management support
-            Mock Write-StructuredLog {
-                param($Message, $Level, $Component, $CorrelationId)
-                
-                # Should include component information
-                $Component | Should -Be 'FileSystem-Utilities'
-            }
-            
-            Test-DirectoryAccess -Path $script:TestNonExistentDir
-            
-            Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq "Debug" -or $Level -eq "Information" }
         }
     }
 }

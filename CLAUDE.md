@@ -108,13 +108,17 @@ parameter its callee lacks. When a helper needs a sibling that works on a file p
 loaded data, give it a distinct name (`Test-BackupFileIntegrity`, `Get-BackupFileMetadata`) rather
 than a second definition.
 
-### The coverage gate is 80% and only goes up
+### The coverage gate is 90% and only goes up, and every test must be able to fail
 
-`quality-gates.yml` fails below 80% line coverage over `Public/` and `Private/`; the suite measures
-about 81%. The module arrived with test files that defined a stub of their subject and tested the
+`quality-gates.yml` fails below 90% line coverage over `Public/` and `Private/`; the suite measures
+about 93%. The module arrived with test files that defined a stub of their subject and tested the
 stub (`Set-ModifiedACL.Tests.ps1` defined its own `Set-ModifiedACL`), which is why coverage was 62%
-with 2,400 passing tests. A test file dot-sources the real function and mocks only its
-collaborators; `Tests/TestHelpers/ADCmdletStubs.ps1` supplies the Active Directory cmdlets, and the
+with 2,400 passing tests, and with Integration and Performance folders that ran only in-file
+simulators. Coverage does not catch the rest: a test with no assertion, an assertion swallowed by a
+`catch`, a constant as the actual value, or an assertion on what a mock returned all execute lines
+and can never fail. A correct test that fails because the module is wrong is kept with `-Skip` and
+a `# Module bug (#N):` comment naming the issue that tracks the fix; it is never weakened to pass. A test file dot-sources the real
+function and mocks only its collaborators; `Tests/TestHelpers/ADCmdletStubs.ps1` supplies the Active Directory cmdlets, and the
 `ADIdentityNotFoundException` type, when RSAT is absent. Raise the gate as coverage rises; never
 lower it. The workflow also sets `$ErrorActionPreference = 'Continue'` before `Invoke-Pester`,
 because the GitHub shells prepend a Stop preference to every step: it reaches the functions under

@@ -1,335 +1,235 @@
 #Requires -Version 5.1
 
-# Unit tests for Initialize-LogDirectory.ps1. The logging functions are loaded for real and the
-# logging system is initialized with console output suppressed.
+# Unit tests for Initialize-LogDirectory.ps1 and the helpers it defines. Every log path is under
+# TestDrive; Get-Location is mocked to TestDrive too, so the fallback path never points into the
+# repository.
 BeforeAll {
-    . $PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1
-
     . $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1
 
     . $PSScriptRoot\..\..\..\..\Private\FileSystem\Initialize-LogDirectory.ps1
 
-    Initialize-LoggingSystem -LogLevel 'Debug' -SuppressConsoleOutput
+    $script:RepositoryRoot = (Resolve-Path "$PSScriptRoot\..\..\..\..").Path
 }
 
-Describe "Initialize-LogDirectory" {
-    BeforeAll {
-        # Track any directories created during testing for cleanup
-        $script:CreatedTestDirectories = @()
-    }
-    
+Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
+
     BeforeEach {
-        # Create unique test directory for each test
-        # $env:TEMP is an 8.3 short path (RUNNER~1) on the GitHub runners; Get-Item expands it so the
-        # paths the functions return, which are long, compare equal to the ones built here
-        $script:TestTempDir = Join-Path (Get-Item -LiteralPath $env:TEMP).FullName "Initialize-LogDirectory-$(Get-Random)"
-        $script:TestLogPath = Join-Path $script:TestTempDir "test.log"
-        $script:TestInvalidPath = "C:\Windows\System32\config\invalid\test.log"
-        
-        # Ensure clean test environment
-        if (Test-Path $script:TestTempDir) {
-            Remove-Item $script:TestTempDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    
-    AfterEach {
-        # Clean up test artifacts
-        if (Test-Path $script:TestTempDir) {
-            Remove-Item $script:TestTempDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    
-    AfterAll {
-        # Clean up any accidentally created directories from path traversal tests
-        $possibleTraversalPaths = @(
-            ".\windows"
-            (Join-Path (Get-Location) "windows")
-            (Join-Path $PSScriptRoot "..\..\..\..\windows")
-        )
-        
-        foreach ($path in $possibleTraversalPaths) {
-            if (Test-Path $path) {
-                Write-Warning "Cleaning up test-created directory: $path"
-                try {
-                    Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
-                } catch {
-                    Write-Warning "Could not remove test directory $path : $($_.Exception.Message)"
-                }
-            }
-        }
-        
-        # Also clean up the specific file created by the path traversal test
-        $projectRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
-        $traversalFile = Join-Path $projectRoot "windows\system32\test.log"
-        $traversalDir = Join-Path $projectRoot "windows"
-        
-        if (Test-Path $traversalFile) {
-            Write-Warning "Cleaning up path traversal test file: $traversalFile"
-            try {
-                Remove-Item $traversalFile -Force -ErrorAction SilentlyContinue
-            } catch {
-                Write-Warning "Could not remove test file $traversalFile : $($_.Exception.Message)"
-            }
-        }
-        
-        if (Test-Path $traversalDir) {
-            Write-Warning "Cleaning up path traversal test directory: $traversalDir"
-            try {
-                Remove-Item $traversalDir -Recurse -Force -ErrorAction SilentlyContinue
-            } catch {
-                Write-Warning "Could not remove test directory $traversalDir : $($_.Exception.Message)"
-            }
-        }
+        Initialize-LoggingSystem -CorrelationId 'dir-correlation' -LogLevel 'Debug' -SuppressConsoleOutput
+        $script:LogPath = $null
+
+        # TestDrive sits under %TEMP%, which can be an 8.3 short path; expand it so the paths the
+        # function returns compare equal to the ones built here
+        $script:TestRoot = Join-Path (Get-Item -LiteralPath $TestDrive).FullName ([guid]::NewGuid().ToString('N'))
+        $script:TestLogPath = Join-Path $script:TestRoot 'run.log'
+        $script:FallbackDir = Join-Path (Get-Item -LiteralPath $TestDrive).FullName 'fallback'
+
+        Mock Get-Location { $script:FallbackDir }
+        Mock Write-Warning { }
     }
 
     Context "Parameter Validation" {
-        It "Should accept mandatory LogPath parameter" {
-            { Initialize-LogDirectory -LogPath $script:TestLogPath } | Should -Not -Throw
-        }
-        
         It "Should reject null or empty LogPath" {
             { Initialize-LogDirectory -LogPath "" } | Should -Throw
             { Initialize-LogDirectory -LogPath $null } | Should -Throw
         }
-        
-        It "Should accept CorrelationId parameter" {
-            # This function doesn't have CorrelationId parameter - it uses the global logging state
-            { Initialize-LogDirectory -LogPath $script:TestLogPath } | Should -Not -Throw
-        }
-        
-        It "Should auto-generate CorrelationId when not provided" {
-            # Function uses global logging state, not direct parameter
+    }
+
+    Context "Successful initialization" {
+        It "Should return the resolved path and record it as the active log" {
             $result = Initialize-LogDirectory -LogPath $script:TestLogPath
-            $result | Should -Not -Be $null
-        }
-        
-        It "Should support pipeline input" {
-            # Function doesn't support pipeline input based on parameter definition
-            { Initialize-LogDirectory -LogPath $script:TestLogPath } | Should -Not -Throw
-        }
-    }
 
-    Context "Directory Creation" {
-        It "Should create parent directory when it does not exist" {
-            $script:TestTempDir | Should -Not -Exist
-            Initialize-LogDirectory -LogPath $script:TestLogPath
-            $script:TestTempDir | Should -Exist
+            $result | Should -Be $script:TestLogPath
+            $script:LogPath | Should -Be $script:TestLogPath
+            $script:LogFileInitialized | Should -BeTrue
+            Should -Invoke Write-Warning -Times 0 -Exactly
         }
-        
-        It "Should handle existing parent directory gracefully" {
-            New-Item -Path $script:TestTempDir -ItemType Directory -Force
-            $script:TestTempDir | Should -Exist
-            { Initialize-LogDirectory -LogPath $script:TestLogPath } | Should -Not -Throw
-        }
-        
-        It "Should create nested directory structure" {
-            $nestedPath = Join-Path $script:TestTempDir "SubDir\SubSubDir\test.log"
-            Initialize-LogDirectory -LogPath $nestedPath
-            Split-Path $nestedPath -Parent | Should -Exist
-        }
-        
-        It "Should handle UNC paths appropriately" {
-            $uncPath = "\\localhost\c$\temp\test-log-$(Get-Random).log"
-            { Initialize-LogDirectory -LogPath $uncPath } | Should -Not -Throw
-        }
-    }
 
-    Context "Log File Initialization" {
-        It "Should create log file when directory exists" {
-            New-Item -Path $script:TestTempDir -ItemType Directory -Force
+        It "Should create the missing parent directory" {
+            Test-Path $script:TestRoot | Should -BeFalse
+
             Initialize-LogDirectory -LogPath $script:TestLogPath
-            $script:TestLogPath | Should -Exist
+
+            Test-Path $script:TestRoot -PathType Container | Should -BeTrue
         }
-        
-        It "Should write header to new log file" {
-            Initialize-LogDirectory -LogPath $script:TestLogPath
-            $content = Get-Content $script:TestLogPath -Raw
-            $content | Should -Match "=== OrphanedSid Log ==="
-            $content | Should -Match "Start Time:"
+
+        It "Should create a nested directory structure" {
+            $nestedPath = Join-Path $script:TestRoot "SubDir\SubSubDir\nested.log"
+
+            Initialize-LogDirectory -LogPath $nestedPath | Should -Be $nestedPath
+
+            Test-Path $nestedPath -PathType Leaf | Should -BeTrue
         }
-        
-        It "Should initialize log file with header when file already exists" {
-            # Ensure directory exists first
-            New-Item -Path $script:TestTempDir -ItemType Directory -Force
-            "Existing content" | Out-File $script:TestLogPath -Force
+
+        It "Should leave no write-probe file behind in the directory" {
             Initialize-LogDirectory -LogPath $script:TestLogPath
+
+            @(Get-ChildItem $script:TestRoot -Filter 'test_write_*.tmp').Count | Should -Be 0
+        }
+
+        It "Should write a header with the correlation ID, level, user and file path" {
+            Initialize-LogDirectory -LogPath $script:TestLogPath
+
             $content = Get-Content $script:TestLogPath -Raw
-            # The function should initialize with a new header, replacing existing content
+            $content | Should -Match '=== OrphanedSid Log ==='
+            $content | Should -Match 'Correlation ID: dir-correlation'
+            $content | Should -Match 'Log Level: Debug'
+            $content | Should -Match ([regex]::Escape("User Context: $env:USERNAME@$env:COMPUTERNAME"))
+            $content | Should -Match ([regex]::Escape("Log File: $script:TestLogPath"))
+            $content | Should -Match 'Console Output Suppressed: True'
+        }
+
+        It "Should replace the content of an existing log file with the header" {
+            New-Item -Path $script:TestRoot -ItemType Directory | Out-Null
+            "Existing content" | Set-Content $script:TestLogPath
+
+            Initialize-LogDirectory -LogPath $script:TestLogPath
+
+            $content = Get-Content $script:TestLogPath -Raw
             $content | Should -Match "=== OrphanedSid Log ==="
             $content | Should -Not -Match "Existing content"
         }
-        
-        It "Should handle log file in root directory" {
-            $driveRoot = [System.IO.Path]::GetPathRoot($env:TEMP)
-            $rootLogPath = Join-Path $driveRoot "temp-test-$(Get-Random).log"
-            try {
-                # Writing to the drive root needs elevation on a default Windows install.
-                # Probe first and report inconclusive rather than failing on a permissions difference.
-                try {
-                    [System.IO.File]::WriteAllText($rootLogPath, '')
-                    Remove-Item $rootLogPath -Force
-                } catch [System.UnauthorizedAccessException] {
-                    Set-ItResult -Inconclusive -Because "No write access to $driveRoot; run elevated to exercise this case"
-                }
 
-                Initialize-LogDirectory -LogPath $rootLogPath
-                $rootLogPath | Should -Exist
-            }
-            finally {
-                if (Test-Path $rootLogPath) {
-                    Remove-Item $rootLogPath -Force -ErrorAction SilentlyContinue
-                }
-            }
-        }
-    }
+        It "Should create the directory and file even under -WhatIf" {
+            $WhatIfPreference = $true
 
-    Context "Error Handling" {
-        It "Should -throw when unable to create directory" {
-            # Function doesn't throw - it returns fallback path
-            $result = Initialize-LogDirectory -LogPath $script:TestInvalidPath
-            $result | Should -Not -Be $null
-        }
-        
-        It "Should handle path with invalid characters" {
-            # Function handles errors gracefully and returns fallback path
-            $invalidPath = Join-Path $script:TestTempDir "test<>:|?.log"
-            $result = Initialize-LogDirectory -LogPath $invalidPath
-            $result | Should -Not -Be $null
-        }
-        
-        It "Should handle very long paths gracefully" {
-            # Function handles errors gracefully and returns fallback path
-            $longPath = "C:\" + ("a" * 250) + "\test.log"
-            $result = Initialize-LogDirectory -LogPath $longPath
-            $result | Should -Not -Be $null
-        }
-        
-        It "Should provide meaningful error messages" {
-            try {
-                Initialize-LogDirectory -LogPath $script:TestInvalidPath
-            }
-            catch {
-                $_.Exception.Message | Should -Match "directory|path|access"
-            }
-        }
-    }
-
-    Context "Security Validation" {
-        It "Should prevent path traversal attempts" {
-            # Test with a path containing .. in the raw input
-            $traversalPath = "..\..\..\windows\system32\test.log"
-            
-            # The function should either throw an error or sanitize the path
-            # It should NOT create directories outside the project structure
-            try {
-                $result = Initialize-LogDirectory -LogPath $traversalPath
-                
-                # If it succeeds, verify the dangerous path was NOT created
-                $projectRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
-                $dangerousPath = Join-Path $projectRoot "windows\system32\test.log"
-                
-                Test-Path $dangerousPath | Should -Be $false
-                
-                # The result is a safe fallback path
-                $result | Should -Not -Be $null
-                $result | Should -Not -Match "windows.*system32"
-            }
-            catch {
-                # It's also acceptable for the function to throw an error for path traversal
-                $_.Exception.Message | Should -Match "traversal|invalid path|security"
-            }
-        }
-        
-        It "Should validate write permissions" {
-            New-Item -Path $script:TestTempDir -ItemType Directory -Force
-            # Function should complete without throwing errors
-            { Initialize-LogDirectory -LogPath $script:TestLogPath } | Should -Not -Throw
-        }
-        
-        It "Should handle network paths securely" {
-            # Function handles errors gracefully and returns fallback path
-            $networkPath = "\\nonexistent\share\test.log"
-            $result = Initialize-LogDirectory -LogPath $networkPath
-            $result | Should -Not -Be $null
-        }
-    }
-
-    Context "Logging Integration" {
-        It "Should log debug messages for successful operations" {
-            # Function uses Write-Verbose, not Write-StructuredLog
-            $result = Initialize-LogDirectory -LogPath $script:TestLogPath
-            $result | Should -Not -Be $null
-        }
-        
-        It "Should log error messages for failed operations" {
-            # Function uses Write-Warning for errors, not Write-StructuredLog
-            $result = Initialize-LogDirectory -LogPath $script:TestInvalidPath
-            $result | Should -Not -Be $null
-        }
-        
-        It "Should include correlation ID in log messages" {
-            # Function uses global logging state for correlation ID
-            $result = Initialize-LogDirectory -LogPath $script:TestLogPath
-            $result | Should -Not -Be $null
-            $content = Get-Content $script:TestLogPath -Raw
-            $content | Should -Match "Correlation ID:"
-        }
-    }
-
-    Context "Performance Validation" {
-        It "Should complete directory creation within performance limits" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             Initialize-LogDirectory -LogPath $script:TestLogPath
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -Be ($stopwatch.ElapsedMilliseconds -lt 2000)
+
+            Test-Path $script:TestLogPath -PathType Leaf | Should -BeTrue
         }
-        
-        It "Should handle multiple rapid calls efficiently" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            1..5 | ForEach-Object {
-                $testPath = Join-Path $script:TestTempDir "test$_.log"
-                Initialize-LogDirectory -LogPath $testPath
+
+        It "Should resolve a relative path against the script root" {
+            Mock Get-ScriptRootDirectory { $script:TestRoot }
+
+            $result = Initialize-LogDirectory -LogPath 'Logs\relative.log'
+
+            $result | Should -Be (Join-Path $script:TestRoot 'Logs\relative.log')
+            Test-Path $result -PathType Leaf | Should -BeTrue
+        }
+
+        It "Should warn when the logging system has no correlation ID" {
+            Mock Get-LoggingSystemState { [PSCustomObject]@{ CorrelationId = $null; LogLevel = 'Information' } }
+
+            Initialize-LogDirectory -LogPath $script:TestLogPath
+
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Logging system not initialized. Call Initialize-LoggingSystem first.'
             }
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -Be ($stopwatch.ElapsedMilliseconds -lt 5000)
-        }
-        
-        It "Should handle deep directory structures efficiently" {
-            $deepPath = Join-Path $script:TestTempDir ("SubDir\" * 10 + "test.log")
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            Initialize-LogDirectory -LogPath $deepPath
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -Be ($stopwatch.ElapsedMilliseconds -lt 3000)
         }
     }
 
-    Context "Enterprise Integration" {
-        It "Should return success status for valid operations" {
+    Context "Fallback path" {
+        It "Should fall back to a timestamped file in the current directory when <Case>" -ForEach @(
+            @{ Case = 'the path contains a traversal'; Path = '..\..\..\windows\system32\test.log'; Reason = '*Directory traversal not allowed*' }
+            @{ Case = 'the path is outside the allowed directories'; Path = 'C:\Program Files\Company\Application\Logs\Find-UnknownSID.log'; Reason = '*Path must be within script directory*' }
+        ) {
+            $result = Initialize-LogDirectory -LogPath $Path
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            Split-Path $result -Leaf | Should -Match '^OrphanedSid_\d{8}_\d{6}\.log$'
+            $script:LogPath | Should -Be $result
+            $script:LogFileInitialized | Should -BeFalse
+            $script:LogFileReinitAttempted | Should -BeTrue
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like "Log directory initialization failed: $Reason" }
+        }
+
+        It "Should not create anything for a traversal path" {
+            Initialize-LogDirectory -LogPath '..\..\..\windows\system32\test.log'
+
+            Test-Path (Join-Path $script:RepositoryRoot 'windows') | Should -BeFalse
+            Test-Path $script:FallbackDir | Should -BeFalse
+        }
+
+        It "Should fall back when the directory cannot be created" {
+            Mock New-Item { throw 'Access denied' } -ParameterFilter { $ItemType -eq 'Directory' }
+
             $result = Initialize-LogDirectory -LogPath $script:TestLogPath
-            $result | Should -Not -Be $null
-            $result.GetType().Name | Should -Be "String"
-            $result | Should -Match "\.log$"
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like "*Failed to create log directory '$script:TestRoot': Access denied"
+            }
         }
-        
-        It "Should support configuration management integration" {
-            # Function integrates with global logging state
+
+        It "Should fall back when the directory is not writable" {
+            Mock Set-Content { throw 'Write denied' } -ParameterFilter { $Path -like '*test_write_*.tmp' }
+
             $result = Initialize-LogDirectory -LogPath $script:TestLogPath
-            $result | Should -Not -Be $null
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like "*Insufficient write permissions for log directory '$script:TestRoot': Write denied"
+            }
         }
-        
-        It "Should support audit trail requirements" {
-            # Function includes comprehensive log header for audit purposes
-            $result = Initialize-LogDirectory -LogPath $script:TestLogPath
-            $content = Get-Content $script:TestLogPath -Raw
-            $content | Should -Match "User Context:"
-            $content | Should -Match "Domain Context:"
+
+        It "Should fall back when the file name has invalid characters" {
+            $result = Initialize-LogDirectory -LogPath (Join-Path $script:TestRoot 'bad<>|?.log')
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            # .NET Framework rejects the name while resolving the path, .NET while writing the file
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like 'Log directory initialization failed:*' }
+            $script:LogFileInitialized | Should -BeFalse
         }
-        
-        It "Should handle enterprise directory patterns" {
-            # Function handles enterprise paths with fallback to safe location
-            $enterprisePath = "C:\Program Files\Company\Application\Logs\Find-UnknownSID.log"
-            $result = Initialize-LogDirectory -LogPath $enterprisePath
-            $result | Should -Not -Be $null
+
+        It "Should throw when not even the fallback path can be built" {
+            Mock Get-Location { throw 'No current location' }
+
+            { Initialize-LogDirectory -LogPath '..\escape.log' } |
+                Should -Throw -ExpectedMessage '*Failed to establish any log file path: No current location*'
         }
+    }
+}
+
+Describe "Resolve-LogPath" -Tag "Unit", "Private", "FileSystem" {
+    BeforeEach {
+        Mock Write-Warning { }
+    }
+
+    It "Should return an absolute path unchanged" {
+        Resolve-LogPath -LogPath 'C:\Logs\OrphanedSid\run.log' | Should -Be 'C:\Logs\OrphanedSid\run.log'
+    }
+
+    It "Should trim surrounding whitespace" {
+        Resolve-LogPath -LogPath '  C:\Logs\run.log  ' | Should -Be 'C:\Logs\run.log'
+    }
+
+    # Module bug (#31): '$LogPath = $LogPath.Trim()' assigns '' to a [ValidateNotNullOrEmpty()] parameter, which
+    # throws a validation error, so the default-name branch for a whitespace-only path is unreachable
+    It "Should use a default timestamped name under Logs for a whitespace-only path" -Skip {
+        Mock Get-ScriptRootDirectory { 'C:\Scripts' }
+
+        Resolve-LogPath -LogPath '   ' | Should -Match '^C:\\Scripts\\Logs\\OrphanedSid_\d{8}_\d{6}\.log$'
+    }
+
+    It "Should reject a path containing '..'" {
+        { Resolve-LogPath -LogPath 'C:\Logs\..\Windows\run.log' } | Should -Throw -ExpectedMessage 'Invalid path: Directory traversal not allowed'
+    }
+
+    It "Should reject a log path under <Location>" -ForEach @(
+        @{ Location = 'System32'; Path = 'C:\Windows\System32\run.log' }
+        @{ Location = 'Program Files'; Path = 'C:\Program Files\App\run.log' }
+    ) {
+        { Resolve-LogPath -LogPath $Path } | Should -Throw -ExpectedMessage '*Path must be within script directory*'
+    }
+
+    It "Should accept a path under Windows\Temp" {
+        Resolve-LogPath -LogPath 'C:\Windows\Temp\run.log' | Should -Be 'C:\Windows\Temp\run.log'
+    }
+}
+
+Describe "Get-ScriptRootDirectory" -Tag "Unit", "Private", "FileSystem" {
+    It "Should return the module root, two levels above Private\FileSystem" {
+        Get-ScriptRootDirectory | Should -Be $script:RepositoryRoot
+    }
+}
+
+Describe "New-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
+    It "Should leave an existing directory and its files in place" {
+        $dir = Join-Path $TestDrive 'existing'
+        New-Item -Path $dir -ItemType Directory | Out-Null
+        Set-Content -Path (Join-Path $dir 'keep.log') -Value 'keep'
+
+        New-LogDirectory -DirectoryPath $dir
+
+        @(Get-ChildItem $dir).Name | Should -Be @('keep.log')
     }
 }

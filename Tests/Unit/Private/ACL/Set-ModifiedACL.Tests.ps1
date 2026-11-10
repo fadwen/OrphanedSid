@@ -105,10 +105,10 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
         }
 
         It 'Retries the write three times and the verification twice' {
-            Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn | Out-Null
+            Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn -CorrelationId 'apply-3' | Out-Null
 
-            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 3 }
-            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 2 }
+            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 3 -and $CorrelationId -eq 'apply-3' }
+            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 2 -and $CorrelationId -eq 'apply-3' }
         }
 
         It 'Records duration, audit and performance details on success' {
@@ -118,7 +118,7 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
             $result.AuditTrail | Should -BeLike "*$($script:dn)*apply-2*"
             $result.PerformanceMetrics.Success | Should -BeTrue
             $result.TroubleshootingInfo | Should -BeNullOrEmpty
-            $result.ComplianceValidation | Should -Not -BeNullOrEmpty
+            $result.ComplianceValidation | Should -Be 'ACL operation compliant with enterprise security policies'
         }
     }
 
@@ -175,7 +175,11 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
 
             Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn -CorrelationId 'fail-1' | Out-Null
 
-            Should -Invoke Write-StructuredLog -ParameterFilter { $Level -eq 'Error' -and $CorrelationId -eq 'fail-1' }
+            # Once where the write fails and once where the outer handler builds the failed result
+            Should -Invoke Write-StructuredLog -Times 2 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'fail-1' -and
+                $Message -eq "Failed to apply ACL changes to $($script:dn) : boom"
+            }
         }
     }
 }

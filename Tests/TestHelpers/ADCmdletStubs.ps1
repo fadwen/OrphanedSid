@@ -32,6 +32,8 @@ $adCmdletStubs = @{
     'Set-ADObject'           = '$Identity, $Replace, $Add, $Remove, $Clear, $Server, $Credential, $PassThru'
     'Remove-ADObject'        = '$Identity, $Recursive, $Server, $Credential'
     'Get-ADUser'             = '$Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $Server, $Credential'
+    'Get-ADGroup'            = '$Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $Server, $Credential'
+    'Get-ADComputer'         = '$Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $Server, $Credential'
     'New-ADUser'             = '$Name, $SamAccountName, $Path, $AccountPassword, $Enabled, $Server, $Credential, $PassThru'
     'Set-ADUser'             = '$Identity, $Replace, $Add, $Remove, $Clear, $Enabled, $Server, $Credential, $PassThru'
     'Get-ADTrust'            = '$Identity, $Filter, $Server, $Credential'
@@ -54,7 +56,7 @@ param(
     [Parameter(ValueFromRemainingArguments)]`$RemainingArguments
 )
 `$name = `$MyInvocation.MyCommand.Name
-`$count = @(`$RemainingArguments).Count
+`$count = if (`$null -eq `$RemainingArguments) { 0 } else { @(`$RemainingArguments).Count }
 throw "`$name stub: the ActiveDirectory module is not installed and this call (`$count unlisted argument(s)) was not mocked"
 "@
 

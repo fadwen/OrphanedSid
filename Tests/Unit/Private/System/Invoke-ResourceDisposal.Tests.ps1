@@ -89,8 +89,22 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
             }
         }
 
-        It 'Accepts a null AdditionalResources value' {
-            { Invoke-ResourceCleanup -AdditionalResources $null } | Should -Not -Throw
+        It 'Accepts a null AdditionalResources value and still completes' {
+            Invoke-ResourceCleanup -AdditionalResources $null -CorrelationId 'null-res'
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter { $Level -eq 'Warning' }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter { $Message -eq 'Additional resource disposed successfully' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Message -eq 'Resource cleanup completed' -and $CorrelationId -eq 'null-res'
+            }
+        }
+
+        It 'Logs each successful disposal at Debug level' {
+            Invoke-ResourceCleanup -AdditionalResources @($script:probe, [DisposableProbe]::new())
+
+            Should -Invoke Write-StructuredLog -Times 2 -Exactly -Scope It -ParameterFilter {
+                $Message -eq 'Additional resource disposed successfully' -and $Level -eq 'Debug'
+            }
         }
     }
 
@@ -101,6 +115,9 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
             Invoke-ResourceCleanup -MemoryManager $manager
 
             $manager.Disposed | Should -Be $true
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Message -eq 'Memory manager disposed successfully' -and $Level -eq 'Information'
+            }
         }
 
         It 'Does not dispose a MemoryManager twice' {
@@ -114,8 +131,11 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
             }
         }
 
-        It 'Accepts a null MemoryManager' {
-            { Invoke-ResourceCleanup -MemoryManager $null } | Should -Not -Throw
+        It 'Accepts a null MemoryManager and still runs the final collection' {
+            Invoke-ResourceCleanup -MemoryManager $null
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter { $Message -eq 'Memory manager disposed successfully' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter { $Message -eq 'Final garbage collection completed' }
         }
     }
 
@@ -142,16 +162,18 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
         It 'Passes the supplied CorrelationId to every log entry' {
             Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId 'corr-123'
 
+            # Start, resource disposed, final collection, completion
+            Should -Invoke Write-StructuredLog -Times 4 -Exactly -Scope It -ParameterFilter { $CorrelationId -eq 'corr-123' }
             Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
                 $CorrelationId -ne 'corr-123'
             }
         }
 
         It 'Generates a CorrelationId when given whitespace' {
-            { Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId '   ' } | Should -Not -Throw
+            Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId '   '
 
-            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
-                [string]::IsNullOrWhiteSpace($CorrelationId)
+            Should -Invoke Write-StructuredLog -Times 4 -Exactly -Scope It -ParameterFilter {
+                $CorrelationId -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
             }
         }
     }
@@ -200,7 +222,26 @@ Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
             $failing = [DisposableProbe]::new()
             $failing.ThrowOnDispose = $true
 
-            { Invoke-ResourceDisposal -Resources @($failing) } | Should -Throw '*Dispose failed on purpose*'
+            $after = [DisposableProbe]::new()
+
+            { Invoke-ResourceDisposal -Resources @($failing, $after) -CorrelationId 'disp-err' } | Should -Throw '*Dispose failed on purpose*'
+
+            $after.Disposed | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like 'Resource disposal operation failed:*Dispose failed on purpose*' -and
+                $CorrelationId -eq 'disp-err'
+            }
+        }
+
+        It 'Logs a completion summary with the counts' {
+            $failing = [DisposableProbe]::new()
+            $failing.ThrowOnDispose = $true
+
+            Invoke-ResourceDisposal -Resources @($failing, [DisposableProbe]::new(), $null) -Force | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Message -eq 'Resource disposal completed. Disposed: 1, Failed: 1, Skipped: 1' -and $Level -eq 'Information'
+            }
         }
 
         It 'Continues past a failure and records it with -Force' {

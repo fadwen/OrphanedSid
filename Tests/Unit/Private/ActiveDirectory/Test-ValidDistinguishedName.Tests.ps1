@@ -76,22 +76,27 @@ Describe "Test-ValidDistinguishedName" {
             $result | Should -Be $false
         }
         
-        It "Should accept string array via pipeline" {
-            { $script:testData.ValidDNs[0..2] | Test-ValidDistinguishedName } | Should -Not -Throw
+        It "Should return one result per DN piped in" {
+            $results = $script:testData.ValidDNs[0..2] | Test-ValidDistinguishedName
+
+            $results | Should -Be @($true, $true, $true)
         }
-        
-        It "Should accept single string for DistinguishedName parameter" {
-            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] } | Should -Not -Throw
-        }
-        
-        It "Should support CorrelationId parameter" {
+
+        It "Should pass the given CorrelationId to the log" {
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
-            
-            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] -CorrelationId $testCorrelationId } | Should -Not -Throw
+
+            Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] -CorrelationId $testCorrelationId
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq $testCorrelationId }
         }
-        
-        It "Should auto-generate correlation ID when not provided" {
-            { Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0] } | Should -Not -Throw
+
+        It "Should auto-generate a GUID correlation ID when not provided" {
+            Test-ValidDistinguishedName -DistinguishedName $script:testData.ValidDNs[0]
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $parsed = [System.Guid]::Empty
+                [System.Guid]::TryParse($CorrelationId, [ref]$parsed)
+            }
         }
         
         It "Should reject null input gracefully" {
@@ -206,64 +211,39 @@ Describe "Test-ValidDistinguishedName" {
     }
     
     Context "Security Injection Prevention" {
-        It "Should detect and reject PowerShell injection - Get-Process" {
-            $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User$(Get-Process),OU=Users,DC=contoso,DC=com'
+        # Each DN is otherwise well formed, so the rejection must come from the injection pattern
+        # named in the warning, not from the format checks.
+        It "Should reject <Case> with a dangerous-pattern warning" -ForEach @(
+            @{ Case = 'a PowerShell subexpression'; DN = 'CN=User$(Get-Process),OU=Users,DC=contoso,DC=com'; Pattern = '\$\(' }
+            @{ Case = 'a backtick-escaped variable'; DN = 'CN=User`$x,OU=Users,DC=contoso,DC=com'; Pattern = '`\$' }
+            @{ Case = 'a command separator'; DN = 'CN=User&powershell.exe,OU=Users,DC=contoso,DC=com'; Pattern = '&' }
+            @{ Case = 'a pipe'; DN = 'CN=User|Out-File malicious.txt,OU=Users,DC=contoso,DC=com'; Pattern = '\|' }
+            @{ Case = 'SQL injection'; DN = 'CN=User;DROP TABLE Users;--,OU=Users,DC=contoso,DC=com'; Pattern = ';' }
+            @{ Case = 'path traversal'; DN = 'CN=../../../etc/passwd,OU=Users,DC=contoso,DC=com'; Pattern = '\.\.\/' }
+            @{ Case = 'script injection'; DN = 'CN=User<script>alert(1),OU=Users,DC=contoso,DC=com'; Pattern = '<script' }
+            @{ Case = 'URL-encoded null byte'; DN = 'CN=User%00,OU=Users,DC=contoso,DC=com'; Pattern = '%[0-9A-Fa-f]' }
+            @{ Case = 'an embedded null character'; DN = ('CN=User' + [char]0x00 + 'Hidden,OU=Users,DC=contoso,DC=com'); Pattern = '\x00' }
+            @{ Case = 'a SQL comment'; DN = 'CN=User--x,OU=Users,DC=contoso,DC=com'; Pattern = '--' }
+        ) {
+            $result = Test-ValidDistinguishedName -DistinguishedName $DN
+
             $result | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Distinguished Name validation failed: Contains dangerous characters: $Pattern" -and
+                $Level -eq 'Warning'
+            }
         }
-        
-        It "Should detect and reject PowerShell injection - Invoke-Expression" {
-            $result = Test-ValidDistinguishedName -DistinguishedName "CN=User`$(Invoke-Expression 'whoami'),OU=Users,DC=contoso,DC=com"
+
+        It "Should reject control characters with a control-character warning" {
+            # A bell character; a newline would already fail the single-line format check
+            $controlCharDN = 'CN=User' + [char]0x07 + 'Bell,OU=Users,DC=contoso,DC=com'
+
+            $result = Test-ValidDistinguishedName -DistinguishedName $controlCharDN
+
             $result | Should -Be $false
-        }
-        
-        It "Should detect and reject PowerShell injection - powershell.exe" {
-            $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User&powershell.exe,OU=Users,DC=contoso,DC=com'
-            $result | Should -Be $false
-        }
-        
-        It "Should detect and reject PowerShell injection - Out-File" {
-            $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User|Out-File malicious.txt,OU=Users,DC=contoso,DC=com'
-            $result | Should -Be $false
-        }
-        
-        It "Should detect SQL injection patterns" {
-            $sqlInjectionDN = 'CN=User;DROP TABLE Users;--,OU=Users,DC=contoso,DC=com'
-            
-            $result = Test-ValidDistinguishedName -DistinguishedName $sqlInjectionDN
-            
-            $result | Should -Be $false
-        }
-        
-        It "Should detect path traversal attempts" {
-            $pathTraversalDN = 'CN=../../../etc/passwd,OU=Users,DC=contoso,DC=com'
-            
-            $result = Test-ValidDistinguishedName -DistinguishedName $pathTraversalDN
-            
-            $result | Should -Be $false
-        }
-        
-        It "Should detect script injection attempts" {
-            $scriptInjectionDN = 'CN=User<script>alert("xss")</script>,OU=Users,DC=contoso,DC=com'
-            
-            $result = Test-ValidDistinguishedName -DistinguishedName $scriptInjectionDN
-            
-            $result | Should -Be $false
-        }
-        
-        It "Should detect null byte injection" {
-            $nullByteDN = 'CN=User%00,OU=Users,DC=contoso,DC=com'
-            
-            $result = Test-ValidDistinguishedName -DistinguishedName $nullByteDN
-            
-            $result | Should -Be $false
-        }
-        
-        It "Should handle embedded null characters safely" {
-            $nullCharDN = 'CN=User' + [char]0x00 + 'Hidden,OU=Users,DC=contoso,DC=com'
-            
-            $result = Test-ValidDistinguishedName -DistinguishedName $nullCharDN
-            
-            $result | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Distinguished Name validation failed: Contains control characters' -and $Level -eq 'Warning'
+            }
         }
     }
     
@@ -317,6 +297,37 @@ Describe "Test-ValidDistinguishedName" {
             
             # Should reject overly long DNs
             $result | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Distinguished Name validation failed: Length exceeds 1024 characters ($($longDN.Length))"
+            }
+        }
+
+        It "Should accept a DN of exactly 1024 characters" {
+            $prefix = 'CN='
+            $suffix = ',OU=Users,DC=contoso,DC=com'
+            $boundaryDN = $prefix + ('A' * (1024 - $prefix.Length - $suffix.Length)) + $suffix
+            $boundaryDN.Length | Should -Be 1024
+
+            Test-ValidDistinguishedName -DistinguishedName $boundaryDN | Should -Be $true
+        }
+
+        It "Should reject a DN whose only DC= follows an escaped comma" {
+            # The format check sees ',DC=' but the escaped comma keeps it inside the CN component
+            $result = Test-ValidDistinguishedName -DistinguishedName 'CN=User\,DC=contoso'
+
+            $result | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Distinguished Name validation failed: No domain components (DC=) found'
+            }
+        }
+
+        It "Should reject a component whose quoted value is empty" {
+            $result = Test-ValidDistinguishedName -DistinguishedName 'CN="",OU=Users,DC=contoso,DC=com'
+
+            $result | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Distinguished Name validation failed: Empty component value: CN=""'
+            }
         }
     }
     
@@ -367,90 +378,55 @@ Describe "Test-ValidDistinguishedName" {
     }
     
     Context "Enterprise Security Logging and Auditing" {
-        It "Should log validation attempt with security context" {
+        It "Should log a Debug success entry with the DN and correlation ID" {
             $testDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
-            
+
             Test-ValidDistinguishedName -DistinguishedName $testDN -CorrelationId $testCorrelationId
-            
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
-                $Message -match 'Distinguished Name validation successful'
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Distinguished Name validation successful: $testDN" -and
+                $Level -eq 'Debug' -and
+                $Component -eq 'DNValidator' -and
+                $CorrelationId -eq $testCorrelationId
             }
         }
-        
-        It "Should log validation results for each DN" {
+
+        It "Should log exactly one entry per DN validated" {
             $mixedDNs = @(
                 $script:testData.ValidDNs[0]
                 $script:testData.InvalidDNs[0]
                 $script:testData.MaliciousDNs[0]
             )
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
-            
+
             $mixedDNs | Test-ValidDistinguishedName -CorrelationId $testCorrelationId
-            
-            Should -Invoke Write-StructuredLog -Times 3 -ParameterFilter {
-                $Component -eq 'DNValidator'
+
+            Should -Invoke Write-StructuredLog -Times 3 -Exactly
+            Should -Invoke Write-StructuredLog -Times 3 -Exactly -ParameterFilter {
+                $Component -eq 'DNValidator' -and $CorrelationId -eq $testCorrelationId
             }
         }
-        
-        It "Should log security violations separately" {
-            $maliciousDN = $script:testData.MaliciousDNs[0]
-            
-            Test-ValidDistinguishedName -DistinguishedName $maliciousDN
-            
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
-                $Message -match 'Contains dangerous characters' -and
-                $Level -eq 'Warning'
+
+        It "Should log a format failure at Debug, not Warning" {
+            Test-ValidDistinguishedName -DistinguishedName 'InvalidDN'
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Distinguished Name validation failed: Invalid format structure' -and
+                $Level -eq 'Debug'
             }
         }
-        
-        It "Should include result summary in success logging" {
+
+        It "Should log one success entry per valid DN in a batch" {
             $testDNs = $script:testData.ValidDNs[0..2]
-            
+
             $testDNs | Test-ValidDistinguishedName
-            
-            Should -Invoke Write-StructuredLog -Times 3 -ParameterFilter {
-                $Message -match 'Distinguished Name validation successful'
+
+            foreach ($dn in $testDNs) {
+                Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                    $Message -eq "Distinguished Name validation successful: $dn"
+                }
             }
-        }
-    }
-    
-    Context "Performance and Scalability" {
-        It "Should process large batches efficiently" {
-            $largeBatch = 1..100 | ForEach-Object {
-                "CN=User$_,OU=Users,DC=test$($_ % 10),DC=com"
-            }
-            
-            $executionTime = Measure-Command {
-                $results = $largeBatch | Test-ValidDistinguishedName
-            }
-            
-            # Should complete within reasonable time (5 seconds for 100 DNs)
-            $executionTime.TotalSeconds | Should -BeLessThan 5
-        }
-        
-        It "Should provide structured logging for operations" {
-            $largeBatch = 1..100 | ForEach-Object {
-                "CN=User$_,OU=Users,DC=contoso,DC=com"
-            }
-            
-            $largeBatch | Test-ValidDistinguishedName
-            
-            Should -Invoke Write-StructuredLog -Times 100 -ParameterFilter {
-                $Message -match 'Distinguished Name validation successful'
-            }
-        }
-        
-        It "Should handle memory efficiently for large datasets" {
-            # Test with very large dataset
-            $veryLargeBatch = 1..500 | ForEach-Object {
-                "CN=User$_,OU=Department$($_ % 20),DC=company$($_ % 5),DC=com"
-            }
-            
-            $results = $veryLargeBatch | Test-ValidDistinguishedName
-            
-            @($results).Count | Should -Be 500
-            $results | Where-Object { $_ -eq $false } | Should -BeNullOrEmpty  # All Should -be valid
         }
     }
     
@@ -489,20 +465,26 @@ Describe "Test-ValidDistinguishedName" {
             
             $result = Test-ValidDistinguishedName -DistinguishedName $longComponentDN
             
-            # Should reject overly long components
+            # The DN as a whole is then over the 1024-character limit
             $result | Should -Be $false
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -like 'Distinguished Name validation failed: Length exceeds 1024 characters*'
+            }
         }
-        
-        It "Should handle special characters that might break regex" {
+
+        It "Should accept regex metacharacters in a value as ordinary characters" {
             $specialCharDNs = @(
                 'CN=User[],OU=Users,DC=contoso,DC=com'
                 'CN=User(),OU=Users,DC=contoso,DC=com'
                 'CN=User{},OU=Users,DC=contoso,DC=com'
                 'CN=User^,OU=Users,DC=contoso,DC=com'
             )
-            
-            foreach ($dn in $specialCharDNs) {
-                { $dn | Test-ValidDistinguishedName } | Should -Not -Throw
+
+            $results = $specialCharDNs | Test-ValidDistinguishedName
+
+            $results | Should -Be @($true, $true, $true, $true)
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Distinguished Name validation error:*'
             }
         }
     }

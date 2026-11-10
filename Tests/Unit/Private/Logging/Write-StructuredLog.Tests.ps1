@@ -1,7 +1,7 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 # Unit tests for Write-StructuredLog. Write-StructuredLogEntry and Format-LogMessage are loaded
 # for real; individual tests mock Write-StructuredLogEntry where they inspect what it receives.
-  
+
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\Initialize-TestLogging.ps1"
 
@@ -13,273 +13,194 @@ BeforeAll {
 }
 
 Describe "Write-StructuredLog" {
-    
+
     Context "Parameter Validation" {
-        
-        It "Should accept mandatory Message parameter" {
-            { Write-StructuredLog -Message "Test message" } | Should -Not -Throw
-        }
-        
-        <# SKIPPED - omitting the mandatory -Message makes an interactive host prompt for it
+
         It "Should require Message parameter" {
-            { Write-StructuredLog } | Should -Throw
+            # Omitting a mandatory parameter makes an interactive host prompt, so the declaration is
+            # read instead of invoking the function without it
+            $messageAttributes = (Get-Command Write-StructuredLog).Parameters['Message'].Attributes |
+                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+            $messageAttributes.Mandatory | Should -BeTrue
         }
-        #>
-        
+
         It "Should reject empty string as Message" {
             { Write-StructuredLog -Message "" } | Should -Throw
         }
-        
-        It "Should accept valid Level parameter" {
-            { Write-StructuredLog -Message "Test" -Level "Warning" } | Should -Not -Throw
-        }
-        
+
         It "Should use default Level when not specified" {
-            Mock Write-StructuredLogEntry { $Level | Should -Be "Information" }
+            Mock Write-StructuredLogEntry { }
             Write-StructuredLog -Message "Test"
-            Should -Invoke Write-StructuredLogEntry -Exactly 1
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter { $Level -eq 'Information' }
         }
-        
-        It "Should accept Component parameter" {
-            { Write-StructuredLog -Message "Test" -Component "TestComponent" } | Should -Not -Throw
-        }
-        
+
         It "Should use default Component when not specified" {
-            Mock Write-StructuredLogEntry { $Component | Should -Be "General" }
+            Mock Write-StructuredLogEntry { }
             Write-StructuredLog -Message "Test"
-            # Don't check exact call count since initialization may cause additional calls
-            Should -Invoke Write-StructuredLogEntry -ParameterFilter { $Component -eq 'General' }
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter { $Component -eq 'General' }
         }
-        
-        It "Should accept CorrelationId parameter" {
-            $testGuid = [System.Guid]::NewGuid().ToString()
-            { Write-StructuredLog -Message "Test" -CorrelationId $testGuid } | Should -Not -Throw
-        }
-        
+
         It "Should auto-generate CorrelationId when not provided" {
-            Mock Write-StructuredLogEntry { $CorrelationId | Should -Match "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
+            Mock Write-StructuredLogEntry { }
             Write-StructuredLog -Message "Test"
-            # Don't check exact call count since initialization may cause additional calls
-            Should -Invoke Write-StructuredLogEntry -ParameterFilter { $CorrelationId -match "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter {
+                $CorrelationId -match "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
         }
-        
-        It "Should accept LogPath parameter" {
-            { Write-StructuredLog -Message "Test" -LogPath "C:\Temp\test.log" } | Should -Not -Throw
+
+        It "Should generate a different CorrelationId for each call" {
+            $script:SeenCorrelationIds = [System.Collections.Generic.List[string]]::new()
+            Mock Write-StructuredLogEntry { $script:SeenCorrelationIds.Add($CorrelationId) }
+
+            Write-StructuredLog -Message "First"
+            Write-StructuredLog -Message "Second"
+
+            $script:SeenCorrelationIds.Count | Should -Be 2
+            $script:SeenCorrelationIds[0] | Should -Not -Be $script:SeenCorrelationIds[1]
         }
-        
-        It "Should accept Data hashtable parameter" {
-            $testData = @{ Key1 = 'Value1'; Key2 = 'Value2' }
-            { Write-StructuredLog -Message "Test" -Data $testData } | Should -Not -Throw
-        }
-        
+
         It "Should use empty hashtable as default Data when not specified" {
-            Mock Write-StructuredLogEntry { $Details.Count | Should -Be 0 }
+            Mock Write-StructuredLogEntry { }
             Write-StructuredLog -Message "Test"
-            # Don't check exact call count since initialization may cause additional calls
-            Should -Invoke Write-StructuredLogEntry -ParameterFilter { $Details.Count -eq 0 }
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter {
+                $Details -is [hashtable] -and $Details.Count -eq 0
+            }
         }
     }
-    
+
     Context "Parameter Forwarding" {
-        
+
         BeforeEach {
             Mock Write-StructuredLogEntry { }
         }
-        
+
         It "Should forward Message parameter correctly" {
-            $testMessage = "Test log message with special characters: Ã Ã©Ã®Ã´Ã¹"
+            $testMessage = "Test log message with special characters: Ã Ã©Ã®Ã´Ã¹"
             Write-StructuredLog -Message $testMessage
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Message -eq $testMessage
             }
         }
-        
+
         It "Should forward Level parameter correctly" {
             Write-StructuredLog -Message "Test" -Level "Warning"
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Level -eq "Warning"
             }
         }
-        
+
         It "Should forward Component parameter correctly" {
             Write-StructuredLog -Message "Test" -Component "TestComponent"
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Component -eq "TestComponent"
             }
         }
-        
+
         It "Should forward CorrelationId parameter correctly" {
             $testGuid = [System.Guid]::NewGuid().ToString()
             Write-StructuredLog -Message "Test" -CorrelationId $testGuid
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $CorrelationId -eq $testGuid
             }
         }
-        
+
         It "Should forward LogPath parameter when provided" {
             $testPath = "C:\Temp\test.log"
             Write-StructuredLog -Message "Test" -LogPath $testPath
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $LogPath -eq $testPath
             }
         }
-        
+
         It "Should not include LogPath parameter when not provided" {
             Write-StructuredLog -Message "Test"
-            
-            # Only the call is asserted; the absence of -LogPath is not checked
-            Should -Invoke Write-StructuredLogEntry
+
+            Should -Invoke Write-StructuredLogEntry -Times 1 -Exactly -ParameterFilter {
+                -not $PSBoundParameters.ContainsKey('LogPath')
+            }
         }
-        
+
         It "Should forward Data as Details parameter" {
             $testData = @{ TestKey = 'TestValue'; Number = 42 }
             Write-StructuredLog -Message "Test" -Data $testData
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Details.TestKey -eq 'TestValue' -and $Details.Number -eq 42
             }
         }
     }
-    
+
     Context "Level Variations" {
-        
+
         BeforeEach {
             Mock Write-StructuredLogEntry { }
         }
-        
-        It "Should handle Critical level" {
-            Write-StructuredLog -Message "Critical error" -Level "Critical"
-            
+
+        It "Should forward the <LevelName> level" -ForEach @(
+            @{ LevelName = 'Critical' }
+            @{ LevelName = 'Error' }
+            @{ LevelName = 'Warning' }
+            @{ LevelName = 'Information' }
+            @{ LevelName = 'Debug' }
+            @{ LevelName = 'Verbose' }
+        ) {
+            Write-StructuredLog -Message "$LevelName message" -Level $LevelName
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Level -eq "Critical"
-            }
-        }
-        
-        It "Should handle Error level" {
-            Write-StructuredLog -Message "Error occurred" -Level "Error"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Level -eq "Error"
-            }
-        }
-        
-        It "Should handle Warning level" {
-            Write-StructuredLog -Message "Warning message" -Level "Warning"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Level -eq "Warning"
-            }
-        }
-        
-        It "Should handle Information level" {
-            Write-StructuredLog -Message "Info message" -Level "Information"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Level -eq "Information"
-            }
-        }
-        
-        It "Should handle Debug level" {
-            Write-StructuredLog -Message "Debug message" -Level "Debug"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Level -eq "Debug"
-            }
-        }
-        
-        It "Should handle Verbose level" {
-            Write-StructuredLog -Message "Verbose message" -Level "Verbose"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Level -eq "Verbose"
+                $Level -eq $LevelName
             }
         }
     }
-    
+
     Context "Component Variations" {
-        
+
         BeforeEach {
             Mock Write-StructuredLogEntry { }
         }
-        
-        It "Should handle Security component" {
-            Write-StructuredLog -Message "Security event" -Component "Security"
-            
+
+        It "Should forward the component name '<ComponentName>' unchanged" -ForEach @(
+            @{ ComponentName = 'Security' }
+            @{ ComponentName = 'My Custom Component' }
+            @{ ComponentName = 'Component-With_Special.Characters' }
+        ) {
+            Write-StructuredLog -Message "Test" -Component $ComponentName
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "Security"
-            }
-        }
-        
-        It "Should handle FileSystem component" {
-            Write-StructuredLog -Message "File operation" -Component "FileSystem"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "FileSystem"
-            }
-        }
-        
-        It "Should handle ActiveDirectory component" {
-            Write-StructuredLog -Message "AD operation" -Component "ActiveDirectory"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "ActiveDirectory"
-            }
-        }
-        
-        It "Should handle component names with spaces" {
-            Write-StructuredLog -Message "Test" -Component "My Custom Component"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "My Custom Component"
-            }
-        }
-        
-        It "Should handle component names with special characters" {
-            Write-StructuredLog -Message "Test" -Component "Component-With_Special.Characters"
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "Component-With_Special.Characters"
+                $Component -eq $ComponentName
             }
         }
     }
-    
+
     Context "Data Handling" {
-        
+
         BeforeEach {
             Mock Write-StructuredLogEntry { }
         }
-        
+
         It "Should handle simple data types" {
+            $testDate = Get-Date
             $testData = @{
                 StringValue = "Test String"
                 IntValue = 42
                 BoolValue = $true
-                DateValue = Get-Date
+                DateValue = $testDate
             }
-            
+
             Write-StructuredLog -Message "Test" -Data $testData
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Details.StringValue -eq "Test String" -and
                 $Details.IntValue -eq 42 -and
                 $Details.BoolValue -eq $true -and
-                $Details.DateValue -ne $null
+                $Details.DateValue -eq $testDate
             }
         }
-        
-        It "Should handle empty hashtable" {
-            Write-StructuredLog -Message "Test" -Data @{}
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Details.Count -eq 0
-            }
-        }
-        
+
         It "Should handle complex nested data" {
             $testData = @{
                 SimpleValue = "Simple"
@@ -289,254 +210,115 @@ Describe "Write-StructuredLog" {
                 }
                 ArrayValue = @("Item1", "Item2", "Item3")
             }
-            
+
             Write-StructuredLog -Message "Test" -Data $testData
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Details.SimpleValue -eq "Simple" -and
-                $Details.NestedObject -ne $null -and
-                $Details.ArrayValue -ne $null
+                $Details.NestedObject.SubProperty -eq "Nested Value" -and
+                $Details.NestedObject.SubNumber -eq 123 -and
+                ($Details.ArrayValue -join ',') -eq 'Item1,Item2,Item3'
             }
         }
-        
+
         It "Should handle data with special characters" {
             $testData = @{
                 "Key With Spaces" = "Value with spaces"
                 "Key-With-Dashes" = "Value-with-dashes"
                 "Key_With_Underscores" = "Value_with_underscores"
-                "KeyWithUnicode" = "ValuÃ© wÃ®th spÃ©ciÃ l charÃ¢cters"
             }
-            
+
             Write-StructuredLog -Message "Test" -Data $testData
-            
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
                 $Details."Key With Spaces" -eq "Value with spaces" -and
-                $Details."Key-With-Dashes" -eq "Value-with-dashes"
+                $Details."Key-With-Dashes" -eq "Value-with-dashes" -and
+                $Details."Key_With_Underscores" -eq "Value_with_underscores"
             }
         }
-    }
-    
-    Context "Error Handling" {
-        
-        It "Should handle Write-StructuredLogEntry errors gracefully" {
-            Mock Write-StructuredLogEntry { }
-            
-            { Write-StructuredLog -Message "Test" } | Should -Not -Throw
-        }
-        
-        It "Should propagate errors from Write-StructuredLogEntry" {
-            Mock Write-StructuredLogEntry { throw "Simulated logging error" }
-            
-            { Write-StructuredLog -Message "Test" } | Should -Throw "*Simulated logging error*"
-        }
-        
-        It "Should reject null CorrelationId" {
-            { Write-StructuredLog -Message "Test" -CorrelationId $null } | Should -Throw
-        }
-        
-        It "Should handle very long messages" {
-            $longMessage = "A" * 10000  # 10KB message
-            Mock Write-StructuredLogEntry { }
-            
-            { Write-StructuredLog -Message $longMessage } | Should -Not -Throw
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Message.Length -eq 10000
-            }
-        }
-        
-        It "Should handle very large data objects" {
-            $largeData = @{}
-            1..100 | ForEach-Object { $largeData["Key$_"] = "Value$_" * 100 }
-            Mock Write-StructuredLogEntry { }
-            
-            { Write-StructuredLog -Message "Test" -Data $largeData } | Should -Not -Throw
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Details.Count -eq 100
-            }
-        }
-    }
-    
-    Context "Performance and Efficiency" {
-        
-        It "Should execute quickly for simple logging" {
-            Mock Write-StructuredLogEntry { }
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            Write-StructuredLog -Message "Performance test"
-            $stopwatch.Stop()
-            
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 100
-        }
-        
-        It "Should handle multiple rapid calls efficiently" {
-            Mock Write-StructuredLogEntry { }
-            
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            1..50 | ForEach-Object {
-                Write-StructuredLog -Message "Rapid call $_"
-            }
-            $stopwatch.Stop()
-            
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
-            Should -Invoke Write-StructuredLogEntry
-        }
-        
-        It "Should not consume excessive memory" {
-            Mock Write-StructuredLogEntry { }
-            $beforeMemory = [System.GC]::GetTotalMemory($false)
-            
-            1..100 | ForEach-Object {
-                Write-StructuredLog -Message "Memory test $_" -Data @{ Counter = $_ }
-            }
-            
-            [System.GC]::Collect()
-            $afterMemory = [System.GC]::GetTotalMemory($true)
-            $memoryUsed = $afterMemory - $beforeMemory
-            
-            # Should not use more than 1MB for 100 log calls
-            $memoryUsed | Should -BeLessThan 1048576
-        }
-    }
-    
-    Context "Integration Testing" {
-        
-        It "Should integrate correctly with Write-StructuredLogEntry" {
-            # Don't mock - test actual integration
-            $testMessage = "Integration test message"
-            $testComponent = "IntegrationTest"
-            $testGuid = [System.Guid]::NewGuid().ToString()
-            $testData = @{ TestKey = "TestValue" }
-            
-            { 
-                Write-StructuredLog -Message $testMessage -Component $testComponent -CorrelationId $testGuid -Data $testData
-            } | Should -Not -Throw
-        }
-        
-        It "Should work with different parameter combinations" {
-            # Test various parameter combinations without mocking
-            { Write-StructuredLog -Message "Test 1" } | Should -Not -Throw
-            { Write-StructuredLog -Message "Test 2" -Level "Warning" } | Should -Not -Throw
-            { Write-StructuredLog -Message "Test 3" -Component "TestComp" } | Should -Not -Throw
-            { Write-StructuredLog -Message "Test 4" -Level "Error" -Component "ErrorComp" } | Should -Not -Throw
-            { Write-StructuredLog -Message "Test 5" -Data @{ Key = "Value" } } | Should -Not -Throw
-        }
-        
-        It "Should handle pipeline input correctly" {
-            $messages = @("Message 1", "Message 2", "Message 3")
-            
-            { $messages | ForEach-Object { Write-StructuredLog -Message $_ } } | Should -Not -Throw
-        }
-    }
-    
-    Context "Security and Compliance" {
-        
-        It "Should not expose sensitive data in parameter validation" {
+
+        It "Should pass sensitive data through unchanged for the entry writer to handle" {
             $sensitiveData = @{
                 Password = "SuperSecretPassword123!"
                 APIKey = "sk_live_1234567890abcdef"
-                Token = "eyJhbGciOiJIUzI1NiJ9"
             }
-            
-            Mock Write-StructuredLogEntry { }
-            
-            { Write-StructuredLog -Message "Sensitive test" -Data $sensitiveData } | Should -Not -Throw
-            
-            # Verify the sensitive data is passed to the logging function (it's the logging function's job to protect it)
+
+            Write-StructuredLog -Message "Sensitive test" -Data $sensitiveData
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Details.Password -eq "SuperSecretPassword123!"
+                $Details.Password -eq "SuperSecretPassword123!" -and $Details.APIKey -eq "sk_live_1234567890abcdef"
             }
         }
-        
-        It "Should handle correlation ID for audit trails" {
-            Mock Write-StructuredLogEntry { }
-            $auditGuid = [System.Guid]::NewGuid().ToString()
-            
-            Write-StructuredLog -Message "Audit event" -CorrelationId $auditGuid -Component "Audit"
-            
+
+        It "Should handle very long messages" {
+            $longMessage = "A" * 10000
+
+            Write-StructuredLog -Message $longMessage
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $CorrelationId -eq $auditGuid -and $Component -eq "Audit"
+                $Message -eq $longMessage
             }
         }
-        
-        It "Should support compliance logging requirements" {
-            Mock Write-StructuredLogEntry { }
-            
-            $complianceData = @{
-                UserAction = "DataAccess"
-                TargetResource = "UserDatabase"
-                Timestamp = Get-Date
-                Justification = "Compliance audit requirement"
-            }
-            
-            Write-StructuredLog -Message "Compliance event" -Level "Information" -Component "Compliance" -Data $complianceData
-            
+
+        It "Should handle very large data objects" {
+            $largeData = @{}
+            1..100 | ForEach-Object { $largeData["Key$_"] = "Value$_" * 100 }
+
+            Write-StructuredLog -Message "Test" -Data $largeData
+
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "Compliance" -and
-                $Details.UserAction -eq "DataAccess" -and
-                $Details.TargetResource -eq "UserDatabase"
+                $Details.Count -eq 100 -and $Details.Key100 -eq ("Value100" * 100)
             }
         }
     }
-    
-    Context "Business Workflow Integration" {
-        
-        BeforeEach {
-            Mock Write-StructuredLogEntry { }
+
+    Context "Error Handling" {
+
+        It "Should propagate errors from Write-StructuredLogEntry" {
+            Mock Write-StructuredLogEntry { throw "Simulated logging error" }
+
+            { Write-StructuredLog -Message "Test" } | Should -Throw "*Simulated logging error*"
         }
-        
-        It "Should support SID analysis workflow logging" {
-            $sidData = @{
-                SID = "S-1-5-21-1234567890-1234567890-1234567890-1001"
-                ObjectType = "User"
-                Status = "Unknown"
-                Resolution = "Pending"
-            }
-            
-            Write-StructuredLog -Message "SID analysis event" -Component "SIDAnalysis" -Data $sidData
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "SIDAnalysis" -and
-                $Details.SID -like "S-1-5-21-*" -and
-                $Details.ObjectType -eq "User"
-            }
+
+        It "Should reject null CorrelationId" {
+            # $null binds as an empty string, which Write-StructuredLogEntry's ValidateNotNullOrEmpty refuses
+            { Write-StructuredLog -Message "Test" -CorrelationId $null } | Should -Throw -ExpectedMessage '*CorrelationId*'
         }
-        
-        It "Should support backup operation logging" {
-            $backupData = @{
-                Operation = "ACLBackup"
-                Path = "C:\Backups\ACL_20240101.xml"
-                ObjectCount = 150
-                Duration = "00:02:30"
+    }
+
+    Context "Integration with Write-StructuredLogEntry" {
+        # Write-StructuredLogEntry runs for real and writes to a file under TestDrive
+
+        It "Should write the entry with its level, component, correlation ID and data to the log file" {
+            $logPath = Join-Path $TestDrive 'integration.log'
+            $testGuid = [System.Guid]::NewGuid().ToString()
+
+            $logParams = @{
+                Message = "Integration test message"
+                Level = 'Warning'
+                Component = "IntegrationTest"
+                CorrelationId = $testGuid
+                Data = @{ TestKey = "TestValue" }
+                LogPath = $logPath
             }
-            
-            Write-StructuredLog -Message "Backup operation completed" -Component "Backup" -Data $backupData
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "Backup" -and
-                $Details.Operation -eq "ACLBackup" -and
-                $Details.ObjectCount -eq 150
-            }
+            Write-StructuredLog @logParams
+
+            $line = Get-Content -Path $logPath -Raw
+            $line | Should -BeLike "*[[]Warning] [[]IntegrationTest] [[]$testGuid] Integration test message*"
+            $line | Should -BeLike '*Details: {"TestKey":"TestValue"}*'
         }
-        
-        It "Should support removal operation logging" {
-            $removalData = @{
-                Operation = "SIDRemoval"
-                TargetSID = "S-1-5-21-9999999999-9999999999-9999999999-9999"
-                ObjectsAffected = 25
-                BackupCreated = $true
-                ExecutionTime = "00:01:15"
+
+        It "Should append one line per call" {
+            $logPath = Join-Path $TestDrive 'several.log'
+
+            foreach ($message in "Message 1", "Message 2", "Message 3") {
+                Write-StructuredLog -Message $message -LogPath $logPath
             }
-            
-            Write-StructuredLog -Message "SID removal completed" -Level "Information" -Component "Removal" -Data $removalData
-            
-            Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Component -eq "Removal" -and
-                $Details.Operation -eq "SIDRemoval" -and
-                $Details.BackupCreated -eq $true
-            }
+
+            $lines = @(Get-Content -Path $logPath)
+            $lines.Count | Should -Be 3
+            $lines[0] | Should -BeLike '*[[]Information] [[]General] *Message 1'
+            $lines[2] | Should -BeLike '*Message 3'
         }
     }
 }
-

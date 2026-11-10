@@ -1,215 +1,143 @@
-# Resolve-SIDIdentity Helper Functions Tests
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
+
+<#
+.SYNOPSIS
+    Tests for the identity resolution helpers in Resolve-SIDIdentity.ps1 that run against the real
+    Test-SIDFormat and Test-WellKnownSID.
+
+.DESCRIPTION
+    Test-AccessRuleForOrphanedSID.Tests.ps1 covers the helpers with the format checks mocked. These
+    tests load the real Test-SIDFormat.ps1, so they show which SIDs the helpers actually pass on to
+    the orphan check, and cover the string-extraction and routing branches that file does not.
+#>
 
 BeforeAll {
-    # Walk up to the module root, the folder holding the manifest
-    $rootPath = $PSScriptRoot
+    $rootPath = Split-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -Parent
 
-    while ($rootPath -and -not (Test-Path (Join-Path $rootPath 'OrphanedSid.psd1'))) {
-        $rootPath = Split-Path $rootPath -Parent
-    }
+    function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
-    if (-not $rootPath) {
-        throw "Cannot find the OrphanedSid module root"
-    }
-
-    if (-not (Get-Command 'Write-StructuredLog' -ErrorAction SilentlyContinue)) {
-        # Test-SIDFormat passes -Component, so the stub has to accept it
-        function Write-StructuredLog {
-            param($Message, $Level = 'Information', $Component, $CorrelationId = [System.Guid]::NewGuid().ToString(), $Data)
-            Write-Verbose "[$Level] [$CorrelationId] $Message"
-        }
-    }
-
-    $ClassPath = Join-Path $rootPath 'Classes'
-
-    if (Test-Path $ClassPath) {
-        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object {
-            try { . $_.FullName } catch { }
-        }
-    }
-
-    # Test-SIDValidityAndType calls Test-SIDFormat and Test-WellKnownSID from this file
+    . (Join-Path $rootPath 'Classes\OrphanedSIDResult.ps1')
     . (Join-Path $rootPath 'Private\SID\Test-SIDFormat.ps1')
+    . (Join-Path $rootPath 'Private\SID\Resolve-SIDIdentity.ps1')
 
-    $targetFile = Join-Path $rootPath 'Private\SID\Resolve-SIDIdentity.ps1'
+    Mock Write-StructuredLog { }
 
-    if (Test-Path $targetFile) {
-        try {
-            . $targetFile
+    $script:dn = 'CN=Finance Share,OU=Groups,DC=contoso,DC=com'
+    $script:userSid = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
+}
+
+Describe 'Test-SIDValidityAndType with the real format checks' -Tag 'Unit', 'SID', 'Private' {
+
+    BeforeEach {
+        $script:Config = $null
+    }
+
+    It 'Passes a domain user SID on for the orphan check' {
+        Test-SIDValidityAndType -SIDString $script:userSid -CorrelationId 'val-1' | Should -BeTrue
+
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+            $Message -eq "SID $($script:userSid) passed validation and is not well-known" -and $CorrelationId -eq 'val-1'
         }
-        catch {
-            Write-Warning "Could not load target file: $($_.Exception.Message)"
+    }
+
+    It 'Excludes the well-known SID <_>' -ForEach @(
+        'S-1-5-32-544'
+        'S-1-5-18'
+        'S-1-1-0'
+        'S-1-5-21-1234567890-1234567890-1234567890-512'
+    ) {
+        Test-SIDValidityAndType -SIDString $_ | Should -BeFalse
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Skipping well-known SID: $_" }
+    }
+
+    It "Excludes the malformed SID '<_>'" -ForEach @('S-1-5', 'NotASID','S-1-5-21-ABC-1-2-3') {
+        Test-SIDValidityAndType -SIDString $_ | Should -BeFalse
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Invalid SID format: $_" }
+    }
+
+    It 'Excludes a domain SID listed in the configured ProtectedSIDs' {
+        $script:Config = @{ ProtectedSIDs = @($script:userSid) }
+
+        Test-SIDValidityAndType -SIDString $script:userSid | Should -BeFalse
+    }
+}
+
+Describe 'Get-StringFromIdentityReference' -Tag 'Unit', 'SID', 'Private' {
+
+    It 'Refuses a null identity reference at binding' {
+        { Get-StringFromIdentityReference -IdentityReference $null } | Should -Throw
+    }
+
+    It 'Trims the extracted value' {
+        Get-StringFromIdentityReference -IdentityReference ([PSCustomObject]@{ Value = "  $($script:userSid)  " }) |
+            Should -Be $script:userSid
+    }
+
+    It 'Returns nothing, and logs why, when the value is only whitespace' {
+        $result = Get-StringFromIdentityReference -IdentityReference ([PSCustomObject]@{ Value = '   ' }) -ObjectDN $script:dn
+
+        $result | Should -BeNullOrEmpty
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+            $Message -eq "Empty or null string value extracted from identity reference for $($script:dn)"
+        }
+    }
+
+    It 'Reads the Value property of an NTAccount rather than translating it' {
+        Get-StringFromIdentityReference -IdentityReference ([System.Security.Principal.NTAccount]'CONTOSO\someone') |
+            Should -Be 'CONTOSO\someone'
+    }
+
+    It 'Returns nothing when ToString throws' {
+        $reference = [PSCustomObject]@{ Name = 'broken' }
+        $reference | Add-Member -MemberType ScriptMethod -Name ToString -Value { throw 'cannot render' } -Force
+
+        Get-StringFromIdentityReference -IdentityReference $reference -ObjectDN $script:dn | Should -BeNullOrEmpty
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+            $Message -like "Failed to convert identity reference to string using ToString for $($script:dn)*cannot render*"
         }
     }
 }
 
-Describe "Resolve-SIDIdentity Helper Functions Tests" {
-    
-    Context "Basic Setup Validation" {
-        It "Should -be able to run basic tests" {
-            $true | Should -Be $true
+Describe 'Resolve-IdentityReference routing' -Tag 'Unit', 'SID', 'Private' {
+
+    It 'Hands an NTAccount to Convert-NTAccountToSID with the object DN and correlation ID' {
+        Mock Convert-NTAccountToSID { 'S-1-5-21-1-2-3-4' }
+        Mock Get-StringFromIdentityReference { }
+
+        $result = Resolve-IdentityReference -IdentityReference ([System.Security.Principal.NTAccount]'CONTOSO\someone') -ObjectDN $script:dn -CorrelationId 'route-1'
+
+        $result | Should -Be 'S-1-5-21-1-2-3-4'
+        Should -Invoke Convert-NTAccountToSID -Times 1 -Exactly -ParameterFilter {
+            $NTAccount.Value -eq 'CONTOSO\someone' -and $ObjectDN -eq $script:dn -and $CorrelationId -eq 'route-1'
         }
-        
-        It "Should have Write-StructuredLog function available" {
-            Get-Command 'Write-StructuredLog' -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should find the root directory" {
-            $rootPath | Should -Not -BeNullOrEmpty
-            Test-Path (Join-Path $rootPath 'OrphanedSid.psd1') | Should -Be $true
-        }
-        
-        It "Should find the target file" {
-            $targetFile | Should -Not -BeNullOrEmpty
-            Test-Path $targetFile | Should -Be $true
-        }
+        Should -Invoke Get-StringFromIdentityReference -Times 0 -Exactly
     }
-    
-    Context "Function Availability Tests" {
-        It "Should have Test-AccessRuleForOrphanedSID function available" {
-            $func = Get-Command 'Test-AccessRuleForOrphanedSID' -ErrorAction SilentlyContinue
-            $func | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should have Resolve-IdentityReference function available" {
-            $func = Get-Command 'Resolve-IdentityReference' -ErrorAction SilentlyContinue  
-            $func | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should have Convert-NTAccountToSID function available" {
-            $func = Get-Command 'Convert-NTAccountToSID' -ErrorAction SilentlyContinue
-            $func | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should have Test-SIDValidityAndType function available" {
-            $func = Get-Command 'Test-SIDValidityAndType' -ErrorAction SilentlyContinue
-            $func | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should have Get-StringFromIdentityReference function available" {
-            $func = Get-Command 'Get-StringFromIdentityReference' -ErrorAction SilentlyContinue
-            $func | Should -Not -BeNullOrEmpty
-        }
+
+    It 'Takes a SecurityIdentifier value directly without string extraction' {
+        Mock Get-StringFromIdentityReference { }
+
+        Resolve-IdentityReference -IdentityReference ([System.Security.Principal.SecurityIdentifier]$script:userSid) |
+            Should -Be $script:userSid
+        Should -Invoke Get-StringFromIdentityReference -Times 0 -Exactly
     }
-    
-    Context "Function Type Validation" {
-        It "Functions Should -be of type Function" {
-            $functions = @('Test-AccessRuleForOrphanedSID', 'Resolve-IdentityReference', 'Convert-NTAccountToSID', 'Test-SIDValidityAndType', 'Get-StringFromIdentityReference')
-            foreach ($funcName in $functions) {
-                $func = Get-Command $funcName -ErrorAction SilentlyContinue
-                if ($func) {
-                    $func.CommandType | Should -Be 'Function'
-                }
-            }
-        }
+
+    It 'Returns nothing when string extraction yields nothing' {
+        Mock Get-StringFromIdentityReference { $null }
+        Mock Test-SIDFormat { $true }
+
+        Resolve-IdentityReference -IdentityReference ([PSCustomObject]@{ Value = 'x' }) | Should -BeNullOrEmpty
+        Should -Invoke Test-SIDFormat -Times 0 -Exactly
     }
-    
-    Context "Test-SIDValidityAndType Function Tests" {
-        It "Should validate well-known SID S-1-5-32-544" {
-            $result = Test-SIDValidityAndType -SIDString 'S-1-5-32-544'
-            $result | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should handle invalid SID format gracefully" {
-            { Test-SIDValidityAndType -SIDString 'InvalidSID' } | Should -Not -Throw
-        }
-        
-        It "Should process domain SID format" {
-            $domainSID = 'S-1-5-21-1234567890-1234567890-1234567890-1000'
-            { Test-SIDValidityAndType -SIDString $domainSID } | Should -Not -Throw
-        }
-    }
-    
-    Context "Get-StringFromIdentityReference Function Tests" {
-        It "Should require IdentityReference parameter" {
-            { Get-StringFromIdentityReference -IdentityReference $null } | Should -Throw
-        }
-        
-        It "Should process string identity reference" {
-            $identity = 'BUILTIN\Administrators'
-            $result = Get-StringFromIdentityReference -IdentityReference $identity
-            $result | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    Context "Parameter Validation Tests" {
-        It "Test-AccessRuleForOrphanedSID should have required parameters" {
-            $func = Get-Command 'Test-AccessRuleForOrphanedSID' -ErrorAction SilentlyContinue
-            if ($func) {
-                $params = $func.Parameters.Keys
-                $params -contains 'AccessRule' | Should -Be $true
-            }
-        }
-        
-        It "Resolve-IdentityReference should have IdentityReference parameter" {
-            $func = Get-Command 'Resolve-IdentityReference' -ErrorAction SilentlyContinue
-            if ($func) {
-                $params = $func.Parameters.Keys
-                $params -contains 'IdentityReference' | Should -Be $true
-            }
-        }
-        
-        It "Convert-NTAccountToSID should have NTAccount parameter" {
-            $func = Get-Command 'Convert-NTAccountToSID' -ErrorAction SilentlyContinue
-            if ($func) {
-                $params = $func.Parameters.Keys
-                $params -contains 'NTAccount' | Should -Be $true
-            }
-        }
-    }
-    
-    Context "Error Handling Tests" {
-        It "Functions should handle correlation ID parameter" {
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            
-            # Test functions that support correlation ID
-            { Test-SIDValidityAndType -SIDString 'S-1-5-32-544' -CorrelationId $correlationId } | Should -Not -Throw
-        }
-        
-        It "Should handle malformed SID inputs" {
-            $malformedSIDs = @('S-1-5', 'S-1-5-32', 'NotASID')
-            foreach ($sid in $malformedSIDs) {
-                { Test-SIDValidityAndType -SIDString $sid } | Should -Not -Throw
-            }
-        }
-    }
-    
-    Context "Integration and Workflow Tests" {
-        It "Should work together in typical SID resolution workflow" {
-            # Test a typical workflow using the helper functions
-            $testSID = 'S-1-5-32-544'
-            
-            # Validate SID format first
-            { Test-SIDValidityAndType -SIDString $testSID } | Should -Not -Throw
-            
-            # Try to get string representation
-            { Get-StringFromIdentityReference -IdentityReference $testSID } | Should -Not -Throw
-        }
-        
-        It "Should handle batch processing scenarios" {
-            $sids = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-32-546')
-            foreach ($sid in $sids) {
-                { Test-SIDValidityAndType -SIDString $sid } | Should -Not -Throw
-            }
-        }
-    }
-    
-    Context "Performance and Reliability" {
-        It "Should complete SID validation quickly" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            Test-SIDValidityAndType -SIDString 'S-1-5-32-544'
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
-        }
-        
-        It "Should handle multiple calls efficiently" {
-            $testSIDs = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-32-546', 'S-1-5-32-551', 'S-1-5-32-555')
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            foreach ($sid in $testSIDs) {
-                Test-SIDValidityAndType -SIDString $sid
-            }
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 2000
+}
+
+Describe 'Convert-NTAccountToSID logging' -Tag 'Unit', 'SID', 'Private' {
+
+    It 'Logs a successful translation with the correlation ID' {
+        Convert-NTAccountToSID -NTAccount ([System.Security.Principal.NTAccount]'BUILTIN\Administrators') -CorrelationId 'nt-1' |
+            Should -Be 'S-1-5-32-544'
+
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+            $Message -eq "Successfully translated NTAccount 'BUILTIN\Administrators' to SID: S-1-5-32-544" -and $CorrelationId -eq 'nt-1'
         }
     }
 }

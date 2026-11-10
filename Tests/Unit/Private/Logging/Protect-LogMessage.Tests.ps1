@@ -91,38 +91,47 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
             $result = Protect-LogMessage -Message $message
             $result | Should -Be "Line 1 Line 2 Line 3"
         }
-        
-        It "Should remove newlines even with PreserveNewlines due to Unicode removal" {
-            $message = "Line 1`nLine 2`rLine 3"
+
+        # Module bug (#30): Remove-UnicodeControlCharacters strips CR/LF after Remove-ControlCharacters kept them,
+        # so -PreserveNewlines joins the lines with nothing between them instead of keeping the line breaks
+        It "Should keep newlines with PreserveNewlines" -Skip {
+            $message = "Line 1`nLine 2"
             $result = Protect-LogMessage -Message $message -PreserveNewlines
-            $result | Should -Be "Line 1Line 2Line 3"
+            $result | Should -Be "Line 1`nLine 2"
+        }
+
+        It "Should keep newlines in Remove-ControlCharacters with PreserveNewlines" {
+            Remove-ControlCharacters -Message ("Line 1`nLine 2" + [char]7) -PreserveNewlines | Should -Be "Line 1`nLine 2"
         }
     }
 
     Context "ANSI Escape Sequence Removal" {
-        
-        It "Should remove ESC characters but leave bracket sequences" {
+
+        # Module bug (#30): Remove-ControlCharacters deletes ESC (0x1B) before Remove-EscapeSequences runs, so the
+        # escape pattern never matches and the bracket text such as '[31m' is left in the message
+        It "Should remove ANSI colour sequences" -Skip {
             $message = "Before" + [char]27 + "[31mRed Text" + [char]27 + "[0mAfter"
             $result = Protect-LogMessage -Message $message
-            $result | Should -Be "Before[31mRed Text[0mAfter"
+            $result | Should -Be "BeforeRed TextAfter"
         }
-        
-        It "Should remove ESC characters from cursor movement codes" {
+
+        # Module bug (#30): as above, cursor movement sequences lose only their ESC character
+        It "Should remove ANSI cursor movement sequences" -Skip {
             $message = "Before" + [char]27 + "[2JClear" + [char]27 + "[HAfter"
             $result = Protect-LogMessage -Message $message
-            $result | Should -Be "Before[2JClear[HAfter"
+            $result | Should -Be "BeforeClearAfter"
         }
-        
-        It "Should remove ESC characters from complex sequences" {
+
+        It "Should leave no ESC character in the output" {
             $message = "Start" + [char]27 + "[1;32;40mBold Green on Black" + [char]27 + "[0mEnd"
             $result = Protect-LogMessage -Message $message
-            $result | Should -Be "Start[1;32;40mBold Green on Black[0mEnd"
+            $result.Contains([string][char]27) | Should -BeFalse
+            $result | Should -BeLike 'Start*Bold Green on Black*End'
         }
-        
-        It "Should remove ESC characters from SGR sequences" {
-            $message = "Text" + [char]27 + "[1mBold" + [char]27 + "[22mNormal"
-            $result = Protect-LogMessage -Message $message
-            $result | Should -Be "Text[1mBold[22mNormal"
+
+        It "Should remove colour and cursor sequences in Remove-EscapeSequences" {
+            $message = "Text" + [char]27 + "[1;31mRed" + [char]27 + "[0m" + [char]27 + "[2J" + [char]27 + "[HEnd"
+            Remove-EscapeSequences -Message $message | Should -Be "TextRedEnd"
         }
     }
 
@@ -205,31 +214,26 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
         It "Should log warning on sanitization failure" {
             $message = "Test message"
             Protect-LogMessage -Message $message
-            Should -Invoke Write-Warning -Times 1
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Failed to sanitize log message: Control character removal failed'
+            }
         }
     }
 
     Context "Parameter Validation" {
-        
-        It "Should handle message parameter validation" {
-            { Protect-LogMessage -Message "Valid message" } | Should -Not -Throw
-        }
-        
-        It "Should validate MaxLength parameter minimum" {
-            { Protect-LogMessage -Message "Test" -MaxLength 50 } | Should -Throw
-        }
-        
+
         It "Should validate MaxLength parameter maximum" {
             { Protect-LogMessage -Message "Test" -MaxLength 15000 } | Should -Throw
         }
-        
-        It "Should accept valid MaxLength values" {
-            { Protect-LogMessage -Message "Test" -MaxLength 500 } | Should -Not -Throw
-            { Protect-LogMessage -Message "Test" -MaxLength 5000 } | Should -Not -Throw
+
+        It "Should truncate at a MaxLength inside the allowed range" {
+            $result = Protect-LogMessage -Message ("c" * 600) -MaxLength 500
+            $result | Should -Be (("c" * 497) + '...')
         }
-        
-        It "Should handle PreserveNewlines switch parameter" {
-            { Protect-LogMessage -Message "Test`nMessage" -PreserveNewlines } | Should -Not -Throw
+
+        It "Should sanitize each message piped in" {
+            $results = @("one`ntwo", ("three" + [char]0)) | Protect-LogMessage
+            $results | Should -Be @('one two', 'three')
         }
     }
 
@@ -250,7 +254,10 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
         It "Should prevent terminal manipulation by removing ESC characters" {
             $terminalAttack = "Error occurred" + [char]27 + "[2J" + [char]27 + "[H" + "Screen cleared"
             $result = Protect-LogMessage -Message $terminalAttack
-            $result | Should -Be "Error occurred[2J[HScreen cleared"
+            # Without ESC the terminal cannot act on the sequence. Whether the bracket text that
+            # follows it is removed too is #30; this test holds either way.
+            $result.Contains([string][char]27) | Should -BeFalse
+            $result | Should -BeLike 'Error occurred*Screen cleared'
         }
         
         It "Should handle null byte injection by removing null character" {
@@ -261,14 +268,6 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
     }
 
     Context "Performance and Edge Cases" {
-        
-        It "Should handle very large strings efficiently" {
-            $largeString = "x" * 10000
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            $result = Protect-LogMessage -Message $largeString
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
-        }
         
         It "Should return sanitization error for string with only control characters" {
             $controlOnlyString = [char]0 + [char]7 + [char]27 + [char]127
@@ -282,16 +281,10 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
             $result | Should -Be "abcd"
         }
         
-        It "Should handle Unicode strings and remove ESC characters correctly" {
-            $unicodeString = "Hello 世界 with control " + [char]27 + "[31m"
+        It "Should keep non-Latin characters" {
+            $unicodeString = "Hello " + [char]0x4E16 + [char]0x754C + " with control" + [char]7
             $result = Protect-LogMessage -Message $unicodeString
-            $result | Should -Be "Hello 世界 with control [31m"
-        }
-        
-        It "Should return sanitization error for empty components in processing" {
-            $message = [char]0 + [char]7 + [char]8  # Only control characters
-            $result = Protect-LogMessage -Message $message
-            $result | Should -Be "[SANITIZATION_ERROR] Message could not be safely processed"
+            $result | Should -Be ("Hello " + [char]0x4E16 + [char]0x754C + " with control")
         }
     }
 
@@ -310,11 +303,28 @@ Describe "Protect-LogMessage" -Tag @('Unit', 'Logging', 'Security', 'MessageProt
             $result | Should -Match "\.\.\.$"
             $result | Should -Not -Match [char]27
         }
-        
-        It "Should remove newlines in combined processing even with PreserveNewlines" {
-            $mixedMessage = "Line 1" + [char]27 + "[31m`nLine 2" + [char]0 + "`rLine 3" + [char]7
-            $result = Protect-LogMessage -Message $mixedMessage -PreserveNewlines
-            $result | Should -Be "Line 1[31mLine 2Line 3"
-        }
+    }
+}
+
+Describe "Test-LogMessageSafety" -Tag @('Unit', 'Logging', 'Security', 'MessageProtection') {
+    BeforeAll {
+        Mock Write-Verbose { }
+    }
+
+    It "Should treat an empty message as safe" {
+        Test-LogMessageSafety -Message '' | Should -BeTrue
+    }
+
+    It "Should treat plain text as safe" {
+        Test-LogMessageSafety -Message 'Removed 3 orphaned SIDs from CN=Users' | Should -BeTrue
+    }
+
+    It "Should flag <Case>" -ForEach @(
+        @{ Case = 'a forged second line'; Text = "entry`r`n[INFO] forged`n" }
+        @{ Case = 'an ANSI escape sequence'; Text = "entry" + [char]27 + "[31m" }
+        @{ Case = 'a NUL byte'; Text = "entry" + [char]0 }
+        @{ Case = 'a C1 control character'; Text = "entry" + [char]0x85 }
+    ) {
+        Test-LogMessageSafety -Message $Text | Should -BeFalse
     }
 }

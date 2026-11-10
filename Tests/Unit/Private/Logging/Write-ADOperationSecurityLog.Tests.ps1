@@ -15,41 +15,33 @@ Describe "Write-ADOperationSecurityLog" -Tag @('Unit', 'Logging', 'Security', 'A
 
     BeforeEach {
         # Mocked per test so every call count starts at zero
-        Mock Write-SecurityLog { } -Verifiable
+        Mock Write-SecurityLog { }
     }
 
     Context "Parameter Validation" {
-        
-        It "Should accept valid Outcome values" {
-            $validOutcomes = @('Attempt', 'Success', 'Failure')
-            foreach ($outcome in $validOutcomes) {
-                { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome $outcome } | Should -Not -Throw
-            }
+
+        It "Should reject an Outcome outside Attempt, Success and Failure" {
+            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Pending" } | Should -Throw
+            Should -Invoke Write-SecurityLog -Times 0 -Exactly
         }
 
-        It "Should accept optional SecurityContext hashtable" {
-            $context = @{ ObjectDN = "CN=TestUser,OU=Users,DC=domain,DC=com" }
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $context } | Should -Not -Throw
+        It "Should reject an empty OperationName" {
+            { Write-ADOperationSecurityLog -OperationName "" -Outcome "Success" } | Should -Throw
         }
 
-        It "Should accept optional CorrelationId" {
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $correlationId } | Should -Not -Throw
-        }
-
-        It "Should generate CorrelationId when not provided" {
+        It "Should generate a GUID CorrelationId when not provided and use it in the context" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $CorrelationId -ne $null -and $CorrelationId -ne ""
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $CorrelationId -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' -and
+                $SecurityContext.CorrelationId -eq $CorrelationId
             }
         }
 
         It "Should create standardized audit context" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $SecurityContext -ne $null -and
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
                 $SecurityContext.OperationName -eq "Get-ADUser" -and
                 $SecurityContext.Outcome -eq "Success" -and
                 $SecurityContext.Component -eq "ADOperations" -and
@@ -58,28 +50,30 @@ Describe "Write-ADOperationSecurityLog" -Tag @('Unit', 'Logging', 'Security', 'A
         }
 
         It "Should include timestamp in audit context" {
-            $beforeTime = Get-Date
+            $script:BeforeTime = Get-Date
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $SecurityContext.Timestamp -ne $null -and
-                $SecurityContext.Timestamp -ge $beforeTime.AddSeconds(-1)
+            $script:AfterTime = Get-Date
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $SecurityContext.Timestamp -is [datetime] -and
+                $SecurityContext.Timestamp -ge $script:BeforeTime -and
+                $SecurityContext.Timestamp -le $script:AfterTime
             }
         }
 
         It "Should include user context information" {
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $SecurityContext.UserContext -match "$env:USERNAME@$env:COMPUTERNAME"
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $SecurityContext.UserContext -eq "$env:USERNAME@$env:COMPUTERNAME"
             }
         }
 
         It "Should use provided CorrelationId in context" {
             $testCorrelationId = "test-correlation-123"
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $testCorrelationId
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
                 $SecurityContext.CorrelationId -eq $testCorrelationId -and
                 $CorrelationId -eq $testCorrelationId
             }
@@ -91,179 +85,89 @@ Describe "Write-ADOperationSecurityLog" -Tag @('Unit', 'Logging', 'Security', 'A
                 Filter = "samAccountName -eq 'testuser'"
                 Properties = @("Name", "SamAccountName", "DistinguishedName")
             }
-            
+
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $additionalContext
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
                 $SecurityContext.ObjectDN -eq "CN=TestUser,OU=Users,DC=domain,DC=com" -and
                 $SecurityContext.Filter -eq "samAccountName -eq 'testuser'" -and
-                $SecurityContext.Properties -ne $null
+                ($SecurityContext.Properties -join ',') -eq 'Name,SamAccountName,DistinguishedName' -and
+                $SecurityContext.Component -eq 'ADOperations'
             }
         }
 
-        It "Should handle empty additional security context" {
-            $emptyContext = @{}
-            
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $emptyContext } | Should -Not -Throw
-            
-            Should -Invoke Write-SecurityLog
+        It "Should let additional context override a standard field" {
+            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext @{ Component = 'Custom' }
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $SecurityContext.Component -eq 'Custom'
+            }
+        }
+
+        It "Should send only the seven standard fields for an empty additional context" {
+            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext @{}
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $SecurityContext.Count -eq 7
+            }
         }
     }
 
     Context "Outcome-Based Message Generation" {
-        
-        It "Should generate attempt message for Attempt outcome" {
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Attempt"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -eq "Attempting Active Directory operation: Get-ADUser" -and
-                $Outcome -eq "Attempt"
+
+        It "Should write '<ExpectedMessage>' for the <OutcomeName> outcome" -ForEach @(
+            @{ OutcomeName = 'Attempt'; Operation = 'Get-ADUser'; ExpectedMessage = 'Attempting Active Directory operation: Get-ADUser' }
+            @{ OutcomeName = 'Success'; Operation = 'Set-ADUser'; ExpectedMessage = 'Successfully completed Active Directory operation: Set-ADUser' }
+            @{ OutcomeName = 'Failure'; Operation = 'Remove-ADUser'; ExpectedMessage = 'Failed Active Directory operation: Remove-ADUser' }
+        ) {
+            Write-ADOperationSecurityLog -OperationName $Operation -Outcome $OutcomeName
+
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq $ExpectedMessage -and
+                $Outcome -eq $OutcomeName -and
+                $SecurityEventType -eq 'ObjectAccess'
             }
         }
 
-        It "Should generate success message for Success outcome" {
-            Write-ADOperationSecurityLog -OperationName "Set-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -eq "Successfully completed Active Directory operation: Set-ADUser" -and
-                $Outcome -eq "Success"
-            }
-        }
+        It "Should name a custom AD operation in the message" {
+            Write-ADOperationSecurityLog -OperationName "Custom-ADOperation" -Outcome "Success"
 
-        It "Should generate failure message for Failure outcome" {
-            Write-ADOperationSecurityLog -OperationName "Remove-ADUser" -Outcome "Failure"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -eq "Failed Active Directory operation: Remove-ADUser" -and
-                $Outcome -eq "Failure"
+            Should -Invoke Write-SecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "Successfully completed Active Directory operation: Custom-ADOperation"
             }
         }
     }
 
     Context "Write-SecurityLog Integration" {
-        
-        It "Should always use ObjectAccess security event type" {
-            $operationNames = @("Get-ADUser", "Set-ADUser", "New-ADUser", "Remove-ADUser")
-            $outcomes = @("Attempt", "Success", "Failure")
-            
-            foreach ($operation in $operationNames) {
-                foreach ($outcome in $outcomes) {
-                    Write-ADOperationSecurityLog -OperationName $operation -Outcome $outcome
-                    
-                    Should -Invoke Write-SecurityLog -ParameterFilter {
-                        $SecurityEventType -eq "ObjectAccess"
-                    }
-                }
-            }
-        }
 
-        It "Should pass through CorrelationId to Write-SecurityLog" {
-            $testCorrelationId = "integration-test-456"
-            
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $testCorrelationId
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $CorrelationId -eq $testCorrelationId
+        It "Should write one ObjectAccess entry per call" {
+            foreach ($outcome in 'Attempt', 'Success', 'Failure') {
+                Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome $outcome
             }
-        }
 
-        It "Should pass complete security context to Write-SecurityLog" {
-            $additionalContext = @{ Filter = "Department -eq 'IT'" }
-            
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -SecurityContext $additionalContext
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $SecurityContext -ne $null -and
-                $SecurityContext.Count -ge 7  # Standard context plus additional
-            }
-        }
-    }
-
-    Context "Common AD Operations" {
-        
-        It "Should handle Get-ADUser operations" {
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -match "Get-ADUser"
-            }
-        }
-
-        It "Should handle Set-ADUser operations" {
-            Write-ADOperationSecurityLog -OperationName "Set-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -match "Set-ADUser"
-            }
-        }
-
-        It "Should handle New-ADUser operations" {
-            Write-ADOperationSecurityLog -OperationName "New-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -match "New-ADUser"
-            }
-        }
-
-        It "Should handle Remove-ADUser operations" {
-            Write-ADOperationSecurityLog -OperationName "Remove-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -match "Remove-ADUser"
-            }
-        }
-
-        It "Should handle custom AD operation names" {
-            Write-ADOperationSecurityLog -OperationName "Custom-ADOperation" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $Message -match "Custom-ADOperation"
-            }
-        }
-    }
-
-    Context "Compliance and Audit Requirements" {
-        
-        It "Should always include required audit fields" {
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $SecurityContext.OperationName -ne $null -and
-                $SecurityContext.Outcome -ne $null -and
-                $SecurityContext.Timestamp -ne $null -and
-                $SecurityContext.UserContext -ne $null -and
-                $SecurityContext.CorrelationId -ne $null -and
-                $SecurityContext.Component -eq "ADOperations" -and
-                $SecurityContext.SecurityEventType -eq "ObjectAccess"
-            }
-        }
-
-        It "Should generate unique audit entries for each call" {
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Attempt"
-            Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success"
-            
-            Should -Invoke Write-SecurityLog
+            Should -Invoke Write-SecurityLog -Times 3 -Exactly
+            Should -Invoke Write-SecurityLog -Times 3 -Exactly -ParameterFilter { $SecurityEventType -eq "ObjectAccess" }
         }
 
         It "Should support traceability through CorrelationId" {
             $traceId = "compliance-trace-789"
-            
+
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Attempt" -CorrelationId $traceId
             Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" -CorrelationId $traceId
-            
-            Should -Invoke Write-SecurityLog -ParameterFilter {
-                $CorrelationId -eq $traceId
+
+            Should -Invoke Write-SecurityLog -Times 2 -Exactly -ParameterFilter {
+                $CorrelationId -eq $traceId -and $SecurityContext.CorrelationId -eq $traceId
             }
         }
     }
 
     Context "Error Scenarios" {
-        
-        It "Should handle Write-SecurityLog failures gracefully" {
-            Mock Write-SecurityLog { throw "Security log system failure" } 
-            
-            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" } | Should -Throw
+
+        It "Should propagate a Write-SecurityLog failure" {
+            Mock Write-SecurityLog { throw "Security log system failure" }
+
+            { Write-ADOperationSecurityLog -OperationName "Get-ADUser" -Outcome "Success" } |
+                Should -Throw -ExpectedMessage '*Security log system failure*'
         }
     }
 }
-

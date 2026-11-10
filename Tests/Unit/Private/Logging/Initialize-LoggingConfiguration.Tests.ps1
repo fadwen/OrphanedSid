@@ -161,8 +161,10 @@ Describe "Initialize-LoggingConfiguration" -Tag @('Unit', 'Logging', 'Configurat
         }
 
         It "Should define required path characters pattern" {
-            $script:LoggingValidation.RequiredPathCharacters | Should -Not -BeNullOrEmpty
-            $script:LoggingValidation.RequiredPathCharacters | Should -Match 'log'
+            $pattern = $script:LoggingValidation.RequiredPathCharacters
+            ('C:\Logs\OrphanedSid\run.log' -match $pattern) | Should -BeTrue
+            ('C:\Logs\OrphanedSid\run.txt' -match $pattern) | Should -BeFalse
+            ('C:\Logs\bad|name.log' -match $pattern) | Should -BeFalse
         }
     }
 }
@@ -177,63 +179,46 @@ Describe "Get-LoggingState" -Tag @('Unit', 'Logging', 'State') {
         }
 
         
-        It "Should return PSCustomObject with current state" {
+        It "Should report the current value of each state variable" {
+            # Every variable is set away from its load-time default so a missing or miswired property fails
+            $script:LogPath = 'C:\logs\state.log'
+            $script:LogFileInitialized = $true
+            $script:LogFileReinitAttempted = $true
+            $script:SuppressConsoleOutput = $true
+            $script:CorrelationId = 'state-correlation'
+            $script:LogLevel = 'Debug'
+
             $state = Get-LoggingState
-            $state | Should -BeOfType [PSCustomObject]
+
+            $state.LogPath | Should -Be 'C:\logs\state.log'
+            $state.LogFileInitialized | Should -BeTrue
+            $state.LogFileReinitAttempted | Should -BeTrue
+            $state.SuppressConsoleOutput | Should -BeTrue
+            $state.CorrelationId | Should -Be 'state-correlation'
+            $state.LogLevel | Should -Be 'Debug'
         }
 
-        It "Should include LogPath property" {
+        It "Should include the level hierarchy, system info, metrics and validation rules" {
             $state = Get-LoggingState
-            $state.LogPath | Should -Be $script:LogPath
-        }
 
-        It "Should include LogFileInitialized property" {
-            $state = Get-LoggingState
-            $state.LogFileInitialized | Should -Be $script:LogFileInitialized
-        }
-
-        It "Should include LogFileReinitAttempted property" {
-            $state = Get-LoggingState
-            $state.LogFileReinitAttempted | Should -Be $script:LogFileReinitAttempted
-        }
-
-        It "Should include SuppressConsoleOutput property" {
-            $state = Get-LoggingState
-            $state.SuppressConsoleOutput | Should -Be $script:SuppressConsoleOutput
-        }
-
-        It "Should include CorrelationId property" {
-            $state = Get-LoggingState
-            $state.CorrelationId | Should -Be $script:CorrelationId
-        }
-
-        It "Should include LogLevel property" {
-            $state = Get-LoggingState
-            $state.LogLevel | Should -Be $script:LogLevel
-        }
-
-        It "Should include cloned LogLevels collection" {
-            $state = Get-LoggingState
-            $state.LogLevels | Should -Not -BeNullOrEmpty
-            $state.LogLevels.Count | Should -Be 6
-        }
-
-        It "Should include cloned SystemInfo collection" {
-            $state = Get-LoggingState
-            $state.SystemInfo | Should -Not -BeNullOrEmpty
+            $state.LogLevels['Warning'] | Should -Be 2
             $state.SystemInfo.Version | Should -Be '2.0.0'
-        }
-
-        It "Should include cloned Metrics collection" {
-            $state = Get-LoggingState
-            $state.Metrics | Should -Not -BeNullOrEmpty
             $state.Metrics.TotalLogEntries | Should -Be 0
+            $state.ValidationRules.MaxLogFileSizeMB | Should -Be 100
         }
 
-        It "Should include cloned ValidationRules collection" {
+        It "Should return copies that a caller cannot use to change the logging state" {
             $state = Get-LoggingState
-            $state.ValidationRules | Should -Not -BeNullOrEmpty
-            $state.ValidationRules.MaxLogFileSizeMB | Should -Be 100
+
+            $state.LogLevels['Warning'] = 99
+            $state.SystemInfo.Version = 'tampered'
+            $state.Metrics.TotalLogEntries = 99
+            $state.ValidationRules.MaxLogFileSizeMB = 1
+
+            $script:LogLevels['Warning'] | Should -Be 2
+            $script:LoggingSystemInfo.Version | Should -Be '2.0.0'
+            $script:LoggingMetrics.TotalLogEntries | Should -Be 0
+            $script:LoggingValidation.MaxLogFileSizeMB | Should -Be 100
         }
     }
 }
@@ -313,9 +298,14 @@ Describe "Set-LogLevel and Get-LogLevel" -Tag @('Unit', 'Logging', 'Configuratio
         It "Should accept all valid log levels" {
             $validLevels = @('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')
             foreach ($level in $validLevels) {
-                { Set-LogLevel -Level $level } | Should -Not -Throw
+                Set-LogLevel -Level $level
                 Get-LogLevel | Should -Be $level
             }
+        }
+
+        It "Should reject an unknown level and keep the current one" {
+            { Set-LogLevel -Level 'Trace' } | Should -Throw
+            Get-LogLevel | Should -Be 'Information'
         }
     }
 }

@@ -1,297 +1,140 @@
 #Requires -Version 5.1
 
 BeforeAll {
-    $script:TestPath = $PSScriptRoot
-
-    $script:ProjectRoot = Split-Path (Split-Path (Split-Path (Split-Path $TestPath -Parent) -Parent) -Parent) -Parent
-
-    $script:FunctionPath = Join-Path $ProjectRoot 'Private\Security\Invoke-SecurityValidation.ps1'
-
-    . $script:FunctionPath
+    $script:ProjectRoot = Split-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -Parent
 
     . (Join-Path $ProjectRoot 'Classes\SecurityValidationResult.ps1')
-
+    . (Join-Path $ProjectRoot 'Private\Security\Invoke-SecurityValidation.ps1')
     . (Join-Path $ProjectRoot 'Private\SID\Test-SIDSecurity.ps1')
-
     . (Join-Path $ProjectRoot 'Private\Logging\Write-StructuredLog.ps1')
+
+    $script:userSid = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
+    $script:adminSid = 'S-1-5-21-1234567890-1234567890-1234567890-512'
+    $script:systemSid = 'S-1-5-18'
+
+    # What Test-SIDSecurity returns for each test SID: the system SID is blocked, the admin SID
+    # needs elevated confirmation, anything else is allowed
+    function New-SidValidation {
+        param([string]$Sid)
+        $v = [SecurityValidationResult]::new()
+        if ($Sid -eq $script:systemSid) {
+            $v.IsValid = $false
+            $v.RiskLevel = 'Critical'
+            $v.Issues = @('SID is in protected SIDs list - removal blocked by security policy')
+        } elseif ($Sid -eq $script:adminSid) {
+            $v.RiskLevel = 'High'
+            $v.RequiresElevatedConfirmation = $true
+        }
+        $v
+    }
 }
 
 Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
-    BeforeAll {
-        Mock Write-StructuredLog { } -ModuleName $null
+    BeforeEach {
+        Mock Write-StructuredLog { }
+        Mock Test-SIDSecurity { New-SidValidation -Sid $SIDString }
     }
 
-    Context 'Parameter Validation' {
-        It 'Should accept valid OrphanedSIDs array' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001',
-                'S-1-5-21-1234567890-1234567890-1234567890-1002'
-            )
-
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
-
-            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs } | Should -Not -Throw
-        }
-
-        It 'Should accept ObjectDN parameter' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            )
-
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
-
-            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs -ObjectDN 'CN=TestObject,DC=test,DC=com' } | Should -Not -Throw
-        }
-
-        It 'Should -throw on null OrphanedSIDs' {
+    Context 'Parameter validation' {
+        It 'Rejects a null, empty or empty-string OrphanedSIDs' {
             { Invoke-SecurityValidation -OrphanedSIDs $null } | Should -Throw
-        }
-
-        It 'Should -throw on empty OrphanedSIDs array' {
             { Invoke-SecurityValidation -OrphanedSIDs @() } | Should -Throw
+            { Invoke-SecurityValidation -OrphanedSIDs @('') } | Should -Throw
         }
     }
 
-    Context 'Security Validation Logic' {
-        It 'Should validate regular user SIDs successfully' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            )
+    Context 'Combining the per-SID validations' {
+        It 'Allows every SID that passes, at Low risk' {
+            $sids = @($script:userSid, 'S-1-5-21-1234567890-1234567890-1234567890-1002')
 
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
+            $result = Invoke-SecurityValidation -OrphanedSIDs $sids
 
-            $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $result | Should -Not -BeNullOrEmpty
+            $result | Should -BeOfType 'SecurityValidationResult'
             $result.IsValid | Should -Be $true
             $result.RiskLevel | Should -Be 'Low'
+            $result.AllowedSIDs | Should -Be $sids
+            $result.BlockedSIDs.Count | Should -Be 0
+            $result.Issues.Count | Should -Be 0
+            $result.RequiresElevatedConfirmation | Should -Be $false
         }
 
-        It 'Should block protected system SIDs' {
-            $testSIDs = @(
-                'S-1-5-18'  # Local System
-            )
+        It 'Blocks a SID that fails, carrying its issues, and rates the batch Critical' {
+            $result = Invoke-SecurityValidation -OrphanedSIDs @($script:systemSid, $script:userSid)
 
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $false
-                    RiskLevel = 'Critical'
-                    Issues = @('Protected system SID cannot be removed')
-                    RequiresElevatedConfirmation = $true
-                    BlockedSIDs = @($SIDString)
-                    AllowedSIDs = @()
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
-
-            $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $result | Should -Not -BeNullOrEmpty
             $result.IsValid | Should -Be $false
             $result.RiskLevel | Should -Be 'Critical'
-            # Function only sets RequiresElevatedConfirmation for allowed SIDs, not blocked ones
+            $result.BlockedSIDs | Should -Be @($script:systemSid)
+            $result.AllowedSIDs | Should -Be @($script:userSid)
+            $result.Issues | Should -Be @('SID is in protected SIDs list - removal blocked by security policy')
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "SID blocked from removal: $($script:systemSid) (Validation failed)"
+            }
         }
 
-        It 'Should call Test-SIDSecurity with correct parameters' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            )
+        It 'Allows a SID needing elevated confirmation but flags it and rates the batch High' {
+            $result = Invoke-SecurityValidation -OrphanedSIDs @($script:userSid, $script:adminSid)
+
+            $result.IsValid | Should -Be $true
+            $result.RiskLevel | Should -Be 'High'
+            $result.RequiresElevatedConfirmation | Should -Be $true
+            $result.AllowedSIDs | Should -Be @($script:userSid, $script:adminSid)
+            $result.Issues | Should -Be @("High-risk SID detected: $($script:adminSid)")
+        }
+
+        # Module bug (#27): a later SID needing elevated confirmation sets RiskLevel to High over an
+        # earlier blocked SID's Critical, so the batch is reported at a lower risk than its worst SID
+        It 'Keeps the batch Critical when a blocked SID precedes a high-risk one' -Skip {
+            $result = Invoke-SecurityValidation -OrphanedSIDs @($script:systemSid, $script:adminSid)
+
+            $result.RiskLevel | Should -Be 'Critical'
+        }
+
+        It 'Validates each SID at Standard level with the object, domain and correlation context' {
             $objectDN = 'CN=TestObject,DC=test,DC=com'
+            $domainSid = 'S-1-5-21-1234567890-1234567890-1234567890'
 
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
+            Invoke-SecurityValidation -OrphanedSIDs @($script:userSid, $script:adminSid) -ObjectDN $objectDN -CurrentDomainSID $domainSid -CorrelationId 'sec-1' | Out-Null
+
+            Should -Invoke Test-SIDSecurity -Times 2 -Exactly
+            foreach ($sid in $script:userSid, $script:adminSid) {
+                Should -Invoke Test-SIDSecurity -Times 1 -Exactly -ParameterFilter {
+                    $SIDString -eq $sid -and $ObjectDN -eq $objectDN -and $ValidationLevel -eq 'Standard' -and
+                    $CurrentDomainSID -eq $domainSid -and $CorrelationId -eq 'sec-1'
                 }
             }
+        }
 
-            Invoke-SecurityValidation -OrphanedSIDs $testSIDs -ObjectDN $objectDN
+        It 'Returns one result per SID piped to it' {
+            $results = @($script:userSid, $script:systemSid | Invoke-SecurityValidation)
 
-            Should -Invoke Test-SIDSecurity -Exactly 1 -Scope It -ParameterFilter {
-                $SIDString -eq 'S-1-5-21-1234567890-1234567890-1234567890-1001' -and
-                $ObjectDN -eq $objectDN
+            $results.Count | Should -Be 2
+            $results[0].AllowedSIDs | Should -Be @($script:userSid)
+            $results[1].BlockedSIDs | Should -Be @($script:systemSid)
+        }
+
+        It 'Logs the outcome with the allowed and blocked counts' {
+            Invoke-SecurityValidation -OrphanedSIDs @($script:systemSid, $script:userSid) -CorrelationId 'sec-2' | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Verbose' -and $CorrelationId -eq 'sec-2' -and
+                $Message -eq 'Security validation completed - Valid: False, Allowed: 1, Blocked: 1'
             }
         }
     }
 
-    Context 'Batch Processing' {
-        It 'Should process multiple SIDs correctly' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001',
-                'S-1-5-21-1234567890-1234567890-1234567890-1002',
-                'S-1-5-21-1234567890-1234567890-1234567890-1003'
-            )
+    Context 'Error handling' {
+        It 'Fails closed as Critical, and logs the error, when a SID check throws' {
+            Mock Test-SIDSecurity { throw 'Simulated validation error for testing' }
 
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
+            $result = Invoke-SecurityValidation -OrphanedSIDs @($script:userSid) -CorrelationId 'sec-3'
 
-            $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            
-            # Should call Test-SIDSecurity for each SID
-            Should -Invoke Test-SIDSecurity -Exactly 3
-        }
-    }
-
-    Context 'Pipeline Support' {
-        It 'Should accept pipeline input' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001',
-                'S-1-5-21-1234567890-1234567890-1234567890-1002'
-            )
-
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
-
-            $result = $testSIDs | Invoke-SecurityValidation
-            $result | Should -Not -BeNullOrEmpty
-        }
-    }
-
-    Context 'Error Handling' {
-        It 'Should handle validation errors gracefully' {
-            $testSIDs = @(
-                'S-1-5-ERROR'
-            )
-
-            Mock Test-SIDSecurity {
-                throw "Simulated validation error for testing"
-            }
-
-            $result = Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $result | Should -Not -BeNullOrEmpty
             $result.IsValid | Should -Be $false
             $result.RiskLevel | Should -Be 'Critical'
-            $result.Issues[0] | Should -BeLike "*Simulated validation error*"
-        }
-
-        It 'Should handle empty string SID' {
-            $testSIDs = @(
-                ''
-            )
-
-            { Invoke-SecurityValidation -OrphanedSIDs $testSIDs } | Should -Throw
-        }
-    }
-
-    Context 'Logging Integration' {
-        It 'Should log security validation events' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            )
-
-            Mock Test-SIDSecurity {
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
+            $result.Issues | Should -Be @('Validation error: Simulated validation error for testing')
+            $result.AllowedSIDs.Count | Should -Be 0
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'sec-3' -and $Message -like '*Simulated validation error for testing'
             }
-
-            Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-
-            # Verify structured logging was called
-            Should -Invoke Write-StructuredLog -Times 1
-        }
-    }
-
-    Context 'Performance Requirements' {
-        It 'Should complete single SID validation within reasonable time' {
-            $testSIDs = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            )
-
-            Mock Test-SIDSecurity {
-                Start-Sleep -Milliseconds 5  # Simulate processing time
-                return [PSCustomObject]@{
-                    IsValid = $true
-                    RiskLevel = 'Low'
-                    Issues = @()
-                    RequiresElevatedConfirmation = $false
-                    BlockedSIDs = @()
-                    AllowedSIDs = @($SIDString)
-                    ValidatedAt = Get-Date
-                    ValidatorVersion = '1.0.0'
-                    PSTypeName = 'SecurityValidationResult'
-                }
-            }
-
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            Invoke-SecurityValidation -OrphanedSIDs $testSIDs
-            $stopwatch.Stop()
-
-            # Should complete within 1 second for single SID
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 1000
         }
     }
 }

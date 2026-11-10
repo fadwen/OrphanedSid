@@ -1,19 +1,12 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
-    
+
     BeforeAll {
-        # Ensure PESTER_TESTING environment variable is set for clean test output
         $env:PESTER_TESTING = 'true'
 
-        # Placeholders for the logging functions, so the logging system need not be loaded
+        # Placeholder for the logging function, so the logging system need not be loaded; mocked below
         function Write-StructuredLog {
             param($Message, $Level, $CorrelationId, $Component, $Data, $Details)
-            # Mock implementation - suppress output during tests
-        }
-
-        function Write-StructuredLogEntry {
-            param($Message, $Level, $CorrelationId, $Component, $Details)
-            # Mock implementation - suppress output during tests
         }
 
         # Dot-source the function under test and its collaborator; the module itself is not imported
@@ -23,435 +16,234 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         . (Join-Path $PrivatePath 'Backup\Get-BackupFileMetadata.ps1')
         . (Join-Path $PrivatePath 'Backup\Find-BackupFile.ps1')
 
-        $testHelpersPath = Join-Path $PSScriptRoot '..\..\..\TestHelpers\BackupTestHelpers.ps1'
-        if (Test-Path $testHelpersPath) {
-            . $testHelpersPath
+        function New-FakeFile {
+            param([string]$FullName)
+            [PSCustomObject]@{
+                Name     = Split-Path -Path $FullName -Leaf
+                FullName = $FullName
+            }
         }
 
-        # Mocks, not global functions: a global Write-Information defined here outlived this file and
-        # replaced the cmdlet for every test file that ran after it
-        Mock Write-Verbose { }
-        Mock Write-Debug { }
-        Mock Write-Information { }
-        # Write-Progress and Write-StructuredLog are replaced per test below with tracking functions
+        function New-FakeMetadata {
+            param([string]$ObjectDN, [string]$BackupDate, [string]$Signature)
+            [PSCustomObject]@{
+                ObjectDN            = $ObjectDN
+                BackupDate          = $BackupDate
+                BackupVersion       = 'v1.0'
+                ValidationSignature = $Signature
+                IntegrityStatus     = 'Valid'
+                BackupSize          = 1024
+                ChecksumValid       = $true
+            }
+        }
 
-        # Replaces the dot-sourced Get-BackupFileMetadata; BeforeEach replaces it again with a tracking version
-        function Get-BackupFileMetadata {
-            param(
-                [string]$BackupFilePath,
-                [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
+        Mock Write-StructuredLog { }
+        Mock Write-Progress { }
+        Mock Write-Verbose { }
+
+        # Directory existence: only the known folders exist
+        Mock Test-Path { $false }
+        Mock Test-Path { $true } -ParameterFilter {
+            $Path -in @('C:\ValidBackupPath', 'C:\EmptyBackupPath', 'C:\AccessDeniedPath')
+        }
+
+        Mock Get-ChildItem { @() }
+        Mock Get-ChildItem {
+            @(
+                New-FakeFile 'C:\ValidBackupPath\backup1.xml'
+                New-FakeFile 'C:\ValidBackupPath\backup2.xml'
+                New-FakeFile 'C:\ValidBackupPath\Subfolder\backup3.xml'
             )
-            
-            # Return mock metadata based on file path
+        } -ParameterFilter { $Path -eq 'C:\ValidBackupPath' }
+        Mock Get-ChildItem {
+            throw [System.UnauthorizedAccessException]::new('Access denied to backup directory')
+        } -ParameterFilter { $Path -eq 'C:\AccessDeniedPath' }
+
+        Mock Get-BackupFileMetadata {
             switch ($BackupFilePath) {
                 'C:\ValidBackupPath\backup1.xml' {
-                    return @{
-                        ObjectDN = 'CN=TestUser1,OU=Users,DC=company,DC=com'
-                        BackupDate = [DateTime]'2024-01-15 10:30:00'
-                        BackupType = 'Full'
-                        DomainController = 'DC01.company.com'
-                        FileSize = 1024
-                        IntegrityValid = $true
-                    }
+                    New-FakeMetadata 'CN=TestUser1,OU=Users,DC=company,DC=com' '2025-07-10T10:00:00Z' 'Sig1'
                 }
                 'C:\ValidBackupPath\backup2.xml' {
-                    return @{
-                        ObjectDN = 'CN=TestUser2,OU=Employees,DC=company,DC=com'
-                        BackupDate = [DateTime]'2024-01-20 15:45:00'
-                        BackupType = 'Incremental'
-                        DomainController = 'DC02.company.com'
-                        FileSize = 2048
-                        IntegrityValid = $true
-                    }
+                    New-FakeMetadata 'CN=TestUser2,OU=Sales,DC=company,DC=com' '2025-07-12T14:30:00Z' 'Sig2'
                 }
                 'C:\ValidBackupPath\Subfolder\backup3.xml' {
-                    return @{
-                        ObjectDN = 'CN=TestUser3,OU=Contractors,DC=company,DC=com'
-                        BackupDate = [DateTime]'2024-01-25 09:15:00'
-                        BackupType = 'Full'
-                        DomainController = 'DC01.company.com'
-                        FileSize = 1536
-                        IntegrityValid = $true
-                    }
-                }
-                'C:\EmptyBackupPath\backup1.xml' {
-                    return @{
-                        ObjectDN = 'CN=EmptyTest,OU=Test,DC=company,DC=com'
-                        BackupDate = [DateTime]'2024-01-10 08:00:00'
-                        BackupType = 'Full'
-                        DomainController = 'DC01.company.com'
-                        FileSize = 512
-                        IntegrityValid = $true
-                    }
-                }
-                'C:\ValidBackupPath\invalid-backup.xml' {
-                    throw "Simulated metadata extraction failure"
-                }
-                'C:\ValidBackupPath\wildcard1.xml' {
-                    return @{
-                        ObjectDN = 'CN=TestUser*,OU=TestOU*,DC=company,DC=com'
-                        BackupDate = [DateTime]'2024-01-15 10:30:00'
-                        BackupType = 'Full'
-                        DomainController = 'DC01.company.com'
-                        FileSize = 1024
-                        IntegrityValid = $true
-                    }
-                }
-                'C:\ValidBackupPath\wildcard2.xml' {
-                    return @{
-                        ObjectDN = 'CN=AnotherUser,OU=TestOU*,DC=company,DC=com'
-                        BackupDate = [DateTime]'2024-01-16 11:30:00'
-                        BackupType = 'Incremental'
-                        DomainController = 'DC02.company.com'
-                        FileSize = 1100
-                        IntegrityValid = $true
-                    }
-                }
-                default {
-                    return $null
-                }
-            }
-        }
-    }
-
-    # The collaborators and the file system cmdlets are replaced with plain functions that record their
-    # calls, redefined before each test so every test starts with empty call lists
-    BeforeEach {
-        Mock Write-Verbose { }
-        Mock Write-Debug { }
-        Mock Write-Information { }
-        
-        # Create tracking variables for mock validation
-        $script:WriteProgressCalls = @()
-        $script:WriteStructuredLogCalls = @()
-        $script:GetChildItemCalls = @()
-        $script:GetBackupMetadataCalls = @()
-
-        # Override Write-Progress with tracking
-        function Write-Progress { 
-            param(
-                [string]$Activity, 
-                [string]$Status, 
-                [int]$PercentComplete, 
-                [switch]$Completed
-            )
-            $script:WriteProgressCalls += @{
-                Activity = $Activity
-                Status = $Status
-                PercentComplete = $PercentComplete
-                Completed = $Completed.IsPresent
-            }
-        }
-
-        # Override Write-StructuredLog with tracking
-        function Write-StructuredLog { 
-            param($Message, $Level, $CorrelationId, $Component, $Data, $Details)
-            $script:WriteStructuredLogCalls += @{
-                Message = $Message
-                Level = $Level
-                CorrelationId = $CorrelationId
-                Component = $Component
-            }
-        }
-
-        # Override Test-Path for directory validation
-        function Test-Path {
-            param($Path, $PathType)
-            switch ($Path) {
-                'C:\ValidBackupPath' { return $true }
-                'C:\InvalidBackupPath' { return $false }
-                'C:\EmptyBackupPath' { return $true }
-                'C:\AccessDeniedPath' { return $true }
-                'C:\ValidBackupPath\backup1.xml' { return $true }
-                'C:\ValidBackupPath\backup2.xml' { return $true }
-                'C:\ValidBackupPath\Subfolder\backup3.xml' { return $true }
-                'C:\EmptyBackupPath\backup1.xml' { return $true }
-                'C:\ValidBackupPath\wildcard1.xml' { return $true }
-                'C:\ValidBackupPath\wildcard2.xml' { return $true }
-                'C:\ValidBackupPath\invalid-backup.xml' { return $true }
-                default { return $false }
-            }
-        }
-
-        # Override Get-ChildItem for backup file discovery
-        function Get-ChildItem {
-            param($Path, $Filter, [switch]$Recurse, [switch]$File, $ErrorAction)
-            
-            $script:GetChildItemCalls += @{
-                Path = $Path
-                Filter = $Filter
-                Recurse = $Recurse.IsPresent
-                File = $File.IsPresent
-            }
-            
-            if ($Path -eq 'C:\ValidBackupPath') {
-                $file1 = New-Object PSObject
-                $file1 | Add-Member -MemberType NoteProperty -Name Name -Value 'backup1.xml'
-                $file1 | Add-Member -MemberType NoteProperty -Name FullName -Value 'C:\ValidBackupPath\backup1.xml'
-                $file1 | Add-Member -MemberType NoteProperty -Name DirectoryName -Value 'C:\ValidBackupPath'
-                $file1 | Add-Member -MemberType NoteProperty -Name LastWriteTime -Value (Get-Date '2025-07-01')
-                
-                $file2 = New-Object PSObject
-                $file2 | Add-Member -MemberType NoteProperty -Name Name -Value 'backup2.xml'
-                $file2 | Add-Member -MemberType NoteProperty -Name FullName -Value 'C:\ValidBackupPath\backup2.xml'
-                $file2 | Add-Member -MemberType NoteProperty -Name DirectoryName -Value 'C:\ValidBackupPath'
-                $file2 | Add-Member -MemberType NoteProperty -Name LastWriteTime -Value (Get-Date '2025-07-05')
-                
-                $file3 = New-Object PSObject
-                $file3 | Add-Member -MemberType NoteProperty -Name Name -Value 'backup3.xml'
-                $file3 | Add-Member -MemberType NoteProperty -Name FullName -Value 'C:\ValidBackupPath\Subfolder\backup3.xml'
-                $file3 | Add-Member -MemberType NoteProperty -Name DirectoryName -Value 'C:\ValidBackupPath\Subfolder'
-                $file3 | Add-Member -MemberType NoteProperty -Name LastWriteTime -Value (Get-Date '2025-07-08')
-                
-                # Only include the 3 main files to match expected count
-                $result = @($file1, $file2, $file3)
-                return ,$result  # Force array return
-            }
-            elseif ($Path -eq 'C:\EmptyBackupPath') {
-                return @()
-            }
-            elseif ($Path -eq 'C:\AccessDeniedPath') {
-                throw [System.UnauthorizedAccessException]::new('Access denied to backup directory')
-            }
-            return @()
-        }
-
-        # Override Get-BackupFileMetadata 
-        function Get-BackupFileMetadata {
-            param($BackupFilePath, $CorrelationId)
-            
-            $script:GetBackupMetadataCalls += @{
-                BackupFilePath = $BackupFilePath
-                CorrelationId = $CorrelationId
-            }
-            
-            switch ($BackupFilePath) {
-                'C:\ValidBackupPath\backup1.xml' {
-                    $result = [PSCustomObject]@{
-                        ObjectDN = 'CN=TestUser1,OU=Users,DC=company,DC=com'
-                        BackupDate = '2025-07-10T10:00:00Z'
-                        BackupVersion = 'v1.0'
-                        ValidationSignature = 'PSSecurityBackup_v1.0_TestUser1'
-                        IntegrityStatus = 'Valid'
-                        BackupSize = 1024
-                        ChecksumValid = $true
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-                    return $result
-                }
-                'C:\ValidBackupPath\backup2.xml' {
-                    $result = [PSCustomObject]@{
-                        ObjectDN = 'CN=TestUser2,OU=Sales,DC=company,DC=com'
-                        BackupDate = '2025-07-12T14:30:00Z'
-                        BackupVersion = 'v1.0'
-                        ValidationSignature = 'PSSecurityBackup_v1.0_TestUser2'
-                        IntegrityStatus = 'Valid'
-                        BackupSize = 2048
-                        ChecksumValid = $true
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-                    return $result
-                }
-                'C:\ValidBackupPath\Subfolder\backup3.xml' {
-                    $result = [PSCustomObject]@{
-                        ObjectDN = 'CN=TestComputer,OU=Computers,DC=company,DC=com'
-                        BackupDate = '2025-07-13T08:15:00Z'
-                        BackupVersion = 'v1.0'
-                        ValidationSignature = 'PSSecurityBackup_v1.0_TestComputer'
-                        IntegrityStatus = 'Valid'
-                        BackupSize = 1536
-                        ChecksumValid = $true
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-                    return $result
-                }
-                'C:\ValidBackupPath\wildcard1.xml' {
-                    $result = [PSCustomObject]@{
-                        ObjectDN = 'CN=TestUser*,OU=TestOU*,DC=company,DC=com'
-                        BackupDate = '2025-07-10T10:00:00Z'
-                        BackupVersion = 'v1.0'
-                        ValidationSignature = 'PSSecurityBackup_v1.0_Wildcard1'
-                        IntegrityStatus = 'Valid'
-                        BackupSize = 1024
-                        ChecksumValid = $true
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-                    return $result
-                }
-                'C:\ValidBackupPath\wildcard2.xml' {
-                    $result = [PSCustomObject]@{
-                        ObjectDN = 'CN=AnotherUser,OU=TestOU*,DC=company,DC=com'
-                        BackupDate = '2025-07-10T11:00:00Z'
-                        BackupVersion = 'v1.0'
-                        ValidationSignature = 'PSSecurityBackup_v1.0_Wildcard2'
-                        IntegrityStatus = 'Valid'
-                        BackupSize = 1100
-                        ChecksumValid = $true
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-                    return $result
-                }
-                'C:\ValidBackupPath\invalid-backup.xml' {
-                    throw "Simulated metadata extraction failure"
-                }
-                default {
-                    $result = [PSCustomObject]@{
-                        ObjectDN = 'CN=UnknownObject,DC=company,DC=com'
-                        BackupDate = '2025-07-10T00:00:00Z'
-                        BackupVersion = 'v1.0'
-                        ValidationSignature = 'Unknown'
-                        IntegrityStatus = 'Invalid'
-                        BackupSize = 0
-                        ChecksumValid = $false
-                        CorrelationId = $CorrelationId
-                    }
-                    $result.PSObject.TypeNames.Insert(0, 'BackupMetadata')
-                    return $result
+                    New-FakeMetadata 'CN=TestComputer,OU=Computers,DC=company,DC=com' '2025-07-13T08:15:00Z' 'Sig3'
                 }
             }
         }
     }
 
     Context "Parameter Validation" {
-        It "Should accept valid backup path" {
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' } | Should -Not -Throw
-        }
-
         It "Should reject null or empty backup path" {
             { Find-BackupFile -BackupPath $null } | Should -Throw "*Failed to discover backup files: BackupPath cannot be empty or whitespace*"
             { Find-BackupFile -BackupPath '' } | Should -Throw "*Failed to discover backup files: BackupPath cannot be empty or whitespace*"
             { Find-BackupFile -BackupPath '   ' } | Should -Throw "*Failed to discover backup files: BackupPath cannot be empty or whitespace*"
+            Should -Invoke Get-ChildItem -Times 0 -Exactly
         }
 
-        It "Should reject non-existent backup path" {
+        It "Should reject non-existent backup path and log the failure" {
             { Find-BackupFile -BackupPath 'C:\InvalidBackupPath' } | Should -Throw "*Failed to discover backup files: Backup directory not found or inaccessible: C:\InvalidBackupPath*"
-        }
-
-        It "Should accept optional ObjectDN filter parameter" {
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*Sales*' } | Should -Not -Throw
-        }
-
-        It "Should accept optional DateRange filter parameter" {
-            $dateRange = @{ 
-                StartDate = (Get-Date).AddDays(-30)
-                EndDate = Get-Date 
+            Should -Invoke Test-Path -Times 1 -Exactly -ParameterFilter {
+                $Path -eq 'C:\InvalidBackupPath' -and $PathType -eq 'Container'
             }
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange } | Should -Not -Throw
+            # The inner catch around Test-Path re-catches the Write-Error, so the message is logged twice (#20)
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Backup directory not found or inaccessible: C:\InvalidBackupPath'
+            }
+            Should -Invoke Get-ChildItem -Times 0 -Exactly
         }
 
-        It "Should validate DateRange parameter format" {
+        It "Should report a path whose existence check throws as inaccessible" {
+            Mock Test-Path { throw 'Illegal characters in path' } -ParameterFilter { $Path -eq 'C:\Broken|Path' }
+
+            { Find-BackupFile -BackupPath 'C:\Broken|Path' } | Should -Throw "*Backup directory not found or inaccessible: C:\Broken|Path*"
+            Should -Invoke Get-ChildItem -Times 0 -Exactly
+        }
+
+        It "Should reject a StartDate that is not a DateTime before checking the path" {
             $invalidDateRange = @{ StartDate = 'invalid'; EndDate = 'invalid' }
             { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should -Throw "*Failed to discover backup files: DateRange.StartDate must be a DateTime object*"
+            Should -Invoke Test-Path -Times 0 -Exactly
+        }
+
+        It "Should reject an EndDate that is not a DateTime" {
+            $invalidDateRange = @{ StartDate = [DateTime]'2025-07-01'; EndDate = 'invalid' }
+            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should -Throw "*DateRange.EndDate must be a DateTime object*"
         }
 
         It "Should validate DateRange start before end" {
-            $invalidDateRange = @{ 
-                StartDate = Get-Date
-                EndDate = (Get-Date).AddDays(-1)
+            $invalidDateRange = @{
+                StartDate = [DateTime]'2025-07-02'
+                EndDate   = [DateTime]'2025-07-01'
             }
             { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $invalidDateRange } | Should -Throw "*Failed to discover backup files: DateRange.StartDate cannot be later than DateRange.EndDate*"
         }
 
-        It "Should generate correlation ID if not provided" {
+        It "Should generate a correlation ID if not provided and use it for every metadata call" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            $result[0].DiscoveryCorrelationId | Should -Not -BeNullOrEmpty
-            $result[0].DiscoveryCorrelationId | Should -Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+            $generated = $result[0].DiscoveryCorrelationId
+            $generated | Should -Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            Should -Invoke Get-BackupFileMetadata -Times 3 -Exactly -ParameterFilter { $CorrelationId -eq $generated }
+        }
+
+        It "Should accept the backup path from the pipeline" {
+            $result = 'C:\ValidBackupPath' | Find-BackupFile
+
+            $result.Count | Should -Be 3
         }
     }
 
     Context "Core Backup Discovery Functionality" {
         It "Should discover all backup files in valid directory" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            $result | Should -Not -BeNullOrEmpty
+
             $result.Count | Should -Be 3
-            $result[0].PSObject.TypeNames[0] | Should -Be 'BackupInventoryResult'
+            $result | ForEach-Object { $_.PSObject.TypeNames[0] | Should -Be 'BackupInventoryResult' }
+            $result.ObjectDN | Should -Be @(
+                'CN=TestUser1,OU=Users,DC=company,DC=com'
+                'CN=TestUser2,OU=Sales,DC=company,DC=com'
+                'CN=TestComputer,OU=Computers,DC=company,DC=com'
+            )
         }
 
-        It "Should include comprehensive metadata for each backup" {
+        It "Should copy every metadata property into the result" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            foreach ($backup in $result) {
-                $backup.ObjectDN | Should -Not -BeNullOrEmpty
-                $backup.BackupDate | Should -Not -BeNullOrEmpty
-                $backup.BackupVersion | Should -Not -BeNullOrEmpty
-                $backup.IntegrityStatus | Should -Not -BeNullOrEmpty
-                $backup.BackupSize | Should -BeGreaterThan 0
-                $backup.ChecksumValid | Should -Be $true
-            }
+
+            $result[1].ValidationSignature | Should -Be 'Sig2'
+            $result[1].BackupDate | Should -Be '2025-07-12T14:30:00Z'
+            $result[1].BackupVersion | Should -Be 'v1.0'
+            $result[1].IntegrityStatus | Should -Be 'Valid'
+            $result[1].BackupSize | Should -Be 1024
+            $result[1].ChecksumValid | Should -BeTrue
         }
 
         It "Should add discovery context to results" {
             $correlationId = [System.Guid]::NewGuid().ToString()
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -CorrelationId $correlationId
-            
+
             foreach ($backup in $result) {
                 $backup.DiscoveryCorrelationId | Should -Be $correlationId
-                $backup.DiscoveryTime | Should -Not -BeNullOrEmpty
-                $backup.FilteredByObjectDN | Should -Be $false
-                $backup.FilteredByDateRange | Should -Be $false
+                $backup.DiscoveryTime | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+                $backup.FilteredByObjectDN | Should -BeFalse
+                $backup.FilteredByDateRange | Should -BeFalse
             }
         }
 
-        It "Should handle empty backup directory gracefully" {
+        It "Should return an empty collection for an empty backup directory" {
             $result = Find-BackupFile -BackupPath 'C:\EmptyBackupPath'
-            
-            $result | Should -BeNullOrEmpty
+
             @($result).Count | Should -Be 0
+            Should -Invoke Get-BackupFileMetadata -Times 0 -Exactly
         }
 
-        It "Should call Get-ChildItem with correct parameters" {
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Get-ChildItem is a tracking function rather than a mock, so its calls are read from the list
-            $script:GetChildItemCalls.Count | Should -BeGreaterThan 0
-            $script:GetChildItemCalls[0].Path | Should -Be 'C:\ValidBackupPath'
-            $script:GetChildItemCalls[0].Filter | Should -Be '*.xml'
-            $script:GetChildItemCalls[0].Recurse | Should -Be $true
-            $script:GetChildItemCalls[0].File | Should -Be $true
+        It "Should search recursively for XML files only" {
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
+
+            Should -Invoke Get-ChildItem -Times 1 -Exactly -ParameterFilter {
+                $Path -eq 'C:\ValidBackupPath' -and $Filter -eq '*.xml' -and $Recurse -and $File
+            }
         }
 
-        It "Should call Get-BackupFileMetadata for each discovered file" {
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
+        It "Should call Get-BackupFileMetadata once for each discovered file" {
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
 
-            $script:GetBackupMetadataCalls.Count | Should -Be 3
-            $script:GetBackupMetadataCalls[0].BackupFilePath | Should -Match '\.xml$'
+            Should -Invoke Get-BackupFileMetadata -Times 3 -Exactly
+            foreach ($path in 'C:\ValidBackupPath\backup1.xml', 'C:\ValidBackupPath\backup2.xml', 'C:\ValidBackupPath\Subfolder\backup3.xml') {
+                Should -Invoke Get-BackupFileMetadata -Times 1 -Exactly -ParameterFilter { $BackupFilePath -eq $path }
+            }
+        }
+
+        It "Should trim whitespace from the backup path before using it" {
+            $result = Find-BackupFile -BackupPath '  C:\ValidBackupPath  '
+
+            $result.Count | Should -Be 3
+            Should -Invoke Get-ChildItem -Times 1 -Exactly -ParameterFilter { $Path -eq 'C:\ValidBackupPath' }
         }
     }
 
     Context "ObjectDN Filtering" {
         It "Should filter backups by ObjectDN pattern" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*Sales*'
-            
+
             $result.Count | Should -Be 1
             $result[0].ObjectDN | Should -Be 'CN=TestUser2,OU=Sales,DC=company,DC=com'
-            $result[0].FilteredByObjectDN | Should -Be $true
+            $result[0].FilteredByObjectDN | Should -BeTrue
         }
 
         It "Should handle wildcard patterns correctly" {
-            $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User*'
-            
+            $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User?,*'
+
             $result.Count | Should -Be 2
-            $result[0].ObjectDN | Should -Match 'TestUser'
-            $result[1].ObjectDN | Should -Match 'TestUser'
+            $result.ObjectDN | Should -Be @(
+                'CN=TestUser1,OU=Users,DC=company,DC=com'
+                'CN=TestUser2,OU=Sales,DC=company,DC=com'
+            )
         }
 
         It "Should return empty results when no matches found" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*NonExistent*'
-            
+
             $result.Count | Should -Be 0
         }
 
         It "Should handle exact DN matches" {
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN 'CN=TestUser1,OU=Users,DC=company,DC=com'
-            
+
             $result.Count | Should -Be 1
             $result[0].ObjectDN | Should -Be 'CN=TestUser1,OU=Users,DC=company,DC=com'
+        }
+
+        It "Should treat the ObjectDN filter as a pattern and never evaluate it" {
+            Mock Get-BackupFileMetadata {
+                New-FakeMetadata '$(Get-Process)' '2025-07-10T10:00:00Z' 'Literal'
+            }
+
+            $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '$(Get-Process)'
+
+            $result.Count | Should -Be 3
+            $result[0].ObjectDN | Should -Be '$(Get-Process)'
         }
     }
 
@@ -459,38 +251,53 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         It "Should filter backups by start date" {
             $dateRange = @{ StartDate = [DateTime]::Parse('2025-07-12T00:00:00Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
-            
+
             $result.Count | Should -Be 2
-            $result[0].FilteredByDateRange | Should -Be $true
+            $result.BackupDate | Should -Be @('2025-07-12T14:30:00Z', '2025-07-13T08:15:00Z')
+            $result[0].FilteredByDateRange | Should -BeTrue
         }
 
         It "Should filter backups by end date" {
             $dateRange = @{ EndDate = [DateTime]::Parse('2025-07-11T23:59:59Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
-            
+
             $result.Count | Should -Be 1
             $result[0].BackupDate | Should -Be '2025-07-10T10:00:00Z'
         }
 
         It "Should filter backups by date range" {
-            $dateRange = @{ 
+            $dateRange = @{
                 StartDate = [DateTime]::Parse('2025-07-11T00:00:00Z')
-                EndDate = [DateTime]::Parse('2025-07-12T23:59:59Z')
+                EndDate   = [DateTime]::Parse('2025-07-12T23:59:59Z')
             }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
-            
+
             $result.Count | Should -Be 1
             $result[0].BackupDate | Should -Be '2025-07-12T14:30:00Z'
         }
 
         It "Should handle date range with no matches" {
-            $dateRange = @{ 
+            $dateRange = @{
                 StartDate = [DateTime]::Parse('2025-07-01T00:00:00Z')
-                EndDate = [DateTime]::Parse('2025-07-05T23:59:59Z')
+                EndDate   = [DateTime]::Parse('2025-07-05T23:59:59Z')
             }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
-            
+
             $result.Count | Should -Be 0
+        }
+
+        It "Should skip and log a backup whose date cannot be parsed" {
+            Mock Get-BackupFileMetadata {
+                New-FakeMetadata 'CN=TestObject,DC=company,DC=com' 'invalid-date-format' 'Bad'
+            }
+
+            $dateRange = @{ StartDate = [DateTime]'2025-07-01' }
+            $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
+
+            $result.Count | Should -Be 0
+            Should -Invoke Write-StructuredLog -Times 3 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -like 'Failed to parse backup date for C:\ValidBackupPath\*'
+            }
         }
     }
 
@@ -498,162 +305,106 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
         It "Should apply both ObjectDN and DateRange filters" {
             $dateRange = @{ StartDate = [DateTime]::Parse('2025-07-11T00:00:00Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User*' -DateRange $dateRange
-            
+
             $result.Count | Should -Be 1
             $result[0].ObjectDN | Should -Be 'CN=TestUser2,OU=Sales,DC=company,DC=com'
-            $result[0].FilteredByObjectDN | Should -Be $true
-            $result[0].FilteredByDateRange | Should -Be $true
+            $result[0].FilteredByObjectDN | Should -BeTrue
+            $result[0].FilteredByDateRange | Should -BeTrue
         }
 
         It "Should return empty when filters exclude all results" {
             $dateRange = @{ EndDate = [DateTime]::Parse('2025-07-01T00:00:00Z') }
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*User*' -DateRange $dateRange
-            
+
             $result.Count | Should -Be 0
         }
     }
 
     Context "Error Handling" {
-        It "Should handle directory access denied gracefully" {
+        It "Should fail with the scan error when the directory cannot be read" {
             { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should -Throw "*Failed to discover backup files: Failed to scan backup directory C:\AccessDeniedPath : Access denied to backup directory*"
         }
 
-        It "Should continue processing when individual files fail" {
-            # Mock Get-BackupFileMetadata to fail for one file
-            Mock Get-BackupFileMetadata {
-                param($BackupFilePath, $CorrelationId)
-                if ($BackupFilePath -eq 'C:\ValidBackupPath\backup2.xml') {
-                    throw "Metadata extraction failed"
-                }
-                # Return normal metadata for other files
-                return [PSCustomObject]@{
-                    ObjectDN = 'CN=TestObject,DC=company,DC=com'
-                    BackupDate = '2025-07-10T10:00:00Z'
-                    BackupVersion = '1.0'
-                    IntegrityStatus = 'Valid'
-                    BackupSize = 1024
-                    ChecksumValid = $true
-                }
+        It "Should continue processing when individual files fail and log the failed file" {
+            Mock Get-BackupFileMetadata { throw 'Metadata extraction failed' } -ParameterFilter {
+                $BackupFilePath -eq 'C:\ValidBackupPath\backup2.xml'
             }
 
             $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Should continue processing and return results for successful files
+
             $result.Count | Should -Be 2
+            $result.ObjectDN | Should -Not -Contain 'CN=TestUser2,OU=Sales,DC=company,DC=com'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and
+                $Message -eq 'Failed to process backup file C:\ValidBackupPath\backup2.xml: Metadata extraction failed'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Backup discovery completed' -and $Data.ProcessingErrors -eq 1 -and
+                $Data.ValidBackupsFound -eq 2 -and $Data.TotalFilesScanned -eq 3
+            }
         }
 
-        It "Should log structured error information" {
-            { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' } | Should -Throw
+        It "Should log the scan failure and the structured error details" {
+            { Find-BackupFile -BackupPath 'C:\AccessDeniedPath' -CorrelationId 'corr-err' } | Should -Throw
 
-            $errorLogs = $script:WriteStructuredLogCalls | Where-Object { 
-                $_.Level -eq 'Error' -and $_.Message -match 'Failed to scan backup directory'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like 'Failed to scan backup directory C:\AccessDeniedPath*' -and
+                $CorrelationId -eq 'corr-err'
             }
-            $errorLogs | Should -Not -BeNullOrEmpty
-        }
-
-        It "Should handle malformed date parsing gracefully" {
-            # Mock Get-BackupFileMetadata to return invalid date
-            Mock Get-BackupFileMetadata {
-                return [PSCustomObject]@{
-                    ObjectDN = 'CN=TestObject,DC=company,DC=com'
-                    BackupDate = 'invalid-date-format'
-                    BackupVersion = '1.0'
-                    IntegrityStatus = 'Valid'
-                    BackupSize = 1024
-                    ChecksumValid = $true
-                }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Error during backup file discovery' -and
+                $Data.BackupPath -eq 'C:\AccessDeniedPath' -and $Data.CorrelationId -eq 'corr-err'
             }
-
-            $dateRange = @{ StartDate = (Get-Date).AddDays(-1) }
-            $result = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -DateRange $dateRange
-            
-            # Should skip files with invalid dates
-            $result.Count | Should -Be 0
         }
     }
 
-    Context "Performance and Memory Safety" {
-        It "Should execute within reasonable time limits" {
-            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            $stopwatch.Stop()
-            $stopwatch.ElapsedMilliseconds | Should -BeLessThan 5000
-        }
+    Context "Progress Reporting" {
+        It "Should report progress for each file with its percentage" {
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
 
-        It "Should use Write-Progress for user feedback" {
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-
-            $script:WriteProgressCalls.Count | Should -BeGreaterThan 0
+            Should -Invoke Write-Progress -Times 1 -Exactly -ParameterFilter {
+                $Status -eq 'Processing file 1 of 3' -and [int]$PercentComplete -eq 33
+            }
+            Should -Invoke Write-Progress -Times 1 -Exactly -ParameterFilter {
+                $Status -eq 'Processing file 3 of 3' -and $PercentComplete -eq 100
+            }
         }
 
         It "Should complete Write-Progress when finished" {
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
 
-            $completionCall = $script:WriteProgressCalls | Where-Object { $_.Completed -eq $true }
-            $completionCall | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-Progress -Times 1 -Exactly -ParameterFilter { $Completed }
         }
     }
 
     Context "Enterprise Integration" {
-        It "Should track correlation IDs consistently" {
+        It "Should pass the supplied correlation ID to every log entry" {
             $correlationId = [System.Guid]::NewGuid().ToString()
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath' -CorrelationId $correlationId
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -CorrelationId $correlationId
 
-            $correlationLogs = $script:WriteStructuredLogCalls | Where-Object { 
-                $_.CorrelationId -eq $correlationId
-            }
-            $correlationLogs | Should -Not -BeNullOrEmpty
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $CorrelationId -ne $correlationId }
+            Should -Invoke Write-StructuredLog -Times 6 -Exactly -ParameterFilter { $CorrelationId -eq $correlationId }
         }
 
         It "Should log discovery start and completion" {
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Check for start log
-            $startLogs = $script:WriteStructuredLogCalls | Where-Object { 
-                $_.Message -match 'Starting backup file discovery' -and $_.Level -eq 'Debug'
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath'
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq 'Starting backup file discovery operation'
             }
-            $startLogs | Should -Not -BeNullOrEmpty
-            
-            # Check for completion log
-            $completionLogs = $script:WriteStructuredLogCalls | Where-Object { 
-                $_.Message -match 'completed' -and $_.Level -eq 'Debug'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq 'Backup file discovery operation completed'
             }
-            $completionLogs | Should -Not -BeNullOrEmpty
         }
 
-        It "Should provide comprehensive discovery results logging" {
-            Find-BackupFile -BackupPath 'C:\ValidBackupPath'
-            
-            # Check for discovery completion log
-            $discoveryLogs = $script:WriteStructuredLogCalls | Where-Object { 
-                $_.Message -match 'Backup discovery completed' -and $_.Level -eq 'Verbose'
+        It "Should log a discovery summary with the filters applied" {
+            $null = Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '*Sales*'
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Verbose' -and $Message -eq 'Backup discovery completed' -and
+                $Data.TotalFilesScanned -eq 3 -and $Data.ValidBackupsFound -eq 1 -and
+                $Data.FilterApplied -eq $true -and $Data.ObjectDNFilter -eq '*Sales*'
             }
-            $discoveryLogs | Should -Not -BeNullOrEmpty
-        }
-    }
-
-    Context "Input Sanitization and Security" {
-        It "Should sanitize backup path input" {
-            # Test with path containing extra whitespace
-            $result = Find-BackupFile -BackupPath '  C:\ValidBackupPath  '
-            
-            $result | Should -Not -BeNullOrEmpty
-            $result.Count | Should -Be 3
-        }
-
-        It "Should prevent path traversal in backup path" {
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath\..\..\..\Windows\System32' } | Should -Throw "*Failed to discover backup files: Backup directory not found or inaccessible: C:\ValidBackupPath\..\..\..\Windows\System32*"
-        }
-
-        It "Should validate ObjectDN filter for malicious patterns" {
-            # The ObjectDN filter is only used as a -like pattern, so a subexpression in it is never run
-            { Find-BackupFile -BackupPath 'C:\ValidBackupPath' -ObjectDN '$(Get-Process)' } | Should -Not -Throw
         }
     }
 }
-
-
-
-

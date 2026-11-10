@@ -54,6 +54,16 @@ Describe 'Get-RestorationTarget' -Tag 'Unit', 'Backup', 'Private' {
         $result = $script:dn | Get-RestorationTarget
 
         $result.IsValid | Should -BeTrue
+        $result.TargetObjectDN | Should -Be $script:dn
+    }
+
+    It 'Rejects a null or empty distinguished name' {
+        { Get-RestorationTarget -TargetObjectDN $null } | Should -Throw "*parameter 'TargetObjectDN'*"
+        { Get-RestorationTarget -TargetObjectDN '' } | Should -Throw "*parameter 'TargetObjectDN'*"
+    }
+
+    It 'Generates a correlation ID when none is given' {
+        (Get-RestorationTarget -TargetObjectDN $script:dn).CorrelationId | Should -Match '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
     }
 
     It 'Rejects a name that is not a distinguished name' {
@@ -183,6 +193,12 @@ Describe 'Confirm-RestorationSuccess' -Tag 'Unit', 'Backup', 'Private' {
         (Confirm-RestorationSuccess -TargetObjectDN $script:dn -ExpectedData $expected).IsVerified | Should -BeTrue
     }
 
+    It 'Rejects a missing target, missing expected data or an unknown tolerance' {
+        { Confirm-RestorationSuccess -TargetObjectDN '' -ExpectedData $script:expected } | Should -Throw "*parameter 'TargetObjectDN'*"
+        { Confirm-RestorationSuccess -TargetObjectDN $script:dn -ExpectedData $null } | Should -Throw "*parameter 'ExpectedData'*"
+        { Confirm-RestorationSuccess -TargetObjectDN $script:dn -ExpectedData $script:expected -ToleranceLevel 'Loose' } | Should -Throw "*parameter 'ToleranceLevel'*"
+    }
+
     It 'Reports a current ACL that cannot be read' {
         Mock Get-Acl { throw 'The server is not operational' }
 
@@ -211,6 +227,10 @@ Describe 'ConvertFrom-BackupToACL' -Tag 'Unit', 'Backup', 'Private' {
 
     It 'Accepts the backup data from the pipeline' {
         ([PSCustomObject]@{ SDDL = $script:sddl } | ConvertFrom-BackupToACL).Success | Should -BeTrue
+    }
+
+    It 'Rejects null backup data' {
+        { ConvertFrom-BackupToACL -BackupData $null } | Should -Throw "*parameter 'BackupData'*"
     }
 
     It 'Fails without throwing when the backup has no SDDL' {

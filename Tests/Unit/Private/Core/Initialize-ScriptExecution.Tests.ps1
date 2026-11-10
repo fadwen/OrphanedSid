@@ -41,11 +41,11 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
 
     Context 'Parameter validation' {
         It 'Rejects a memory limit outside 100-16384' {
-            { Initialize-ScriptExecution -MaxMemoryUsageMB 20 } | Should -Throw
+            { Initialize-ScriptExecution -MaxMemoryUsageMB 20 } | Should -Throw -ExpectedMessage '*MaxMemoryUsageMB*'
         }
 
         It 'Rejects an unknown log level' {
-            { Initialize-ScriptExecution -LogLevel 'Loud' } | Should -Throw
+            { Initialize-ScriptExecution -LogLevel 'Loud' } | Should -Throw -ExpectedMessage '*LogLevel*'
         }
     }
 
@@ -107,14 +107,14 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             $result.Config.MemoryCheckInterval | Should -Be 10
             $result.Config.LogLevel | Should -Be 'Warning'
             Should -Invoke Initialize-MemoryManager -Times 1 -Exactly -ParameterFilter { $CheckInterval -eq 10 }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like "Loading configuration from file: $cfg" }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like "Loading configuration from file: $cfg" }
         }
 
         It 'Falls back to the defaults when the file does not exist' {
             $result = Initialize-ScriptExecution -ConfigPath (Join-Path $script:workDir 'missing.json')
 
             $result.Config.BatchSize | Should -Be 50
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Using default configuration' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Using default configuration' }
         }
 
         It 'Throws when the file holds an invalid setting' {
@@ -122,7 +122,7 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             @{ BatchSize = 5000 } | ConvertTo-Json | Set-Content $cfg
 
             { Initialize-ScriptExecution -ConfigPath $cfg } | Should -Throw -ExpectedMessage '*BatchSize must be between 1 and 1000*'
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Script initialization failed:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Script initialization failed:*' }
         }
 
         It 'Uses the log file path from the configuration over the parameter' {
@@ -146,7 +146,7 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
 
             Test-Path $log | Should -BeFalse
             @(Get-ChildItem $script:workDir -Filter 'big_*.log').Count | Should -Be 1
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like 'Rotated log file to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like 'Rotated log file to:*' }
         }
 
         It 'Leaves a small log alone' {
@@ -179,7 +179,7 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
                 $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath $log
 
                 $result.Config | Should -Not -BeNullOrEmpty
-                Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like 'Log file rotation check failed:*' }
+                Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like 'Log file rotation check failed:*' }
             }
             finally {
                 $stream.Dispose()
@@ -192,7 +192,7 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Mock Initialize-LoggingSystem { throw 'no log folder' }
 
             { Initialize-ScriptExecution -CorrelationId 'init-4' } | Should -Throw -ExpectedMessage '*no log folder*'
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Error' -and $Message -like '*no log folder*' -and $CorrelationId -eq 'init-4'
             }
         }
