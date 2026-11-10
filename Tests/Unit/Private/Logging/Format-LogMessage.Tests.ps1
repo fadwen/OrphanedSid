@@ -12,12 +12,6 @@
 BeforeAll {
     $script:ModuleRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 
-    $script:TestHelperPath = Join-Path $script:ModuleRoot "Tests\TestHelpers\SecurityTestHelpers.ps1"
-
-    if (Test-Path $script:TestHelperPath) {
-        . $script:TestHelperPath
-    }
-
     $script:FunctionPath = Join-Path $script:ModuleRoot "Private\Logging\Format-LogMessage.ps1"
 
     if (Test-Path $script:FunctionPath) {

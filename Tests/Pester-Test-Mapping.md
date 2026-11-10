@@ -14,8 +14,7 @@ Tests/
 │   ├── Public/             One file per exported command
 │   └── Private/<Area>/     One file per private function, mirroring Private/<Area>/
 ├── Integration/            The three public commands end to end against an in-memory directory
-├── TestHelpers/            Shared stubs and factories, dot-sourced from BeforeAll
-├── TestData/               Configurations, fixtures, mock responses, sample data, malicious inputs
+├── TestHelpers/            Active Directory cmdlet stubs and logging set-up, dot-sourced from BeforeAll
 └── PSScriptAnalyzerSettings.psd1   Relaxed analyzer rules for Tests/ and Tools/
 ```
 
@@ -34,7 +33,7 @@ Tests/
 | `Unit/Private/Operations` | `Invoke-OperationWithRetry`, `Invoke-RemovalWorkflow` |
 | `Unit/Private/Reporting` | `Export-DiagnosticData`, `Get-LogFileSummary`, `Write-ProcessingSummary` (parameters) and `Write-ProcessingSummary.Scenarios` (discovery, removal and restore results, CSV export, automation output) |
 | `Unit/Private/Security` | `Get-SecurityDescriptor` (`Get-ObjectAccessRule` and its retrieval strategies), `Invoke-SecurityValidation`, `Invoke-RemovalVerification`, `Test-PathTraversal` |
-| `Unit/Private/SID` | `Test-SIDFormat` (with `Test-WellKnownSID`), `Test-OrphanedSID` end to end and `Test-OrphanedSID.Resolution` (each lookup in the resolution order, the validation cache), `Resolve-SIDIdentity` (availability) and `Test-AccessRuleForOrphanedSID` (the resolution helpers for real), `Find-OrphanedSIDsInObject`, `Get-SIDAnalysis`, `Test-SIDSecurity`, `New-SIDResult` |
+| `Unit/Private/SID` | `Test-SIDFormat` (with `Test-WellKnownSID`), `Test-OrphanedSID` end to end and `Test-OrphanedSID.Resolution` (each lookup in the resolution order, the validation cache), `Resolve-SIDIdentity` (availability) and `Test-AccessRuleForOrphanedSID` (the resolution helpers for real), `Find-OrphanedSIDsInObject`, `Get-SIDAnalysis`, `Test-SIDSecurity`, `New-SIDResult`, `Invoke-SIDProcessing` |
 | `Unit/Private/System` | `Get-MemoryStatistics`, `Initialize-MemoryManager`, `Invoke-MemoryMonitoring`, `Invoke-GarbageCollection`, `Invoke-Cleanup`, `Invoke-ResourceDisposal` |
 | `Unit/Private/Utilities` | `Get-StringHash`, `Test-BackupFileIntegrity`, `Test-BackupSignature` |
 
@@ -67,22 +66,8 @@ The restore tests replace `Get-RestorationTarget`, whose write-access probe open
 
 | File | Provides |
 | --- | --- |
-| `TestHelpers/ADCmdletStubs.ps1` | Global placeholder functions for `Get-ADDomain`, `Get-ADDomainController`, `Get-ADObject`, `Set-ADObject`, `Remove-ADObject`, `Get-ADUser`, `New-ADUser`, `Set-ADUser`, `Get-ADTrust`, `Get-ADRootDSE` and `Test-ADServiceAccount` when RSAT is absent, so Pester can mock them. Dot-source it before the first `Mock` of an AD cmdlet |
-| `TestHelpers/ADMockFactory.ps1` | `New-ADMocks`, `Get-MockOrphanedSIDs`, `Reset-ADMocks` |
-| `TestHelpers/SecurityTestHelpers.ps1` | `Get-MaliciousInputTestCases`, `Test-InputForMaliciousContent`, `New-SecureMockCredential`, `Write-SecurityTestLog`, `Get-TestDataPath`, `Test-ADSecurity`, `Get-MockADEnvironment` |
-| `TestHelpers/BackupTestHelpers.ps1` | `New-TestBackupMetadata`, `New-TestBackupFile`, `Test-BackupPathSecurity`, `New-MaliciousBackupInput`, `Test-BackupFilterValidation`, `New-TestDateRange`, `Assert-BackupResultStructure` |
-| `TestHelpers/Initialize-TestLogging.ps1` | Logging defaults for tests that exercise the logging functions |
-
-## Test data
-
-| Folder | Contents |
-| --- | --- |
-| `TestData/Configurations` | JSON and PSD1 configuration files for the test, development, production, enterprise and security-enhanced scenarios |
-| `TestData/Baselines` | Performance and security baselines read by the performance tests |
-| `TestData/Fixtures` | Sample backups, corrupt backup files, sample logs, test certificates, performance datasets (each folder documents itself in a README) |
-| `TestData/MockResponses` | Recorded directory query, backup, log, database and Graph responses |
-| `TestData/SampleData` | Mock AD objects, sample SIDs, complex security descriptors, test ACLs, a large orphaned-SID dataset |
-| `TestData/MaliciousInputs` | Attack patterns and injection attempts for the sanitisation tests |
+| `TestHelpers/ADCmdletStubs.ps1` | Global placeholder functions for `Get-ADDomain`, `Get-ADDomainController`, `Get-ADObject`, `Set-ADObject`, `Remove-ADObject`, `Get-ADUser`, `Get-ADGroup`, `Get-ADComputer`, `New-ADUser`, `Set-ADUser`, `Get-ADTrust`, `Get-ADRootDSE` and `Test-ADServiceAccount` when RSAT is absent, so Pester can mock them. Dot-source it before the first `Mock` of an AD cmdlet |
+| `TestHelpers/Initialize-TestLogging.ps1` | Loads and initialises the real logging system for the tests that exercise it, and stops the file if that fails |
 
 ## Conventions
 

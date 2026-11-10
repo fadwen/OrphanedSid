@@ -37,12 +37,6 @@ BeforeAll {
     } else {
         Write-Error "Cannot find Get-SafeFileName.ps1 at expected path: $functionPath"
     }
-
-    $testHelpersPath = Join-Path $PSScriptRoot "..\..\..\TestHelpers"
-
-    if (Test-Path (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")) {
-        . (Join-Path $testHelpersPath "SecurityTestHelpers.ps1")
-    }
 }
 
 Describe "Get-SafeFileName" {
