@@ -110,6 +110,9 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             @(Get-ChildItem $script:backupDir -File).Count | Should -Be 1
         }
 
+        # Fails on Windows PowerShell 5.1 when TestDrive's path is longer than about 30
+        # characters: the truncated name alone is 230 characters and the full path passes the
+        # 260-character limit (#19). The GitHub runner's temp path is short enough.
         It 'Truncates a very long DN in the filename' {
             $longDn = 'CN=' + ('x' * 260) + ',DC=contoso,DC=com'
 
