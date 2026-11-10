@@ -44,7 +44,7 @@ functions names a parameter the callee does not declare.
 
 ## Coverage
 
-CI fails below 80% line coverage over `Public/` and `Private/`. To measure it locally:
+CI fails below 90% line coverage over `Public/` and `Private/`. To measure it locally:
 
 ```powershell
 $cfg = New-PesterConfiguration
