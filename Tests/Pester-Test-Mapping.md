@@ -13,12 +13,7 @@ Tests/
 │   ├── Classes/            One file per class in Classes/
 │   ├── Public/             One file per exported command
 │   └── Private/<Area>/     One file per private function, mirroring Private/<Area>/
-├── Integration/
-│   ├── EndToEnd/           Discovery, removal and restore scenarios against in-file stand-ins
-│   └── SystemIntegration/  AD access, backup and restore, and logging scenarios, likewise
-├── Performance/
-│   ├── Benchmarks/         Throughput, memory baseline, large dataset processing (simulated)
-│   └── LoadTests/          Concurrency, memory pressure, resource cleanup, scalability (simulated)
+├── Integration/            The three public commands end to end against an in-memory directory
 ├── TestHelpers/            Shared stubs and factories, dot-sourced from BeforeAll
 ├── TestData/               Configurations, fixtures, mock responses, sample data, malicious inputs
 └── PSScriptAnalyzerSettings.psd1   Relaxed analyzer rules for Tests/ and Tools/
@@ -48,21 +43,25 @@ Every unit file dot-sources the class and private files it needs inside `BeforeA
 which imports it with `-Force` and checks that no function is defined twice and that every call
 between module functions names only parameters the callee declares.
 
-## Integration and performance
+## Integration
 
-None of these files runs module code. Each defines a stand-in function in its `BeforeAll`
-(`Invoke-FindUnknownSIDScript`, named after the `Find-UnknownSID.ps1` script the module replaced,
-or an `Invoke-*Test` simulator) that returns canned results or figures computed from its
-parameters, and the tests assert on those. The Active Directory and file cmdlets they mock are
-never called by the stand-ins. They document the expected scenarios; the behaviour of the module
-itself is covered under `Unit/`.
+`Integration/OrphanedSidWorkflow.Tests.ps1` imports the module and runs `Find-OrphanedSid`,
+`Remove-OrphanedSid` and `Restore-OrphanedSidBackup` as an operator would. Only the boundary is
+mocked, in module scope: the Active Directory cmdlets and `Get-Acl`/`Set-Acl` on `AD:\` paths read
+and write a hashtable of objects whose security descriptors are real `ActiveDirectorySecurity`
+instances. The directory holds a built-in principal, a live user, an orphaned SID and a SID whose
+lookups fail with access denied, and the tests assert on what each command returns, the SDDL it
+leaves on each object, and the backups and CSV it writes:
 
-| Folder | Covers |
-| --- | --- |
-| `Integration/EndToEnd` | Discovery, removal and restore scenarios, including edge cases registered per test with `Set-MockBehavior` |
-| `Integration/SystemIntegration` | Active Directory access, backup and restore, and logging scenarios |
-| `Performance/Benchmarks` | Simulated large dataset processing, memory usage baseline, throughput measurement |
-| `Performance/LoadTests` | Simulated concurrent operations, memory pressure, resource cleanup, scalability limits |
+- discovery reports the orphaned SID, marks the failing one `Unverified`, and changes nothing;
+- removal strips only the orphaned ACE, keeps live, built-in and unverified ones, backs up each
+  object it changes, and changes nothing under `-WhatIf`;
+- restore puts a backed-up descriptor back and refuses a backup whose hash no longer matches;
+- a run looks up each SID once however many ACEs reference it, and a failed lookup is not cached
+  (tagged `Performance`).
+
+The restore tests replace `Get-RestorationTarget`, whose write-access probe opens an LDAP
+`DirectoryEntry` that cannot be mocked.
 
 ## Helpers
 
@@ -94,4 +93,7 @@ For new test files; not every existing file follows the first and fourth points.
 - `Should -Be` operator form; `Should -Invoke` for mock assertions, with `-Scope` only when the
   call happens in setup; `Should -Throw "*text*"` with `[` and `]` escaped.
 - Tag every `Describe` (`Unit`, `Integration`, `Performance`, plus the area).
-- Timing assertions are regression guards with generous budgets, not benchmarks.
+- Every test must be able to fail when the behaviour its name describes breaks in the module. No
+  assertion inside a `catch` that swallows it, no constant as the actual value, no assertion on
+  what a mock returned, and no timing budget on an operation with no performance contract: assert
+  a count of directory calls instead of milliseconds.
