@@ -7,6 +7,8 @@ class StreamingResultsManager : System.IDisposable {
     [int]$BatchSize
     [int]$CurrentBatch
     [System.Collections.Generic.List[object]]$CurrentResults
+    # In WhatIf mode nothing is written to disk, so flushed batches are kept here instead
+    [System.Collections.Generic.List[object]]$WhatIfResults
     [object]$Summary
     [bool]$Disposed
     [bool]$WhatIfMode
@@ -19,6 +21,7 @@ class StreamingResultsManager : System.IDisposable {
         $this.BatchSize = $batchSize
         $this.CurrentBatch = 0
         $this.CurrentResults = [System.Collections.Generic.List[object]]::new()
+        $this.WhatIfResults = [System.Collections.Generic.List[object]]::new()
         $this.Disposed = $false
         $this.WhatIfMode = $whatIfMode
 
@@ -32,6 +35,7 @@ class StreamingResultsManager : System.IDisposable {
         $this.BatchSize = $batchSize
         $this.CurrentBatch = 0
         $this.CurrentResults = [System.Collections.Generic.List[object]]::new()
+        $this.WhatIfResults = [System.Collections.Generic.List[object]]::new()
         $this.Disposed = $false
         $this.WhatIfMode = $false
 
@@ -151,7 +155,8 @@ class StreamingResultsManager : System.IDisposable {
                 # Add to summary (simulate)
                 $this.Summary.BatchFiles += $batchFile
 
-                # Clear current results to free memory (this should always happen)
+                # Nothing goes to disk, so keep the batch in memory for GetAllResults
+                $this.WhatIfResults.AddRange($this.CurrentResults)
                 $this.CurrentResults.Clear()
 
                 # Force garbage collection after each batch (always safe to do)
@@ -262,8 +267,7 @@ class StreamingResultsManager : System.IDisposable {
         if ($this.WhatIfMode) {
             # In WhatIf mode, simulate reading results without actual file access
             Write-Verbose "WhatIf: Would read results from $($this.Summary.BatchFiles.Count) batch files"
-            # Return simulated results based on what we've collected in memory
-            return @($this.CurrentResults)
+            return $this.WhatIfResults.ToArray()
         }
 
         $allResults = @()
