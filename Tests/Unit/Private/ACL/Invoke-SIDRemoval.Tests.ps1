@@ -184,7 +184,7 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
             $result.PartialSuccess | Should -BeTrue
             $result.FailedSIDs | Should -Be @($script:orphan1)
             $result.RemovedSIDs | Should -Be @($script:orphan2)
-            $result.ErrorMessage | Should -Not -BeNullOrEmpty
+            $result.ErrorMessage | Should -Be 'Access denied during removal'
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
                 $Level -eq 'Error' -and $Message -like "FAILED to process SID $($script:orphan1)*denied*"
             }

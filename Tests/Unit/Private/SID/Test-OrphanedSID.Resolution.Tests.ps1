@@ -6,9 +6,9 @@
     Tests for the resolution order inside Test-OrphanedSID and for its validation cache.
 
 .DESCRIPTION
-    Test-OrphanedSID.Tests.ps1 exercises the function end to end without a domain, where every SID
-    comes back orphaned. These tests mock the directory lookups so each step of the resolution order
-    is reached: a live object, a deleted object, a local translation, the typed lookups, and the
+    Test-OrphanedSID.Tests.ps1 exercises the function with every directory lookup failing, where only
+    local translation can answer. These tests mock the directory lookups so each step of the
+    resolution order is reached: a live object, a deleted object, a local translation, the typed lookups, and the
     cache that remembers the answer.
 #>
 

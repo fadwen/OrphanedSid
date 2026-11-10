@@ -81,6 +81,22 @@ Describe 'Find-OrphanedSIDsInObject' -Tag 'Unit', 'SID', 'Private' {
             $results[0].ProcessingStatistics.Duration | Should -BeGreaterOrEqual 0
         }
 
+        It 'Counts an Unverified result apart from the orphaned ones' {
+            Mock Test-AccessRuleForOrphanedSID {
+                if ($AccessRule.IdentityReference -like '*-9001') {
+                    $r = New-TestResult -Dn $ObjectDN -Sid $AccessRule.IdentityReference
+                    $r.VerificationStatus = 'Unverified'
+                    $r
+                }
+            }
+
+            $results = @(Find-OrphanedSIDsInObject -ADObject (New-TestObject -Dn $script:dnA))
+
+            $results.Count | Should -Be 1
+            $results[0].ProcessingStatistics.UnverifiedSIDsFound | Should -Be 1
+            $results[0].ProcessingStatistics.OrphanedSIDsFound | Should -Be 0
+        }
+
         It 'Returns nothing for an object with no orphaned rules' {
             Mock Test-AccessRuleForOrphanedSID { $null }
 

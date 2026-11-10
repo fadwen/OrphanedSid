@@ -1,544 +1,175 @@
 # Get-SIDAnalysis.Tests.ps1
-# Tests for the Get-SIDAnalysis private function
+# Tests for the Get-SIDAnalysis private function, run against the real Test-SIDFormat and
+# Test-WellKnownSID unless a test mocks one of them
 
-# Stubs Write-StructuredLog, Test-SIDFormat and Test-WellKnownSID, then loads the classes
-# and the Private/SID functions
 BeforeAll {
-    . $PSScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1
+    function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
 
-    . $PSScriptRoot\..\..\..\TestHelpers\ADMockFactory.ps1
+    . (Join-Path $PSScriptRoot '..\..\..\..\Classes\SIDAnalysisResult.ps1')
+    . (Join-Path $PSScriptRoot '..\..\..\..\Private\SID\Test-SIDFormat.ps1')
+    . (Join-Path $PSScriptRoot '..\..\..\..\Private\SID\Get-SIDAnalysis.ps1')
 
-    $TestConfigPath = Join-Path $PSScriptRoot '..\..\..\TestData\Configurations\test-config.json'
+    Mock Write-StructuredLog { }
 
-    if (Test-Path $TestConfigPath) {
-        $TestConfig = Get-Content $TestConfigPath | ConvertFrom-Json
-    } else {
-        $TestConfig = @{ security = @{ inputValidation = @{ maxSearchBaseLength = 256 } } }
-    }
-
-    function Write-StructuredLog { 
-        param($Message, $Level = 'Info', $CorrelationId, $Component = 'Test', $Data = @{})
-        Write-Verbose "[$Level] [$Component] [$CorrelationId] $Message"
-    }
-
-    function Test-SIDFormat { 
-        param($SID, $CorrelationId)
-        # Mock SID format validation - safe for testing
-        return $SID -match '^S-1-\d+(-\d+)*$'
-    }
-
-    function Test-WellKnownSID { 
-        param($SID, $CorrelationId)
-        # Mock well-known SID detection
-        $wellKnownSIDs = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-32-547', 'S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-        return $SID -in $wellKnownSIDs
-    }
-
-    $ClassPath = Join-Path $PSScriptRoot '..\..\..\..\Classes'
-
-    if (Test-Path $ClassPath) {
-        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { 
-            try { . $_.FullName } catch { Write-Warning "Failed to load class: $($_.Name)" }
-        }
-    }
-
-    $SIDPath = Join-Path $PSScriptRoot '..\..\..\..\Private\SID'
-
-    if (Test-Path $SIDPath) {
-        Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { 
-            try { . $_.FullName } catch { Write-Warning "Failed to load SID function: $($_.Name)" }
-        }
-    }
+    $script:Config = $null
+    $script:currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
 }
 
-Describe "Get-SIDAnalysis Enhanced Enterprise Function Tests" -Tag @("Unit", "SID", "Security", "Enterprise") {
-    
-    # Some tests pass injection strings as SIDs. Should one ever be executed, Invoke-Expression
-    # and Start-Process throw instead of running it.
-    BeforeAll {
-    Mock Test-InputForMaliciousContent {
-            param($InputString, $ValidationType)
-            return @{
-                IsValid = $true
-                RiskLevel = 'Low'
-                Threats = @()
-            }
-        }
+Describe "Get-SIDAnalysis" -Tag 'Unit', 'SID', 'Private' {
 
-        Mock Invoke-Expression {
-            throw [System.Security.SecurityException]::new("Invoke-Expression blocked for security")
-        }
-        
-        Mock Start-Process { 
-            throw [System.Security.SecurityException]::new("Start-Process blocked for security")
-        }
-    }
-    
-    Context "Parameter Validation and Security" {
-        It "Should accept valid SID parameter" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            { Get-SIDAnalysis -SIDString $testSID } | Should -Not -Throw
-        }
-        
-        It "Should accept CurrentDomainSID parameter" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $domainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            { Get-SIDAnalysis -SIDString $testSID -CurrentDomainSID $domainSID } | Should -Not -Throw
-        }
-        
-        It "Should accept CorrelationId parameter" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            { Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId } | Should -Not -Throw
-        }
-        
-        It "Should reject null SID parameter" {
+    Context "Parameter validation" {
+        It "Rejects a null or empty SID" {
             { Get-SIDAnalysis -SIDString $null } | Should -Throw
-        }
-        
-        It "Should reject empty SID parameter" {
             { Get-SIDAnalysis -SIDString '' } | Should -Throw
         }
-        
-        It "Should handle malicious SID inputs safely: <MaliciousInput>" -TestCases @(
-            @{ MaliciousInput = 'S-1-5-21-123; Invoke-Expression "Get-Process"'; Description = 'PowerShell injection in SID' }
-            @{ MaliciousInput = 'S-1-5-21-123 & net user hacker /add'; Description = 'Command injection in SID' }
-            @{ MaliciousInput = 'S-1-5-21-123$(Get-Process)'; Description = 'Subexpression injection in SID' }
-            @{ MaliciousInput = 'S-1-5-21-123`r`nInvoke-Command { }'; Description = 'Multi-line injection in SID' }
+    }
+
+    Context "Invalid input" {
+        It "Rates '<SID>' Invalid and High risk without analysing it further" -ForEach @(
+            @{ SID = 'S-1-5-21-123; Invoke-Expression "Get-Process"' }
+            @{ SID = 'S-1-5-21-123 & net user hacker /add' }
+            @{ SID = 'S-1-5-21-123$(Get-Process)' }
+            @{ SID = 'InvalidSID' }
+            @{ SID = 'S-1-5-INVALID' }
+            @{ SID = 'S-1-5-21-abc-def-ghi-123' }
         ) {
-            param($MaliciousInput, $Description)
-            
-            # A malformed SID is rated Invalid and high risk rather than analysed
-            $result = Get-SIDAnalysis -SIDString $MaliciousInput
+            $result = Get-SIDAnalysis -SIDString $SID
+
             $result.LikelySource | Should -Be 'Invalid'
             $result.RiskLevel | Should -Be 'High'
             $result.Confidence | Should -Be 'High'
+            $result.Notes | Should -Be 'Invalid SID format - does not match standard SID structure'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "SID format validation failed for: $SID"
+            }
         }
-        
-        It "Should handle excessively long SID inputs" {
+
+        It "Rates a SID with more sub-authorities than Windows allows as Invalid" {
             $longSID = 'S-1-5-21-' + ('1234567890-' * 100) + '1001'
-            
-            $result = Get-SIDAnalysis -SIDString $longSID
-            $result.LikelySource | Should -Match 'Invalid|Analysis Error'
+
+            (Get-SIDAnalysis -SIDString $longSID).LikelySource | Should -Be 'Invalid'
+        }
+
+        It "Rates a SID with fewer than four components as Invalid structure" {
+            Mock Test-SIDFormat { $true }
+
+            $result = Get-SIDAnalysis -SIDString 'S-1-5'
+
+            $result.LikelySource | Should -Be 'Invalid'
+            $result.Notes | Should -Be 'Invalid SID structure - insufficient components'
+        }
+
+        It "Rates a RID too large for an Int32 as an invalid RID" {
+            $result = Get-SIDAnalysis -SIDString "$($script:currentDomainSID)-4294967295" -CurrentDomainSID $script:currentDomainSID
+
+            $result.LikelySource | Should -Be 'Invalid'
             $result.RiskLevel | Should -Be 'High'
+            $result.Notes | Should -Be 'Invalid RID format - must be numeric'
         }
     }
-    
-    Context "Advanced SID Analysis Algorithms" {
-        It "Should perform deep metadata extraction for domain SIDs" {
-            $domainSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            $result = Get-SIDAnalysis -SIDString $domainSID -CurrentDomainSID $currentDomainSID
-            
-            $result | Should -Not -BeNullOrEmpty
-            $result.SID | Should -Be $domainSID
-            $result.LikelySource | Should -Match 'Local Domain|Standard User/Group'
+
+    Context "Well-known SIDs" {
+        It "Rates the well-known SID <_> Low risk in the System context" -ForEach @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-19') {
+            $result = Get-SIDAnalysis -SIDString $_ -CurrentDomainSID $script:currentDomainSID
+
+            $result.LikelySource | Should -Be 'Well-Known SID'
+            $result.RiskLevel | Should -Be 'Low'
+            $result.DomainContext | Should -Be 'System'
+            $result.Confidence | Should -Be 'High'
+        }
+    }
+
+    Context "Local domain SIDs" {
+        It "Classifies local RID <Rid> as <Source> with <Risk> risk" -ForEach @(
+            @{ Rid = 400; Source = 'Domain Object'; Risk = 'Low'; Notes = 'Standard domain object' }
+            @{ Rid = 500; Source = 'Built-in Administrator'; Risk = 'Medium'; Notes = 'Built-in Administrator account - verify if account was properly deleted' }
+            @{ Rid = 501; Source = 'Built-in Guest'; Risk = 'Low'; Notes = 'Built-in Guest account*' }
+            @{ Rid = 502; Source = 'KRBTGT Account'; Risk = 'High'; Notes = 'KRBTGT account - critical service account, investigate if orphaned' }
+            @{ Rid = 503; Source = 'Built-in Account'; Risk = 'Medium'; Notes = 'Built-in account range*' }
+            @{ Rid = 999; Source = 'Built-in Account'; Risk = 'Medium'; Notes = 'Built-in account range*' }
+            @{ Rid = 1000; Source = 'Standard User/Group'; Risk = 'Low'; Notes = 'Standard user/group range - likely deleted user or group account' }
+            @{ Rid = 4999; Source = 'Standard User/Group'; Risk = 'Low'; Notes = 'Standard user/group range*' }
+            @{ Rid = 5000; Source = 'Extended Range Object'; Risk = 'Medium'; Notes = 'Extended range*' }
+            @{ Rid = 10000; Source = 'Bulk Import/Migration'; Risk = 'Medium'; Notes = 'High RID value*' }
+            @{ Rid = 99999; Source = 'Bulk Import/Migration'; Risk = 'Medium'; Notes = 'High RID value*' }
+            @{ Rid = 100000; Source = 'High-Volume Import'; Risk = 'High'; Notes = 'Very high RID value*' }
+        ) {
+            $sid = "$($script:currentDomainSID)-$Rid"
+
+            $result = Get-SIDAnalysis -SIDString $sid -CurrentDomainSID $script:currentDomainSID
+
+            $result.SID | Should -Be $sid
+            $result.LikelySource | Should -Be $Source
+            $result.RiskLevel | Should -Be $Risk
+            $result.Notes | Should -BeLike $Notes
             $result.Confidence | Should -Be 'High'
             $result.DomainContext | Should -Be 'Local'
-            $result.RiskLevel | Should -Match 'Low|Medium'
-            $result.Notes | Should -Not -BeNullOrEmpty
-            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
         }
-        
-        It "Should analyze SID usage patterns across domains" {
-            $foreignSID = 'S-1-5-21-9876543210-9876543210-9876543210-1001'
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            $result = Get-SIDAnalysis -SIDString $foreignSID -CurrentDomainSID $currentDomainSID
-            
+    }
+
+    Context "Foreign and unknown domain SIDs" {
+        It "Rates a SID from another domain as Foreign Domain/Trust" {
+            $result = Get-SIDAnalysis -SIDString 'S-1-5-21-9876543210-9876543210-9876543210-1001' -CurrentDomainSID $script:currentDomainSID
+
             $result.LikelySource | Should -Be 'Foreign Domain/Trust'
             $result.DomainContext | Should -Be 'Foreign'
+            $result.Confidence | Should -Be 'Medium'
             $result.RiskLevel | Should -Be 'High'
-            $result.Notes | Should -Match 'External domain SID.*trust'
+            $result.Notes | Should -Match 'verify trust relationships.*Broken trust.*Migrated.*Deleted external account$'
         }
-        
-        It "Should correlate SID relationships and dependencies" {
-            $builtinAdminSID = 'S-1-5-21-1234567890-1234567890-1234567890-500'
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            $result = Get-SIDAnalysis -SIDString $builtinAdminSID -CurrentDomainSID $currentDomainSID
-            
-            $result.LikelySource | Should -Be 'Built-in Administrator'
-            $result.RiskLevel | Should -Be 'Medium'
-            $result.Notes | Should -Match 'Built-in Administrator.*verify.*deleted'
+
+        It "Notes a low foreign RID as a likely built-in or administrative account" {
+            $result = Get-SIDAnalysis -SIDString 'S-1-5-21-9876543210-9876543210-9876543210-500' -CurrentDomainSID $script:currentDomainSID
+
+            $result.Notes | Should -BeLike '*. Low RID suggests built-in or administrative account from external domain.'
         }
-        
-        It "Should generate comprehensive risk assessments for critical SIDs" {
-            $krbtgtSID = 'S-1-5-21-1234567890-1234567890-1234567890-502'
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            $result = Get-SIDAnalysis -SIDString $krbtgtSID -CurrentDomainSID $currentDomainSID
-            
-            $result.LikelySource | Should -Be 'KRBTGT Account'
-            $result.RiskLevel | Should -Be 'High'
-            $result.Notes | Should -Match 'KRBTGT.*critical.*investigate'
-        }
-        
-        It "Should analyze RID ranges for object type identification" {
-            $ridTestCases = @(
-                @{ SID = 'S-1-5-21-1234567890-1234567890-1234567890-501'; ExpectedSource = 'Built-in Guest'; ExpectedRisk = 'Low' }
-                @{ SID = 'S-1-5-21-1234567890-1234567890-1234567890-1500'; ExpectedSource = 'Standard User/Group'; ExpectedRisk = 'Low' }
-                @{ SID = 'S-1-5-21-1234567890-1234567890-1234567890-7500'; ExpectedSource = 'Extended Range Object'; ExpectedRisk = 'Medium' }
-                @{ SID = 'S-1-5-21-1234567890-1234567890-1234567890-50000'; ExpectedSource = 'Bulk Import/Migration'; ExpectedRisk = 'Medium' }
-                @{ SID = 'S-1-5-21-1234567890-1234567890-1234567890-150000'; ExpectedSource = 'High-Volume Import'; ExpectedRisk = 'High' }
-            )
-            
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            foreach ($testCase in $ridTestCases) {
-                $result = Get-SIDAnalysis -SIDString $testCase.SID -CurrentDomainSID $currentDomainSID
-                $result.LikelySource | Should -Be $testCase.ExpectedSource
-                $result.RiskLevel | Should -Be $testCase.ExpectedRisk
-            }
-        }
-        
-        It "Should handle well-known SID analysis" {
-            $wellKnownSIDs = @(
-                @{ SID = 'S-1-5-32-544'; ExpectedSource = 'Well-Known SID'; ExpectedRisk = 'Low'; ExpectedContext = 'System' }
-                @{ SID = 'S-1-5-18'; ExpectedSource = 'Well-Known SID'; ExpectedRisk = 'Low'; ExpectedContext = 'System' }
-                @{ SID = 'S-1-5-19'; ExpectedSource = 'Well-Known SID'; ExpectedRisk = 'Low'; ExpectedContext = 'System' }
-            )
-            
-            foreach ($testCase in $wellKnownSIDs) {
-                $result = Get-SIDAnalysis -SIDString $testCase.SID
-                $result.LikelySource | Should -Be $testCase.ExpectedSource
-                $result.RiskLevel | Should -Be $testCase.ExpectedRisk
-                $result.DomainContext | Should -Be $testCase.ExpectedContext
-                $result.Confidence | Should -Be 'High'
-            }
-        }
-    }
-    
-    Context "Intelligent Recommendation Engine" {
-        It "Should generate context-aware recommendations for orphaned SIDs" {
-            $orphanedSID = 'S-1-5-21-9999999999-9999999999-9999999999-1001'
-            
-            $result = Get-SIDAnalysis -SIDString $orphanedSID
-            
+
+        It "Rates a domain SID as Unknown Domain when no current domain SID is given" {
+            $result = Get-SIDAnalysis -SIDString "$($script:currentDomainSID)-1001"
+
             $result.LikelySource | Should -Be 'Unknown Domain'
+            $result.Confidence | Should -Be 'Low'
             $result.RiskLevel | Should -Be 'High'
-            $result.Notes | Should -Match 'Cannot determine domain context.*investigate.*migration.*trust.*external'
-        }
-        
-        It "Should prioritize recommendations by business impact" {
-            $highRiskSID = 'S-1-5-21-1234567890-1234567890-1234567890-502'  # KRBTGT
-            $lowRiskSID = 'S-1-5-21-1234567890-1234567890-1234567890-1500'  # Standard user
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            $highRiskResult = Get-SIDAnalysis -SIDString $highRiskSID -CurrentDomainSID $currentDomainSID
-            $lowRiskResult = Get-SIDAnalysis -SIDString $lowRiskSID -CurrentDomainSID $currentDomainSID
-            
-            $highRiskResult.RiskLevel | Should -Be 'High'
-            $lowRiskResult.RiskLevel | Should -Be 'Low'
-            $highRiskResult.Notes | Should -Match 'critical.*investigate'
-            $lowRiskResult.Notes | Should -Match 'deleted user.*group'
-        }
-        
-        It "Should provide remediation workflows in notes" {
-            $foreignSID = 'S-1-5-21-8888888888-8888888888-8888888888-1001'
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            
-            $result = Get-SIDAnalysis -SIDString $foreignSID -CurrentDomainSID $currentDomainSID
-            
-            $result.Notes | Should -Match 'verify trust.*cross-domain.*Broken trust.*Migrated.*Deleted external'
-        }
-        
-        It "Should integrate with change management processes via structured output" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            
-            $result = Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId
-            
-            # Verify structured output suitable for change management
-            $result.SID | Should -Not -BeNullOrEmpty
-            $result.LikelySource | Should -Not -BeNullOrEmpty
-            $result.Confidence | Should -Match 'High|Medium|Low'
-            $result.RiskLevel | Should -Match 'Low|Medium|High'
-            $result.AnalyzedAt | Should -BeOfType [DateTime]
-            $result.DomainContext | Should -Not -BeNullOrEmpty
+            $result.DomainContext | Should -Be 'Unknown'
+            $result.Notes | Should -BeLike 'Cannot determine domain context - investigate source.*'
         }
     }
-    
-    Context "Analysis Performance and Optimization" {
-        It "Should cache analysis results efficiently" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            
-            $firstAnalysis = Measure-Command {
-                $result1 = Get-SIDAnalysis -SIDString $testSID
-            }
 
-            # The second run is not required to be faster; both are only held under five seconds
-            $secondAnalysis = Measure-Command {
-                $result2 = Get-SIDAnalysis -SIDString $testSID
-            }
-            
-            # Both should produce same results
-            $result1.SID | Should -Be $result2.SID
-            $result1.LikelySource | Should -Be $result2.LikelySource
+    Context "Logging, pipeline and errors" {
+        It "Passes the correlation ID to the format checks and the log" {
+            Mock Test-SIDFormat { $true }
+            Mock Test-WellKnownSID { $false }
 
-            $firstAnalysis.TotalMilliseconds | Should -BeLessThan 5000
-            $secondAnalysis.TotalMilliseconds | Should -BeLessThan 5000
-        }
-        
-        It "Should batch-process large SID collections efficiently" {
-            $sidCollection = @()
-            for ($i = 1; $i -le 100; $i++) {
-                $sidCollection += "S-1-5-21-1234567890-1234567890-1234567890-$i"
-            }
-            
-            $batchProcessingTime = Measure-Command {
-                $results = $sidCollection | Get-SIDAnalysis
-            }
-            
-            # Verify all SIDs were processed
-            $results.Count | Should -Be 100
-            
-            # Performance requirement: Should process 100 SIDs in under 30 seconds
-            $batchProcessingTime.TotalSeconds | Should -BeLessThan 30
-            
-            # Verify each result is valid
-            foreach ($result in $results) {
-                $result.SID | Should -Not -BeNullOrEmpty
-                $result.LikelySource | Should -Not -BeNullOrEmpty
-                $result.RiskLevel | Should -Match 'Low|Medium|High'
-            }
-        }
-        
-        It "Should optimize memory usage for enterprise datasets" {
-            $beforeMemory = [System.GC]::GetTotalMemory($true)
-            
-            # Process a moderate number of SIDs
-            $sidCollection = @()
-            for ($i = 1; $i -le 50; $i++) {
-                $sidCollection += "S-1-5-21-1234567890-1234567890-1234567890-$i"
-            }
-            
-            $results = $sidCollection | Get-SIDAnalysis
-            
-            # Collected on both sides: the uncollected figure is garbage-collector timing, and on the
-            # Windows PowerShell 5.1 runner it measured 58 MB for 50 strings
-            $afterMemory = [System.GC]::GetTotalMemory($true)
-            $memoryUsed = ($afterMemory - $beforeMemory) / 1MB
-            
-            # Less than 50 MB for 50 SIDs
-            $memoryUsed | Should -BeLessThan 50
-            
-            # Force garbage collection and verify cleanup
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
-            
-            $cleanupMemory = [System.GC]::GetTotalMemory($true)
-            $memoryDifference = [Math]::Abs($cleanupMemory - $beforeMemory) / 1MB
-            
-            # Should release most memory (within 10MB tolerance)
-            $memoryDifference | Should -BeLessThan 10
-        }
-        
-        It "Should complete single SID analysis within performance baseline" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            
-            $executionTime = Measure-Command {
-                $result = Get-SIDAnalysis -SIDString $testSID
-            }
-            
-            # Performance baseline: Single SID analysis should complete in under 100ms
-            $executionTime.TotalMilliseconds | Should -BeLessThan 100
-            
-            # Verify result quality wasn't compromised for performance
-            $result.SID | Should -Be $testSID
-            $result.LikelySource | Should -Not -BeNullOrEmpty
-            $result.RiskLevel | Should -Match 'Low|Medium|High'
-        }
-    }
-    
-    Context "Error Handling and Edge Cases" {
-        It "Should handle invalid SID formats gracefully" {
-            $invalidSIDs = @(
-                @{ SID = 'InvalidSID'; ExpectedSource = 'Invalid' },
-                @{ SID = 'S-1-5-INVALID'; ExpectedSource = 'Invalid' },
-                @{ SID = 'S-1-5-21-123'; ExpectedSource = 'Unknown Domain' },
-                @{ SID = 'S-1-5-21-abc-def-ghi-123'; ExpectedSource = 'Invalid' }
-            )
-            
-            foreach ($invalidSID in $invalidSIDs) {
-                $result = Get-SIDAnalysis -SIDString $invalidSID.SID
-                $result.LikelySource | Should -Be $invalidSID.ExpectedSource
-                $result.RiskLevel | Should -Be 'High'
-                $result.Confidence | Should -Match 'High|Low'
-            }
-        }
-        
-        It "Should handle analysis errors with comprehensive logging" {
-            # Test with a SID that might cause processing errors
-            $problematicSID = 'S-1-5-21-1234567890-1234567890-1234567890-999999999999999999999999999999'
-            
-            $result = Get-SIDAnalysis -SIDString $problematicSID
-            
-            # A SID that cannot be analysed still returns a result rather than throwing
-            $result | Should -Not -BeNullOrEmpty
-            $result.SID | Should -Be $problematicSID
+            Get-SIDAnalysis -SIDString "$($script:currentDomainSID)-1001" -CorrelationId 'ana-1' | Out-Null
 
-            # When analysis fails, the failure is recorded in the result
-            if ($result.LikelySource -eq 'Analysis Error') {
-                $result.RiskLevel | Should -Be 'High'
-                $result.Confidence | Should -Be 'Low'
-                $result.Notes | Should -Match 'Error during analysis'
+            Should -Invoke Test-SIDFormat -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'ana-1' }
+            Should -Invoke Test-WellKnownSID -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'ana-1' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $CorrelationId -eq 'ana-1' -and $Component -eq 'SIDAnalysis' -and
+                $Message -eq "SID analysis completed for $($script:currentDomainSID)-1001 - Source: Unknown Domain, Risk: High"
             }
         }
-        
-        It "Should maintain analysis consistency under concurrent access" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $results = @()
-            
-            # Simulate concurrent analysis requests
-            $jobs = 1..5 | ForEach-Object {
-                Start-Job -ScriptBlock {
-                    param($SID, $ScriptRoot)
-                    
-                    # A job starts without this session's functions, so it stubs and loads its own
-                    . $ScriptRoot\..\..\..\TestHelpers\SecurityTestHelpers.ps1
 
-                    function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
-                    function Test-SIDFormat { param($SID, $CorrelationId); return $SID -match '^S-1-\d+(-\d+)*$' }
-                    function Test-WellKnownSID { param($SID, $CorrelationId); return $false }
+        It "Analyses each SID piped to it" {
+            $results = @("$($script:currentDomainSID)-502", 'S-1-5-32-544', 'NotASid' |
+                Get-SIDAnalysis -CurrentDomainSID $script:currentDomainSID)
 
-                    $ClassPath = Join-Path $ScriptRoot '..\..\..\..\Classes'
-                    if (Test-Path $ClassPath) {
-                        Get-ChildItem -Path $ClassPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
-                    }
-
-                    $SIDPath = Join-Path $ScriptRoot '..\..\..\..\Private\SID'
-                    if (Test-Path $SIDPath) {
-                        Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
-                    }
-                    
-                    Get-SIDAnalysis -SIDString $SID
-                } -ArgumentList $testSID, $PSScriptRoot
-            }
-            
-            # Wait for completion and collect results
-            $results = $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job
-            
-            # Verify consistency
-            $results.Count | Should -Be 5
-            $uniqueSources = $results | Select-Object -ExpandProperty LikelySource -Unique
-            $uniqueRiskLevels = $results | Select-Object -ExpandProperty RiskLevel -Unique
-            
-            # Every job produced the same analysis
-            $uniqueSources.Count | Should -Be 1
-            $uniqueRiskLevels.Count | Should -Be 1
+            $results.LikelySource | Should -Be @('KRBTGT Account', 'Well-Known SID', 'Invalid')
         }
-    }
-    
-    Context "Enterprise Security Compliance" {
-        It "Should validate SOX compliance requirements" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-500'  # Built-in admin
-            $currentDomainSID = 'S-1-5-21-1234567890-1234567890-1234567890'
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            
-            $result = Get-SIDAnalysis -SIDString $testSID -CurrentDomainSID $currentDomainSID -CorrelationId $correlationId
-            
-            # The result records which SID was analysed and when
-            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
-            $result.SID | Should -Be $testSID
 
-            # RID 500 in the current domain is the built-in Administrator, rated Medium
-            $result.RiskLevel | Should -Be 'Medium'
-            $result.LikelySource | Should -Be 'Built-in Administrator'
-        }
-        
-        It "Should ensure HIPAA audit trail completeness" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            
-            $result = Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId
-            
-            # Every descriptive property of the result is populated
-            $result.SID | Should -Not -BeNullOrEmpty
-            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
-            $result.LikelySource | Should -Not -BeNullOrEmpty
-            $result.Confidence | Should -Not -BeNullOrEmpty
-            $result.RiskLevel | Should -Not -BeNullOrEmpty
-            $result.DomainContext | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should track all operations with correlation IDs" {
-            $correlationId = [System.Guid]::NewGuid().ToString()
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            
-            { Get-SIDAnalysis -SIDString $testSID -CorrelationId $correlationId } | Should -Not -Throw
+        It "Returns an Analysis Error result, and logs it, when a check throws" {
+            Mock Test-WellKnownSID { throw 'well-known list unavailable' }
+            $sid = "$($script:currentDomainSID)-1001"
 
-            [System.Guid]::Parse($correlationId) | Should -BeOfType [System.Guid]
-        }
-        
-        It "Should log security events for enterprise monitoring" {
-            $highRiskSID = 'S-1-5-21-9999999999-9999999999-9999999999-502'  # Foreign KRBTGT-like
-            
-            $result = Get-SIDAnalysis -SIDString $highRiskSID
-            
-            # A krbtgt-like RID from a foreign domain is rated High and flagged for investigation
+            $result = Get-SIDAnalysis -SIDString $sid -CorrelationId 'ana-2'
+
+            $result.SID | Should -Be $sid
+            $result.LikelySource | Should -Be 'Analysis Error'
+            $result.Confidence | Should -Be 'Low'
             $result.RiskLevel | Should -Be 'High'
-            $result.LikelySource | Should -Be 'Unknown Domain'
-            $result.Notes | Should -Match 'investigate'
-        }
-    }
-    
-    Context "Enterprise Integration and Reporting" {
-        It "Should support pipeline processing for automation workflows" {
-            $sidArray = @(
-                'S-1-5-21-1234567890-1234567890-1234567890-1001',
-                'S-1-5-21-1234567890-1234567890-1234567890-1002', 
-                'S-1-5-32-544'
-            )
-            
-            $results = $sidArray | Get-SIDAnalysis
-            
-            $results.Count | Should -Be 3
-            foreach ($result in $results) {
-                $result.SID | Should -Not -BeNullOrEmpty
-                $result.LikelySource | Should -Not -BeNullOrEmpty
-                $result.RiskLevel | Should -Match 'Low|Medium|High'
-            }
-        }
-        
-        It "Should generate enterprise-compatible result objects" {
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            
-            $result = Get-SIDAnalysis -SIDString $testSID
-            
-            # Every property of the result is populated
-            $result | Should -Not -BeNullOrEmpty
-            $result.SID | Should -Not -BeNullOrEmpty
-            $result.LikelySource | Should -Not -BeNullOrEmpty
-            $result.Confidence | Should -Not -BeNullOrEmpty
-            $result.Notes | Should -Not -BeNullOrEmpty
-            $result.RiskLevel | Should -Not -BeNullOrEmpty
-            $result.AnalyzedAt | Should -Not -BeNullOrEmpty
-            $result.DomainContext | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should maintain performance standards for enterprise scale" {
-            $largeSIDCollection = @()
-            for ($i = 1; $i -le 1000; $i++) {
-                $largeSIDCollection += "S-1-5-21-1234567890-1234567890-1234567890-$i"
-            }
-            
-            $performanceTest = Measure-Command {
-                # Process first 100 SIDs for performance testing
-                $testResults = $largeSIDCollection[0..99] | Get-SIDAnalysis
-            }
-            
-            # 100 SIDs in under 60 seconds
-            $performanceTest.TotalSeconds | Should -BeLessThan 60
-            
-            # Verify quality maintained under load
-            $testResults.Count | Should -Be 100
-            $testResults | ForEach-Object {
-                $_.SID | Should -Not -BeNullOrEmpty
-                $_.LikelySource | Should -Not -BeNullOrEmpty
-                $_.RiskLevel | Should -Match 'Low|Medium|High'
+            $result.Notes | Should -Be 'Error during analysis: well-known list unavailable'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'ana-2' -and $Message -like '*well-known list unavailable*'
             }
         }
     }

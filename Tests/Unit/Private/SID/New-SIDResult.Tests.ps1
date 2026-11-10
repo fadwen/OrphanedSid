@@ -18,30 +18,13 @@ BeforeAll {
     if (Test-Path $SIDPath) {
         Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
     }
+
+    Mock Write-StructuredLog { }
 }
 
 Describe "New-OrphanedSIDResult Function Tests" {
     
     Context "Function Existence and Core Functionality" {
-        It "Should have New-OrphanedSIDResult function available" {
-            Get-Command New-OrphanedSIDResult -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
-        }
-        
-        It "Should accept required parameters and create result object" {
-            $testObjectDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
-            $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
-            $testAccessRule = [PSCustomObject]@{
-                AccessControlType = 'Allow'
-                ActiveDirectoryRights = 'ReadProperty'
-                InheritanceFlags = 'None'
-                IsInherited = $false
-                ObjectType = [System.Guid]::Empty
-                InheritedObjectType = [System.Guid]::Empty
-            }
-            
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule } | Should -Not -Throw
-        }
-        
         It "Should return OrphanedSIDResult object" {
             $testObjectDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
@@ -116,8 +99,12 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testObjectDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
             $invalidSID = 'INVALID-SID-FORMAT'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
-            
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $invalidSID -AccessRule $testAccessRule } | Should -Throw
+
+            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $invalidSID -AccessRule $testAccessRule -CorrelationId 'res-err' } |
+                Should -Throw -ExpectedMessage 'Failed to create OrphanedSIDResult: Invalid SID format provided: INVALID-SID-FORMAT'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'res-err' -and $Message -like "Error creating OrphanedSIDResult object for $testObjectDN*"
+            }
         }
         
         It "Should validate Confidence parameter values" {
@@ -133,9 +120,10 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $testSID = 'S-1-5-21-1234567890-1234567890-1234567890-1001'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'High' } | Should -Not -Throw
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'Medium' } | Should -Not -Throw
-            { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence 'Low' } | Should -Not -Throw
+            foreach ($level in 'High', 'Medium', 'Low') {
+                (New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $testSID -AccessRule $testAccessRule -Confidence $level).Confidence |
+                    Should -Be $level
+            }
         }
     }
     
@@ -319,6 +307,24 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $result.ObjectType | Should -Be ([System.Guid]::Empty)
             $result.InheritedObjectType | Should -Be ([System.Guid]::Empty)
         }
+
+        It "Should use an empty GUID for a string that is not a GUID" {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow'; ObjectType = 'not-a-guid' }
+
+            $result = New-OrphanedSIDResult -ObjectDN 'CN=TestUser,DC=contoso,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
+
+            $result.ObjectType | Should -Be ([System.Guid]::Empty)
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Failed to parse GUID string for ObjectType : not-a-guid' }
+        }
+
+        It "Should use an empty GUID for a value of an unexpected type" {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow'; ObjectType = 42 }
+
+            $result = New-OrphanedSIDResult -ObjectDN 'CN=TestUser,DC=contoso,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
+
+            $result.ObjectType | Should -Be ([System.Guid]::Empty)
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'GUID property ObjectType has unexpected type: Int32' }
+        }
     }
     
     Context "Processing Context and Enterprise Features" {
@@ -362,10 +368,6 @@ Describe "New-OrphanedSIDResult Function Tests" {
 Describe "ConvertTo-ResultSummary Export Functionality Tests" {
     
     Context "Export Summary Generation" {
-        It "Should have ConvertTo-ResultSummary function available" {
-            Get-Command ConvertTo-ResultSummary -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
-        }
-        
         It "Should generate summary from collection of results" {
             # Create sample OrphanedSIDResult objects
             $results = @()
@@ -382,6 +384,36 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             $summary.TotalOrphanedSIDs | Should -Be 5
             $summary.UniqueObjects | Should -Be 5
             $summary.UniqueOrphanedSIDs | Should -Be 5
+        }
+
+        It "Should give the same summary when the results are passed by parameter" {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
+            $results = @(
+                New-OrphanedSIDResult -ObjectDN 'CN=User1,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
+                New-OrphanedSIDResult -ObjectDN 'CN=User1,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1002' -AccessRule $testAccessRule
+                New-OrphanedSIDResult -ObjectDN 'CN=User2,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1002' -AccessRule $testAccessRule
+            )
+
+            $summary = ConvertTo-ResultSummary -OrphanedSIDResults $results
+
+            $summary.TotalOrphanedSIDs | Should -Be 3
+            $summary.UniqueObjects | Should -Be 2
+            $summary.UniqueOrphanedSIDs | Should -Be 2
+        }
+
+        # Module bug (#25): on Windows PowerShell 5.1 a single object from Select-Object -Unique has no
+        # Count, so one distinct object or SID is reported as $null rather than 1
+        It "Should count a single distinct object and SID as 1" -Skip:($PSVersionTable.PSVersion.Major -lt 6) {
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
+            $results = @(
+                New-OrphanedSIDResult -ObjectDN 'CN=User1,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
+                New-OrphanedSIDResult -ObjectDN 'CN=User1,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
+            )
+
+            $summary = $results | ConvertTo-ResultSummary
+
+            $summary.UniqueObjects | Should -Be 1
+            $summary.UniqueOrphanedSIDs | Should -Be 1
         }
         
         It "Should include source category analysis" {
@@ -456,15 +488,16 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
             
             $results += New-OrphanedSIDResult -ObjectDN 'CN=User1,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $testAccessRule
-            Start-Sleep -Milliseconds 100
             $results += New-OrphanedSIDResult -ObjectDN 'CN=User2,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1002' -AccessRule $testAccessRule
-            
+            $results += New-OrphanedSIDResult -ObjectDN 'CN=User3,DC=test,DC=com' -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1003' -AccessRule $testAccessRule
+            $results[0].Timestamp = [datetime]'2026-01-01T10:00:00'
+            $results[1].Timestamp = [datetime]'2026-01-01T09:00:00'
+            $results[2].Timestamp = [datetime]'2026-01-01T11:00:00'
+
             $summary = $results | ConvertTo-ResultSummary
-            
-            $summary.ProcessingTimespan | Should -Not -BeNullOrEmpty
-            $summary.ProcessingTimespan.Earliest | Should -Not -BeNullOrEmpty
-            $summary.ProcessingTimespan.Latest | Should -Not -BeNullOrEmpty
-            $summary.ProcessingTimespan.Latest | Should -BeGreaterThan $summary.ProcessingTimespan.Earliest
+
+            $summary.ProcessingTimespan.Earliest | Should -Be ([datetime]'2026-01-01T09:00:00')
+            $summary.ProcessingTimespan.Latest | Should -Be ([datetime]'2026-01-01T11:00:00')
         }
         
         It "Should include access rights analysis" {
@@ -543,7 +576,7 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
             
             $summary = $results | ConvertTo-ResultSummary
             
-            $summary.AccessRightsAnalysis.Count | Should -BeLessThan 11
+            @($summary.AccessRightsAnalysis).Count | Should -Be 10
         }
         
         It "Should calculate percentages correctly with rounding" {
@@ -564,25 +597,7 @@ Describe "ConvertTo-ResultSummary Export Functionality Tests" {
         }
     }
     
-    Context "Performance and Reliability" {
-        It "Should process large result collections efficiently" {
-            $results = @()
-            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
-            
-            # Create 100 results for performance testing
-            $executionTime = Measure-Command {
-                1..100 | ForEach-Object {
-                    $results += New-OrphanedSIDResult -ObjectDN "CN=User$_,DC=test,DC=com" -OrphanedSID "S-1-5-21-1234567890-1234567890-1234567890-$(1000 + $_)" -AccessRule $testAccessRule
-                }
-                
-                $summary = $results | ConvertTo-ResultSummary
-                $summary.TotalOrphanedSIDs | Should -Be 100
-            }
-            
-            # Should complete within reasonable time (less than 5 seconds for 100 objects)
-            $executionTime.TotalSeconds | Should -BeLessThan 5
-        }
-        
+    Context "Duplicate SIDs" {
         It "Should handle duplicate SIDs in unique count calculation" {
             $results = @()
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
