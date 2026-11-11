@@ -37,7 +37,7 @@ function Set-ObjectACL {
         application, and verification of successful ACL restoration.
 
         This function performs the actual ACL modification operations and should
-        only be called with validated backup data from the Test-BackupValidation module.
+        only be called with backup data that Test-BackupIntegrity has validated.
 
         BUSINESS VALUE:
         - Enables precise ACL restoration for disaster recovery

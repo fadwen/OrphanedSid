@@ -146,7 +146,7 @@ stored SDDL and applies it with `Set-Acl` on the `AD:` drive.
 ### Backup Validation
 
 Before a backup is applied, `Test-BackupIntegrity` (defined in
-`Private/Backup/Test-BackupValidation.ps1`) runs at the `Standard` level and fails the restore of
+`Private/Backup/Test-BackupIntegrity.ps1`) runs at the `Standard` level and fails the restore of
 that object on any of these:
 
 - A missing or empty required property: `ObjectDN`, `BackupDate`, `SDDL`, `SDDLHash`,

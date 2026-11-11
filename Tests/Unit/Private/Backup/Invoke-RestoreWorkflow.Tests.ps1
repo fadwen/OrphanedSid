@@ -16,7 +16,7 @@
 
 BeforeAll {
     # Dot-source the function under test and the files its begin block would otherwise load
-    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupValidation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
