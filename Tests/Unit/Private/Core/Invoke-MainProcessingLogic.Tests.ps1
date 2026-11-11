@@ -24,6 +24,8 @@
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\ProcessingStatistics.ps1"
+    # The -WhatIf preview is built as a RemovalOperationResult
+    . "$PSScriptRoot\..\..\..\..\Classes\RemovalOperationResult.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\StreamingResultsManager.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Test-ValidDistinguishedName.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Core\Invoke-MainProcessingLogic.ps1"
