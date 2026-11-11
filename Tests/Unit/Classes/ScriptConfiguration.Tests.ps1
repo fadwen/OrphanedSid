@@ -199,6 +199,8 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
 
         It 'Should reject <Name>' -ForEach @(
             @{ Name = 'a BatchSize over 1000'; Content = @{ BatchSize = 1001 }; Message = '*BatchSize must be between 1 and 1000, got: 1001*' }
+            @{ Name = 'a BatchSize of 0'; Content = @{ BatchSize = 0 }; Message = '*BatchSize must be between 1 and 1000, got: 0*' }
+            @{ Name = 'a MemoryCheckInterval of 0'; Content = @{ MemoryCheckInterval = 0 }; Message = '*MemoryCheckInterval must be between 1 and 1000, got: 0*' }
             @{ Name = 'an invalid SID pattern'; Content = @{ WellKnownSIDPatterns = @('[unclosed') }; Message = '*Invalid regex pattern in WellKnownSIDPatterns: `[unclosed*' }
             @{ Name = 'a malformed protected SID'; Content = @{ ProtectedSIDs = @('not-a-sid') }; Message = '*Invalid SID format in ProtectedSIDs: not-a-sid*' }
         ) {

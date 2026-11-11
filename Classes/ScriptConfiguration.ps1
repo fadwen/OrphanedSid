@@ -95,14 +95,15 @@ class ScriptConfiguration {
                 $config.ProtectedSIDs = $configData.ProtectedSIDs
             }
 
-            if ($configData.BatchSize) {
+            # Tested for presence, not truth: 0 must reach the range check, not be read as unset
+            if ($null -ne $configData.BatchSize) {
                 if ($configData.BatchSize -lt 1 -or $configData.BatchSize -gt 1000) {
                     throw "BatchSize must be between 1 and 1000, got: $($configData.BatchSize)"
                 }
                 $config.BatchSize = $configData.BatchSize
             }
 
-            if ($configData.MemoryCheckInterval) {
+            if ($null -ne $configData.MemoryCheckInterval) {
                 if ($configData.MemoryCheckInterval -lt 1 -or $configData.MemoryCheckInterval -gt 1000) {
                     throw "MemoryCheckInterval must be between 1 and 1000, got: $($configData.MemoryCheckInterval)"
                 }
