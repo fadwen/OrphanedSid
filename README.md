@@ -236,11 +236,19 @@ Conventions come from [ai-powershell-standards](https://github.com/fadwen/ai-pow
 and are mirrored into `.github/` and `.claude/` by a weekly workflow. See [CLAUDE.md](./CLAUDE.md)
 for the invariants specific to this module.
 
+## Blog posts
+
+The [OrphanedSid series](https://www.techbyjeff.net/series/orphanedsid/) on techbyjeff.net:
+
+- [OrphanedSid: Find, Remove, Restore](https://www.techbyjeff.net/orphanedsid-find-remove-restore/)
+- [Why Find-UnknownSID Left My Monorepo](https://www.techbyjeff.net/why-find-unknownsid-left-my-monorepo/)
+- [Moving 2,400 Tests From Pester 3.4 to Pester 6](https://www.techbyjeff.net/migrating-2400-tests-from-pester-3-to-6/)
+
 ## History
 
 The code began as `Find-UnknownSID.ps1` in [fadwen/TechbyJeff](https://github.com/fadwen/TechbyJeff)
-and is described in two posts on [techbyjeff.net](https://techbyjeff.net):
-[Understanding Orphaned SIDs in Active Directory](https://techbyjeff.net/posts/understanding-orphaned-sids-in-active-directory/)
+and is described in two posts on [techbyjeff.net](https://www.techbyjeff.net):
+[Understanding Orphaned SIDs in Active Directory](https://www.techbyjeff.net/understanding-orphaned-sids-in-active-directory/)
 and
-[Testing Security Functions with Pester](https://techbyjeff.net/posts/testing-security-functions-with-pester-a-real-world-example/).
+[Testing Security Functions with Pester](https://www.techbyjeff.net/testing-security-functions-with-pester-a-real-world-example/).
 `Documentation/Archive/` keeps the development history from that period.
