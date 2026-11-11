@@ -88,6 +88,11 @@ All notable changes to this module are recorded here. Format follows
   warning for a failure. Both now carry the prefixed message, as the Verbose stream and the
   fallback files already did.
   ([#55](https://github.com/fadwen/OrphanedSid/issues/55))
+- A container restore in which objects failed returned a summary with `Success = False` and an
+  empty `ErrorMessage`, and wrote that empty error to its `-OutputPath` CSV row; the reasons were
+  only in `IndividualResults`. The summary now reads `<failed> of <total> objects failed to
+  restore: <reasons>`, or `No objects were restored` when nothing was found to restore.
+  ([#70](https://github.com/fadwen/OrphanedSid/issues/70))
 - The module version recorded in a backup's `ScriptVersion`, a result's `ProcessingContext` and the
   log header was hard-coded (`2.1.0`, `1.0.0` and `2.0.0`). It is now read from the loaded module,
   and the log header line is `Module Version: <version>`. The `WellKnownSIDsSkipped` counter in a

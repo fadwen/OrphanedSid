@@ -323,7 +323,9 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 One object per target. For a container it summarises the run (`TotalObjects`,
 `SuccessfulRestores`, `FailedRestores`, `IndividualResults`); for a single object it is that
 object's restore result. Both carry `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`
-and `CorrelationId`.
+and `CorrelationId`. A failed container summary's `ErrorMessage` reads
+`<failed> of <total> objects failed to restore: <reasons>`, listing each distinct reason from
+`IndividualResults` once, or `No objects were restored` when no backup was found under it.
 ## NOTES
 
 Author: Jeffrey Stuhr
