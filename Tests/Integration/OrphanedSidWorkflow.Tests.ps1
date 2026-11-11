@@ -218,6 +218,20 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             ($rows | Where-Object OrphanedSID -eq $script:FailingSid).VerificationStatus | Should -Be 'Unverified'
         }
 
+        It 'Returns its findings when WhatIf is in effect for the session' {
+            # A module function reads preferences from the global scope, not from its caller's
+            $savedWhatIf = $global:WhatIfPreference
+            $global:WhatIfPreference = $true
+            try {
+                $results = @(Invoke-FindOrphanedSid)
+            } finally {
+                $global:WhatIfPreference = $savedWhatIf
+            }
+
+            @($results | Where-Object VerificationStatus -eq 'Orphaned').Count | Should -Be 2
+            ($results | Where-Object OrphanedSID -eq $script:FailingSid).VerificationStatus | Should -Be 'Unverified'
+        }
+
         It 'Changes no ACL' {
             $null = Invoke-FindOrphanedSid
 

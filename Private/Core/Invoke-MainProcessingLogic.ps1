@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -294,6 +294,8 @@ function Invoke-MainProcessingLogic {
                 $processedCount = 0
                 $orphanedFoundCount = 0
                 $null = $objectArray | ForEach-Object {
+                    # Captured once: inside a catch block $_ is the error record, not the object
+                    $currentObject = $_
                     try {
                         # Pinned: housekeeping, not the operation -WhatIf rehearses
                         Invoke-MemoryCheck -MemoryManager $script:MemoryManager -WhatIf:$false
@@ -306,7 +308,26 @@ function Invoke-MainProcessingLogic {
                             Write-StructuredLog "Processing: $processedCount/$($objectArray.Count) objects ($percentComplete%) - Orphaned SIDs found: $orphanedFoundCount" -Level Information -Component 'MainProcessing' -CorrelationId $CorrelationId
                         }
 
-                        $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $_ -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
+                        # Detection is the step that reads the directory, so it is the one retried.
+                        # Removal below runs once, on the result; a removal error is not retried,
+                        # because a second attempt would take a second backup and act on an ACL
+                        # the first attempt may already have changed.
+                        $orphanedResults = $null
+                        $detectionAttempt = 0
+                        while ($null -eq $orphanedResults) {
+                            try {
+                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
+                            }
+                            catch {
+                                $detectionAttempt++
+                                if ($detectionAttempt -gt $MaxRetries) {
+                                    Write-StructuredLog "Max retries ($MaxRetries) exceeded for object $($currentObject.DistinguishedName)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                    throw
+                                }
+                                Write-StructuredLog "Retry attempt $detectionAttempt of $MaxRetries for object $($currentObject.DistinguishedName): $($_.Exception.Message)" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                Start-Sleep -Seconds (2 * $detectionAttempt)
+                            }
+                        }
 
                         # An Unverified result is a SID that no lookup found but at least one lookup
                         # failed to check. It is reported, counted apart, and never removed.
@@ -316,8 +337,8 @@ function Invoke-MainProcessingLogic {
                         # Log security audit for orphaned SID analysis
                         if ($orphanedResults.Count -gt 0) {
                             Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Detection' -Outcome 'Success' -SecurityContext @{
-                                ObjectDN = $_.DistinguishedName
-                                ObjectClass = $_.ObjectClass
+                                ObjectDN = $currentObject.DistinguishedName
+                                ObjectClass = $currentObject.ObjectClass
                                 OrphanedSIDsFound = $verifiedResults.Count
                                 OrphanedSIDs = ($verifiedResults | ForEach-Object { $_.OrphanedSID }) -join ','
                                 UnverifiedSIDsFound = $unverifiedResults.Count
@@ -424,39 +445,10 @@ function Invoke-MainProcessingLogic {
                         }
                     }
                     catch {
+                        # Detection retries are exhausted, or removal failed. Either way the object
+                        # is counted as an error and the run moves on to the next one.
                         $script:Statistics.ProcessingErrors++
-                        Write-StructuredLog "Error processing object $($_.DistinguishedName): $($_.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
-
-                        # Implement retry logic using MaxRetries parameter
-                        $retryCount = 0
-                        $retrySuccessful = $false
-
-                        while ($retryCount -lt $MaxRetries -and -not $retrySuccessful) {
-                            $retryCount++
-                            Write-StructuredLog "Retry attempt $retryCount of $MaxRetries for object $($_.DistinguishedName)" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
-
-                            try {
-                                Start-Sleep -Seconds (2 * $retryCount)  # Exponential backoff
-                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $_ -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
-                                $retrySuccessful = $true
-
-                                if ($orphanedResults.Count -gt 0) {
-                                    $script:Statistics.OrphanedSIDsFound += @($orphanedResults | Where-Object { $_.VerificationStatus -ne 'Unverified' }).Count
-                                    $script:Statistics.UnverifiedSIDsFound += @($orphanedResults | Where-Object { $_.VerificationStatus -eq 'Unverified' }).Count
-                                    # Stream retry results to disk as well
-                                    foreach ($orphanedResult in $orphanedResults) {
-                                        $script:StreamingResults.AddResult($orphanedResult)
-                                    }
-                                    return $orphanedResults
-                                }
-                            }
-                            catch {
-                                Write-StructuredLog "Retry $retryCount failed for object $($_.DistinguishedName): $($_.Exception.Message)" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
-                                if ($retryCount -eq $MaxRetries) {
-                                    Write-StructuredLog "Max retries ($MaxRetries) exceeded for object $($_.DistinguishedName)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
-                                }
-                            }
-                        }
+                        Write-StructuredLog "Error processing object $($currentObject.DistinguishedName): $($_.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
                     }
                 }
 
