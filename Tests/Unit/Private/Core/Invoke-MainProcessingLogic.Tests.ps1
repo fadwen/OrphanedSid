@@ -33,8 +33,8 @@ BeforeAll {
     # Placeholders for collaborators, so each can be mocked; the names match the real parameters
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId) }
     function Write-ADOperationSecurityLog { param($OperationName, $Outcome, $SecurityContext, $CorrelationId) }
-    function Get-ADObjectsSequential { param($SearchBase, [switch]$IncludeInherited, $CorrelationId) }
-    function Find-OrphanedSIDsInObject { param($ADObject, [switch]$IncludeInherited, $CurrentDomainSID) }
+    function Get-ADObjectsSequential { param($SearchBase, [switch]$IncludeInherited, $MaxRetries, $CorrelationId) }
+    function Find-OrphanedSIDsInObject { param($ADObject, [switch]$IncludeInherited, $CurrentDomainSID, $MaxRetries, $CorrelationId) }
     function Remove-OrphanedSidEntry { param($ObjectDN, $OrphanedSIDs, $BackupPath, $CorrelationId) }
     function Invoke-MemoryCheck { param($MemoryManager, $CorrelationId, [switch]$WhatIf) }
     function Invoke-Cleanup { param($CorrelationId, [switch]$WhatIf) }
@@ -515,71 +515,44 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         }
     }
 
-    Context "Per-object errors and retries" {
-        It "Counts a processing error, logs it and retries up to MaxRetries with a growing delay" {
-            Mock Find-OrphanedSIDsInObject { throw 'Processing failed' }
+    Context "Per-object errors and -MaxRetries (#89)" {
+        It "Passes -MaxRetries to discovery and to detection, where the directory is read" {
             Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; MaxRetries = 5 } | Out-Null
+
+            Should -Invoke Get-ADObjectsSequential -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 5 }
+            Should -Invoke Find-OrphanedSIDsInObject -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 5 }
+        }
+
+        It "Passes the default of 3 when -MaxRetries is not given" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com' } | Out-Null
+
+            Should -Invoke Find-OrphanedSIDsInObject -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 3 }
+        }
+
+        It "Counts an object whose detection throws as one error, does not repeat it, and continues" {
+            # Detection catches its own lookup failures; an exception here is unexpected and is not
+            # a transient directory error, so repeating the whole object would not help
+            $script:findCalls = 0
+            Mock Find-OrphanedSIDsInObject {
+                $script:findCalls++
+                if ($script:findCalls -eq 1) { throw 'Processing failed' }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned' }
+            }
 
             $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; MaxRetries = 3 }
 
             $result.ProcessingErrors | Should -Be 1
-            Should -Invoke Find-OrphanedSIDsInObject -Times 4 -Exactly
-            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 2 }
-            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 4 }
-            Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 6 }
-            Should -Invoke Write-StructuredLog -Times 3 -Exactly -ParameterFilter {
-                $Level -eq 'Warning' -and $Message -like 'Retry attempt * of 3 for object CN=User1,OU=Test,DC=test,DC=com: Processing failed'
+            $result.OrphanedSIDsFound | Should -Be 2
+            Should -Invoke Find-OrphanedSIDsInObject -Times 3 -Exactly
+            Should -Invoke Start-Sleep -Times 0 -Exactly
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like 'Error processing object CN=*: Processing failed'
             }
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Max retries (3) exceeded for object CN=User1,OU=Test,DC=test,DC=com' }
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Error processing object CN=User1,OU=Test,DC=test,DC=com: Processing failed' }
-        }
-
-        It "Streams the findings of a retry that succeeds, counts no error and continues with the next object" {
-            $script:findCalls = 0
-            Mock Find-OrphanedSIDsInObject {
-                $script:findCalls++
-                if ($script:findCalls -eq 1) { throw 'transient' }
-                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = 'CN=X'; VerificationStatus = 'Orphaned' }
-            }
-
-            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; MaxRetries = 2 }
-
-            $result.ProcessingErrors | Should -Be 0
-            $result.TotalObjectsProcessed | Should -Be 3
-            $result.OrphanedSIDsFound | Should -Be 3
-            $result.StreamingSummary.TotalResults | Should -Be 3
-            Should -Invoke Start-Sleep -Times 1 -Exactly
-        }
-
-        It "Removes what a successful retry finds" {
-            $script:findCalls = 0
-            Mock Find-OrphanedSIDsInObject {
-                $script:findCalls++
-                if ($script:findCalls -eq 1) { throw 'transient' }
-                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned' }
-            }
-            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
-
-            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; MaxRetries = 2 } | Out-Null
-
-            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter {
-                $ObjectDN -eq 'CN=User1,OU=Test,DC=test,DC=com' -and $OrphanedSIDs[0] -eq $script:SidA
-            }
-        }
-
-        It "Retries detection on the object that failed" {
-            $script:findCalls = 0
-            Mock Find-OrphanedSIDsInObject {
-                $script:findCalls++
-                if ($script:findCalls -eq 1) { throw 'transient' }
-            }
-            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
-
-            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; MaxRetries = 1 } | Out-Null
-
-            Should -Invoke Find-OrphanedSIDsInObject -Times 2 -Exactly -ParameterFilter {
-                $ADObject.DistinguishedName -eq 'CN=User1,OU=Test,DC=test,DC=com'
-            }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like 'Retry attempt*' }
         }
     }
 

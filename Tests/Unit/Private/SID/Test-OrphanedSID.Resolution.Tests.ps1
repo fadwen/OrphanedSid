@@ -322,6 +322,31 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
         }
     }
 
+    Context 'Retries for a transient lookup failure (#89)' {
+        It 'Gives every directory lookup -MaxRetries plus the first attempt' {
+            $null = Test-OrphanedSID -SID $script:orphan -MaxRetries 5
+
+            Should -Invoke Invoke-ADOperationWithRetry -Times 5 -Exactly
+            Should -Invoke Invoke-ADOperationWithRetry -Times 5 -Exactly -ParameterFilter { $MaxRetries -eq 6 }
+        }
+
+        It 'Allows four attempts per lookup by default' {
+            $null = Test-OrphanedSID -SID $script:orphan
+
+            Should -Invoke Invoke-ADOperationWithRetry -Times 5 -Exactly -ParameterFilter { $MaxRetries -eq 4 }
+        }
+
+        It 'Makes one attempt per lookup with -MaxRetries 0' {
+            $null = Test-OrphanedSID -SID $script:orphan -MaxRetries 0
+
+            Should -Invoke Invoke-ADOperationWithRetry -Times 5 -Exactly -ParameterFilter { $MaxRetries -eq 1 }
+        }
+
+        It 'Rejects -MaxRetries outside 0-10' {
+            { Test-OrphanedSID -SID $script:orphan -MaxRetries 11 } | Should -Throw -ExpectedMessage '*MaxRetries*'
+        }
+    }
+
     Context 'Test-ADServerDownError' {
         It 'Is true for ADServerDownException' {
             $record = [System.Management.Automation.ErrorRecord]::new([Microsoft.ActiveDirectory.Management.ADServerDownException]::new('down'), 'id', 'ConnectionError', $null)

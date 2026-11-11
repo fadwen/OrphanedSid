@@ -297,8 +297,10 @@ HelpMessage: ''
 
 ### -MaxRetries
 
-Retry attempts for a transient Active Directory failure on one object.
-Default 3.
+Retries after the first attempt for each directory read that fails with an error that looks
+transient, such as a timeout or a busy or unavailable server: the read of each search base, and
+each lookup of a SID. Default 3, so a read is tried up to four times.
+A domain controller that cannot be contacted is not retried; the SID is reported Unverified.
 
 ```yaml
 Type: System.Int32

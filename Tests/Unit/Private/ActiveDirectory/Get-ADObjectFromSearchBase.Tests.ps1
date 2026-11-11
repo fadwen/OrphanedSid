@@ -10,6 +10,10 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         # Import the function once for all tests
         $FunctionPath = Join-Path $PSScriptRoot "..\..\..\..\Private\ActiveDirectory\Get-ADObjectFromSearchBase.ps1"
         . $FunctionPath
+
+        # The retry wrapper is mocked to run the read once, so these tests see Get-ADObject directly;
+        # the retry loop itself is tested in Invoke-OperationWithRetry.Tests.ps1
+        function Invoke-ADOperationWithRetry { param([scriptblock]$ScriptBlock, $MaxRetries, $OperationName, $ObjectContext, $CorrelationId) }
     }
 
     BeforeEach {
@@ -62,6 +66,7 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
         
         Mock Write-Verbose { }
         Mock Write-Warning { }
+        Mock Invoke-ADOperationWithRetry { & $ScriptBlock }
     }
 
     Context "Parameter Validation" {
@@ -141,30 +146,35 @@ Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
     }
 
     Context "Error Handling" {
-        It "Warns with the search base and error message instead of throwing for <Case>" -ForEach @(
+        It "Throws a read that still fails, for its caller to count and report: <Case> (#89)" -ForEach @(
             @{ Case = 'invalid DN'; Base = 'InvalidDN'; Expected = 'The supplied distinguished name contains invalid syntax' }
             @{ Case = 'access denied'; Base = 'OU=AccessDenied,DC=contoso,DC=com'; Expected = 'Insufficient access rights to perform the operation' }
             @{ Case = 'server unavailable'; Base = 'OU=ServerError,DC=contoso,DC=com'; Expected = 'The server is not operational' }
         ) {
-            $result = Get-ADObjectFromSearchBase -SearchBase $Base
+            # Swallowing the error here made Get-ADObjectsSequential count the base as successful
+            { Get-ADObjectFromSearchBase -SearchBase $Base } | Should -Throw -ExpectedMessage $Expected
+            Should -Invoke Write-Warning -Times 0 -Exactly
+        }
+    }
 
-            $result | Should -BeNullOrEmpty
-            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
-                $Message -eq "Failed to retrieve objects from search base '$Base': $Expected"
-            }
-            Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
-                $Message -like "Search base error details: *$Expected"
+    Context "Retries (#89)" {
+        It "Reads through the retry wrapper with -MaxRetries plus the first attempt" {
+            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -MaxRetries 5 -CorrelationId 'r-1'
+
+            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter {
+                $MaxRetries -eq 6 -and $OperationName -eq 'Get-ADObject-SearchBase' -and
+                $ObjectContext -eq 'OU=Users,DC=contoso,DC=com' -and $CorrelationId -eq 'r-1'
             }
         }
 
-        It "Should continue pipeline processing after error" {
-            $searchBases = @('OU=Users,DC=contoso,DC=com', 'InvalidDN', 'OU=Groups,DC=contoso,DC=com')
-            $result = $searchBases | Get-ADObjectFromSearchBase
+        It "Allows four attempts by default" {
+            Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com'
 
-            # Results from the valid search bases despite the error in the middle
-            $result.Count | Should -Be 3
-            $result.Name | Should -Be @('User1', 'User2', 'Group1')
-            Should -Invoke Write-Warning -Times 1 -Exactly
+            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 4 }
+        }
+
+        It "Rejects -MaxRetries outside 0-10" {
+            { Get-ADObjectFromSearchBase -SearchBase 'OU=Users,DC=contoso,DC=com' -MaxRetries 11 } | Should -Throw -ExpectedMessage '*MaxRetries*'
         }
     }
 

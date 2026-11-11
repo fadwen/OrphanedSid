@@ -228,13 +228,21 @@ All notable changes to this module are recorded here. Format follows
   path is reachable from `Restore-OrphanedSidBackup`, which calls the workflow once per target with
   a backup folder, so no restore was affected.
   ([#17](https://github.com/fadwen/OrphanedSid/issues/17))
-- When reading an object failed, the retry never re-read it: it passed the error instead of the
-  object, so every attempt failed, and each failing object still waited through the back-off (12
-  seconds with the default `-MaxRetries 3`). The error and retry log lines also named no object. The
-  directory read is now retried on the object itself; an object that succeeds on a retry is no
-  longer counted as an error, and `Remove-OrphanedSid` removes what the retry finds. A failed
-  removal is not retried, so an object is never backed up and changed twice.
-  ([#22](https://github.com/fadwen/OrphanedSid/issues/22))
+- `-MaxRetries` had no effect. It controlled a retry of each object's detection, which never
+  failed in a way that reached the retry: a failed SID lookup was reported, not thrown. The
+  per-object retry is removed, and `-MaxRetries` is now the number of retries after the first
+  attempt for each directory read that fails with a transient error (a timeout, a busy or
+  unavailable server): the read of each search base, and each lookup of a SID. The SID lookups
+  made three attempts whatever the value; with the default of 3 they now make up to four. A
+  domain controller that cannot be contacted is still not retried. A removal is never repeated, so
+  an object is never backed up and changed twice.
+  ([#89](https://github.com/fadwen/OrphanedSid/issues/89),
+  [#22](https://github.com/fadwen/OrphanedSid/issues/22))
+- A search base whose read failed was counted as read successfully with no objects: the failure
+  was caught and logged as a warning before the step that counts failed search bases and writes
+  the `Get-ADObjectsSequential` `Failure` audit entry could see it. It is now counted as failed,
+  audited, and warned about once with `Failed to retrieve objects from search base '<DN>': <error>`;
+  a transient failure is retried first. ([#89](https://github.com/fadwen/OrphanedSid/issues/89))
 - `Find-OrphanedSid` returned nothing when `$WhatIfPreference` was `$true` in the session, although
   discovery ran and the summary counted what it found.
   ([#14](https://github.com/fadwen/OrphanedSid/issues/14))

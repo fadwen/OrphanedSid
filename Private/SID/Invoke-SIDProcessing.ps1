@@ -82,6 +82,11 @@ function Find-OrphanedSIDsInObject {
         The SID of the current domain for context analysis. Used to categorize
         SIDs as local, foreign, or unknown domain objects.
 
+    .PARAMETER MaxRetries
+        Retries after the first attempt for each directory lookup of a SID whose failure looks
+        transient (0-10, default 3). Passed through Test-AccessRuleForOrphanedSID to
+        Test-OrphanedSID; the public commands' -MaxRetries arrives here.
+
     .PARAMETER CorrelationId
         Unique identifier for tracking this processing operation across logs
         and audit trails. Generated automatically if not provided.
@@ -162,6 +167,10 @@ function Find-OrphanedSIDsInObject {
         [string]$CurrentDomainSID,
 
         [Parameter()]
+        [ValidateRange(0, 10)]
+        [int]$MaxRetries = 3,
+
+        [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
@@ -226,7 +235,7 @@ function Find-OrphanedSIDsInObject {
                 foreach ($rule in $accessRules) {
                     try {
                         # Delegate identity resolution and orphaned SID testing to specialized module
-                        $orphanedResult = Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN $objectDN -ObjectClass $obj.ObjectClass -CurrentDomainSID $CurrentDomainSID -CorrelationId $CorrelationId
+                        $orphanedResult = Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN $objectDN -ObjectClass $obj.ObjectClass -CurrentDomainSID $CurrentDomainSID -MaxRetries $MaxRetries -CorrelationId $CorrelationId
 
                         if ($orphanedResult) {
                             $results.Add($orphanedResult)

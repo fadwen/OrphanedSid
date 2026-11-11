@@ -187,13 +187,12 @@ cap. Splitting the domain by OU across several runs is the only way to shorten a
 Test-NetConnection -ComputerName (Get-ADDomainController).HostName -Port 389
 ```
 
-`-MaxRetries` (1-10) controls the per-object retry loop: reading an object's ACL and SIDs is
-retried up to that many times after an error; a removal is not retried. In practice that loop does
-not fire, because the detection step catches its own errors, so raising `-MaxRetries` does not help
-with an unreachable domain controller. SID lookups and the ACL
-steps of `Remove-OrphanedSid` are wrapped by `Invoke-ADOperationWithRetry` with fixed limits of 2 or
-3 attempts for transient errors. Object discovery is not retried. There are no timeout settings in
-the configuration file. When a lookup for a SID fails and no other lookup finds it, the SID is
+`-MaxRetries` (1-10, default 3) is the number of retries after the first attempt for each
+directory read that fails with a transient error, such as a timeout or a busy server: the read of
+each search base and each lookup of a SID. Raise it to ride out a link that drops briefly. A domain
+controller that cannot be contacted is not retried, so raising it does not help with one that is
+down. The ACL steps of `Remove-OrphanedSid` keep fixed limits of 2 or 3 attempts, and a removal is
+never repeated as a whole. There are no timeout settings in the configuration file. When a lookup for a SID fails and no other lookup finds it, the SID is
 reported with `VerificationStatus` `Unverified` and is never removed; re-run discovery once the
 domain controller is reachable. While it is unreachable, each SID that needs a lookup costs about
 42 s (one connection timeout; the remaining directory lookups for it are skipped), and because

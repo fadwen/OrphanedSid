@@ -14,8 +14,13 @@ Describe "Invoke-OperationWithRetry" -Tag "Unit", "Operations" {
     }
 
     Context "Parameter validation" {
-        It "Rejects a MaxRetries of <_>" -ForEach @(0, 11) {
+        # Attempts, the first included: the public -MaxRetries 10 arrives as 11
+        It "Rejects a MaxRetries of <_>" -ForEach @(0, 12) {
             { Invoke-OperationWithRetry -ScriptBlock { 'x' } -MaxRetries $_ } | Should -Throw
+        }
+
+        It "Accepts 11 attempts, the most the public -MaxRetries can ask for" {
+            Invoke-OperationWithRetry -ScriptBlock { 'ok' } -MaxRetries 11 | Should -Be 'ok'
         }
     }
 

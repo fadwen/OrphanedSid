@@ -101,6 +101,14 @@ Describe "Get-ADObjectsSequential" -Tag 'Unit' {
             }
         }
 
+        It "Passes -MaxRetries to Get-ADObjectFromSearchBase, 3 by default (#89)" {
+            Get-ADObjectsSequential -SearchBase $script:Users -MaxRetries 6 | Out-Null
+            Get-ADObjectsSequential -SearchBase $script:Groups | Out-Null
+
+            Should -Invoke Get-ADObjectFromSearchBase -Times 1 -Exactly -ParameterFilter { $SearchBase -eq $script:Users -and $MaxRetries -eq 6 }
+            Should -Invoke Get-ADObjectFromSearchBase -Times 1 -Exactly -ParameterFilter { $SearchBase -eq $script:Groups -and $MaxRetries -eq 3 }
+        }
+
         It "Passes IncludeInherited as false when the switch is omitted" {
             Get-ADObjectsSequential -SearchBase $script:Users | Out-Null
 
@@ -177,7 +185,7 @@ Describe "Get-ADObjectsSequential" -Tag 'Unit' {
             Get-ADObjectsSequential -SearchBase $script:Users, $script:Invalid1 -CorrelationId $correlationId | Out-Null
 
             Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
-                $Message -eq "Failed to process search base $($script:Invalid1) : The specified domain either does not exist or could not be contacted."
+                $Message -eq "Failed to retrieve objects from search base '$($script:Invalid1)': The specified domain either does not exist or could not be contacted."
             }
             Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
                 $Outcome -eq 'Failure' -and
@@ -217,6 +225,70 @@ Describe "Get-ADObjectsSequential" -Tag 'Unit' {
             Should -Invoke Write-Verbose -Times 1 -Exactly -ParameterFilter {
                 $Message -eq 'Sequential processing completed: 3 objects from 1/2 search bases'
             }
+        }
+    }
+}
+
+Describe "Get-ADObjectsSequential with the real Get-ADObjectFromSearchBase (#89)" -Tag 'Unit' {
+    # The tests above mock Get-ADObjectFromSearchBase to throw. The real function used to catch its
+    # own error and return nothing, so an unreadable search base counted as a successful one with no
+    # objects and no Failure was logged. These run the real function with Get-ADObject failing.
+    BeforeAll {
+        . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
+        $privateRoot = Join-Path $PSScriptRoot '..\..\..\..\Private'
+        . (Join-Path $privateRoot 'Operations\Invoke-OperationWithRetry.ps1')
+        . (Join-Path $privateRoot 'ActiveDirectory\Invoke-ADOperationWithRetry.ps1')
+    }
+
+    BeforeEach {
+        Mock Write-ADOperationSecurityLog { }
+        Mock Write-Verbose { }
+        Mock Write-Warning { }
+        Mock Start-Sleep { }
+    }
+
+    It "Counts a search base whose read is refused as failed, warns once, and logs a Failure" {
+        Mock Get-ADObject { throw 'Insufficient access rights to perform the operation' }
+
+        $results = Get-ADObjectsSequential -SearchBase 'OU=Locked,DC=contoso,DC=com'
+
+        $results | Should -BeNullOrEmpty
+        Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+            $Message -eq "Failed to retrieve objects from search base 'OU=Locked,DC=contoso,DC=com': Insufficient access rights to perform the operation"
+        }
+        Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+            $OperationName -eq 'Get-ADObjectsSequential' -and $Outcome -eq 'Failure' -and $SecurityContext.FailedSearchBase -eq 'OU=Locked,DC=contoso,DC=com'
+        }
+        Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+            $OperationName -eq 'Get-ADObjectsSequential' -and $Outcome -eq 'Success' -and $SecurityContext.FailedBases -eq 1 -and $SecurityContext.SuccessfulBases -eq 0
+        }
+        # Not transient, so read once
+        Should -Invoke Get-ADObject -Times 1 -Exactly
+    }
+
+    It "Retries a transient failure up to -MaxRetries and returns the objects once the read succeeds" {
+        $script:reads = 0
+        Mock Get-ADObject {
+            $script:reads++
+            if ($script:reads -le 2) { throw 'The operation returned because the timeout limit was exceeded.' }
+            [PSCustomObject]@{ DistinguishedName = 'CN=A,OU=Slow,DC=contoso,DC=com'; nTSecurityDescriptor = 'SD' }
+        }
+
+        $results = @(Get-ADObjectsSequential -SearchBase 'OU=Slow,DC=contoso,DC=com' -MaxRetries 2)
+
+        $results.Count | Should -Be 1
+        Should -Invoke Get-ADObject -Times 3 -Exactly
+        Should -Invoke Write-Warning -Times 0 -Exactly
+    }
+
+    It "Gives up after -MaxRetries retries of a transient failure and counts the base as failed" {
+        Mock Get-ADObject { throw 'The operation returned because the timeout limit was exceeded.' }
+
+        $null = Get-ADObjectsSequential -SearchBase 'OU=Slow,DC=contoso,DC=com' -MaxRetries 1
+
+        Should -Invoke Get-ADObject -Times 2 -Exactly
+        Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
+            $OperationName -eq 'Get-ADObjectsSequential' -and $Outcome -eq 'Failure'
         }
     }
 }

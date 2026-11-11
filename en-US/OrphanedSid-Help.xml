@@ -218,8 +218,10 @@ Default 1024.</maml:para>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="2" aliases="none">
         <maml:name>MaxRetries</maml:name>
         <maml:description>
-          <maml:para>Retry attempts for a transient Active Directory failure on one object.
-Default 3.</maml:para>
+          <maml:para>Retries after the first attempt for each directory read that fails with an error that looks
+transient, such as a timeout or a busy or unavailable server: the read of each search base, and
+each lookup of a SID. Default 3, so a read is tried up to four times.
+A domain controller that cannot be contacted is not retried; the SID is reported Unverified.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.Int32</command:parameterValue>
         <dev:type>
@@ -671,8 +673,10 @@ Default 1024.</maml:para>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="3" aliases="none">
         <maml:name>MaxRetries</maml:name>
         <maml:description>
-          <maml:para>Retry attempts for a transient Active Directory failure on one object.
-Default 3.</maml:para>
+          <maml:para>Retries after the first attempt for each directory read that fails with an error that looks
+transient, such as a timeout or a busy or unavailable server: the read of each search base, and
+each lookup of a SID. Default 3, so a read is tried up to four times.
+A domain controller that cannot be contacted is not retried; the SID is reported Unverified.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.Int32</command:parameterValue>
         <dev:type>

@@ -113,18 +113,19 @@ $dc = (Get-ADDomainController).HostName
 Test-NetConnection -ComputerName $dc -Port 389 -InformationLevel Detailed
 Resolve-DnsName -Name $dc -Type A
 
-# Raise the per-object detection retry count (default 3, maximum 10)
+# Allow more retries of each directory read (default 3, maximum 10)
 Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -MaxRetries 5
 ```
 
-`-MaxRetries` governs the per-object retry loop in `Invoke-MainProcessingLogic`: when detection
-on an object throws, detection is retried up to that many times with a 2, 4, 6... second back-off
-(`Retry attempt N of M for object <DN>`); removal is never retried. SID lookups and the ACL steps
-of `Remove-OrphanedSid` go through
-`Invoke-ADOperationWithRetry`, which has its own fixed default of 3 attempts and retries only
-errors matching `timeout|network|connection|busy|unavailable|server not operational|replication|domain controller`.
-Object discovery (`Get-ADObject -SearchBase`) and the security-descriptor read during detection are
-not retried.
+`-MaxRetries` is the number of retries after the first attempt for each directory read: the read
+of each search base during discovery (`Get-ADObject -SearchBase`), and each of a SID's directory
+lookups. Both go through `Invoke-ADOperationWithRetry`, which retries only errors matching
+`timeout|network|connection|busy|unavailable|server not operational|replication|domain controller`,
+with a 1, 2, 4... second back-off. A domain controller that cannot be contacted does not match, so
+it is not retried. A search base whose read still fails is named in `Failed to retrieve objects
+from search base '<DN>': <error>` and counted as failed. The ACL steps of `Remove-OrphanedSid`
+keep their own fixed limits, the security-descriptor read during detection is not retried, and a
+removal is never repeated as a whole.
 
 ### 3. Remove or Restore Stops at the Confirmation Prompt
 
@@ -195,8 +196,8 @@ so result count does not drive memory use. See `.\Troubleshooting\Performance\Me
 
 **Root Cause:** most often a slow domain controller during SID lookups. Each unknown SID can cost
 up to five AD queries (`Get-ADObject` by `objectSid`, deleted-objects query, `Get-ADUser`,
-`Get-ADGroup`, `Get-ADComputer`), each retried up to 3 times by `Invoke-ADOperationWithRetry`
-when the error looks transient. When the directory server cannot be contacted, the first lookup
+`Get-ADGroup`, `Get-ADComputer`), each tried up to `-MaxRetries` more times (default 3) by
+`Invoke-ADOperationWithRetry` when the error looks transient. When the directory server cannot be contacted, the first lookup
 waits out a connect timeout of about 42 seconds, the remaining directory lookups for that SID are
 skipped and listed in `VerificationError` as `Not attempted because the directory server could not
 be contacted: ...`, and the SID is reported `Unverified`, which is never removed.

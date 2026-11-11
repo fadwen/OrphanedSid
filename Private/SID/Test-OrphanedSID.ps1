@@ -121,6 +121,13 @@ function Test-OrphanedSID {
         - Built-in account: "S-1-5-32-544"
         - Service SID: "S-1-5-80-123456789-123456789-123456789-123456789-123456789"
 
+    .PARAMETER MaxRetries
+        [Int] (Mandatory: No; 0-10, default 3)
+
+        Retries after the first attempt for each directory lookup whose failure looks transient
+        (a timeout, a busy or unavailable server). The public commands' -MaxRetries arrives here.
+        A server that cannot be contacted is not retried; see UNREACHABLE DIRECTORY SERVER.
+
     .PARAMETER CorrelationId
         [String] (Mandatory: No)
 
@@ -187,6 +194,10 @@ function Test-OrphanedSID {
         [string]$SID,
 
         [Parameter()]
+        [ValidateRange(0, 10)]
+        [int]$MaxRetries = 3,
+
+        [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
@@ -204,6 +215,8 @@ function Test-OrphanedSID {
         # Once a directory lookup finds the server unreachable, the rest would wait out the same ~42 s
         # connect timeout and fail the same way (#82). They are skipped and named in the failure text.
         $serverDown = $false
+        # Invoke-ADOperationWithRetry counts attempts, the first included
+        $lookupAttempts = $MaxRetries + 1
         $skippedLookups = [System.Collections.Generic.List[string]]::new()
 
         try {
@@ -227,7 +240,7 @@ function Test-OrphanedSID {
             try {
                 $adObject = Invoke-ADOperationWithRetry -ScriptBlock {
                     Get-ADObject -Filter "objectSid -eq '$SID'" -ErrorAction Stop
-                } -OperationName 'Get-ADObject-BySID' -ObjectContext $SID -CorrelationId $CorrelationId
+                } -MaxRetries $lookupAttempts -OperationName 'Get-ADObject-BySID' -ObjectContext $SID -CorrelationId $CorrelationId
 
                 if ($adObject) {
                     Write-StructuredLog "SID found in AD via Get-ADObject: $($adObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
@@ -253,7 +266,7 @@ function Test-OrphanedSID {
                 try {
                     $matchedObjects = @(Invoke-ADOperationWithRetry -ScriptBlock {
                             Get-ADObject -Filter "objectSid -eq '$SID'" -IncludeDeletedObjects -Properties isDeleted -ErrorAction Stop
-                        } -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId)
+                        } -MaxRetries $lookupAttempts -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId)
 
                     $liveObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -ne $true } | Select-Object -First 1
                     $deletedObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -eq $true } | Select-Object -First 1
@@ -316,7 +329,7 @@ function Test-OrphanedSID {
                 try {
                     $result = Invoke-ADOperationWithRetry -ScriptBlock {
                         & $objectType.CmdLet -Filter $objectType.Filter -ErrorAction Stop
-                    } -OperationName $objectType.CmdLet -ObjectContext $SID -CorrelationId $CorrelationId
+                    } -MaxRetries $lookupAttempts -OperationName $objectType.CmdLet -ObjectContext $SID -CorrelationId $CorrelationId
 
                     if ($result) {
                         Write-StructuredLog "SID found via $($objectType.CmdLet): $($result.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId

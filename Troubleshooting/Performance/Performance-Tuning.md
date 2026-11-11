@@ -15,7 +15,7 @@ measure their effect.
 | Object discovery | `Get-ADObjectFromSearchBase` requesting `nTSecurityDescriptor` | Objects under each search base |
 | ACL retrieval | `Get-ObjectAccessRule`: `Get-Acl -Path AD:\<DN>`, falling back to the binary descriptor, then a fresh `Get-ADObject` | One call per object; inherited ACEs multiply the entries to inspect |
 | SID resolution | `Test-OrphanedSID`: `Get-ADObject` by `objectSid`, deleted-object lookup, `SecurityIdentifier.Translate`, then `Get-ADUser`/`Get-ADGroup`/`Get-ADComputer` | One round of lookups per distinct SID; Orphaned and Exists results are cached per SID for the PowerShell session |
-| Retries | `Invoke-OperationWithRetry` for AD calls, per-object retry loop in `Invoke-MainProcessingLogic` | Transient failures multiply wall time through back-off sleeps |
+| Retries | `Invoke-OperationWithRetry` around each directory read, up to `-MaxRetries` retries | Transient failures multiply wall time through back-off sleeps |
 | Memory management | `Invoke-MemoryCheck` per object, `Invoke-Cleanup` every 100 objects | Fixed overhead; three forced collections per cleanup |
 | Export | `StreamingResultsManager.ExportToCsv` | Reads every batch file back before `Export-Csv` |
 
@@ -65,18 +65,17 @@ Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 
 ### -MaxRetries
 
-Range 1-10, default 3. It is the number of times `Invoke-MainProcessingLogic` retries reading an
-object's ACL and SIDs after a detection error, sleeping `2 * attempt` seconds between attempts. A
-removal error is not retried.
+Range 1-10, default 3. It is the number of retries after the first attempt for each directory
+read: the read of each search base during discovery, and each of a SID's directory lookups.
+`Invoke-OperationWithRetry` retries only errors matching its retryable-error pattern (a timeout,
+a busy, unavailable or non-operational server), sleeping `2^(attempt-1)` seconds plus 0 or 1
+second of jitter, capped at 30 seconds. Any other error fails the read at once.
 
-Separately, `Invoke-OperationWithRetry` wraps AD cmdlet calls with its own fixed limit (3 attempts
-by default), not `-MaxRetries`. It retries only errors matching its retryable-error pattern,
-sleeping `2^(attempt-1)` seconds plus 0 or 1 second of jitter, capped at 30 seconds.
-
-In practice the per-object loop does not retry: `Find-OrphanedSIDsInObject` catches its own
-errors (a failed access rule is logged and skipped, a failed SID lookup gives an `Unverified`
-result), so changing `-MaxRetries` has no visible effect on a flaky link. Re-run the affected
-search base once the domain controller is reachable.
+On a healthy domain controller retries never fire. On a link that drops for seconds at a time,
+raise it to ride out short outages; each retry adds its back-off to the run. A domain controller
+that cannot be contacted at all is not retried, whatever the value: each SID that needs it costs
+one connection timeout and is reported `Unverified`. The ACL reads and writes of a removal keep
+their own fixed limits, and a removal is never repeated as a whole.
 
 ### -LogLevel
 
@@ -166,7 +165,7 @@ objects; the gap between their timestamps gives the throughput for that segment.
 
 Run the same search base with two settings on a quiet domain controller and compare `Processing
 duration`. Only change one lever at a time. The levers with a visible effect on wall time are
-`-IncludeInherited` and `-LogLevel Debug`/`Verbose`.
+`-IncludeInherited`, `-LogLevel Debug`/`Verbose`, and `-MaxRetries` when the link is unreliable.
 `-MaxMemoryUsageMB` matters only when the threshold is being crossed; `MemoryCheckInterval` is
 noise.
 

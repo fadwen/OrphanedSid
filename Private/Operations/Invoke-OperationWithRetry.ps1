@@ -11,7 +11,8 @@ function Invoke-OperationWithRetry {
         The operation to execute with retry logic
 
     .PARAMETER MaxRetries
-        Maximum number of retry attempts (default: 3)
+        Total attempts, the first included, for an error matching RetryableErrorPattern (1-11,
+        default 3). A caller holding a retry count passes that count plus one.
 
     .PARAMETER RetryableErrorPattern
         Regex pattern to identify retryable errors
@@ -43,7 +44,8 @@ function Invoke-OperationWithRetry {
         [scriptblock]$ScriptBlock,
 
         [Parameter()]
-        [ValidateRange(1, 10)]
+        # Attempts, the first included: a caller's 10 retries is 11 attempts
+        [ValidateRange(1, 11)]
         [int]$MaxRetries = 3,
 
         [Parameter()]

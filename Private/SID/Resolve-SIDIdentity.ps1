@@ -81,6 +81,10 @@ function Test-AccessRuleForOrphanedSID {
         The SID of the current domain for enhanced context analysis and SID categorization.
         Used to distinguish between local, foreign, and unknown domain SIDs.
 
+    .PARAMETER MaxRetries
+        Retries after the first attempt for each directory lookup of the SID whose failure looks
+        transient (0-10, default 3). Passed to Test-OrphanedSID.
+
     .PARAMETER CorrelationId
         Unique identifier for tracking this operation across logs and audit trails.
         Generated automatically if not provided.
@@ -156,6 +160,10 @@ function Test-AccessRuleForOrphanedSID {
         [string]$CurrentDomainSID,
 
         [Parameter()]
+        [ValidateRange(0, 10)]
+        [int]$MaxRetries = 3,
+
+        [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
@@ -184,7 +192,7 @@ function Test-AccessRuleForOrphanedSID {
         Write-StructuredLog "SID $sidString passed validation, testing for orphaned status..." -Level Debug -CorrelationId $CorrelationId
 
         # Test for orphaned status and create result
-        $lookup = Test-OrphanedSID -SID $sidString -CorrelationId $CorrelationId
+        $lookup = Test-OrphanedSID -SID $sidString -MaxRetries $MaxRetries -CorrelationId $CorrelationId
         Write-StructuredLog "Orphaned status for SID $sidString : $($lookup.Status)" -Level Debug -CorrelationId $CorrelationId
 
         switch ($lookup.Status) {

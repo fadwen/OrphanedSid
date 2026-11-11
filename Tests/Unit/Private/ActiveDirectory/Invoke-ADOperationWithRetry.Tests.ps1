@@ -35,9 +35,10 @@ Describe "Invoke-ADOperationWithRetry" -Tag 'Unit' {
             Should -Invoke Invoke-OperationWithRetry -Times 0 -Exactly
         }
 
-        It "Rejects MaxRetries <Value> outside 1-10" -ForEach @(
+        # Attempts, the first included: the public -MaxRetries 10 arrives as 11
+        It "Rejects MaxRetries <Value> outside 1-11" -ForEach @(
             @{ Value = 0 }
-            @{ Value = 11 }
+            @{ Value = 12 }
         ) {
             { Invoke-ADOperationWithRetry -ScriptBlock { 'x' } -MaxRetries $Value } |
                 Should -Throw -ExpectedMessage "*MaxRetries*"

@@ -17,7 +17,7 @@ BeforeAll {
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Get-ObjectAccessRule { param($ADObject, [switch]$IncludeInherited, $CorrelationId) }
-    function Test-AccessRuleForOrphanedSID { param($AccessRule, $ObjectDN, $ObjectClass, $CurrentDomainSID, $CorrelationId) }
+    function Test-AccessRuleForOrphanedSID { param($AccessRule, $ObjectDN, $ObjectClass, $CurrentDomainSID, $MaxRetries, $CorrelationId) }
 
     function New-TestObject {
         param([string]$Dn, [string]$Class = 'group', [switch]$NoDescriptor)
@@ -62,6 +62,14 @@ Describe 'Find-OrphanedSIDsInObject' -Tag 'Unit', 'SID', 'Private' {
             Should -Invoke Test-AccessRuleForOrphanedSID -Times 3 -Exactly -ParameterFilter {
                 $ObjectDN -eq $script:dnA -and $ObjectClass -eq 'group' -and $CurrentDomainSID -eq $script:domainSid -and $CorrelationId -eq 'det-1'
             }
+        }
+
+        It 'Passes -MaxRetries to every access rule test, 3 by default (#89)' {
+            Find-OrphanedSIDsInObject -ADObject (New-TestObject -Dn $script:dnA) -MaxRetries 7 | Out-Null
+            Find-OrphanedSIDsInObject -ADObject (New-TestObject -Dn $script:dnB) | Out-Null
+
+            Should -Invoke Test-AccessRuleForOrphanedSID -Times 3 -Exactly -ParameterFilter { $ObjectDN -eq $script:dnA -and $MaxRetries -eq 7 }
+            Should -Invoke Test-AccessRuleForOrphanedSID -Times 3 -Exactly -ParameterFilter { $ObjectDN -eq $script:dnB -and $MaxRetries -eq 3 }
         }
 
         It 'Passes -IncludeInherited through to the access rule retrieval' {
