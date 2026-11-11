@@ -3,6 +3,7 @@
 BeforeAll {
     $ModuleRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
+    . "$ModuleRoot\Classes\OrphanedSIDResult.ps1"
     . "$ModuleRoot\Classes\StreamingResultsManager.ps1"
 
     function New-TestDirectoryPath {
@@ -183,6 +184,43 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager.Dispose()
         }
 
+        It "Should give back an OrphanedSIDResult with its enum names, local timestamp and note properties (#41)" {
+            $original = [OrphanedSIDResult]::new()
+            $original.ObjectDN = 'CN=Object1,DC=contoso,DC=com'
+            $original.OrphanedSID = 'S-1-5-21-1-2-3-1'
+            $original.AccessControlType = 'Deny'
+            $original.ActiveDirectoryRights = 'ReadProperty, WriteProperty'
+            $original.InheritanceType = 'ContainerInherit'
+            $original.ObjectType = [guid]'bf967aba-0de6-11d0-a285-00aa003049e2'
+            $original.Timestamp = [datetime]::new(2026, 3, 4, 5, 6, 7, [DateTimeKind]::Local)
+            $original | Add-Member -NotePropertyName ProcessingContext -NotePropertyValue @{ Source = 'test' }
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 1, $false)
+            $manager.AddResult($original)
+
+            $result = @($manager.GetAllResults())[0]
+
+            $result.GetType().Name | Should -Be 'OrphanedSIDResult'
+            $result.AccessControlType | Should -Be ([System.Security.AccessControl.AccessControlType]::Deny)
+            "$($result.ActiveDirectoryRights)" | Should -Be 'ReadProperty, WriteProperty'
+            "$($result.InheritanceType)" | Should -Be 'ContainerInherit'
+            $result.ObjectType | Should -Be ([guid]'bf967aba-0de6-11d0-a285-00aa003049e2')
+            $result.Timestamp.Kind | Should -Not -Be ([DateTimeKind]::Utc)
+            $result.Timestamp.ToString('yyyy-MM-dd HH:mm:ss') | Should -Be '2026-03-04 05:06:07'
+            $result.ProcessingContext.Source | Should -Be 'test'
+            $manager.Dispose()
+        }
+
+        It "Should give back any other object as it was read" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 1, $false)
+            $manager.AddResult([PSCustomObject]@{ Name = 'not a result'; Count = 3 })
+
+            $result = @($manager.GetAllResults())[0]
+
+            $result | Should -BeOfType [System.Management.Automation.PSCustomObject]
+            $result.Name | Should -Be 'not a result'
+            $manager.Dispose()
+        }
+
         It "Should warn and skip a batch file it cannot parse" {
             $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 1, $false)
             $manager.AddResult((New-TestResult -Number 1))
@@ -232,7 +270,7 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             1..3 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
             $csv = Join-Path $TestDrive "export_$([guid]::NewGuid().ToString('N')).csv"
 
-            $manager.ExportToCsv($csv)
+            $manager.ExportToCsv($csv) | Should -Be $true
 
             $rows = @(Import-Csv -Path $csv)
             $rows.Count | Should -Be 3
@@ -244,7 +282,18 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
             $csv = Join-Path $TestDrive "empty_$([guid]::NewGuid().ToString('N')).csv"
 
-            $manager.ExportToCsv($csv)
+            $manager.ExportToCsv($csv) | Should -Be $false
+
+            Test-Path $csv | Should -Be $false
+            $manager.Dispose()
+        }
+
+        It "Should write nothing in WhatIf mode and say so (#50)" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $true)
+            1..2 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
+            $csv = Join-Path $TestDrive "whatif_$([guid]::NewGuid().ToString('N')).csv"
+
+            $manager.ExportToCsv($csv) | Should -Be $false
 
             Test-Path $csv | Should -Be $false
             $manager.Dispose()

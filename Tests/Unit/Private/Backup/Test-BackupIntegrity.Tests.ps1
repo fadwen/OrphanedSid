@@ -6,13 +6,12 @@
     Unit tests for Test-BackupIntegrity, the check every restore runs before applying a backup.
 
 .DESCRIPTION
-    Test-BackupValidation.Tests.ps1 covers the sibling functions in the same file; this one covers
-    Test-BackupIntegrity itself at each validation level. Nothing is mocked: the function works on the
+    Covers Test-BackupIntegrity, the check every restore runs, at each validation level. Nothing is mocked: the function works on the
     backup object alone.
 #>
 
 BeforeAll {
-    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupValidation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
 
     function Get-Sha256Base64 {
         param([string]$Text)

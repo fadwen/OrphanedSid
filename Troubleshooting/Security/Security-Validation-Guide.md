@@ -1,4 +1,4 @@
-﻿# Security Validation Guide - OrphanedSid
+# Security Validation Guide - OrphanedSid
 ## Overview
 
 This guide describes the security controls built into `Find-OrphanedSid`: how a run is gated
@@ -17,9 +17,9 @@ to verify each control and how to customise the lists it relies on.
 ### -WhatIf
 
 `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` honour `SupportsShouldProcess`. With
-`Remove-OrphanedSid -WhatIf` the full discovery runs, every planned removal prints
-`What if: Performing the operation "Remove Orphaned SID" on target "<DN> - SID: <SID>"` and is
-written to the pipeline with `SecurityValidation = 'WhatIf - Would Remove'`, and no ACL is written
+`Remove-OrphanedSid -WhatIf` the full discovery runs, every object with planned removals prints
+`What if: Performing the operation "Remove Orphaned SIDs" on target "<DN> - SIDs: <SID>, <SID>"`
+and is written to the pipeline with `SecurityValidation = 'WhatIf - Would Remove'`, and no ACL is written
 and no backup folder is created. `Find-OrphanedSid` never changes anything and has no `-WhatIf`.
 
 ### Confirmation and -Force
@@ -68,10 +68,10 @@ Every SID that discovery marks orphaned passes through `Invoke-SecurityValidatio
 (`Private\Security\Invoke-SecurityValidation.ps1`) inside `Invoke-RemovalWorkflow` before any ACL
 is touched. It calls `Test-SIDSecurity -ValidationLevel Standard` for each SID and produces a
 `SecurityValidationResult` with `IsValid`, `RiskLevel`, `AllowedSIDs`, `BlockedSIDs`, `Issues` and
-`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` removes one SID per call, so a
-blocked SID skips that removal with `SECURITY BLOCK: Security validation failed: <issues>` at
-Error level (a call given several SIDs is skipped whole if any is blocked), and only `AllowedSIDs`
-are ever passed to `Invoke-SIDRemoval`.
+`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` passes all of an object's verified
+orphaned SIDs in one call, and a call is skipped whole if any of its SIDs is blocked, with
+`SECURITY BLOCK: Security validation failed: <issues>` at Error level, so the object's ACL is left
+unchanged. Only `AllowedSIDs` are ever passed to `Invoke-SIDRemoval`.
 
 ### Test-SIDSecurity
 
@@ -200,7 +200,7 @@ with `Component = SecurityAudit`. Events written during a run:
 |---|---|---|
 | ObjectAccess | `AD-ObjectDiscovery` | Attempt/Success/Failure per search base |
 | ObjectAccess | `OrphanedSID-Detection` | Success per object with findings, listing the SIDs |
-| ObjectAccess | `OrphanedSID-Removal` | Attempt/Success/Failure per SID; WhatIf attempts carry `WhatIfMode = true` |
+| ObjectAccess | `OrphanedSID-Removal` | Attempt, then Success or Failure, per object; the second carries `ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`. WhatIf attempts carry `WhatIfMode = true` |
 | ObjectAccess | `Invoke-ADOperationWithRetry` (`Get-ADObject-BySID`, `Get-ADUser`, ...) | Attempt, then Success or Failure, per directory call |
 | DataValidation | `Test-SIDSecurity` | Attempt, then Success, Failure (blocked) or a second Attempt (high risk) per SID |
 | SecurityViolation | `Test-SIDSecurity` | Malicious pattern detected |
@@ -212,7 +212,7 @@ How to read them, and what to do when they land in emergency files, is in
 ## Customising the Lists
 
 Supply a JSON file with `-ConfigPath`. The lists are set by the keys below; the file may also set
-`BatchSize`, `EnableDetailedLogging`, `LogFilePath`, `EnableLogFileRotation` and
+`BatchSize`, `MemoryCheckInterval`, `LogLevel`, `LogFilePath`, `EnableLogFileRotation` and
 `MaxLogFileSizeMB`:
 
 ```json
@@ -238,13 +238,18 @@ Supply a JSON file with `-ConfigPath`. The lists are set by the keys below; the 
 - `ProtectedSIDs` must each match `^S-1-\d+(-\d+)*$`; a match blocks removal outright.
 - `WellKnownSIDPatterns` must compile as .NET regular expressions; a match excludes the SID from
   discovery as well as from removal.
-- Supplying either key replaces the default list for that key; include the defaults you want to
-  keep.
+- Supplying either key replaces the default list for that key in full; nothing is merged. The
+  example above repeats every default and adds to it. A file listing only the extra entries would
+  drop the defaults, by design: the file is the list. The built-in well-known check still applies
+  whatever the file says; see
+  [Automation](../../Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) for what it
+  covers and how to start a file from the defaults.
 - `CriticalObjectPatterns` is not read from the file; the defaults listed above always apply.
 
 ## Security Checklist Before a Removal Run
 
-- [ ] A `-WhatIf` run has been reviewed and the CSV examined for false positives.
+- [ ] A `Find-OrphanedSid -OutputPath` CSV, or the results of a `Remove-OrphanedSid -WhatIf`
+      preview, has been examined for false positives. A `-WhatIf` run writes no CSV.
 - [ ] `-ConfigPath` lists any domain-specific principals that must never be removed.
 - [ ] `-BackupPath` points at storage that is itself backed up; the default `.\Backup\` is under
       the current directory of the machine running the command.

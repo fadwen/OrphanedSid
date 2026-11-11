@@ -42,11 +42,24 @@ function Initialize-LogDirectory {
 
     .PARAMETER LogPath
         Absolute or relative path to the log file. Directory will be created if it doesn't exist.
+        An existing file is appended to, never truncated, so a path reused across runs keeps the
+        earlier runs' entries.
+
+    .PARAMETER RotateAboveMB
+        When greater than 0 and the existing log file is larger than this many MB, the file is
+        renamed to <name>_<yyyyMMdd_HHmmss>.log before this run writes to it, so the rotated file
+        holds only earlier runs. The outcome is left in $script:LogRotation (From, To, SizeMB, or
+        Error) for the caller to log once logging is set up. 0, the default, never rotates.
 
     .EXAMPLE
         PS> Initialize-LogDirectory -LogPath "C:\Logs\script.log"
 
         Creates directory structure and initializes log file at specified path
+
+    .EXAMPLE
+        PS> Initialize-LogDirectory -LogPath "C:\Logs\nightly.log" -RotateAboveMB 10
+
+        Renames nightly.log aside first when it has grown past 10 MB, then starts this run's entries
 
     .EXAMPLE
         PS> Initialize-LogDirectory -LogPath ".\Logs\script.log"
@@ -84,11 +97,16 @@ function Initialize-LogDirectory {
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [string]$LogPath
+        [string]$LogPath,
+
+        [Parameter()]
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$RotateAboveMB = 0
     )
 
     begin {
         Write-Verbose "Initializing log directory for path: $LogPath"
+        $script:LogRotation = $null
 
         # Get current logging system state
         $loggingState = Get-LoggingSystemState
@@ -105,6 +123,26 @@ function Initialize-LogDirectory {
             # Create directory structure
             $logDirectory = Split-Path -Parent $resolvedPath
             New-LogDirectory -DirectoryPath $logDirectory
+
+            # Rotate before this run writes anything, so the run is never split across two files
+            if ($RotateAboveMB -gt 0 -and (Test-Path -LiteralPath $resolvedPath -PathType Leaf)) {
+                $sizeMB = [Math]::Round((Get-Item -LiteralPath $resolvedPath).Length / 1MB, 2)
+                if ($sizeMB -gt $RotateAboveMB) {
+                    $rotatedPath = $resolvedPath -replace '\.log$', "_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+                    if ($rotatedPath -eq $resolvedPath) {
+                        $rotatedPath = "${resolvedPath}_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+                    }
+                    try {
+                        # Pinned: a preview run still logs, so it still rotates the file it logs to
+                        Move-Item -LiteralPath $resolvedPath -Destination $rotatedPath -ErrorAction Stop -WhatIf:$false
+                        $script:LogRotation = @{ From = $resolvedPath; To = $rotatedPath; SizeMB = $sizeMB }
+                    }
+                    catch {
+                        # The run appends to the oversized file rather than failing
+                        $script:LogRotation = @{ From = $resolvedPath; SizeMB = $sizeMB; Error = $_.Exception.Message }
+                    }
+                }
+            }
 
             # Initialize log file with header
             Initialize-LogFile -LogFilePath $resolvedPath
@@ -210,9 +248,9 @@ function Resolve-LogPath {
         # Already absolute path
         $resolvedPath = $LogPath
     } else {
-        # Make relative paths relative to the main script directory
-        $scriptRoot = Get-ScriptRootDirectory
-        $resolvedPath = [System.IO.Path]::GetFullPath((Join-Path $scriptRoot $LogPath))
+        # A relative path is relative to the current location, as a path given to any cmdlet is. It
+        # was resolved against the module's folder, which put the log in the install folder.
+        $resolvedPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
     }
 
     # SECURITY: Final validation after resolution - ensure we haven't escaped the expected directory structure
@@ -385,6 +423,7 @@ function Initialize-LogFile {
     .DESCRIPTION
         Initializes the log file with comprehensive header information
         including system context, correlation ID, and configuration details.
+        A new file starts with the header; an existing one has it appended after a blank line.
 
     .PARAMETER LogFilePath
         Full path to log file to initialize
@@ -418,7 +457,7 @@ function Initialize-LogFile {
         # Create comprehensive log header
         $logHeader = @"
 === OrphanedSid Log ===
-Script Version: 2.0.0
+Module Version: $(Get-OrphanedSidModuleVersion)
 Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Correlation ID: $($loggingState.CorrelationId)
 PowerShell Version: $($PSVersionTable.PSVersion)
@@ -431,9 +470,16 @@ Console Output Suppressed: $($loggingState.SuppressConsoleOutput)
 
 "@
 
-        # Create log file with header - bypass WhatIf for log operations
-        Set-Content -Path $LogFilePath -Value $logHeader -Encoding UTF8 -Force -ErrorAction Stop -WhatIf:$false
-        Write-Verbose "Log file initialized successfully: $LogFilePath"
+        # An existing file is appended to: a reused -LogPath keeps the earlier runs' entries, which
+        # a tool that changes ACLs must not lose. Bypass WhatIf for log operations.
+        if (Test-Path -LiteralPath $LogFilePath -PathType Leaf) {
+            Add-Content -LiteralPath $LogFilePath -Value "`r`n$logHeader" -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
+            Write-Verbose "Log file appended to: $LogFilePath"
+        }
+        else {
+            Set-Content -LiteralPath $LogFilePath -Value $logHeader -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
+            Write-Verbose "Log file initialized successfully: $LogFilePath"
+        }
     }
     catch {
         throw "Failed to initialize log file '$LogFilePath': $($_.Exception.Message)"

@@ -62,7 +62,7 @@ discovered entries as CSV.
 Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf
 
 DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: A WhatIf line for the run and one per entry that would be removed
+OUTPUT: A WhatIf line for the run and one per object with entries that would be removed
 USE CASE: The review step before a cleanup
 
 ### EXAMPLE 2
@@ -70,7 +70,7 @@ USE CASE: The review step before a cleanup
 Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'
 
 DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\<timestamp>\, then removes
-OUTPUT: One RemovalOperationResult per removed entry
+OUTPUT: One RemovalOperationResult per object changed
 USE CASE: An interactive cleanup with the backup on a dedicated drive
 
 ### EXAMPLE 3
@@ -111,7 +111,8 @@ HelpMessage: ''
 
 JSON configuration file; see Find-OrphanedSid for the keys read.
 ProtectedSIDs and
-WellKnownSIDPatterns are the ones that matter here.
+WellKnownSIDPatterns are the ones that matter here. Each replaces its default list in full, so a
+file that adds a SID must repeat the defaults it keeps. See about_OrphanedSid.
 
 ```yaml
 Type: System.String
@@ -201,7 +202,10 @@ HelpMessage: ''
 
 Also evaluate inherited access control entries.
 Inherited entries cannot be removed from the
-child object; they are reported and the parent is where the cleanup belongs.
+child object, so they are not touched there: each is named in a Warning,
+`Not removing inherited entry for orphaned SID <SID> on <DN>: it is inherited from a parent object, so remove it there`,
+and the object is neither backed up nor changed for it. The explicit entry is
+removed on the parent when the parent is in the search base.
 
 ```yaml
 Type: System.Management.Automation.SwitchParameter
@@ -224,6 +228,8 @@ HelpMessage: ''
 
 Lowest level written to the log file.
 Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug; without either, the LogLevel of
+the -ConfigPath file applies, and Information when there is none.
 
 ```yaml
 Type: System.String
@@ -246,6 +252,8 @@ HelpMessage: ''
 
 Log file.
 Defaults to .\Logs\Remove-OrphanedSid_<yyyyMMdd_HHmmss>.log.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to <name>_<yyyyMMdd_HHmmss>.log.
 
 ```yaml
 Type: System.String
@@ -312,6 +320,7 @@ HelpMessage: ''
 
 CSV file for the discovered entries.
 The parent folder must exist.
+Not written under -WhatIf; the log says so.
 
 ```yaml
 Type: System.String
@@ -436,9 +445,11 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 
 ### RemovalOperationResult
 
-One object per orphaned entry removed, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
+One object per object changed, covering all of its orphaned entries, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
 `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
-`ProcessingTime`, `CorrelationId` and `SecurityValidation`.
+`ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
+backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
+-BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.
 ## NOTES
 
 Author: Jeffrey Stuhr

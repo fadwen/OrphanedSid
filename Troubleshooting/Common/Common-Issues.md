@@ -1,4 +1,4 @@
-﻿# OrphanedSid Common Issues Troubleshooting Guide
+# OrphanedSid Common Issues Troubleshooting Guide
 
 ## Overview
 
@@ -17,7 +17,7 @@ default 3), `-ConfigPath`, `-MaxMemoryUsageMB` (100-16384, default 1024), `-Pres
 `-Confirm`. There is no `-Credential`; every command runs as the current user.
 
 Each command writes its results to the pipeline as objects: one `OrphanedSIDResult` per orphaned
-entry, one `RemovalOperationResult` per orphaned entry removed, one restore result per target.
+entry, one `RemovalOperationResult` per object changed, one restore result per target.
 `-OutputPath` also writes them as CSV, and every run writes a log file.
 
 ## Critical Issues (Immediate Resolution Required)
@@ -74,9 +74,9 @@ Get-ChildItem -Path .\Private -Recurse -Filter *.ps1 | Measure-Object
 
 - `WARNING: Failed to retrieve objects from search base '<DN>': Insufficient access rights ...`
   during discovery.
-- Objects quietly missing from the results: an object whose security descriptor the account cannot
-  read is skipped with the Debug-level `No security descriptor found for <DN>` (see
-  `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`).
+- An object whose security descriptor the account cannot read is skipped with the Warning
+  `Not examined: the security descriptor of <DN> could not be read, usually because the running account lacks permission to read it`, and the summary counts these as
+  `Objects not examined (security descriptor not readable): N`.
 - From `Remove-OrphanedSid`: `Failed to retrieve ACL for <DN>` or Set-Acl access-denied errors.
 
 **Required permissions:**
@@ -230,12 +230,11 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 
 | Key | Type | Default | Accepted |
 | --- | --- | --- | --- |
-| `WellKnownSIDPatterns` | string[] of regex | built-in list | each must compile |
-| `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$` |
+| `WellKnownSIDPatterns` | string[] of regex | built-in list | each must compile; replaces the default list in full |
+| `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$`; replaces the default list in full |
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
-| `EnableDetailedLogging` | bool | false | read but has no effect |
-| `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; validated but has no effect, use `-LogLevel` |
+| `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent |
 | `LogFilePath` | string | null | overrides `-LogPath` for entries after the configuration loads; its folder must exist |
 | `EnableLogFileRotation` | bool | true | |
 | `MaxLogFileSizeMB` | int | 10 | |
@@ -251,7 +250,7 @@ if (Test-Path $configPath) {
         $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
         'Configuration file parses'
         $known = 'WellKnownSIDPatterns', 'ProtectedSIDs', 'BatchSize', 'MemoryCheckInterval',
-            'EnableDetailedLogging', 'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
+            'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
         $config.PSObject.Properties.Name | Where-Object { $_ -notin $known } |
             ForEach-Object { "Ignored key: $_" }
     } catch {
@@ -303,7 +302,7 @@ Columns follow the `OrphanedSIDResult` class: `ObjectDN`, `ObjectClass`, `Orphan
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
 `ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId`, `Timestamp`, then the
-note properties `ProcessingContext` and `ProcessingStatistics` as text. Enum columns hold numbers.
+note properties `ProcessingContext` and `ProcessingStatistics` as text. Enum columns hold names.
 
 #### Issue: Correlation ID cannot be found in the logs
 
@@ -371,15 +370,18 @@ Get-ChildItem -Path .\Logs -Filter '<Command>_*.log' |
     Remove-Item -Force
 ```
 
-Each run starts its log file afresh: a file already at `-LogPath` is overwritten, not appended to
-or rotated. Rotation to `<name>_<yyyyMMdd_HHmmss>.log` (`EnableLogFileRotation`, over
-`MaxLogFileSizeMB`) applies only to an existing file named by the config key `LogFilePath`.
-Security events bypass the `-LogLevel` filter and are always written.
+A run appends to a file already at `-LogPath`, after a blank line and its own header. When that file
+is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on (the default), it
+is first renamed to `<name>_<yyyyMMdd_HHmmss>.log` and the run starts a new file; the run logs
+`Rotated log file to: <path>`. The same applies to a file named by the config key `LogFilePath`.
+Rotated files are never deleted; remove old ones as above. Security events bypass the `-LogLevel`
+filter and are always written.
 
 #### Issue: `-Verbose` or `-Debug` changes the log level unexpectedly
 
 When `-LogLevel` is not given, `-Verbose` sets the file level to `Verbose` and `-Debug` sets it to
-`Debug`. Pass `-LogLevel` explicitly to keep a fixed level while using the common parameters.
+`Debug`, over the `LogLevel` of a `-ConfigPath` file. Pass `-LogLevel` explicitly to keep a fixed
+level while using the common parameters.
 
 ## Diagnostic Commands
 

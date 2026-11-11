@@ -13,11 +13,12 @@
 A security entry looks like:
 
 ```json
-{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.1181234+02:00", ...}
+{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"[ObjectAccess] [Success] Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.1181234+02:00", ...}
 ```
 
-Property order varies. `Message` is the event text alone; `SecurityEventType` and `Outcome` are
-separate properties. `Outcome` `Attempt` and `Success` are written at `Information`, `Failure` at
+Property order varies. `Message` starts with the event type and outcome in brackets, followed by
+the event text; `SecurityEventType` and `Outcome` are also separate properties, which are the
+ones to filter on. `Outcome` `Attempt` and `Success` are written at `Information`, `Failure` at
 `Warning`. On the console only `Warning`, `Error` and
 `Critical` security entries appear, prefixed `[SECURITY]`; `Information` security entries go to the
 file only.
@@ -84,8 +85,8 @@ otherwise it falls back to `Write-SecurityFileEntryDirect`.
    Import-Module OrphanedSid
    & (Get-Module OrphanedSid) {
        Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Information
-       # A relative -LogPath resolves against the module folder, not the current directory
-       $null = Initialize-LogDirectory -LogPath (Join-Path $PWD 'Logs\manual-test.log')
+       # A relative path resolves against the current directory
+       $null = Initialize-LogDirectory -LogPath 'Logs\manual-test.log'
    }
    ```
 
@@ -150,7 +151,9 @@ $metrics = & (Get-Module OrphanedSid) { $script:SecurityLoggingMetrics }
 
 `Invoke-MainProcessingLogic` writes an `AD-ObjectDiscovery` attempt/success pair per search base,
 an `OrphanedSID-Detection` entry per object with findings, and an `OrphanedSID-Removal`
-attempt/success (or failure) pair per SID removed. `Invoke-ADOperationWithRetry` writes an
+attempt/success (or failure) pair per object changed. The second entry of the pair carries
+`ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`, the backup written before the
+change; it is a failure, with `ErrorMessage`, when the removal did not succeed. `Invoke-ADOperationWithRetry` writes an
 `ObjectAccess` attempt and success (or failure) for every directory call it makes, which includes
 each lookup `Test-OrphanedSID` performs for a SID not yet in the cache. During removal
 `Test-SIDSecurity` writes `DataValidation` entries for each SID it validates. The volume therefore

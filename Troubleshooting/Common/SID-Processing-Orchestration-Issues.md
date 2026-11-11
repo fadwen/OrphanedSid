@@ -52,7 +52,7 @@ see them.
 | --- | --- |
 | `Skipping error object: <message>` | Input object carries `IsError = $true`; no module function emits one |
 | `Object missing DistinguishedName property, skipping` | Malformed pipeline input |
-| `No security descriptor found for <DN>` | Object arrived without `nTSecurityDescriptor` |
+| `No security descriptor found for <DN>` | Object arrived without `nTSecurityDescriptor` when `Find-OrphanedSIDsInObject` is called directly; a command run skips such an object earlier with the Warning `Not examined: ...` and counts it under `Objects not examined` |
 | `No access rules retrieved for <DN>` | `Get-ObjectAccessRule` returned nothing; a Warning `All security descriptor retrieval methods failed for <DN>` usually precedes it (see `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`) |
 
 Skips are not errors. `Processing errors` in the summary counts exceptions caught by the per-object

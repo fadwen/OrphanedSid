@@ -276,7 +276,9 @@ class StreamingResultsManager : System.IDisposable {
             if (Test-Path $batchFile) {
                 try {
                     $batchContent = Get-Content $batchFile -Raw | ConvertFrom-Json
-                    $allResults += $batchContent
+                    foreach ($item in @($batchContent)) {
+                        $allResults += $this.RestoreResult($item)
+                    }
                 }
                 catch {
                     Write-Warning "Failed to read batch file $batchFile : $($_.Exception.Message)"
@@ -287,6 +289,53 @@ class StreamingResultsManager : System.IDisposable {
         return $allResults
     }
 
+    # JSON loses types: enums come back as numbers, and a DateTime comes back as UTC on Windows
+    # PowerShell 5.1 and as local time on PowerShell 7. A result that came in as an
+    # OrphanedSIDResult is rebuilt as one; anything else is returned as read.
+    [object]RestoreResult([object]$item) {
+        if ($null -eq $item -or $item -isnot [System.Management.Automation.PSCustomObject]) {
+            return $item
+        }
+        $names = @($item.PSObject.Properties.Name)
+        if (-not ($names -contains 'OrphanedSID' -and $names -contains 'VerificationStatus' -and $names -contains 'ObjectDN')) {
+            return $item
+        }
+
+        # Resolved at run time: a type literal here would bind when this file is parsed. A class
+        # method resolves names in the scope where its class was first compiled; PowerShell 7 reuses
+        # that compiled class when the same file is loaded again, so when that scope does not know
+        # OrphanedSIDResult, the loaded assemblies are searched. Every copy has the same properties.
+        $resultType = 'OrphanedSIDResult' -as [type]
+        if ($null -eq $resultType) {
+            $resultType = [AppDomain]::CurrentDomain.GetAssemblies() |
+                ForEach-Object { $_.GetType('OrphanedSIDResult', $false) } |
+                Where-Object { $_ } | Select-Object -Last 1
+        }
+        if ($null -eq $resultType) {
+            return $item
+        }
+        $typed = $resultType::new()
+        $declared = @($resultType.GetProperties().Name)
+        foreach ($property in $item.PSObject.Properties) {
+            if ($declared -contains $property.Name) {
+                $value = $property.Value
+                if ($property.Name -eq 'Timestamp' -and $value -is [DateTime] -and $value.Kind -eq [DateTimeKind]::Utc) {
+                    $value = $value.ToLocalTime()
+                }
+                elseif ($property.Name -eq 'Timestamp' -and $value -is [string]) {
+                    $value = [DateTime]::Parse($value, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                    if ($value.Kind -eq [DateTimeKind]::Utc) { $value = $value.ToLocalTime() }
+                }
+                $typed.($property.Name) = $value
+            }
+            else {
+                # Note properties added during processing (ProcessingContext, ProcessingStatistics)
+                $typed | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
+            }
+        }
+        return $typed
+    }
+
     [object]GetSummary() {
         # Only update summary if object is not disposed and directory exists
         if (-not $this.Disposed -and (Test-Path $this.TempDirectory -PathType Container)) {
@@ -295,8 +344,11 @@ class StreamingResultsManager : System.IDisposable {
         return $this.Summary
     }
 
-    [void]ExportToCsv([string]$outputPath) {
+    # True when the file was written: nothing is written under WhatIf or when there are no results,
+    # and the caller's log line has to say which
+    [bool]ExportToCsv([string]$outputPath) {
         $allResults = $this.GetAllResults()
+        $written = $false
 
         if ($this.WhatIfMode) {
             Write-Verbose "WhatIf: Would export $($allResults.Count) results to $outputPath"
@@ -304,12 +356,14 @@ class StreamingResultsManager : System.IDisposable {
             if ($allResults.Count -gt 0) {
                 $allResults | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
                 Write-Verbose "Exported $($allResults.Count) results to $outputPath"
+                $written = $true
             }
         }
 
         # Clean up memory
         $allResults = $null
         [System.GC]::Collect()
+        return $written
     }
 
     [long]GetCurrentMemoryUsage() {

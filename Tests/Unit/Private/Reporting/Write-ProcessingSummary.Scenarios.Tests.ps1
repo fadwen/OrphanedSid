@@ -18,9 +18,9 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
     function New-DiscoveryResults {
-        param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [switch]$AsHashtable)
+        param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [int]$Unexamined = -1, [switch]$AsHashtable)
         $manager = [PSCustomObject]@{ Summary = [PSCustomObject]@{ TotalResults = $TotalResults }; Exported = $null }
-        $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path }
+        $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path; $true }
         $results = [ordered]@{
             TotalObjectsProcessed = 37
             ProcessingDuration    = [TimeSpan]::FromSeconds(17.8)
@@ -33,6 +33,9 @@ BeforeAll {
         }
         if ($Unverified -ge 0) {
             $results.UnverifiedSIDsFound = $Unverified
+        }
+        if ($Unexamined -ge 0) {
+            $results.UnexaminedObjects = $Unexamined
         }
         # Invoke-MainProcessingLogic hands the summary a hashtable
         if ($AsHashtable) {
@@ -95,6 +98,25 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*could not be verified*' }
         }
 
+        It 'Counts objects that could not be examined and warns that they were not checked (#47)' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 2)
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Objects not examined (security descriptor not readable): 2' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like '2 object(s) could not be examined*Re-run with an account that may read them.' }
+        }
+
+        It 'Does not warn when every object was examined' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 0)
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*could not be examined*' }
+        }
+
+        It 'Includes the unexamined count in automation output' {
+            $info = Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 5) -AutomationMode 6>&1
+
+            ($info | Out-String) | Should -Match '"UnexaminedObjects":\s*5'
+        }
+
         It 'Includes the unverified count in automation output' {
             $info = Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 4) -AutomationMode 6>&1
 
@@ -109,6 +131,32 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             $results.StreamingManager.Exported | Should -Be $script:csv
             Test-Path $script:csv | Should -BeTrue
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq "Results exported to: $($script:csv)" }
+        }
+
+        It 'Says no file was written when the streaming manager is in WhatIf mode (#50)' {
+            $results = New-DiscoveryResults
+            $results.StreamingManager | Add-Member -NotePropertyName WhatIfMode -NotePropertyValue $true
+            $results.StreamingManager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; $false } -Force
+
+            Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
+
+            Test-Path $script:csv | Should -BeFalse
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $Message -eq "WhatIf: results would be exported to $($script:csv); no file was written"
+            }
+        }
+
+        It 'Warns, instead of claiming an export, when the manager wrote nothing outside WhatIf' {
+            $results = New-DiscoveryResults
+            $results.StreamingManager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $false } -Force
+
+            Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
+
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "No results were read back to export; $($script:csv) was not written"
+            }
         }
 
         It 'Writes no CSV without an output path' {
@@ -196,6 +244,19 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             $rows = @(Import-Csv $script:csv)
             $rows.Count | Should -Be 2
             $rows[1].ErrorMessage | Should -Be 'Access is denied'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Results exported to: $($script:csv)" }
+        }
+
+        It 'Writes no restore CSV under -WhatIf and says so (#50)' {
+            $WhatIfPreference = $true
+
+            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Failed 1 -Results $script:restores) -OutputPath $script:csv
+
+            Test-Path $script:csv | Should -BeFalse
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "WhatIf: results would be exported to $($script:csv); no file was written"
+            }
         }
 
         It 'Says so when no restore was performed' {

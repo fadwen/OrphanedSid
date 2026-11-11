@@ -81,6 +81,35 @@ Describe "Get-ObjectAccessRule" -Tag 'Unit', 'Private', 'Security' {
             }
         }
 
+        It "Stops quietly, without a fallback query or a warning, when every entry is inherited (#48)" {
+            Mock Get-Acl {
+                [PSCustomObject]@{
+                    Access = @([PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1002'; ActiveDirectoryRights = 'ReadProperty'; IsInherited = $true })
+                }
+            }
+            # The binary strategy would read the object's own descriptor; give it one so a call shows
+            $object = New-TestObject -Descriptor (New-TestDescriptor)
+
+            $result = Get-ObjectAccessRule -ADObject $object
+
+            $result | Should -BeNullOrEmpty
+            Should -Invoke Get-ADObject -Times 0 -Exactly
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Warning' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq 'No explicit access rules on CN=TestUser,OU=Users,DC=domain,DC=com (all 1 are inherited)'
+            }
+        }
+
+        It "Still returns the inherited entries of such an object with -IncludeInherited" {
+            Mock Get-Acl {
+                [PSCustomObject]@{
+                    Access = @([PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1002'; ActiveDirectoryRights = 'ReadProperty'; IsInherited = $true })
+                }
+            }
+
+            @(Get-ObjectAccessRule -ADObject (New-TestObject) -IncludeInherited).Count | Should -Be 1
+        }
+
         It "Processes each piped object with its own Get-Acl call" {
             $objects = @((New-TestObject -Dn 'CN=User1,DC=domain,DC=com'), (New-TestObject -Dn 'CN=User2,DC=domain,DC=com'))
 

@@ -8,6 +8,17 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- The documentation now states that `ProtectedSIDs` and `WellKnownSIDPatterns` in a `-ConfigPath`
+  file replace the default lists in full, with nothing merged, and that this is intended: the file
+  is the list. It also says what the built-in well-known check protects whatever the file says,
+  and shows how to start a file from the defaults. The behaviour is unchanged. Two examples that
+  listed only part of the defaults no longer do.
+  ([#54](https://github.com/fadwen/OrphanedSid/issues/54))
+- `Remove-OrphanedSid` returns one `RemovalOperationResult` per object changed, covering all of its
+  removed entries, instead of one per entry, and confirms once per object. Under `-WhatIf` it
+  previews one object per object. When any of an object's orphaned SIDs is blocked by the security
+  check, none of that object's entries is removed.
+  ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
 - `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
   (`Orphaned` or `Unverified`) and `VerificationError`, which names each lookup that failed. An
   unverified SID is listed with `Confidence = Low`. Filter on `VerificationStatus -eq 'Orphaned'` to
@@ -35,14 +46,105 @@ All notable changes to this module are recorded here. Format follows
   [#24](https://github.com/fadwen/OrphanedSid/issues/24),
   [#25](https://github.com/fadwen/OrphanedSid/issues/25),
   [#30](https://github.com/fadwen/OrphanedSid/issues/30))
+- The `EnableDetailedLogging` configuration key, which was read but never acted on. A `-ConfigPath`
+  file that still sets it loads as before; the key is ignored like any other unknown key.
+  ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
+- Five internal backup helpers that no command called: `Test-BackupValidation`,
+  `Test-BackupFormat`, `Get-BackupMetadata`, `Find-BackupFile` and `Get-BackupFileMetadata`. A
+  restore checks each backup with `Test-BackupIntegrity` and finds backups in
+  `Invoke-RestoreWorkflow`; neither used them. `Test-BackupIntegrity` now lives in
+  `Private/Backup/Test-BackupIntegrity.ps1`. The troubleshooting guide's backup inventory, which
+  called `Find-BackupFile`, reads the files directly.
+  ([#53](https://github.com/fadwen/OrphanedSid/issues/53))
 
 ### Fixed
+
+- A fixed `-LogPath` reused across runs was emptied at the start of each run, so the previous run's
+  log was lost, and log rotation never applied to it. A run now appends to an existing log file.
+  When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it
+  is first renamed to `<name>_<yyyyMMdd_HHmmss>.log`, so a run is never split across two files.
+  ([#44](https://github.com/fadwen/OrphanedSid/issues/44))
+- The `OrphanedSID-Removal` audit entry that follows a removal recorded `BackupCreated`,
+  `BackupPath` and `RemovedCount`, none of which the removal result has, so all three were always
+  empty. It was also recorded as `Success` when the removal had failed. It now records
+  `ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`, and is a `Failure`, with
+  the error, when the removal did not succeed. `RemovalOperationResult` gains `BackupFile`, the full
+  path of the backup written before the change.
+  ([#49](https://github.com/fadwen/OrphanedSid/issues/49))
+- `Remove-OrphanedSid -WhatIf -OutputPath` and `Restore-OrphanedSidBackup -WhatIf -OutputPath`
+  logged `Results exported to: <path>` although `-WhatIf` writes no CSV. They now log
+  `WhatIf: results would be exported to <path>; no file was written`.
+  ([#50](https://github.com/fadwen/OrphanedSid/issues/50))
+- A restore that `Set-Acl` refused reported `ACL application failed: ACL application failed:
+  <message>`; the prefix now appears once. Each restored object was also checked twice, at the cost
+  of an extra `Get-ADObject` and `Get-Acl` against the domain controller per object; it is checked
+  once. ([#51](https://github.com/fadwen/OrphanedSid/issues/51))
+- A backup's `BackupDate` held local time followed by a `Z`, which marks UTC, so anything that
+  parsed it was off by the machine's UTC offset. It is now written in UTC. Backups made earlier
+  keep their local time.
+  ([#52](https://github.com/fadwen/OrphanedSid/issues/52))
+- A security audit line's `Message` lost its `[<type>] [<outcome>]` prefix: a plain copy of the
+  message among the entry's data overwrote the composed one, in the file and in the console
+  warning for a failure. Both now carry the prefixed message, as the Verbose stream and the
+  fallback files already did.
+  ([#55](https://github.com/fadwen/OrphanedSid/issues/55))
+- A container restore in which objects failed returned a summary with `Success = False` and an
+  empty `ErrorMessage`, and wrote that empty error to its `-OutputPath` CSV row; the reasons were
+  only in `IndividualResults`. The summary now reads `<failed> of <total> objects failed to
+  restore: <reasons>`, or `No objects were restored` when nothing was found to restore.
+  ([#70](https://github.com/fadwen/OrphanedSid/issues/70))
+- The module version recorded in a backup's `ScriptVersion`, a result's `ProcessingContext` and the
+  log header was hard-coded (`2.1.0`, `1.0.0` and `2.0.0`). It is now read from the loaded module,
+  and the log header line is `Module Version: <version>`. The `WellKnownSIDsSkipped` counter in a
+  result's `ProcessingStatistics`, which was never incremented, is removed.
+  ([#52](https://github.com/fadwen/OrphanedSid/issues/52))
 
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the
   retries). The next lookup, which searches deleted objects, also returns live objects, and any match
   there was taken as proof of deletion. Only a match marked `isDeleted` now counts as deleted; a
   live match means the SID exists. ([#39](https://github.com/fadwen/OrphanedSid/issues/39))
+- Restoring an object from which `Remove-OrphanedSid` had removed several orphaned SIDs brought back
+  only the last one. Each SID was removed in its own step with its own backup, so every backup after
+  the first already lacked the SIDs removed before it, and restore uses the newest. When two of
+  those backups fell in the same second, the second also overwrote the first. An object's orphaned
+  SIDs are now removed together after one backup, and a backup never overwrites an earlier one: a
+  second backup of the same object in the same second gets a `_2` suffix.
+  ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
+- With `-IncludeInherited`, `Remove-OrphanedSid` tried to remove an inherited orphaned entry from the
+  child object that inherits it, which cannot work: it backed the child up, changed nothing, and
+  reported `ActualRemovals = 1` with `Success = False`. An inherited entry is now left alone with a
+  warning naming it, and the child is not backed up for it; the entry is removed on the parent that
+  sets it. ([#46](https://github.com/fadwen/OrphanedSid/issues/46))
+- An object whose security descriptor the running account may not read was skipped with a
+  Debug-level message only, so at the default log level a run that could not examine part of the
+  search base looked clean. Each such object is now named in a Warning, and the summary reports
+  `Objects not examined (security descriptor not readable): N` and warns when N is above zero.
+  ([#47](https://github.com/fadwen/OrphanedSid/issues/47))
+- `-CorrelationId` did not reach every log line and result row, as the help says it does: the
+  object-discovery and per-object detection steps generated their own IDs, so their log lines and
+  every `Find-OrphanedSid` result and CSV row carried other GUIDs. The run's ID is now passed through
+  every step. ([#42](https://github.com/fadwen/OrphanedSid/issues/42))
+- `Find-OrphanedSid` returned untyped objects instead of the `OrphanedSIDResult` its help describes.
+  Its results are read back from batch files on disk, which turned `ActiveDirectoryRights`,
+  `AccessControlType` and `InheritanceType` into numbers (also in the `-OutputPath` CSV) and made
+  `Timestamp` UTC on Windows PowerShell 5.1 but local time on PowerShell 7. Results are now rebuilt
+  as `OrphanedSIDResult` with enum names and local time on both, and `Remove-OrphanedSid -WhatIf`
+  previews with the same `RemovalOperationResult` type a real removal returns.
+  ([#41](https://github.com/fadwen/OrphanedSid/issues/41))
+- A relative `-LogPath` was resolved against the module's own folder, so `-LogPath .\run.log` wrote
+  into the module's install folder. It is now resolved against the current directory. A log entry
+  that cannot be written now produces the module's `Failed to write log entry to file: ...` warning
+  instead of a raw `Add-Content` error. ([#45](https://github.com/fadwen/OrphanedSid/issues/45))
+- An object whose access control entries are all inherited produced the warning `All security
+  descriptor retrieval methods failed`, although its ACL was read, and was read up to twice more
+  by the fallback strategies. Without `-IncludeInherited` such an object has nothing to examine,
+  and it is now skipped after the first read with a Debug entry.
+  ([#48](https://github.com/fadwen/OrphanedSid/issues/48))
+- The `LogLevel` key of a `-ConfigPath` file was validated but had no effect: a file with
+  `"LogLevel": "Error"` still produced `Information` entries. It now sets the file log level when
+  the command line sets none. `-LogLevel` wins over it, and so do `-Verbose` and `-Debug`.
+  ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

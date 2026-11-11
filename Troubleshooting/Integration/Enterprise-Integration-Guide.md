@@ -1,4 +1,4 @@
-﻿# Enterprise Integration Guide - OrphanedSid
+# Enterprise Integration Guide - OrphanedSid
 ## Overview
 
 This guide covers running `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`
@@ -6,16 +6,15 @@ from schedulers, pipelines and monitoring systems, and the integration problems 
 they behave:
 
 - Each command writes its **results to the pipeline** as objects: one `OrphanedSIDResult` per
-  orphaned or unverified entry, one `RemovalOperationResult` per orphaned SID removed, one restore result per
+  orphaned or unverified entry, one `RemovalOperationResult` per object changed, one restore result per
   target. `-OutputPath` also writes them as CSV, and every run writes a log file.
 - The log file starts with a plain-text header block. Regular entries are **plain text**, one line
   each: `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`, ending
   with ` | Details: <json>` when there is extra data. Security audit entries are **one JSON object
   per line** with `Timestamp`, `Level`, `Component` (`SecurityAudit`), `CorrelationId`, `Message`
   and the event's context fields.
-- The run's correlation ID is in most lines (object-discovery and per-object detection lines
-  carry their own IDs) but **never in the file name** (`<Command>_<yyyyMMdd_HHmmss>.log` by
-  default).
+- The run's correlation ID is in every line but **never in the file name**
+  (`<Command>_<yyyyMMdd_HHmmss>.log` by default).
 - `-OutputPath` always produces **CSV**, whatever extension is given.
 - There is no parallel mode, no throttle parameter and no `-Credential`; every command runs as the
   invoking account.
@@ -214,8 +213,8 @@ Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath 
 Select-String -Path .\Logs\Find-OrphanedSid_*.log -Pattern $id -SimpleMatch
 ```
 
-Every row of the CSV carries a `CorrelationId` column, but that value is the per-object ID
-generated during processing, not the run ID. Use the file name or the log to tie a CSV to a run.
+Every row of the CSV carries the run's correlation ID in its `CorrelationId` column, so a CSV ties
+back to its run's log through that value.
 
 ## Automation Framework Examples
 
@@ -287,24 +286,29 @@ keys are ignored silently:
 {
   "BatchSize": 50,
   "MemoryCheckInterval": 50,
-  "EnableDetailedLogging": false,
   "LogLevel": "Information",
   "LogFilePath": "\\\\fileserver\\logs\\ADSecurity\\OrphanedSid.log",
   "EnableLogFileRotation": true,
-  "MaxLogFileSizeMB": 10,
-  "ProtectedSIDs": ["S-1-5-32-544", "S-1-5-32-545", "S-1-5-32-546", "S-1-5-18", "S-1-5-19", "S-1-5-20"],
-  "WellKnownSIDPatterns": ["^S-1-1-0$", "^S-1-5-11$", "^S-1-5-32-", "^S-1-3-[0-4]$", "^S-1-5-18$", "^S-1-5-19$", "^S-1-5-20$"]
+  "MaxLogFileSizeMB": 10
 }
 ```
 
-`LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
-automatically, so it must already exist or every entry fails with an `Add-Content` error
-(`Could not find a part of the path '<path>'`). Search base, memory limit, retries, and output path
+`ProtectedSIDs` and `WellKnownSIDPatterns` can be set in the same file, but each replaces its
+default list in full, so a partial list drops the defaults it leaves out. The built-in well-known
+check does not cover some of those, such as the integrity-level (`^S-1-16-`) and app-package
+(`^S-1-15-2-`) patterns. Build such a file from the defaults as
+[Automation](../../Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows.
+
+`LogLevel` in the file sets the file log level when the command is run without `-LogLevel`,
+`-Verbose` or `-Debug`. `LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
+automatically, so it must already exist or every entry fails with the warning
+`Failed to write log entry to file: Could not find a part of the path '<path>'.`. Search base,
+memory limit, retries, and output path
 are parameters only and cannot be set in the file. Validate a file before deploying it:
 
 ```powershell
 $known = 'WellKnownSIDPatterns', 'ProtectedSIDs', 'BatchSize', 'MemoryCheckInterval',
-    'EnableDetailedLogging', 'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
+    'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
 (Get-Content -Path .\config.json -Raw | ConvertFrom-Json).PSObject.Properties.Name |
     Where-Object { $_ -notin $known } | ForEach-Object { "Ignored key: $_" }
 ```

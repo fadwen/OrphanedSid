@@ -18,7 +18,7 @@
 .NOTES
     Author: Jeffrey Stuhr
     Module: Find-UnknownSID.RestoreOperations
-    Dependencies: Test-BackupValidation, Restore-ACLOperation modules
+    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1
     Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
@@ -175,7 +175,7 @@ function Invoke-RestoreWorkflow {
 
         # Import required modules if not already loaded
         if (-not (Get-Command Test-BackupIntegrity -ErrorAction SilentlyContinue)) {
-            . $PSScriptRoot\Test-BackupValidation.ps1
+            . $PSScriptRoot\Test-BackupIntegrity.ps1
         }
 
         if (-not (Get-Command Set-ObjectACL -ErrorAction SilentlyContinue)) {
@@ -479,6 +479,22 @@ function Invoke-RestoreWorkflow {
 
         # Compile comprehensive workflow result
         if ($restoreMode -eq "Bulk") {
+            # Objects that failed without an exception leave $errorMessage unset; the summary, and the
+            # -OutputPath CSV row built from it, would then say nothing about why the restore failed
+            if (-not $overallSuccess -and -not $errorMessage) {
+                $failedResults = @($allResults | Where-Object { -not $_.Success })
+                $processedCount = $workflowSteps[-1].ProcessedObjects
+                if ($failedResults.Count -gt 0) {
+                    $reasons = @($failedResults | ForEach-Object { $_.ErrorMessage } | Where-Object { $_ } | Select-Object -Unique)
+                    $errorMessage = "$($failedResults.Count) of $processedCount objects failed to restore"
+                    if ($reasons.Count -gt 0) {
+                        $errorMessage += ": $($reasons -join '; ')"
+                    }
+                } else {
+                    $errorMessage = 'No objects were restored'
+                }
+            }
+
             # Return summary result for bulk operations
             $result = [PSCustomObject]@{
                 Success = $overallSuccess
@@ -609,11 +625,12 @@ function Restore-IndividualObject {
             throw "Target validation failed: $($targetValidation.Issues -join '; ')"
         }
 
-        # Apply ACL restoration
-        $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
+        # Apply ACL restoration. The target was validated above, so Set-ObjectACL does not read it again.
+        $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -SkipTargetValidation -CorrelationId $CorrelationId
 
         if (-not $aclOperation.Success) {
-            throw "ACL application failed: $($aclOperation.ErrorMessage)"
+            # Set-ObjectACL's message already starts "ACL application failed:" or "ACL operation failed:"
+            throw $aclOperation.ErrorMessage
         }
 
         # Create success result

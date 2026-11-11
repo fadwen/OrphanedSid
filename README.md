@@ -1,4 +1,4 @@
-﻿# OrphanedSid
+# OrphanedSid
 
 [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/OrphanedSid?label=PowerShell%20Gallery)](https://www.powershellgallery.com/packages/OrphanedSid)
 [![Gallery downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fadwen/OrphanedSid/badges/gallery-downloads.json)](https://www.powershellgallery.com/packages/OrphanedSid)
@@ -27,7 +27,7 @@ applies it. Discovery results stream to batch files on disk while the run is in 
 ### Key features
 
 - **Objects on the pipeline.** One `OrphanedSIDResult` per orphaned entry, one
-  `RemovalOperationResult` per removed entry, one restore result per target. `-OutputPath` also
+  `RemovalOperationResult` per object changed, one restore result per target. `-OutputPath` also
   writes CSV.
 - **Backup before change.** Every `Remove-OrphanedSid` run writes one Clixml file per modified
   object into a timestamped folder; `Restore-OrphanedSidBackup` validates the SHA256 hash before
@@ -162,12 +162,16 @@ cause is fixed.
 
 | Key | Range | Effect |
 | --- | --- | --- |
-| `WellKnownSIDPatterns` | regex list | Matching identity references are never reported |
-| `ProtectedSIDs` | SID list | Never removed, even if unresolvable; replaces the default list |
+| `WellKnownSIDPatterns` | regex list | Matching identity references are never reported; **replaces the default list in full** |
+| `ProtectedSIDs` | SID list | Never removed, even if unresolvable; **replaces the default list in full** |
 | `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
 | `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
-| `LogLevel` | Critical to Verbose | Default file log level; `-LogLevel` wins |
-| `EnableDetailedLogging`, `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+| `LogLevel` | Critical to Verbose | File log level when the command line sets none; `-LogLevel`, `-Verbose` and `-Debug` win |
+| `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+
+A file that sets either SID list uses exactly that list; to add to the defaults, repeat them in the
+file. [Automation](Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows how
+to start a file from the defaults and what stays protected regardless.
 
 Everything else is a command parameter. See `Get-Help Find-OrphanedSid -Full` and
 `Get-Help about_OrphanedSid`.

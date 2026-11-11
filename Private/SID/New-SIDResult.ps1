@@ -215,7 +215,7 @@ function New-OrphanedSIDResult {
         Write-StructuredLog "Creating OrphanedSIDResult object for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
 
         # Validate OrphanedSID format
-        if (-not (Test-SIDFormat -SID $OrphanedSID)) {
+        if (-not (Test-SIDFormat -SID $OrphanedSID -CorrelationId $CorrelationId)) {
             throw "Invalid SID format provided: $OrphanedSID"
         }
 
@@ -305,7 +305,7 @@ function Add-ProcessingMetadata {
                 UserName = $env:USERNAME
                 ProcessId = $PID
                 PowerShellVersion = $PSVersionTable.PSVersion.ToString()
-                ModuleVersion = "1.0.0"
+                ModuleVersion = Get-OrphanedSidModuleVersion
             }
         }
 

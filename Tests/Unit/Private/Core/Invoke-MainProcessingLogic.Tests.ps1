@@ -24,6 +24,8 @@
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\ProcessingStatistics.ps1"
+    # The -WhatIf preview is built as a RemovalOperationResult
+    . "$PSScriptRoot\..\..\..\..\Classes\RemovalOperationResult.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\StreamingResultsManager.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Test-ValidDistinguishedName.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Core\Invoke-MainProcessingLogic.ps1"
@@ -38,11 +40,16 @@ BeforeAll {
     function Invoke-Cleanup { param($CorrelationId, [switch]$WhatIf) }
 
     $script:SidA = 'S-1-5-21-123456789-123456789-123456789-1001'
+    $script:SidB = 'S-1-5-21-123456789-123456789-123456789-1002'
     $script:DomainSid = 'S-1-5-21-123456789-123456789-123456789'
 
+    # A readable object, as discovery returns it: with a security descriptor. -Unreadable leaves the
+    # descriptor out, as Active Directory does for an account that may not read it.
     function New-TestObject {
-        param([string]$Name, [string]$ObjectClass)
-        [PSCustomObject]@{ DistinguishedName = "CN=$Name,OU=Test,DC=test,DC=com"; ObjectClass = $ObjectClass }
+        param([string]$Name, [string]$ObjectClass, [switch]$Unreadable)
+        $object = [PSCustomObject]@{ DistinguishedName = "CN=$Name,OU=Test,DC=test,DC=com"; ObjectClass = $ObjectClass; nTSecurityDescriptor = $null }
+        if (-not $Unreadable) { $object.nTSecurityDescriptor = [PSCustomObject]@{ Sddl = 'D:' } }
+        $object
     }
 
     # Runs the subject with a fresh correlation ID unless the test supplies one
@@ -81,8 +88,17 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         Mock Find-OrphanedSIDsInObject {
             [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
         }
+        # The real result type: a double with properties of its own once let the audit entry read
+        # BackupCreated, BackupPath and RemovedCount, none of which the module returns (#49)
         Mock Remove-OrphanedSidEntry {
-            [PSCustomObject]@{ ObjectDN = $ObjectDN; RemovedSIDs = $OrphanedSIDs; BackupCreated = $true; BackupPath = $BackupPath; RemovedCount = @($OrphanedSIDs).Count }
+            $removal = [RemovalOperationResult]::new()
+            $removal.ObjectDN = $ObjectDN
+            $removal.IntendedRemovals = @($OrphanedSIDs).Count
+            $removal.ActualRemovals = @($OrphanedSIDs).Count
+            $removal.RemovedSIDs = $OrphanedSIDs
+            $removal.Success = $true
+            if ($BackupPath) { $removal.BackupFile = Join-Path $BackupPath "$($ObjectDN -replace '[,=]', '_')_20260101_120000.xml" }
+            $removal
         }
     }
 
@@ -349,9 +365,67 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
                 $CorrelationId -eq $script:LastCorrelationId
             }
             @($result.RemovalResults).Count | Should -Be 3
-            $result.RemovalResults[0].BackupPath | Should -Be 'C:\Backups'
+            $result.RemovalResults[0].BackupFile | Should -BeLike 'C:\Backups\CN_User1_*.xml'
         }
 
+        It "Removes all of an object's orphaned SIDs in one call, so the object is backed up once (#40)" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+            }
+
+            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; BackupPath = 'C:\Backups' }
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter {
+                $ObjectDN -eq 'CN=User1,OU=Test,DC=test,DC=com' -and
+                @($OrphanedSIDs).Count -eq 2 -and $OrphanedSIDs -contains $script:SidA -and $OrphanedSIDs -contains $script:SidB
+            }
+            @($result.RemovalResults).Count | Should -Be 1
+        }
+
+        It "Does not remove, or back up, an object whose orphaned entry is only inherited, and says why (#46)" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'Child' -ObjectClass 'group' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $true }
+            }
+
+            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; IncludeInherited = $true }
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 0 -Exactly
+            @($result.RemovalResults).Count | Should -Be 0
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and
+                $Message -eq "Not removing inherited entry for orphaned SID $($script:SidA) on CN=Child,OU=Test,DC=test,DC=com: it is inherited from a parent object, so remove it there"
+            }
+        }
+
+        It "Removes a SID that is set explicitly even when an inherited entry names it too" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'Child' -ObjectClass 'group' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $true }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $false }
+            }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; IncludeInherited = $true } | Out-Null
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter { @($OrphanedSIDs).Count -eq 1 -and $OrphanedSIDs[0] -eq $script:SidA }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like 'Not removing inherited entry*' }
+        }
+
+        It "Leaves an object's unverified SID out of its single removal call" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Access is denied.' }
+            }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter { @($OrphanedSIDs).Count -eq 1 -and $OrphanedSIDs[0] -eq $script:SidA }
+        }
         It "Leaves BackupPath unbound when none is given" {
             Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
 
@@ -363,13 +437,38 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
 
             Should -Invoke Write-ADOperationSecurityLog -Times 3 -Exactly -ParameterFilter {
                 $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Attempt' -and
-                $SecurityContext.OrphanedSID -eq $script:SidA -and $SecurityContext.BackupPath -eq 'C:\Backups' -and
+                $SecurityContext.OrphanedSIDs -eq $script:SidA -and $SecurityContext.BackupPath -eq 'C:\Backups' -and
                 -not $SecurityContext.ContainsKey('SimulationMode')
             }
             Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
                 $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Success' -and
                 $SecurityContext.ObjectDN -eq 'CN=Group1,OU=Test,DC=test,DC=com' -and
-                $SecurityContext.BackupCreated -eq $true -and $SecurityContext.RemovedCount -eq 1
+                $SecurityContext.BackupCreated -eq $true -and $SecurityContext.ActualRemovals -eq 1 -and
+                $SecurityContext.FailedRemovals -eq 0 -and
+                $SecurityContext.BackupFile -eq 'C:\Backups\CN_Group1_OU_Test_DC_test_DC_com_20260101_120000.xml' -and
+                -not $SecurityContext.ContainsKey('RemovedCount')
+            }
+        }
+
+        It "Logs the removal as a Failure when the returned result says it failed (#49)" {
+            Mock Remove-OrphanedSidEntry {
+                $removal = [RemovalOperationResult]::new()
+                $removal.ObjectDN = $ObjectDN
+                $removal.IntendedRemovals = 1
+                $removal.Success = $false
+                $removal.ErrorMessage = 'Failed to apply ACL changes'
+                $removal
+            }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
+
+            Should -Invoke Write-ADOperationSecurityLog -Times 0 -Exactly -ParameterFilter {
+                $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Success'
+            }
+            Should -Invoke Write-ADOperationSecurityLog -Times 3 -Exactly -ParameterFilter {
+                $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Failure' -and
+                $SecurityContext.ErrorMessage -eq 'Failed to apply ACL changes' -and
+                $SecurityContext.BackupCreated -eq $false -and $SecurityContext.ActualRemovals -eq 0
             }
         }
 
@@ -380,6 +479,12 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             @($result.RemovalResults).Count | Should -Be 3
             $result.RemovalResults[0].SecurityValidation | Should -Be 'WhatIf - Would Remove'
             $result.RemovalResults[0].ObjectDN | Should -Be 'CN=User1,OU=Test,DC=test,DC=com'
+            # The same type a real removal returns (#41), with nothing removed
+            $result.RemovalResults[0].GetType().Name | Should -Be 'RemovalOperationResult'
+            $result.RemovalResults[0].IntendedRemovals | Should -Be 1
+            $result.RemovalResults[0].ActualRemovals | Should -Be 0
+            @($result.RemovalResults[0].RemovedSIDs) | Should -Be @($script:SidA)
+            $result.RemovalResults[0].CorrelationId | Should -Be $script:LastCorrelationId
             Should -Invoke Write-ADOperationSecurityLog -Times 3 -Exactly -ParameterFilter {
                 $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Attempt' -and
                 $SecurityContext.SimulationMode -eq $true -and $SecurityContext.WhatIfMode -eq $true
@@ -478,6 +583,31 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         }
     }
 
+    Context "Objects that cannot be read" {
+        It "Warns about, counts and skips an object returned without a readable security descriptor (#47)" {
+            Mock Get-ADObjectsSequential {
+                New-TestObject -Name 'Hidden' -ObjectClass 'user' -Unreadable
+                New-TestObject -Name 'User1' -ObjectClass 'user'
+            }
+
+            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true }
+
+            $result.UnexaminedObjects | Should -Be 1
+            $result.TotalObjectsProcessed | Should -Be 2
+            Should -Invoke Find-OrphanedSIDsInObject -Times 1 -Exactly
+            Should -Invoke Find-OrphanedSIDsInObject -Times 0 -Exactly -ParameterFilter { $ADObject.DistinguishedName -like 'CN=Hidden,*' }
+            Should -Invoke Remove-OrphanedSidEntry -Times 0 -Exactly -ParameterFilter { $ObjectDN -like 'CN=Hidden,*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and
+                $Message -eq 'Not examined: the security descriptor of CN=Hidden,OU=Test,DC=test,DC=com could not be read, usually because the running account lacks permission to read it'
+            }
+        }
+
+        It "Reports zero unexamined objects when every object is readable" {
+            (Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com' }).UnexaminedObjects | Should -Be 0
+        }
+    }
+
     Context "Unverified SIDs" {
         BeforeEach {
             $script:unverifiedSid = 'S-1-5-21-123456789-123456789-123456789-2002'
@@ -526,7 +656,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         It "Leaves the unverified SID out of a -WhatIf preview" {
             $result = Invoke-Subject @{ SearchBase = 'OU=Users,DC=test,DC=com'; Remove = $true; WhatIf = $true }
 
-            @($result.RemovalResults.OrphanedSID) | Should -Be @($script:verifiedSid)
+            @($result.RemovalResults.RemovedSIDs) | Should -Be @($script:verifiedSid)
         }
     }
 }

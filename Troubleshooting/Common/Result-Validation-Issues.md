@@ -16,7 +16,7 @@ The columns are the class members: `ObjectDN`, `ObjectClass`, `OrphanedSID`, `Li
 `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`, `InheritanceType`,
 `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`, `ActionTaken`,
 `VerificationStatus`, `VerificationError`, `CorrelationId`, `Timestamp`, followed by the
-`ProcessingContext` and `ProcessingStatistics` note properties as text. Enum columns hold numbers.
+`ProcessingContext` and `ProcessingStatistics` note properties as text. Enum columns hold names.
 
 ```powershell
 $rows = Import-Csv -Path .\Reports\orphaned-sids.csv
@@ -51,18 +51,17 @@ result is created. The SIDs check 2 matches are in a list built into that functi
 
 | Finding | Meaning |
 | --- | --- |
-| Many rows share one `CorrelationId` | Expected: results from the same object share the ID generated for that object |
-| `ActiveDirectoryRights = 131220` (GenericRead), `AccessControlType = 0` (Allow) on every row | Access rules lacked those properties and defaults were applied; see Result-Creation-Issues.md |
+| Every row has the same `CorrelationId` | Expected: every result of a run carries the run's `-CorrelationId` (a new GUID when none is given) |
+| `ActiveDirectoryRights = GenericRead`, `AccessControlType = Allow` on every row | Access rules lacked those properties and defaults were applied; see Result-Creation-Issues.md |
 | `LikelySource = Unknown Domain` | `Get-SIDAnalysis` had no domain SID to compare against; see `.\Troubleshooting\Security\SID-Analysis-Issues.md` |
-| `Timestamp` is local time (UTC on Windows PowerShell 5.1) | See Metadata-Population-Issues.md; convert on export when UTC is required |
+| `Timestamp` is local time | See Metadata-Population-Issues.md; convert on export when UTC is required |
 | Row count lower than `ORPHANED ACCOUNT DETECTED` log entries suggest | Name-form identities that fail translation are logged but produce no result; see Result-Creation-Issues.md |
 | A SID that does resolve today | `Test-OrphanedSID` marks a SID orphaned only when every lookup completed and none found it; a failed lookup gives `VerificationStatus = Unverified`. Re-run and compare |
 
 ## Validating Live Objects
 
-Results emitted by `Find-OrphanedSid` are read back from JSON batch files, so they are
-`PSCustomObject`s, not class instances. For results from `Find-OrphanedSIDsInObject` run in the
-module scope (as shown in Metadata-Population-Issues.md), type checks replace property-name checks:
+Results emitted by `Find-OrphanedSid` are `OrphanedSIDResult` instances, so type checks replace
+property-name checks. The class is defined inside the module, so check the type in module scope:
 
 ```powershell
 & (Get-Module OrphanedSid) { param($r) $r | Where-Object { $_ -isnot [OrphanedSIDResult] } } $results

@@ -107,8 +107,11 @@ USE CASE: Re-checking after a domain controller outage or a permissions problem 
 
 JSON configuration file.
 Only WellKnownSIDPatterns, ProtectedSIDs, BatchSize,
-MemoryCheckInterval, EnableDetailedLogging, LogLevel, LogFilePath, EnableLogFileRotation
+MemoryCheckInterval, LogLevel, LogFilePath, EnableLogFileRotation
 and MaxLogFileSizeMB are read.
+The file's LogLevel applies when -LogLevel, -Verbose and -Debug are all absent.
+ProtectedSIDs and WellKnownSIDPatterns replace the default lists in full; repeat the defaults to
+keep them. See about_OrphanedSid.
 
 ```yaml
 Type: System.String
@@ -176,6 +179,8 @@ HelpMessage: ''
 
 Lowest level written to the log file.
 Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug; without either, the LogLevel of
+the -ConfigPath file applies, and Information when there is none.
 
 ```yaml
 Type: System.String
@@ -199,6 +204,8 @@ HelpMessage: ''
 Log file.
 Defaults to .\Logs\Find-OrphanedSid_<yyyyMMdd_HHmmss>.log under the current
 directory.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to <name>_<yyyyMMdd_HHmmss>.log.
 
 ```yaml
 Type: System.String
@@ -371,7 +378,8 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 One object per orphaned access control entry, with `ObjectDN`, `ObjectClass`, `OrphanedSID`,
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
-`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`.
+`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`, plus the
+note properties `ProcessingContext` and `ProcessingStatistics`.
 
 `VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
 `Unverified` when a lookup failed; `VerificationError` then names each failed lookup.

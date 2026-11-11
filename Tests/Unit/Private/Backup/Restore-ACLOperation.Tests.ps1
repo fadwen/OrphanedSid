@@ -179,6 +179,16 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             }
         }
 
+        It "Should not check the target again with -SkipTargetValidation (#51)" {
+            Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; Issues = @('must not be asked') } }
+
+            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -SkipTargetValidation
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Get-RestorationTarget -Times 0 -Exactly
+            Should -Invoke Set-Acl -Times 1 -Exactly
+        }
+
         It "Should report the reasons Get-RestorationTarget gives for rejecting the target" {
             Mock Get-RestorationTarget {
                 [PSCustomObject]@{ IsValid = $false; Issues = @('Target object not found or inaccessible: no such object', 'Cannot read current ACL: denied') }

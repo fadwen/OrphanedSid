@@ -169,6 +169,8 @@ HelpMessage: ''
 
 Lowest level written to the log file.
 Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug, and the level is otherwise
+Information.
 
 ```yaml
 Type: System.String
@@ -191,6 +193,8 @@ HelpMessage: ''
 
 Log file.
 Defaults to .\Logs\Restore-OrphanedSidBackup_<yyyyMMdd_HHmmss>.log.
+An existing file is appended to; one larger than 10 MB is first renamed to
+<name>_<yyyyMMdd_HHmmss>.log.
 
 ```yaml
 Type: System.String
@@ -213,6 +217,7 @@ HelpMessage: ''
 
 CSV file for the restore results.
 The parent folder must exist.
+Not written under -WhatIf; the log says so.
 
 ```yaml
 Type: System.String
@@ -318,7 +323,9 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 One object per target. For a container it summarises the run (`TotalObjects`,
 `SuccessfulRestores`, `FailedRestores`, `IndividualResults`); for a single object it is that
 object's restore result. Both carry `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`
-and `CorrelationId`.
+and `CorrelationId`. A failed container summary's `ErrorMessage` reads
+`<failed> of <total> objects failed to restore: <reasons>`, listing each distinct reason from
+`IndividualResults` once, or `No objects were restored` when no backup was found under it.
 ## NOTES
 
 Author: Jeffrey Stuhr

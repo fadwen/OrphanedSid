@@ -23,11 +23,9 @@ the object it came from. This guide covers the metadata that can look wrong and 
 #### Issue: Timestamps are local time, not UTC
 
 `Timestamp` is set with `Get-Date` in the class constructor and again in `Add-ProcessingMetadata`,
-so it carries the local time of the machine running the command with `Kind = Local`. The results a
-command emits and exports are read back from JSON batch files: on PowerShell 7 they keep local time,
-on Windows PowerShell 5.1 they come back as UTC (`Kind = Utc`). The CSV written by `-OutputPath`
-serialises the value in the local culture's format. Convert on the way out when a downstream system
-needs UTC:
+so it carries the local time of the machine running the command with `Kind = Local`, on Windows
+PowerShell 5.1 and PowerShell 7 alike. The CSV written by `-OutputPath` serialises the value in the
+local culture's format. Convert on the way out when a downstream system needs UTC:
 
 ```powershell
 Import-Csv -Path .\Reports\orphaned-sids.csv | ForEach-Object {
@@ -36,8 +34,9 @@ Import-Csv -Path .\Reports\orphaned-sids.csv | ForEach-Object {
 } | Export-Csv -Path .\Reports\orphaned-sids-utc.csv -NoTypeInformation
 ```
 
-Backup files use a different field: `BackupDate` is written as `yyyy-MM-ddTHH:mm:ss.fffZ` text
-(local time with a literal `Z`). Treat it as local when comparing with `Timestamp`.
+Backup files use a different field: `BackupDate` is written as `yyyy-MM-ddTHH:mm:ss.fffZ` text in
+UTC. Convert one of the two before comparing it with `Timestamp`. Backups written by 1.0.1 and
+earlier hold local time with a literal `Z`, so treat theirs as local.
 
 #### Issue: Timestamps appear out of order or far apart in one run
 
@@ -61,7 +60,6 @@ property that `Find-OrphanedSIDsInObject` attaches to every result from one obje
 | `AccessRulesRetrieved` | Rules returned by `Get-ObjectAccessRule` |
 | `ProcessedSIDs` | Rules evaluated, including well-known and resolved ones |
 | `SkippedSIDs` | Rules whose evaluation threw an error |
-| `WellKnownSIDsSkipped` | Never incremented; always `0` |
 | `OrphanedSIDsFound` | Orphaned results created |
 | `UnverifiedSIDsFound` | Unverified results created |
 | `ErrorsEncountered` | Exceptions caught for that object |
@@ -98,21 +96,17 @@ no WMI query is involved. See `.\Troubleshooting\Performance\Memory-Management-I
 
 #### Issue: Many results share one correlation ID
 
-Expected. `New-OrphanedSIDResult` receives `-CorrelationId` from the calling chain
-(`Find-OrphanedSIDsInObject` -> `Test-AccessRuleForOrphanedSID`), so every result from one object
-shares that object's ID. The GUID the class constructor assigns is always overwritten by
+Expected. Every result of a run carries the run's `-CorrelationId`: `Invoke-MainProcessingLogic`
+passes it to `Find-OrphanedSIDsInObject`, which passes it on to `Test-AccessRuleForOrphanedSID` and
+`New-OrphanedSIDResult`. The GUID the class constructor assigns is always overwritten by
 `Add-ProcessingMetadata`. Uniqueness per result is not a goal; traceability from result to log
 lines is.
 
-The main run's `-CorrelationId` is what appears in the `[Main]`, `[MainProcessing]` and `[Summary]`
-log lines. `Invoke-MainProcessingLogic` calls `Find-OrphanedSIDsInObject` without one, so that
-function generates a GUID per object and a result's `CorrelationId` is the per-object GUID, not
-the run's.
-To tie a result back to a run, filter the log file by `ObjectDN` instead:
+To find the log lines for one result, filter the run's log by its `ObjectDN`:
 
 ```powershell
 $dn = 'CN=User1,OU=Test,DC=contoso,DC=com'
-Select-String -Path .\Logs\<Command>_*.log -Pattern ([regex]::Escape($dn)) | Select-Object -First 10
+Select-String -Path .\Logs\Find-OrphanedSid_*.log -Pattern ([regex]::Escape($dn)) | Select-Object -First 10
 ```
 
 #### Issue: Correlation ID format
@@ -128,7 +122,8 @@ Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
 ### 4. Processing Context
 
 Each result also carries a `ProcessingContext` note property (hashtable) with `MachineName`,
-`UserName`, `ProcessId`, `PowerShellVersion` and `ModuleVersion` (always `1.0.0`). Like
+`UserName`, `ProcessId`, `PowerShellVersion` and `ModuleVersion`, the version of the loaded
+OrphanedSid module. Like
 `ProcessingStatistics` it is not a class member; the CSV holds it only as text.
 
 ### 5. ACL Metadata Defaults
@@ -145,8 +140,7 @@ Debug level:
 | `IsInherited` | `$false` | `IsInherited property missing, set to false` |
 
 Defaults appear mainly on deserialized access rules. If many results show `GenericRead` and
-`Allow` (`131220` and `0` in emitted results and the CSV, which carry the numeric enum values), run
-with `-LogLevel Debug` and look for these messages to confirm.
+`Allow`, run with `-LogLevel Debug` and look for these messages to confirm.
 
 ## Validation Commands
 

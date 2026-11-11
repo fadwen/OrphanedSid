@@ -16,9 +16,8 @@ The log file records the same event as:
 
 The message is written by `Get-ObjectAccessRule` in `Private\Security\Get-SecurityDescriptor.ps1`
 after every retrieval strategy returned nothing for that object. The object is skipped, nothing is
-counted as an error, and processing continues with the next object. In a lab run over 38 ordinary
-objects without `-IncludeInherited`, the only object that produced it was one whose ACL had no
-explicit entries.
+counted as an error, and processing continues with the next object. An ordinary readable object
+does not produce it; see [Why These Warnings Occur](#why-these-warnings-occur).
 
 ## How Retrieval Works
 
@@ -40,16 +39,17 @@ retried.
 Two related Debug-level messages are not warnings and need no action:
 
 - `No security descriptor found for <DN>` - the object came back without an `nTSecurityDescriptor`
-  value.
+  value; only seen when `Find-OrphanedSIDsInObject` is called directly (see below).
 - `No access rules retrieved for <DN>` - logged after every strategy came back empty, so it follows
   the warning above.
 
 ## Why These Warnings Occur
 
-- **Entirely inherited ACL**: without `-IncludeInherited` each strategy keeps only explicit
-  (non-inherited) entries. An object with none comes back empty from all three, which is reported
-  as the warning above although nothing failed. Running with `-IncludeInherited` makes it go away;
-  this was reproduced against a domain controller.
+- **Entirely inherited ACL** does not cause it. Without `-IncludeInherited` only explicit
+  (non-inherited) entries are examined. When `Get-Acl` reads an ACL whose entries are all
+  inherited, the object is skipped with a Debug entry, `No explicit access rules on <DN> (all N
+  are inherited)`, and no other strategy is tried. Such an entry is removed on the parent it is
+  inherited from.
 - **A descriptor that cannot be parsed**: `Get-Acl` fails and the descriptor fetched with the
   object cannot be converted, so strategies 2 and 3 log their own Warning first.
 
@@ -57,9 +57,10 @@ A transient `Get-Acl` failure on its own does not produce the warning: strategy 
 descriptor that was already fetched with the object.
 
 An object whose descriptor the running account is not allowed to read does not produce it either.
-Active Directory returns such an object without `nTSecurityDescriptor`, and it is skipped before
-retrieval with the Debug-level `No security descriptor found for <DN>`, so it is easy to miss. Run
-with `-LogLevel Debug` and search for that line to list the objects a run could not examine.
+Active Directory returns such an object without `nTSecurityDescriptor`, and the command skips it
+before retrieval with its own Warning, `Not examined: the security descriptor of <DN> could not be read, usually because the running account lacks permission to read it`. The summary
+counts these as `Objects not examined (security descriptor not readable): N` and warns when N is
+above zero, so search the log for `Not examined:` to list them.
 
 Well-known SIDs such as `S-1-5-18`, `S-1-5-19` and `S-1-5-20` do not cause these warnings. They are
 filtered later, per access rule, by `Test-WellKnownSID` (`Private\SID\Test-SIDFormat.ps1`), and

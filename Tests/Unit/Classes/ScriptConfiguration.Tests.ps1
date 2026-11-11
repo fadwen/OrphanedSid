@@ -34,7 +34,6 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
             $config.BatchSize | Should -Be 50
             $config.MemoryCheckInterval | Should -Be 50
             $config.MaxLogFileSizeMB | Should -Be 10
-            $config.EnableDetailedLogging | Should -Be $false
             $config.EnableLogFileRotation | Should -Be $true
             $config.LogLevel | Should -Be 'Information'
             $config.LogFilePath | Should -BeNullOrEmpty
@@ -49,7 +48,6 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
             $config.BatchSize.GetType().Name | Should -Be 'Int32'
             $config.MemoryCheckInterval.GetType().Name | Should -Be 'Int32'
             $config.MaxLogFileSizeMB.GetType().Name | Should -Be 'Int32'
-            $config.EnableDetailedLogging.GetType().Name | Should -Be 'Boolean'
             $config.EnableLogFileRotation.GetType().Name | Should -Be 'Boolean'
             $config.LogLevel.GetType().Name | Should -Be 'String'
         }
@@ -157,7 +155,6 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
                 ProtectedSIDs         = @('S-1-5-32-544', 'S-1-5-18')
                 BatchSize             = 75
                 MemoryCheckInterval   = 25
-                EnableDetailedLogging = $true
                 LogLevel              = 'Debug'
                 LogFilePath           = 'C:\Logs\test.log'
                 EnableLogFileRotation = $false
@@ -170,11 +167,19 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
             $config.ProtectedSIDs | Should -Be @('S-1-5-32-544', 'S-1-5-18')
             $config.BatchSize | Should -Be 75
             $config.MemoryCheckInterval | Should -Be 25
-            $config.EnableDetailedLogging | Should -Be $true
             $config.LogLevel | Should -Be 'Debug'
             $config.LogFilePath | Should -Be 'C:\Logs\test.log'
             $config.EnableLogFileRotation | Should -Be $false
             $config.MaxLogFileSizeMB | Should -Be 20
+        }
+
+        It 'Still loads a file that carries the removed EnableDetailedLogging key, and ignores it (#43)' {
+            $file = New-ConfigFile -Content @{ EnableDetailedLogging = $true; LogLevel = 'Error' }
+
+            $config = [ScriptConfiguration]::LoadFromFile($file)
+
+            $config.LogLevel | Should -Be 'Error'
+            $config.PSObject.Properties.Name | Should -Not -Contain 'EnableDetailedLogging'
         }
 
         It 'Should keep defaults for settings the file leaves out' {

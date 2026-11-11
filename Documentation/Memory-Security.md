@@ -1,4 +1,4 @@
-﻿# OrphanedSid Memory Management and Security Troubleshooting
+# OrphanedSid Memory Management and Security Troubleshooting
 
 ## Memory Management
 
@@ -86,10 +86,10 @@ Both set the validation's `RiskLevel` to `High` and are reported by `Invoke-Secu
 `High-risk SID detected: <sid>` in the `SecurityValidation` property of the
 `RemovalOperationResult`; the entry is still removed.
 
-If a SID is blocked, its removal is skipped, the object's ACL is left unchanged for that SID, and
-the workflow logs `SECURITY BLOCK: Security validation failed: <issues>` at `Error` level. Each
-orphaned SID is validated and removed in its own call, so other SIDs on the same object are
-unaffected. The blocked SIDs are also
+If a SID is blocked, nothing is removed from that object: all of an object's orphaned SIDs are
+validated and removed in one call, and a block stops the whole call, so the object's ACL is left
+unchanged. The workflow logs `SECURITY BLOCK: Security validation failed: <issues>` at `Error`
+level. The blocked SIDs are also
 written as security audit entries (`"Component":"SecurityAudit"`, `DataValidation` events with
 outcome `Failure`), which are always logged regardless of `-LogLevel`.
 

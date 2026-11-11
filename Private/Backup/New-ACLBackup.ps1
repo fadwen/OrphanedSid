@@ -161,7 +161,8 @@ function New-ACLBackup {
         [System.DirectoryServices.ActiveDirectorySecurity] ACL object for backup
 
     .OUTPUTS
-        [bool] True if backup was successful, False otherwise
+        [string] Full path of the backup file written. Nothing when the backup was declined
+        through ShouldProcess; a failure throws.
 
         BACKUP FILE STRUCTURE:
         - ObjectDN: Distinguished name of backed up object
@@ -216,7 +217,7 @@ function New-ACLBackup {
     #>
 
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([bool])]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
@@ -257,7 +258,8 @@ function New-ACLBackup {
             # enforces on Windows PowerShell 5.1: folder, separator, name and "_yyyyMMdd_HHmmss.xml".
             # The object's DN is recorded inside the backup, so the name only has to be unique.
             $maxPathLength = 259
-            $suffixLength = '_yyyyMMdd_HHmmss.xml'.Length
+            # Room for the timestamp and a same-second counter (_2 to _99) added below
+            $suffixLength = '_yyyyMMdd_HHmmss_99.xml'.Length
             # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not $PWD
             $fullFolder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
             $folderLength = $fullFolder.TrimEnd('\', '/').Length + 1
@@ -286,6 +288,13 @@ function New-ACLBackup {
 
             $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
             $backupFile = Join-Path $BackupPath "${safeName}_${timestamp}.xml"
+            # Never overwrite an earlier backup: a second backup of the same object in the same second
+            # gets a counter. The suffix space is kept free by the name budget above.
+            $sequence = 1
+            while (Test-Path -LiteralPath $backupFile) {
+                $sequence++
+                $backupFile = Join-Path $BackupPath "${safeName}_${timestamp}_$sequence.xml"
+            }
 
             # Ensure backup directory exists with proper error handling
             if (-not (Test-Path $BackupPath)) {
@@ -307,7 +316,10 @@ function New-ACLBackup {
             # Create comprehensive backup data with enterprise metadata
             $backupData = [PSCustomObject]@{
                 ObjectDN = $ObjectDN.Trim()
-                BackupDate = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fffZ'  # ISO 8601 format
+                # UTC in ISO 8601. Local time with a literal Z claimed UTC, so any parser shifted it
+                # by the machine's offset. Invariant culture, because ':' in a custom format is the
+                # culture's time separator.
+                BackupDate = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ', [System.Globalization.CultureInfo]::InvariantCulture)
                 CorrelationId = $CorrelationId
                 SDDL = $sddl
                 SDDLHash = [System.Convert]::ToBase64String($sddlHash)
@@ -316,7 +328,8 @@ function New-ACLBackup {
                 UserContext = $env:USERNAME
                 ComputerName = $env:COMPUTERNAME
                 DomainContext = $env:USERDOMAIN
-                ScriptVersion = "2.1.0"
+                # The module version that wrote the file; BackupVersion is the file format's
+                ScriptVersion = Get-OrphanedSidModuleVersion
                 ValidationSignature = "PSSecurityBackup_v2.1"
                 BackupMethod = "New-ACLBackup"
                 ACLEntryCount = $ACL.Access.Count
@@ -342,14 +355,15 @@ function New-ACLBackup {
             }
             else {
                 Write-StructuredLog "Backup creation was cancelled by user" -Level Warning -CorrelationId $CorrelationId
-                return $false
+                return
             }
 
             # Success logging with comprehensive details
-            $fileSize = (Get-Item $backupFile).Length
-            Write-StructuredLog "Successfully backed up ACL to: $backupFile (Size: $fileSize bytes, Entries: $($ACL.Access.Count), Hash: $($verifyData.SDDLHash.Substring(0,8))...)" -Level Information -CorrelationId $CorrelationId
+            $writtenFile = Get-Item -LiteralPath $backupFile
+            Write-StructuredLog "Successfully backed up ACL to: $backupFile (Size: $($writtenFile.Length) bytes, Entries: $($ACL.Access.Count), Hash: $($verifyData.SDDLHash.Substring(0,8))...)" -Level Information -CorrelationId $CorrelationId
 
-            return $true
+            # The full path, so the removal result and its audit entry can name the file to restore from
+            return $writtenFile.FullName
         }
         catch {
             $errorDetails = @{

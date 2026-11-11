@@ -38,6 +38,7 @@ BeforeAll {
     $script:DomainDN = 'DC=lab,DC=test'
     $script:LiveSid = "$script:DomainSid-1105"
     $script:OrphanSid = "$script:DomainSid-1999"
+    $script:SecondOrphanSid = "$script:DomainSid-1998"
     $script:FailingSid = "$script:DomainSid-1777"
     # A live principal whose ordinary lookups time out; only the deleted-objects lookup answers (#39)
     $script:FlakySid = "$script:DomainSid-1300"
@@ -103,6 +104,16 @@ BeforeAll {
         return $null
     }
 
+    # Every correlation ID a log line carries: the bracketed field of a text line and the
+    # CorrelationId of a JSON line
+    function Get-LogCorrelationId {
+        param([string]$Path)
+        foreach ($line in Get-Content -Path $Path) {
+            if ($line -match '^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\] \[([^\]]+)\]') { $Matches[1] }
+            elseif ($line -match '"CorrelationId":"([^"]+)"') { $Matches[1] }
+        }
+    }
+
     function Invoke-FindOrphanedSid {
         param([string]$OutputPath)
         $parameters = @{
@@ -115,7 +126,7 @@ BeforeAll {
     }
 
     function Invoke-RemoveOrphanedSid {
-        param([switch]$WhatIf)
+        param([switch]$WhatIf, [switch]$IncludeInherited)
         $parameters = @{
             SearchBase            = "OU=Finance,$script:DomainDN"
             BackupPath            = $script:BackupRoot
@@ -123,6 +134,7 @@ BeforeAll {
             SuppressConsoleOutput = $true
             Force                 = $true
             WhatIf                = $WhatIf
+            IncludeInherited      = $IncludeInherited
         }
         Remove-OrphanedSid @parameters
     }
@@ -241,6 +253,72 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             ($results | Where-Object OrphanedSID -eq $script:FailingSid).VerificationStatus | Should -Be 'Unverified'
         }
 
+        It 'Carries the run correlation ID on every result row and every log line (#42)' {
+            $log = Join-Path $TestDrive 'cid.log'
+
+            $results = @(Find-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-42')
+
+            $results.Count | Should -BeGreaterThan 0
+            @($results | Where-Object CorrelationId -ne 'RUN-42').Count | Should -Be 0
+            $ids = @(Get-LogCorrelationId -Path $log)
+            $ids.Count | Should -BeGreaterThan 20
+            @($ids | Where-Object { $_ -ne 'RUN-42' } | Select-Object -Unique) | Should -Be @()
+        }
+
+        It "Filters the log at the -ConfigPath file's LogLevel unless the command line sets one (#43)" {
+            $config = Join-Path $TestDrive 'warning-level.json'
+            @{ LogLevel = 'Warning' } | ConvertTo-Json | Set-Content -Path $config
+            $fromFile = Join-Path $TestDrive 'level-file.log'
+            $fromCommand = Join-Path $TestDrive 'level-command.log'
+            $search = "OU=Finance,$script:DomainDN"
+
+            $null = Find-OrphanedSid -SearchBase $search -ConfigPath $config -LogPath $fromFile -SuppressConsoleOutput
+            $null = Find-OrphanedSid -SearchBase $search -ConfigPath $config -LogPath $fromCommand -SuppressConsoleOutput -LogLevel Information
+
+            # Written once the configuration is loaded, at Information
+            Select-String -Path $fromFile -Pattern 'Find-OrphanedSid starting' -SimpleMatch | Should -BeNullOrEmpty
+            Select-String -Path $fromFile -Pattern 'Total objects processed' -SimpleMatch | Should -BeNullOrEmpty
+            Select-String -Path $fromFile -Pattern '] [Warning] [' -SimpleMatch | Should -Not -BeNullOrEmpty
+            Select-String -Path $fromCommand -Pattern 'Find-OrphanedSid starting' -SimpleMatch | Should -Not -BeNullOrEmpty
+            Select-String -Path $fromCommand -Pattern 'Total objects processed' -SimpleMatch | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Keeps the earlier run in a reused -LogPath, and rotates it once it outgrows the limit (#44)' {
+            $log = Join-Path $TestDrive 'reused.log'
+            $search = "OU=Finance,$script:DomainDN"
+
+            $null = Find-OrphanedSid -SearchBase $search -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-44A'
+            $null = Find-OrphanedSid -SearchBase $search -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-44B'
+
+            @(Get-LogCorrelationId -Path $log | Select-Object -Unique) | Should -Be @('RUN-44A', 'RUN-44B')
+
+            # Grow the file past a 1 MB limit; the next run renames it aside before writing
+            Add-Content -Path $log -Value ('x' * 1.5MB)
+            $config = Join-Path $TestDrive 'rotate-1mb.json'
+            @{ MaxLogFileSizeMB = 1 } | ConvertTo-Json | Set-Content -Path $config
+            $null = Find-OrphanedSid -SearchBase $search -ConfigPath $config -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-44C'
+
+            $rotated = @(Get-ChildItem -Path $TestDrive -Filter 'reused_????????_??????.log')
+            $rotated.Count | Should -Be 1
+            @(Get-LogCorrelationId -Path $rotated[0].FullName | Select-Object -Unique) | Should -Be @('RUN-44A', 'RUN-44B')
+            @(Get-LogCorrelationId -Path $log | Select-Object -Unique) | Should -Be @('RUN-44C')
+            Select-String -Path $log -Pattern "Rotated log file to: $([regex]::Escape($rotated[0].FullName))" | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Returns typed results with enum names, in the pipeline and the CSV (#41)' {
+            $csvPath = Join-Path $TestDrive 'typed.csv'
+
+            $results = @(Invoke-FindOrphanedSid -OutputPath $csvPath)
+
+            $results[0].GetType().Name | Should -Be 'OrphanedSIDResult'
+            "$($results[0].ActiveDirectoryRights)" | Should -Be 'ReadProperty, WriteProperty'
+            "$($results[0].AccessControlType)" | Should -Be 'Allow'
+            $results[0].Timestamp.Kind | Should -Not -Be ([DateTimeKind]::Utc)
+            $row = @(Import-Csv -Path $csvPath)[0]
+            $row.ActiveDirectoryRights | Should -Be 'ReadProperty, WriteProperty'
+            $row.AccessControlType | Should -Be 'Allow'
+        }
+
         It 'Changes no ACL' {
             $null = Invoke-FindOrphanedSid
 
@@ -280,6 +358,90 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:FlakySid
             $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
             @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Shared_*' -Recurse).Count | Should -Be 0
+        }
+
+        It 'Leaves an orphaned entry that is only inherited, and backs nothing up (#46)' {
+            $dn = "CN=Child,OU=Finance,$script:DomainDN"
+            # ID marks the entry as inherited from a parent object
+            $script:Directory[$dn] = @{ ObjectClass = 'group'; Sddl = "O:BAG:BAD:(A;;GA;;;BA)(A;ID;RPWP;;;$($script:OrphanSid))" }
+            $script:OriginalSddl[$dn] = $script:Directory[$dn].Sddl
+
+            $results = @(Invoke-RemoveOrphanedSid -IncludeInherited)
+
+            $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            Should -Invoke -ModuleName OrphanedSid Set-Acl -Times 0 -Exactly -ParameterFilter { $Path -like '*CN=Child,*' }
+            @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Child_*' -Recurse).Count | Should -Be 0
+            @($results | Where-Object ObjectDN -eq $dn).Count | Should -Be 0
+        }
+
+        It 'Stamps the backup and the log with the module version and the backup with UTC time (#52)' {
+            $manifestVersion = (Import-PowerShellDataFile -Path (Join-Path $PSScriptRoot '..\..\OrphanedSid.psd1')).ModuleVersion
+            $log = Join-Path $TestDrive 'version.log'
+
+            $results = @(Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput)
+
+            $backup = Import-Clixml -Path $results[0].BackupFile
+            $backup.ScriptVersion | Should -Be $manifestVersion
+            $stamp = [DateTimeOffset]::ParseExact($backup.BackupDate, "yyyy-MM-dd'T'HH:mm:ss.fffK", [System.Globalization.CultureInfo]::InvariantCulture)
+            ([DateTime]::UtcNow - $stamp.UtcDateTime).TotalMinutes | Should -BeLessThan 5
+            ([DateTime]::UtcNow - $stamp.UtcDateTime).TotalMinutes | Should -BeGreaterThan -1
+            Select-String -Path $log -Pattern "Module Version: $manifestVersion" -SimpleMatch | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Writes no CSV under -WhatIf, and its log says no file was written (#50)' {
+            $log = Join-Path $TestDrive 'whatif-export.log'
+            $csv = Join-Path $TestDrive 'whatif-export.csv'
+
+            $null = Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -OutputPath $csv -LogPath $log -SuppressConsoleOutput -WhatIf
+
+            Test-Path $csv | Should -BeFalse
+            Select-String -Path $log -Pattern 'Results exported to:' -SimpleMatch | Should -BeNullOrEmpty
+            Select-String -Path $log -Pattern "WhatIf: results would be exported to $csv; no file was written" -SimpleMatch | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Names the backup file in each removal result and in its audit entry (#49)' {
+            $log = Join-Path $TestDrive 'audit-remove.log'
+
+            $results = @(Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput)
+
+            $results.Count | Should -Be 2
+            foreach ($result in $results) {
+                $result.BackupFile | Should -Exist
+                (Import-Clixml -Path $result.BackupFile).ObjectDN | Should -Be $result.ObjectDN
+            }
+            # Security entries are JSON lines with the context flattened under a Security_ prefix
+            $audit = @(Get-Content -Path $log | Where-Object { $_.StartsWith('{') } | ForEach-Object { $_ | ConvertFrom-Json } |
+                    Where-Object { $_.Security_OperationName -eq 'OrphanedSID-Removal' -and $_.Outcome -eq 'Success' })
+            $audit.Count | Should -Be 2
+            foreach ($entry in $audit) {
+                $entry.Security_BackupFile | Should -BeIn $results.BackupFile
+                $entry.Security_BackupCreated | Should -BeTrue
+                $entry.Security_ActualRemovals | Should -Be 1
+                $entry.PSObject.Properties.Name | Should -Not -Contain 'Security_RemovedCount'
+            }
+        }
+
+        It 'Writes each security entry with its [type] [outcome] message prefix (#55)' {
+            $log = Join-Path $TestDrive 'audit-message.log'
+
+            $null = Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput
+
+            $entries = @(Get-Content -Path $log | Where-Object { $_.StartsWith('{') } | ForEach-Object { $_ | ConvertFrom-Json } |
+                    Where-Object Component -eq 'SecurityAudit')
+            $entries.Count | Should -BeGreaterThan 0
+            foreach ($entry in $entries) {
+                $entry.Message | Should -BeLike "[[]$($entry.SecurityEventType)] [[]$($entry.Outcome)] *"
+            }
+            @($entries | Where-Object { $_.Message -eq '[ObjectAccess] [Success] Successfully completed Active Directory operation: OrphanedSID-Removal' }).Count |
+                Should -Be 2
+        }
+
+        It 'Carries the run correlation ID on every log line of a removal (#42)' {
+            $log = Join-Path $TestDrive 'cid-remove.log'
+
+            $null = Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-42R'
+
+            @(Get-LogCorrelationId -Path $log | Where-Object { $_ -ne 'RUN-42R' } | Select-Object -Unique) | Should -Be @()
         }
 
         It 'Leaves an object with no orphaned ACE untouched' {
@@ -362,6 +524,57 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             $result.Success | Should -BeTrue
             Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
             Get-TrusteeSid -DN $dn | Should -Contain $script:LiveSid
+        }
+
+        It 'Puts back every orphaned SID removed from one object (#40)' {
+            $dn = "CN=Two,OU=Finance,$script:DomainDN"
+            $script:Directory[$dn] = New-DirectoryObject -DN $dn -ObjectClass 'group' -Trustee $script:OrphanSid, $script:SecondOrphanSid
+            $script:OriginalSddl[$dn] = $script:Directory[$dn].Sddl
+
+            $null = Invoke-RemoveOrphanedSid
+
+            Get-TrusteeSid -DN $dn | Should -Not -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $dn | Should -Not -Contain $script:SecondOrphanSid
+            $backups = @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Two_*' -Recurse)
+            $backups.Count | Should -Be 1
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupPath            = $backups[0].DirectoryName
+                LogPath               = Join-Path $TestDrive 'restore.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            (Restore-OrphanedSidBackup @parameters).Success | Should -BeTrue
+
+            Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $dn | Should -Contain $script:SecondOrphanSid
+        }
+        It 'Reports a failed write once, with one prefix (#51)' {
+            $null = Invoke-RemoveOrphanedSid
+            $dn = "OU=Finance,$script:DomainDN"
+            $backupFolder = (Get-ChildItem -Path $script:BackupRoot -Directory | Select-Object -First 1).FullName
+            Mock -ModuleName OrphanedSid Set-Acl -ParameterFilter { $Path -like 'AD:*' } { throw 'Access is denied' }
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-denied.log'
+                OutputPath            = Join-Path $TestDrive 'restore-denied.csv'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+            # The OU and its child are restored together, one per-object result each
+            $result.Success | Should -BeFalse
+            @($result.IndividualResults).Count | Should -Be 2
+            foreach ($objectResult in $result.IndividualResults) {
+                $objectResult.ErrorMessage | Should -Be 'ACL application failed: Access is denied'
+            }
+            # And the summary says why (#70)
+            $result.ErrorMessage | Should -Be '2 of 2 objects failed to restore: ACL application failed: Access is denied'
+            (Import-Csv -Path $parameters.OutputPath).ErrorMessage | Should -Be '2 of 2 objects failed to restore: ACL application failed: Access is denied'
         }
 
         It 'Refuses a backup whose security descriptor no longer matches its hash' {

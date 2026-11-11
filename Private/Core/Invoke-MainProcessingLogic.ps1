@@ -236,7 +236,7 @@ function Invoke-MainProcessingLogic {
                 # Always perform discovery phase - ShouldProcess only applies to removal operations
                 # Get AD objects for processing using refactored sequential processing
                 try {
-                    $adObjects = Get-ADObjectsSequential -SearchBase @($searchPath)
+                    $adObjects = Get-ADObjectsSequential -SearchBase @($searchPath) -CorrelationId $CorrelationId
 
                     # Log successful AD discovery
                     Write-ADOperationSecurityLog -OperationName 'AD-ObjectDiscovery' -Outcome 'Success' -SecurityContext @{
@@ -298,7 +298,7 @@ function Invoke-MainProcessingLogic {
                     $currentObject = $_
                     try {
                         # Pinned: housekeeping, not the operation -WhatIf rehearses
-                        Invoke-MemoryCheck -MemoryManager $script:MemoryManager -WhatIf:$false
+                        Invoke-MemoryCheck -MemoryManager $script:MemoryManager -WhatIf:$false -CorrelationId $CorrelationId
                         $script:Statistics.ProcessedObjects++
                         $processedCount++
 
@@ -306,6 +306,16 @@ function Invoke-MainProcessingLogic {
                         if (($processedCount % 50 -eq 0) -or ($processedCount -eq $objectArray.Count)) {
                             $percentComplete = [Math]::Round(($processedCount / $objectArray.Count) * 100, 1)
                             Write-StructuredLog "Processing: $processedCount/$($objectArray.Count) objects ($percentComplete%) - Orphaned SIDs found: $orphanedFoundCount" -Level Information -Component 'MainProcessing' -CorrelationId $CorrelationId
+                        }
+
+                        # Active Directory returns an object without nTSecurityDescriptor when the
+                        # account may not read it. Such an object cannot be examined; say so at
+                        # Warning level and count it, so a clean run is not mistaken for a clean
+                        # directory.
+                        if (-not $currentObject.nTSecurityDescriptor) {
+                            $script:Statistics.UnexaminedObjects++
+                            Write-StructuredLog "Not examined: the security descriptor of $($currentObject.DistinguishedName) could not be read, usually because the running account lacks permission to read it" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
+                            return
                         }
 
                         # Detection is the step that reads the directory, so it is the one retried.
@@ -316,7 +326,7 @@ function Invoke-MainProcessingLogic {
                         $detectionAttempt = 0
                         while ($null -eq $orphanedResults) {
                             try {
-                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
+                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID -CorrelationId $CorrelationId)
                             }
                             catch {
                                 $detectionAttempt++
@@ -370,23 +380,36 @@ function Invoke-MainProcessingLogic {
                                     Write-StructuredLog "Not removing unverified SID $($unverifiedResult.OrphanedSID) from $($unverifiedResult.ObjectDN): a directory lookup failed, so it may belong to a live principal ($($unverifiedResult.VerificationError))" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
                                 }
 
-                                # Apply ShouldProcess only to actual removal operations
-                                foreach ($orphanedResult in $verifiedResults) {
-                                    $target = "$($orphanedResult.ObjectDN) - SID: $($orphanedResult.OrphanedSID)"
-                                    if ($PSCmdlet.ShouldProcess($target, "Remove Orphaned SID")) {
-                                        Write-StructuredLog "Removing orphaned SID: $($orphanedResult.OrphanedSID) from $($orphanedResult.ObjectDN)" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                # One removal per object with all of its verified orphaned SIDs, so the
+                                # object is backed up once, before any entry is removed. Removing them one
+                                # call at a time backed it up again after each removal, and a restore from
+                                # the newest backup could not bring back the SIDs removed first.
+                                # An inherited entry is set on a parent object and can only be removed
+                                # there; on this object it is reported, not removed or backed up.
+                                $inheritedOnly = @($verifiedResults | Where-Object { $_.IsInherited } | ForEach-Object { $_.OrphanedSID } | Select-Object -Unique |
+                                        Where-Object { $_ -notin @($verifiedResults | Where-Object { -not $_.IsInherited } | ForEach-Object { $_.OrphanedSID }) })
+                                foreach ($inheritedSid in $inheritedOnly) {
+                                    Write-StructuredLog "Not removing inherited entry for orphaned SID $inheritedSid on $($currentObject.DistinguishedName): it is inherited from a parent object, so remove it there" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                }
+                                $sidsToRemove = @($verifiedResults | Where-Object { -not $_.IsInherited } | ForEach-Object { $_.OrphanedSID } | Select-Object -Unique)
+                                if ($sidsToRemove.Count -gt 0) {
+                                    $objectDN = $currentObject.DistinguishedName
+                                    $sidList = $sidsToRemove -join ', '
+                                    $target = "$objectDN - SIDs: $sidList"
+                                    if ($PSCmdlet.ShouldProcess($target, "Remove Orphaned SIDs")) {
+                                        Write-StructuredLog "Removing orphaned SIDs: $sidList from $objectDN" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
 
                                         # Log security audit for SID removal attempt
                                         Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Attempt' -SecurityContext @{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSID = $orphanedResult.OrphanedSID
+                                            ObjectDN = $objectDN
+                                            OrphanedSIDs = $sidList
                                             BackupPath = $BackupPath
                                             Operation = 'Remove-OrphanedSidEntry'
                                         } -CorrelationId $CorrelationId
 
                                         $removalParams = @{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSIDs = @($orphanedResult.OrphanedSID)
+                                            ObjectDN = $objectDN
+                                            OrphanedSIDs = $sidsToRemove
                                             CorrelationId = $CorrelationId
                                         }
                                         if ($BackupPath) {
@@ -397,46 +420,52 @@ function Invoke-MainProcessingLogic {
                                             $removalResult = Remove-OrphanedSidEntry @removalParams
                                             $script:RemovalResults += $removalResult
 
-                                            # Log successful SID removal
-                                            Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Success' -SecurityContext @{
-                                                ObjectDN = $orphanedResult.ObjectDN
-                                                OrphanedSID = $orphanedResult.OrphanedSID
-                                                BackupCreated = $removalResult.BackupCreated
-                                                BackupPath = $removalResult.BackupPath
-                                                RemovedCount = $removalResult.RemovedCount
-                                            } -CorrelationId $CorrelationId
+                                            # A failed removal comes back as a result, not an exception,
+                                            # so the outcome is read from it
+                                            $auditContext = @{
+                                                ObjectDN = $objectDN
+                                                OrphanedSIDs = $sidList
+                                                ActualRemovals = $removalResult.ActualRemovals
+                                                FailedRemovals = $removalResult.FailedRemovals
+                                                BackupCreated = [bool]$removalResult.BackupFile
+                                                BackupFile = $removalResult.BackupFile
+                                            }
+                                            $auditOutcome = 'Success'
+                                            if (-not $removalResult.Success) {
+                                                $auditOutcome = 'Failure'
+                                                $auditContext.ErrorMessage = $removalResult.ErrorMessage
+                                            }
+                                            Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome $auditOutcome -SecurityContext $auditContext -CorrelationId $CorrelationId
                                         } catch {
                                             # Log failed SID removal
                                             Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Failure' -SecurityContext @{
-                                                ObjectDN = $orphanedResult.ObjectDN
-                                                OrphanedSID = $orphanedResult.OrphanedSID
+                                                ObjectDN = $objectDN
+                                                OrphanedSIDs = $sidList
                                                 ErrorMessage = $_.Exception.Message
                                             } -CorrelationId $CorrelationId
                                             throw
                                         }
                                     } else {
-                                        Write-StructuredLog "WhatIf: Would remove orphaned SID: $($orphanedResult.OrphanedSID) from $($orphanedResult.ObjectDN)" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                        Write-StructuredLog "WhatIf: Would remove orphaned SIDs: $sidList from $objectDN" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
 
                                         # Log WhatIf simulation for audit trail
                                         Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Attempt' -SecurityContext @{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSID = $orphanedResult.OrphanedSID
+                                            ObjectDN = $objectDN
+                                            OrphanedSIDs = $sidList
                                             SimulationMode = $true
                                             WhatIfMode = $true
                                         } -CorrelationId $CorrelationId
-                                        # Create a mock removal result for WhatIf mode
-                                        $mockResult = [PSCustomObject]@{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSID = $orphanedResult.OrphanedSID
-                                            Success = $true
-                                            ProcessingTime = [TimeSpan]::Zero
-                                            ErrorMessage = $null
-                                            RemovedSIDs = @($orphanedResult.OrphanedSID)
-                                            FailedSIDs = @()
-                                            BlockedSIDs = @()
-                                            SecurityValidation = 'WhatIf - Would Remove'
-                                        }
-                                        $script:RemovalResults += $mockResult
+                                        # The preview is the same type a real removal returns: nothing
+                                        # was removed, and RemovedSIDs lists what would have been
+                                        $previewResult = [RemovalOperationResult]::new()
+                                        $previewResult.ObjectDN = $objectDN
+                                        $previewResult.IntendedRemovals = $sidsToRemove.Count
+                                        $previewResult.ActualRemovals = 0
+                                        $previewResult.RemovedSIDs = $sidsToRemove
+                                        $previewResult.Success = $true
+                                        $previewResult.CorrelationId = $CorrelationId
+                                        $previewResult.SecurityValidation = 'WhatIf - Would Remove'
+                                        $script:RemovalResults += $previewResult
                                     }
                                 }
                             }
@@ -467,6 +496,7 @@ function Invoke-MainProcessingLogic {
                 TotalObjectsProcessed = $script:Statistics.ProcessedObjects
                 OrphanedSIDsFound = $script:Statistics.OrphanedSIDsFound
                 UnverifiedSIDsFound = $script:Statistics.UnverifiedSIDsFound
+                UnexaminedObjects = $script:Statistics.UnexaminedObjects
                 ProcessingErrors = $script:Statistics.ProcessingErrors
                 ProcessingDuration = $script:Statistics.Duration
                 ObjectsPerSecond = $script:Statistics.ObjectsPerSecond

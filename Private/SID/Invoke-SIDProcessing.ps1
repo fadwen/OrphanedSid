@@ -175,7 +175,6 @@ function Find-OrphanedSIDsInObject {
                 StartTime = Get-Date
                 ProcessedSIDs = 0
                 SkippedSIDs = 0
-                WellKnownSIDsSkipped = 0
                 OrphanedSIDsFound = 0
                 UnverifiedSIDsFound = 0
                 ErrorsEncountered = 0

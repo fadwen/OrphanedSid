@@ -140,8 +140,11 @@ are removed when the command finishes unless -PreserveTempFiles is set.</maml:pa
         <maml:description>
           <maml:para>JSON configuration file.
 Only WellKnownSIDPatterns, ProtectedSIDs, BatchSize,
-MemoryCheckInterval, EnableDetailedLogging, LogLevel, LogFilePath, EnableLogFileRotation
-and MaxLogFileSizeMB are read.</maml:para>
+MemoryCheckInterval, LogLevel, LogFilePath, EnableLogFileRotation
+and MaxLogFileSizeMB are read.
+The file's LogLevel applies when -LogLevel, -Verbose and -Debug are all absent.
+ProtectedSIDs and WellKnownSIDPatterns replace the default lists in full; repeat the defaults to
+keep them. See about_OrphanedSid.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -174,7 +177,9 @@ run; by default only explicit entries are reported.</maml:para>
         <maml:name>LogLevel</maml:name>
         <maml:description>
           <maml:para>Lowest level written to the log file.
-Security events are written at every level.</maml:para>
+Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug; without either, the LogLevel of
+the -ConfigPath file applies, and Information when there is none.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -186,7 +191,9 @@ Security events are written at every level.</maml:para>
         <maml:description>
           <maml:para>Log file.
 Defaults to .\Logs\Find-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log under the current
-directory.</maml:para>
+directory.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to &lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -279,7 +286,8 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:para>One object per orphaned access control entry, with `ObjectDN`, `ObjectClass`, `OrphanedSID`,
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
-`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`.
+`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`, plus the
+note properties `ProcessingContext` and `ProcessingStatistics`.
 
 `VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
 `Unverified` when a lookup failed; `VerificationError` then names each failed lookup.</maml:para>
@@ -562,7 +570,8 @@ The parent folder must exist; the backup folder itself is created.</maml:para>
         <maml:description>
           <maml:para>JSON configuration file; see Find-OrphanedSid for the keys read.
 ProtectedSIDs and
-WellKnownSIDPatterns are the ones that matter here.</maml:para>
+WellKnownSIDPatterns are the ones that matter here. Each replaces its default list in full, so a
+file that adds a SID must repeat the defaults it keeps. See about_OrphanedSid.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -605,7 +614,10 @@ Required for unattended runs.
         <maml:description>
           <maml:para>Also evaluate inherited access control entries.
 Inherited entries cannot be removed from the
-child object; they are reported and the parent is where the cleanup belongs.</maml:para>
+child object, so they are not touched there: each is named in a Warning,
+`Not removing inherited entry for orphaned SID &lt;SID&gt; on &lt;DN&gt;: it is inherited from a parent object, so remove it there`,
+and the object is neither backed up nor changed for it. The explicit entry is
+removed on the parent when the parent is in the search base.</maml:para>
         </maml:description>
         <dev:type>
           <maml:name>System.Management.Automation.SwitchParameter</maml:name>
@@ -615,7 +627,9 @@ child object; they are reported and the parent is where the cleanup belongs.</ma
         <maml:name>LogLevel</maml:name>
         <maml:description>
           <maml:para>Lowest level written to the log file.
-Security events are written at every level.</maml:para>
+Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug; without either, the LogLevel of
+the -ConfigPath file applies, and Information when there is none.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -626,7 +640,9 @@ Security events are written at every level.</maml:para>
         <maml:name>LogPath</maml:name>
         <maml:description>
           <maml:para>Log file.
-Defaults to .\Logs\Remove-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
+Defaults to .\Logs\Remove-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to &lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -659,7 +675,8 @@ Default 3.</maml:para>
         <maml:name>OutputPath</maml:name>
         <maml:description>
           <maml:para>CSV file for the discovered entries.
-The parent folder must exist.</maml:para>
+The parent folder must exist.
+Not written under -WhatIf; the log says so.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -724,9 +741,11 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:name>RemovalOperationResult</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>One object per orphaned entry removed, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
+          <maml:para>One object per object changed, covering all of its orphaned entries, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
 `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
-`ProcessingTime`, `CorrelationId` and `SecurityValidation`.</maml:para>
+`ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
+backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
+-BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>
@@ -754,7 +773,7 @@ TROUBLESHOOTING:
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: A WhatIf line for the run and one per entry that would be removed
+OUTPUT: A WhatIf line for the run and one per object with entries that would be removed
 USE CASE: The review step before a cleanup</maml:para>
         </maml:introduction>
         <dev:code />
@@ -766,7 +785,7 @@ USE CASE: The review step before a cleanup</maml:para>
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\&lt;timestamp&gt;\, then removes
-OUTPUT: One RemovalOperationResult per removed entry
+OUTPUT: One RemovalOperationResult per object changed
 USE CASE: An interactive cleanup with the backup on a dedicated drive</maml:para>
         </maml:introduction>
         <dev:code />
@@ -970,7 +989,9 @@ Required for unattended runs.</maml:para>
         <maml:name>LogLevel</maml:name>
         <maml:description>
           <maml:para>Lowest level written to the log file.
-Security events are written at every level.</maml:para>
+Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug, and the level is otherwise
+Information.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -981,7 +1002,9 @@ Security events are written at every level.</maml:para>
         <maml:name>LogPath</maml:name>
         <maml:description>
           <maml:para>Log file.
-Defaults to .\Logs\Restore-OrphanedSidBackup_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
+Defaults to .\Logs\Restore-OrphanedSidBackup_&lt;yyyyMMdd_HHmmss&gt;.log.
+An existing file is appended to; one larger than 10 MB is first renamed to
+&lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -992,7 +1015,8 @@ Defaults to .\Logs\Restore-OrphanedSidBackup_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:
         <maml:name>OutputPath</maml:name>
         <maml:description>
           <maml:para>CSV file for the restore results.
-The parent folder must exist.</maml:para>
+The parent folder must exist.
+Not written under -WhatIf; the log says so.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -1049,7 +1073,9 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:para>One object per target. For a container it summarises the run (`TotalObjects`,
 `SuccessfulRestores`, `FailedRestores`, `IndividualResults`); for a single object it is that
 object's restore result. Both carry `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`
-and `CorrelationId`.</maml:para>
+and `CorrelationId`. A failed container summary's `ErrorMessage` reads
+`&lt;failed&gt; of &lt;total&gt; objects failed to restore: &lt;reasons&gt;`, listing each distinct reason from
+`IndividualResults` once, or `No objects were restored` when no backup was found under it.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>
