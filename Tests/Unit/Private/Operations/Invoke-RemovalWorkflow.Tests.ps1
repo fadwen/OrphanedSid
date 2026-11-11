@@ -126,9 +126,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             Should -Invoke Invoke-RemovalVerification -Times 0 -Exactly
         }
 
-        # Module bug (#28): RemovalOperationResult declares IntendedRemovals as [string[]], so the count the
-        # workflow assigns is stored as a one-element string array
-        It "Reports the intended removals as a count" -Skip {
+        It "Reports the intended removals as a count" {
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1, $script:sid2
 
             $result.IntendedRemovals | Should -BeOfType [int]

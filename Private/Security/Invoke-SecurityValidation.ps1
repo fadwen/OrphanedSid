@@ -154,7 +154,10 @@ function Invoke-SecurityValidation {
                 }
 
                 if ($sidValidation.RequiresElevatedConfirmation) {
-                    $validation.RiskLevel = "High"
+                    # Raise to High, never lower a batch an earlier blocked SID made Critical
+                    if ($validation.RiskLevel -ne 'Critical') {
+                        $validation.RiskLevel = "High"
+                    }
                     $validation.RequiresElevatedConfirmation = $true
                     $issues.Add("High-risk SID detected: $sid")
                 }

@@ -375,7 +375,7 @@ function Test-SIDSecurity {
                     $validation.RiskLevel = "Medium"
                 }
                 'Low' {
-                    $validation.AllowedSIDs += $SIDString
+                    # Nothing to record here; the final determination below adds an allowed SID once
                 }
             }
 

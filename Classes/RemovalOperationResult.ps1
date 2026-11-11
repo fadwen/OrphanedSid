@@ -2,7 +2,8 @@
 
 class RemovalOperationResult {
     [string]$ObjectDN
-    [string[]]$IntendedRemovals
+    # Number of SIDs the operation set out to remove, as ActualRemovals and FailedRemovals count them
+    [int]$IntendedRemovals
     [int]$ActualRemovals
     [int]$FailedRemovals
     [string[]]$RemovedSIDs
@@ -15,7 +16,7 @@ class RemovalOperationResult {
     [object]$SecurityValidation
 
     RemovalOperationResult() {
-        $this.IntendedRemovals = @()
+        $this.IntendedRemovals = 0
         $this.ActualRemovals = 0
         $this.FailedRemovals = 0
         $this.RemovedSIDs = @()

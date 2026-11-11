@@ -81,9 +81,7 @@ Describe 'Invoke-SecurityValidation' -Tag 'Unit', 'Private', 'Security' {
             $result.Issues | Should -Be @("High-risk SID detected: $($script:adminSid)")
         }
 
-        # Module bug (#27): a later SID needing elevated confirmation sets RiskLevel to High over an
-        # earlier blocked SID's Critical, so the batch is reported at a lower risk than its worst SID
-        It 'Keeps the batch Critical when a blocked SID precedes a high-risk one' -Skip {
+        It 'Keeps the batch Critical when a blocked SID precedes a high-risk one' {
             $result = Invoke-SecurityValidation -OrphanedSIDs @($script:systemSid, $script:adminSid)
 
             $result.RiskLevel | Should -Be 'Critical'
