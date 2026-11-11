@@ -13,9 +13,8 @@ they behave:
   with ` | Details: <json>` when there is extra data. Security audit entries are **one JSON object
   per line** with `Timestamp`, `Level`, `Component` (`SecurityAudit`), `CorrelationId`, `Message`
   and the event's context fields.
-- The run's correlation ID is in most lines (object-discovery and per-object detection lines
-  carry their own IDs) but **never in the file name** (`<Command>_<yyyyMMdd_HHmmss>.log` by
-  default).
+- The run's correlation ID is in every line but **never in the file name**
+  (`<Command>_<yyyyMMdd_HHmmss>.log` by default).
 - `-OutputPath` always produces **CSV**, whatever extension is given.
 - There is no parallel mode, no throttle parameter and no `-Credential`; every command runs as the
   invoking account.
@@ -214,8 +213,8 @@ Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath 
 Select-String -Path .\Logs\Find-OrphanedSid_*.log -Pattern $id -SimpleMatch
 ```
 
-Every row of the CSV carries a `CorrelationId` column, but that value is the per-object ID
-generated during processing, not the run ID. Use the file name or the log to tie a CSV to a run.
+Every row of the CSV carries the run's correlation ID in its `CorrelationId` column, so a CSV ties
+back to its run's log through that value.
 
 ## Automation Framework Examples
 

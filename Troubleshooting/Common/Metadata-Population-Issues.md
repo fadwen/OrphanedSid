@@ -98,21 +98,17 @@ no WMI query is involved. See `.\Troubleshooting\Performance\Memory-Management-I
 
 #### Issue: Many results share one correlation ID
 
-Expected. `New-OrphanedSIDResult` receives `-CorrelationId` from the calling chain
-(`Find-OrphanedSIDsInObject` -> `Test-AccessRuleForOrphanedSID`), so every result from one object
-shares that object's ID. The GUID the class constructor assigns is always overwritten by
+Expected. Every result of a run carries the run's `-CorrelationId`: `Invoke-MainProcessingLogic`
+passes it to `Find-OrphanedSIDsInObject`, which passes it on to `Test-AccessRuleForOrphanedSID` and
+`New-OrphanedSIDResult`. The GUID the class constructor assigns is always overwritten by
 `Add-ProcessingMetadata`. Uniqueness per result is not a goal; traceability from result to log
 lines is.
 
-The main run's `-CorrelationId` is what appears in the `[Main]`, `[MainProcessing]` and `[Summary]`
-log lines. `Invoke-MainProcessingLogic` calls `Find-OrphanedSIDsInObject` without one, so that
-function generates a GUID per object and a result's `CorrelationId` is the per-object GUID, not
-the run's.
-To tie a result back to a run, filter the log file by `ObjectDN` instead:
+To find the log lines for one result, filter the run's log by its `ObjectDN`:
 
 ```powershell
 $dn = 'CN=User1,OU=Test,DC=contoso,DC=com'
-Select-String -Path .\Logs\<Command>_*.log -Pattern ([regex]::Escape($dn)) | Select-Object -First 10
+Select-String -Path .\Logs\Find-OrphanedSid_*.log -Pattern ([regex]::Escape($dn)) | Select-Object -First 10
 ```
 
 #### Issue: Correlation ID format

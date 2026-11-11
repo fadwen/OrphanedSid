@@ -192,7 +192,7 @@ function Test-AccessRuleForOrphanedSID {
                 Write-StructuredLog "ORPHANED SID DETECTED: $sidString on $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
 
                 # Get detailed SID analysis
-                $sidAnalysis = Get-SIDAnalysis -SIDString $sidString -CurrentDomainSID $CurrentDomainSID
+                $sidAnalysis = Get-SIDAnalysis -SIDString $sidString -CurrentDomainSID $CurrentDomainSID -CorrelationId $CorrelationId
 
                 # Create comprehensive orphaned SID result
                 return New-OrphanedSIDResult -ObjectDN $ObjectDN -ObjectClass $ObjectClass -OrphanedSID $sidString -AccessRule $AccessRule -LikelySource $sidAnalysis.LikelySource -Confidence $sidAnalysis.Confidence -Notes $sidAnalysis.Notes -ProcessingMethod "Identity-Resolution" -CorrelationId $CorrelationId
@@ -305,7 +305,7 @@ function Resolve-IdentityReference {
         }
 
         # Validate extracted string as SID format
-        if (Test-SIDFormat -SID $stringValue) {
+        if (Test-SIDFormat -SID $stringValue -CorrelationId $CorrelationId) {
             Write-StructuredLog "Extracted valid SID from identity reference: $stringValue" -Level Debug -CorrelationId $CorrelationId
             return $stringValue
         } else {
@@ -442,13 +442,13 @@ function Test-SIDValidityAndType {
 
     try {
         # Validate SID format
-        if (-not (Test-SIDFormat -SID $SIDString)) {
+        if (-not (Test-SIDFormat -SID $SIDString -CorrelationId $CorrelationId)) {
             Write-StructuredLog "Invalid SID format: $SIDString" -Level Debug -CorrelationId $CorrelationId
             return $false
         }
 
         # Check for well-known SIDs (should be excluded from orphaned SID detection)
-        if (Test-WellKnownSID -SID $SIDString) {
+        if (Test-WellKnownSID -SID $SIDString -CorrelationId $CorrelationId) {
             Write-StructuredLog "Skipping well-known SID: $SIDString" -Level Debug -CorrelationId $CorrelationId
             return $false
         }

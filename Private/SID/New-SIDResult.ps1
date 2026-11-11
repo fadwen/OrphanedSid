@@ -215,7 +215,7 @@ function New-OrphanedSIDResult {
         Write-StructuredLog "Creating OrphanedSIDResult object for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
 
         # Validate OrphanedSID format
-        if (-not (Test-SIDFormat -SID $OrphanedSID)) {
+        if (-not (Test-SIDFormat -SID $OrphanedSID -CorrelationId $CorrelationId)) {
             throw "Invalid SID format provided: $OrphanedSID"
         }
 
