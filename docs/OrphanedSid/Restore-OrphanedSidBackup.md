@@ -20,7 +20,7 @@ Restores Active Directory ACLs from a backup folder written by Remove-OrphanedSi
 ### __AllParameterSets
 
 ```
-Restore-OrphanedSidBackup [-TargetObjectDN] <string[]> [-BackupPath] <string>
+Restore-OrphanedSidBackup [-TargetObjectDN] <Object[]> [-BackupPath] <string>
  [[-OutputPath] <string>] [[-LogPath] <string>] [[-CorrelationId] <string>] [[-LogLevel] <string>]
  [-Force] [-SuppressConsoleOutput] [-WhatIf] [-Confirm]
 ```
@@ -259,11 +259,14 @@ HelpMessage: ''
 
 ### -TargetObjectDN
 
-Distinguished name of the object or container to restore.
-Accepts pipeline input.
+Distinguished name of the object or container to restore, or objects that carry one.
+Accepts pipeline input. A string is used as the DN; any other object contributes its
+DistinguishedName property, so the output of Get-ADObject, and Import-Csv rows with a
+DistinguishedName column, can be piped directly. An item with no DistinguishedName is reported
+as an error and skipped; input that yields no usable DN stops the command.
 
 ```yaml
-Type: System.String[]
+Type: System.Object[]
 DefaultValue: ''
 SupportsWildcards: false
 Aliases:
@@ -274,7 +277,7 @@ ParameterSets:
   Position: 0
   IsRequired: true
   ValueFromPipeline: true
-  ValueFromPipelineByPropertyName: true
+  ValueFromPipelineByPropertyName: false
   ValueFromRemainingArguments: false
 DontShow: false
 AcceptedValues: []
@@ -312,10 +315,10 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## INPUTS
 
-### System.String[]
+### System.Object[]
 
-Distinguished names, by value or by the `DistinguishedName` property of a piped object such as the
-output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
+Distinguished names as strings, or objects with a `DistinguishedName` property: the output of
+`Get-ADOrganizationalUnit` or `Get-ADObject`, or `Import-Csv` rows with that column.
 ## OUTPUTS
 
 ### RestoreWorkflowResult

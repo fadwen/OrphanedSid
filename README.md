@@ -117,7 +117,8 @@ Get-ADOrganizationalUnit -Filter * -SearchScope OneLevel |
     Sort-Object Count -Descending
 ```
 
-`-SearchBase` accepts pipeline input by value or from the `DistinguishedName` property.
+`-SearchBase` takes DN strings or any object with a `DistinguishedName` property: AD objects,
+`Import-Csv` rows or hashtables, from the pipeline or the command line.
 `-IncludeInherited` also reports entries inherited from parent containers.
 
 ### Removal, unattended, tagged with a change number

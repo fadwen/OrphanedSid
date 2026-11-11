@@ -59,6 +59,16 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- Piping Active Directory objects into `Find-OrphanedSid` or `Remove-OrphanedSid`, as in
+  `Get-ADOrganizationalUnit ... | Find-OrphanedSid`, ignored them and processed the whole domain;
+  piping them into `Restore-OrphanedSidBackup` failed with `Cannot bind argument to parameter
+  'TargetObjectDN' because it is an empty array`. The AD module answers any property name, so the
+  parameter bound to an empty value named like itself before its `DistinguishedName` alias was
+  tried. `-SearchBase` and `-TargetObjectDN` now take strings or any object with a
+  `DistinguishedName` property, including AD objects, `Import-Csv` rows and hashtables, and an
+  item with no DN is reported and skipped. A `-SearchBase` that is given but holds no usable DN,
+  such as only blank strings, now stops the command instead of falling back to the domain root.
+  ([#79](https://github.com/fadwen/OrphanedSid/issues/79))
 - A fixed `-LogPath` reused across runs was emptied at the start of each run, so the previous run's
   log was lost, and log rotation never applied to it. A run now appends to an existing log file.
   When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it

@@ -50,9 +50,9 @@ are removed when the command finishes unless -PreserveTempFiles is set.</maml:pa
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="0" aliases="DistinguishedName">
           <maml:name>SearchBase</maml:name>
           <maml:description />
-          <command:parameterValue required="true" variableLength="false">string[]</command:parameterValue>
+          <command:parameterValue required="true" variableLength="false">Object[]</command:parameterValue>
           <dev:type>
-            <maml:name>System.String[]</maml:name>
+            <maml:name>System.Object[]</maml:name>
           </dev:type>
         </command:parameter>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="1" aliases="none">
@@ -243,17 +243,20 @@ inspection after the run.</maml:para>
           <maml:name>System.Management.Automation.SwitchParameter</maml:name>
         </dev:type>
       </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="true (ByValue, ByPropertyName)" position="0" aliases="DistinguishedName">
+      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="true (ByValue)" position="0" aliases="DistinguishedName">
         <maml:name>SearchBase</maml:name>
         <maml:description>
-          <maml:para>Distinguished name of one or more containers to search.
-Accepts pipeline input.
-Defaults to
-the current domain root when omitted.</maml:para>
+          <maml:para>Distinguished name of one or more containers to search, or objects that carry one.
+Accepts pipeline input. A string is used as the DN; any other object contributes its
+DistinguishedName property, so the output of Get-ADOrganizationalUnit or Get-ADObject, and
+Import-Csv rows with a DistinguishedName column, can be piped directly. An item with no
+DistinguishedName is reported as an error and skipped.
+When -SearchBase is not given, the current domain root is searched. Input that yields no usable
+DN stops the command instead.</maml:para>
         </maml:description>
-        <command:parameterValue required="true" variableLength="true">System.String[]</command:parameterValue>
+        <command:parameterValue required="true" variableLength="true">System.Object[]</command:parameterValue>
         <dev:type>
-          <maml:name>System.String[]</maml:name>
+          <maml:name>System.Object[]</maml:name>
         </dev:type>
       </command:parameter>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="Named" aliases="none">
@@ -269,11 +272,11 @@ the current domain root when omitted.</maml:para>
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>System.String[]</maml:name>
+          <maml:name>System.Object[]</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>Distinguished names, by value or by the `DistinguishedName` property of a piped object such as the
-output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
+          <maml:para>Distinguished names as strings, or objects with a `DistinguishedName` property: the output of
+`Get-ADOrganizationalUnit` or `Get-ADObject`, or `Import-Csv` rows with that column.</maml:para>
         </maml:description>
       </command:inputType>
     </command:inputTypes>
@@ -438,9 +441,9 @@ discovered entries as CSV.</maml:para>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="0" aliases="DistinguishedName">
           <maml:name>SearchBase</maml:name>
           <maml:description />
-          <command:parameterValue required="true" variableLength="false">string[]</command:parameterValue>
+          <command:parameterValue required="true" variableLength="false">Object[]</command:parameterValue>
           <dev:type>
-            <maml:name>System.String[]</maml:name>
+            <maml:name>System.Object[]</maml:name>
           </dev:type>
         </command:parameter>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="1" aliases="none">
@@ -692,17 +695,20 @@ Not written under -WhatIf; the log says so.</maml:para>
           <maml:name>System.Management.Automation.SwitchParameter</maml:name>
         </dev:type>
       </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="true (ByValue, ByPropertyName)" position="0" aliases="DistinguishedName">
+      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="true (ByValue)" position="0" aliases="DistinguishedName">
         <maml:name>SearchBase</maml:name>
         <maml:description>
-          <maml:para>Distinguished name of one or more containers to clean.
-Accepts pipeline input.
-Defaults to
-the current domain root when omitted.</maml:para>
+          <maml:para>Distinguished name of one or more containers to clean, or objects that carry one.
+Accepts pipeline input. A string is used as the DN; any other object contributes its
+DistinguishedName property, so the output of Get-ADOrganizationalUnit or Get-ADObject, and
+Import-Csv rows with a DistinguishedName column, can be piped directly. An item with no
+DistinguishedName is reported as an error and skipped.
+When -SearchBase is not given, the current domain root is cleaned. Input that yields no usable
+DN stops the command instead, so a mistake in the input never widens a removal to the domain.</maml:para>
         </maml:description>
-        <command:parameterValue required="true" variableLength="true">System.String[]</command:parameterValue>
+        <command:parameterValue required="true" variableLength="true">System.Object[]</command:parameterValue>
         <dev:type>
-          <maml:name>System.String[]</maml:name>
+          <maml:name>System.Object[]</maml:name>
         </dev:type>
       </command:parameter>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="Named" aliases="none">
@@ -727,11 +733,11 @@ the current domain root when omitted.</maml:para>
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>System.String[]</maml:name>
+          <maml:name>System.Object[]</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>Distinguished names, by value or by the `DistinguishedName` property of a piped object such as the
-output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
+          <maml:para>Distinguished names as strings, or objects with a `DistinguishedName` property: the output of
+`Get-ADOrganizationalUnit` or `Get-ADObject`, or `Import-Csv` rows with that column.</maml:para>
         </maml:description>
       </command:inputType>
     </command:inputTypes>
@@ -868,9 +874,9 @@ as CSV.</maml:para>
         <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="false" position="0" aliases="DistinguishedName, SearchBase">
           <maml:name>TargetObjectDN</maml:name>
           <maml:description />
-          <command:parameterValue required="true" variableLength="false">string[]</command:parameterValue>
+          <command:parameterValue required="true" variableLength="false">Object[]</command:parameterValue>
           <dev:type>
-            <maml:name>System.String[]</maml:name>
+            <maml:name>System.Object[]</maml:name>
           </dev:type>
         </command:parameter>
         <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="false" position="1" aliases="none">
@@ -1032,15 +1038,18 @@ Not written under -WhatIf; the log says so.</maml:para>
           <maml:name>System.Management.Automation.SwitchParameter</maml:name>
         </dev:type>
       </command:parameter>
-      <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="true (ByValue, ByPropertyName)" position="0" aliases="DistinguishedName, SearchBase">
+      <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="true (ByValue)" position="0" aliases="DistinguishedName, SearchBase">
         <maml:name>TargetObjectDN</maml:name>
         <maml:description>
-          <maml:para>Distinguished name of the object or container to restore.
-Accepts pipeline input.</maml:para>
+          <maml:para>Distinguished name of the object or container to restore, or objects that carry one.
+Accepts pipeline input. A string is used as the DN; any other object contributes its
+DistinguishedName property, so the output of Get-ADObject, and Import-Csv rows with a
+DistinguishedName column, can be piped directly. An item with no DistinguishedName is reported
+as an error and skipped; input that yields no usable DN stops the command.</maml:para>
         </maml:description>
-        <command:parameterValue required="true" variableLength="true">System.String[]</command:parameterValue>
+        <command:parameterValue required="true" variableLength="true">System.Object[]</command:parameterValue>
         <dev:type>
-          <maml:name>System.String[]</maml:name>
+          <maml:name>System.Object[]</maml:name>
         </dev:type>
       </command:parameter>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="Named" aliases="wi">
@@ -1056,11 +1065,11 @@ Accepts pipeline input.</maml:para>
     <command:inputTypes>
       <command:inputType>
         <dev:type>
-          <maml:name>System.String[]</maml:name>
+          <maml:name>System.Object[]</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>Distinguished names, by value or by the `DistinguishedName` property of a piped object such as the
-output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
+          <maml:para>Distinguished names as strings, or objects with a `DistinguishedName` property: the output of
+`Get-ADOrganizationalUnit` or `Get-ADObject`, or `Import-Csv` rows with that column.</maml:para>
         </maml:description>
       </command:inputType>
     </command:inputTypes>

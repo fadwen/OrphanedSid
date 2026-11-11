@@ -7,9 +7,12 @@ function Remove-OrphanedSid {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     [OutputType('RemovalOperationResult')]
     param(
-        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        # [object[]], not [string[]]: by-property binding asks an AD object for 'SearchBase' before
+        # the alias, the AD adapter answers with an empty collection, and the removal fell back to
+        # the domain root. Each item is read by ConvertTo-DistinguishedName instead.
+        [Parameter(ValueFromPipeline)]
         [Alias('DistinguishedName')]
-        [string[]]$SearchBase,
+        [object[]]$SearchBase,
 
         [Parameter()]
         [ValidateScript({
@@ -93,19 +96,25 @@ function Remove-OrphanedSid {
         $null = Start-OrphanedSidSession @sessionParams
 
         $searchBases = [System.Collections.Generic.List[string]]::new()
+        $searchBaseGiven = $false
     }
 
     process {
-        foreach ($dn in $SearchBase) {
-            if (-not [string]::IsNullOrWhiteSpace($dn)) {
-                $searchBases.Add($dn.Trim())
-            }
+        if ($PSBoundParameters.ContainsKey('SearchBase')) {
+            $searchBaseGiven = $true
+        }
+        foreach ($dn in @(ConvertTo-DistinguishedName -InputObject $SearchBase)) {
+            $searchBases.Add($dn)
         }
     }
 
     end {
         try {
             if ($searchBases.Count -eq 0) {
+                if ($searchBaseGiven) {
+                    # Input that held no usable DN must never widen a removal to the whole domain
+                    throw 'No usable search base in the input. Pass distinguished names, or objects with a DistinguishedName property; the domain root is used only when -SearchBase is not given at all.'
+                }
                 Write-Warning 'No search base specified. Using the current domain root.'
                 $searchBases.Add((Get-ADDomain).DistinguishedName)
             }

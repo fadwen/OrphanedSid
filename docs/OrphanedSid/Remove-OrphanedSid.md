@@ -20,7 +20,7 @@ Removes orphaned access control entries from Active Directory objects after back
 ### __AllParameterSets
 
 ```
-Remove-OrphanedSid [[-SearchBase] <string[]>] [[-BackupPath] <string>] [[-OutputPath] <string>]
+Remove-OrphanedSid [[-SearchBase] <Object[]>] [[-BackupPath] <string>] [[-OutputPath] <string>]
  [[-MaxRetries] <int>] [[-ConfigPath] <string>] [[-MaxMemoryUsageMB] <int>] [[-LogPath] <string>]
  [[-CorrelationId] <string>] [[-LogLevel] <string>] [-Force] [-IncludeInherited]
  [-PreserveTempFiles] [-SuppressConsoleOutput] [-WhatIf] [-Confirm]
@@ -362,13 +362,16 @@ HelpMessage: ''
 
 ### -SearchBase
 
-Distinguished name of one or more containers to clean.
-Accepts pipeline input.
-Defaults to
-the current domain root when omitted.
+Distinguished name of one or more containers to clean, or objects that carry one.
+Accepts pipeline input. A string is used as the DN; any other object contributes its
+DistinguishedName property, so the output of Get-ADOrganizationalUnit or Get-ADObject, and
+Import-Csv rows with a DistinguishedName column, can be piped directly. An item with no
+DistinguishedName is reported as an error and skipped.
+When -SearchBase is not given, the current domain root is cleaned. Input that yields no usable
+DN stops the command instead, so a mistake in the input never widens a removal to the domain.
 
 ```yaml
-Type: System.String[]
+Type: System.Object[]
 DefaultValue: ''
 SupportsWildcards: false
 Aliases:
@@ -378,7 +381,7 @@ ParameterSets:
   Position: 0
   IsRequired: false
   ValueFromPipeline: true
-  ValueFromPipelineByPropertyName: true
+  ValueFromPipelineByPropertyName: false
   ValueFromRemainingArguments: false
 DontShow: false
 AcceptedValues: []
@@ -437,10 +440,10 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## INPUTS
 
-### System.String[]
+### System.Object[]
 
-Distinguished names, by value or by the `DistinguishedName` property of a piped object such as the
-output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
+Distinguished names as strings, or objects with a `DistinguishedName` property: the output of
+`Get-ADOrganizationalUnit` or `Get-ADObject`, or `Import-Csv` rows with that column.
 ## OUTPUTS
 
 ### RemovalOperationResult

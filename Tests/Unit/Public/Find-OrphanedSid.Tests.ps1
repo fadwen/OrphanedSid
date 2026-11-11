@@ -22,6 +22,17 @@ BeforeAll {
     )
     $script:fakeManager = [PSCustomObject]@{ TempDirectory = 'C:\Temp\fake' }
     $script:fakeManager | Add-Member -MemberType ScriptMethod -Name GetAllResults -Value { $script:fakeResults }
+
+    # Stands in for an object from Get-ADOrganizationalUnit: the AD adapter answers any property
+    # name, so 'SearchBase' and 'TargetObjectDN' come back as empty collections. By-property
+    # binding to a [string[]] parameter found those before the DistinguishedName alias (#79).
+    function New-ADLikeObject([string]$DistinguishedName) {
+        [PSCustomObject]@{
+            DistinguishedName = $DistinguishedName
+            SearchBase        = [System.Collections.Generic.List[object]]::new()
+            TargetObjectDN    = [System.Collections.Generic.List[object]]::new()
+        }
+    }
 }
 
 Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
@@ -81,6 +92,39 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
             Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
                 $SearchBase -eq 'OU=Piped,DC=contoso,DC=com'
             }
+        }
+
+        It 'Reads the DN of piped AD objects instead of falling back to the domain root (#79)' {
+            (New-ADLikeObject 'OU=A,DC=contoso,DC=com'), (New-ADLikeObject 'OU=B,DC=contoso,DC=com') |
+                Find-OrphanedSid -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
+
+            @($warnings).Count | Should -Be 0
+            Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 0 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
+                $SearchBase.Count -eq 2 -and $SearchBase[0] -eq 'OU=A,DC=contoso,DC=com' -and $SearchBase[1] -eq 'OU=B,DC=contoso,DC=com'
+            }
+        }
+
+        It 'Reads the DN of an AD object passed to -SearchBase' {
+            Find-OrphanedSid -SearchBase (New-ADLikeObject 'OU=Named,DC=contoso,DC=com') | Out-Null
+
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
+                $SearchBase -eq 'OU=Named,DC=contoso,DC=com'
+            }
+        }
+
+        It 'Refuses input with no usable DN instead of scanning the domain root (#79)' {
+            { [PSCustomObject]@{ Name = 'NoDN' } | Find-OrphanedSid -ErrorAction SilentlyContinue } |
+                Should -Throw '*No usable search base*'
+
+            Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 0 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 0 -Exactly
+        }
+
+        It 'Refuses a -SearchBase that is only blank' {
+            { Find-OrphanedSid -SearchBase '  ' } | Should -Throw '*No usable search base*'
+
+            Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 0 -Exactly
         }
 
         It 'Defaults to the domain root when no search base is given' {
