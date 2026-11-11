@@ -106,9 +106,20 @@ Describe "MemoryManager Class Tests" -Tag "Unit", "Classes", "MemoryManager" {
             # A check interval of 1 makes the first call read the process memory
             $testManager = [MemoryManager]::new(50, 1, 'cid-getprocess')
 
-            Mock Get-Process { throw "Process not found" } -ModuleName $null
-
-            $warnings = @(& { $testManager.CheckMemoryUsage() } 3>&1)
+            # Not a Pester mock: on Windows PowerShell 5.1 a class method resolves commands in the
+            # scope where the class was first defined, so when another file in the run loaded
+            # MemoryManager first, a mock here never reaches it. A global function shadows the
+            # cmdlet from every scope; it is removed as soon as the call returns.
+            ${function:global:Get-Process} = { throw 'Process not found' }
+            try {
+                $warnings = @(& { $testManager.CheckMemoryUsage() } 3>&1)
+            }
+            finally {
+                # Without a scope in the path, Remove-Item takes the first match, the global one.
+                # "Function:\global:Get-Process" silently removes nothing on Windows PowerShell 5.1.
+                Remove-Item -LiteralPath 'Function:\Get-Process'
+            }
+            (Get-Command -Name Get-Process).CommandType | Should -Be 'Cmdlet'
 
             $warnings.Count | Should -Be 1
             $warnings[0].Message | Should -BeLike 'Failed to check memory usage: Process not found*CorrelationId: cid-getprocess'

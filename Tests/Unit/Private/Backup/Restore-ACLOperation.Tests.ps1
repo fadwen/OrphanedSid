@@ -166,7 +166,7 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
 
     Context "Failures" {
         It "Should fail without writing when the target does not validate" {
-            Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; ErrorMessage = 'Object not found' } }
+            Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; Issues = @('Object not found') } }
 
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -CorrelationId 'acl-4'
 
@@ -179,16 +179,14 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             }
         }
 
-        # Module bug (#16): Set-ObjectACL reads $targetValidation.ErrorMessage, but Get-RestorationTarget reports
-        # its reasons in Issues, so the failure message never says why the target was rejected
-        It "Should report the reasons Get-RestorationTarget gives for rejecting the target" -Skip {
+        It "Should report the reasons Get-RestorationTarget gives for rejecting the target" {
             Mock Get-RestorationTarget {
-                [PSCustomObject]@{ IsValid = $false; Issues = @('Target object not found or inaccessible: no such object') }
+                [PSCustomObject]@{ IsValid = $false; Issues = @('Target object not found or inaccessible: no such object', 'Cannot read current ACL: denied') }
             }
 
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup
 
-            $result.ErrorMessage | Should -BeLike '*Target object not found or inaccessible: no such object*'
+            $result.ErrorMessage | Should -BeLike '*Target object validation failed: Target object not found or inaccessible: no such object; Cannot read current ACL: denied*'
         }
 
         It "Should report a Set-Acl failure and skip verification" {

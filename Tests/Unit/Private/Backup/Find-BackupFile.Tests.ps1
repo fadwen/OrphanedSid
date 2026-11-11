@@ -87,8 +87,7 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             Should -Invoke Test-Path -Times 1 -Exactly -ParameterFilter {
                 $Path -eq 'C:\InvalidBackupPath' -and $PathType -eq 'Container'
             }
-            # The inner catch around Test-Path re-catches the Write-Error, so the message is logged twice (#20)
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Error' -and $Message -eq 'Backup directory not found or inaccessible: C:\InvalidBackupPath'
             }
             Should -Invoke Get-ChildItem -Times 0 -Exactly
@@ -98,6 +97,9 @@ Describe "Find-BackupFile Function Tests" -Tag "Unit", "Backup", "Discovery" {
             Mock Test-Path { throw 'Illegal characters in path' } -ParameterFilter { $Path -eq 'C:\Broken|Path' }
 
             { Find-BackupFile -BackupPath 'C:\Broken|Path' } | Should -Throw "*Backup directory not found or inaccessible: C:\Broken|Path*"
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Backup directory not found or inaccessible: C:\Broken|Path'
+            }
             Should -Invoke Get-ChildItem -Times 0 -Exactly
         }
 

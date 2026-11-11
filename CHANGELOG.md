@@ -20,6 +20,62 @@ All notable changes to this module are recorded here. Format follows
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
   count for discovery and removal runs. It read those values only from an object's properties, and
   the processing results are a hashtable.
+- `BatchSize` or `MemoryCheckInterval` set to `0` in a `-ConfigPath` file was silently ignored and
+  the default used. It is now rejected like any other value outside 1-1000.
+  ([#21](https://github.com/fadwen/OrphanedSid/issues/21))
+- A `-LogPath` of only spaces made the log set-up fail over to its emergency location with a
+  warning. It now gets the default name, `.\Logs\OrphanedSid_<timestamp>.log`.
+  ([#31](https://github.com/fadwen/OrphanedSid/issues/31))
+- The internal garbage-collection helper reported compacting the large object heap without asking
+  .NET to do it. It now requests the compaction, and reports it, only for a collection that can
+  perform it. ([#23](https://github.com/fadwen/OrphanedSid/issues/23))
+- The security check before a removal reported a batch as `High` risk when a high-risk SID followed
+  a blocked one, although a blocked SID makes the batch `Critical`. The blocked SID was still not
+  removed. ([#27](https://github.com/fadwen/OrphanedSid/issues/27))
+- The SID security check listed a low-risk SID twice among the allowed SIDs.
+  ([#26](https://github.com/fadwen/OrphanedSid/issues/26))
+- The audit entries for the ACL read that verifies a removal carried a new correlation ID instead of
+  the run's, so they could not be tied to the removal.
+  ([#29](https://github.com/fadwen/OrphanedSid/issues/29))
+- `Remove-OrphanedSid` could not back up an object whose distinguished name is longer than about 200
+  characters under Windows PowerShell 5.1 unless the backup folder path was very short. The backup
+  file name alone could reach 230 characters and the full path passed the 260-character limit, so
+  the backup failed and that object's orphaned entries were not removed. The name is now shortened
+  to fit the folder it is written to. When it has to be shortened, it carries a hash of the full
+  DN, so two long DNs backed up in the same second no longer get the same file name. A backup folder
+  too long to hold any backup file is refused with a message saying so.
+  ([#19](https://github.com/fadwen/OrphanedSid/issues/19))
+- A backup whose SHA256 hash differed from the computed one only in letter case passed the integrity
+  check before a restore. The hash is compared case-sensitively now.
+  ([#12](https://github.com/fadwen/OrphanedSid/issues/12))
+- A backup with an empty `SDDL` or `SDDLHash` passed validation because the integrity checks ran
+  only when both had values. An empty required property now fails validation at every level.
+  ([#13](https://github.com/fadwen/OrphanedSid/issues/13))
+- When `Restore-OrphanedSidBackup` rejected a target object, the error ended in an empty reason
+  (`Target object validation failed: `). It now names each problem found.
+  ([#16](https://github.com/fadwen/OrphanedSid/issues/16))
+- A missing backup folder was logged twice. ([#20](https://github.com/fadwen/OrphanedSid/issues/20))
+- Restoring from a specific backup file restored whichever object the file recorded, even when it
+  was not the object asked for. A backup file recorded for a different object is now refused.
+  Several distinguished names piped into one restore from a backup folder are each restored from
+  their own backup. ([#17](https://github.com/fadwen/OrphanedSid/issues/17))
+- When reading an object failed, the retry never re-read it: it passed the error instead of the
+  object, so every attempt failed, and each failing object still waited through the back-off (12
+  seconds with the default `-MaxRetries 3`). The error and retry log lines also named no object. The
+  directory read is now retried on the object itself; an object that succeeds on a retry is no
+  longer counted as an error, and `Remove-OrphanedSid` removes what the retry finds. A failed
+  removal is not retried, so an object is never backed up and changed twice.
+  ([#22](https://github.com/fadwen/OrphanedSid/issues/22))
+- `Find-OrphanedSid` returned nothing when `$WhatIfPreference` was `$true` in the session, although
+  discovery ran and the summary counted what it found.
+  ([#14](https://github.com/fadwen/OrphanedSid/issues/14))
+
+### Removed
+
+- The restore pre-check no longer reports write access. It opened an LDAP connection and read the
+  security descriptor, which shows read access only, so an account without the right to change
+  permissions passed it. A restore that lacks that right fails at the point it applies the ACL,
+  with the error from `Set-Acl`. ([#15](https://github.com/fadwen/OrphanedSid/issues/15))
 
 ### Removed
 
@@ -43,6 +99,9 @@ All notable changes to this module are recorded here. Format follows
   read the targets to settle the unverified ones.
 - `Remove-OrphanedSid` logs a warning naming each unverified SID it skips, and the processing summary
   reports how many SIDs were unverified.
+- `IntendedRemovals` on removal results is a number. It was a one-element string array holding the
+  count (`{"2"}`), unlike `ActualRemovals` and `FailedRemovals`.
+  ([#28](https://github.com/fadwen/OrphanedSid/issues/28))
 
 ## [1.0.1] - 2026-11-09
 

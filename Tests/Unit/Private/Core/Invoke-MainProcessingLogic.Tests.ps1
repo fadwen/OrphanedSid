@@ -396,6 +396,18 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             }
             $result.ProcessingErrors | Should -Be 3
         }
+
+        It "Does not retry detection when removal fails" {
+            Mock Remove-OrphanedSidEntry { throw 'access denied' }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; MaxRetries = 3 } | Out-Null
+
+            Should -Invoke Find-OrphanedSIDsInObject -Times 3 -Exactly
+            Should -Invoke Start-Sleep -Times 0 -Exactly
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'Error processing object CN=User1,OU=Test,DC=test,DC=com: access denied'
+            }
+        }
     }
 
     Context "Per-object errors and retries" {
@@ -410,11 +422,14 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 2 }
             Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 4 }
             Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 6 }
-            Should -Invoke Write-StructuredLog -Times 3 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like 'Retry attempt * of 3 *' }
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Max retries (3) exceeded*' }
+            Should -Invoke Write-StructuredLog -Times 3 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -like 'Retry attempt * of 3 for object CN=User1,OU=Test,DC=test,DC=com: Processing failed'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Max retries (3) exceeded for object CN=User1,OU=Test,DC=test,DC=com' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Error processing object CN=User1,OU=Test,DC=test,DC=com: Processing failed' }
         }
 
-        It "Streams the findings of a retry that succeeds and continues with the next object" {
+        It "Streams the findings of a retry that succeeds, counts no error and continues with the next object" {
             $script:findCalls = 0
             Mock Find-OrphanedSIDsInObject {
                 $script:findCalls++
@@ -424,15 +439,30 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
 
             $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; MaxRetries = 2 }
 
-            $result.ProcessingErrors | Should -Be 1
+            $result.ProcessingErrors | Should -Be 0
             $result.TotalObjectsProcessed | Should -Be 3
             $result.OrphanedSIDsFound | Should -Be 3
             $result.StreamingSummary.TotalResults | Should -Be 3
             Should -Invoke Start-Sleep -Times 1 -Exactly
         }
 
-        # Module bug (#22): the retry in the per-object catch passes $_ (the ErrorRecord) as -ADObject, not the object that failed
-        It "Retries detection on the object that failed" -Skip {
+        It "Removes what a successful retry finds" {
+            $script:findCalls = 0
+            Mock Find-OrphanedSIDsInObject {
+                $script:findCalls++
+                if ($script:findCalls -eq 1) { throw 'transient' }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned' }
+            }
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; MaxRetries = 2 } | Out-Null
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter {
+                $ObjectDN -eq 'CN=User1,OU=Test,DC=test,DC=com' -and $OrphanedSIDs[0] -eq $script:SidA
+            }
+        }
+
+        It "Retries detection on the object that failed" {
             $script:findCalls = 0
             Mock Find-OrphanedSIDsInObject {
                 $script:findCalls++
