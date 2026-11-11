@@ -276,7 +276,9 @@ class StreamingResultsManager : System.IDisposable {
             if (Test-Path $batchFile) {
                 try {
                     $batchContent = Get-Content $batchFile -Raw | ConvertFrom-Json
-                    $allResults += $batchContent
+                    foreach ($item in @($batchContent)) {
+                        $allResults += $this.RestoreResult($item)
+                    }
                 }
                 catch {
                     Write-Warning "Failed to read batch file $batchFile : $($_.Exception.Message)"
@@ -285,6 +287,45 @@ class StreamingResultsManager : System.IDisposable {
         }
 
         return $allResults
+    }
+
+    # JSON loses types: enums come back as numbers, and a DateTime comes back as UTC on Windows
+    # PowerShell 5.1 and as local time on PowerShell 7. A result that came in as an
+    # OrphanedSIDResult is rebuilt as one; anything else is returned as read.
+    [object]RestoreResult([object]$item) {
+        if ($null -eq $item -or $item -isnot [System.Management.Automation.PSCustomObject]) {
+            return $item
+        }
+        $names = @($item.PSObject.Properties.Name)
+        if (-not ($names -contains 'OrphanedSID' -and $names -contains 'VerificationStatus' -and $names -contains 'ObjectDN')) {
+            return $item
+        }
+
+        # Resolved at run time: a type literal here would bind when this file is parsed
+        $resultType = 'OrphanedSIDResult' -as [type]
+        if ($null -eq $resultType) {
+            return $item
+        }
+        $typed = $resultType::new()
+        $declared = @($resultType.GetProperties().Name)
+        foreach ($property in $item.PSObject.Properties) {
+            if ($declared -contains $property.Name) {
+                $value = $property.Value
+                if ($property.Name -eq 'Timestamp' -and $value -is [DateTime] -and $value.Kind -eq [DateTimeKind]::Utc) {
+                    $value = $value.ToLocalTime()
+                }
+                elseif ($property.Name -eq 'Timestamp' -and $value -is [string]) {
+                    $value = [DateTime]::Parse($value, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                    if ($value.Kind -eq [DateTimeKind]::Utc) { $value = $value.ToLocalTime() }
+                }
+                $typed.($property.Name) = $value
+            }
+            else {
+                # Note properties added during processing (ProcessingContext, ProcessingStatistics)
+                $typed | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
+            }
+        }
+        return $typed
     }
 
     [object]GetSummary() {

@@ -265,6 +265,20 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @($ids | Where-Object { $_ -ne 'RUN-42' } | Select-Object -Unique) | Should -Be @()
         }
 
+        It 'Returns typed results with enum names, in the pipeline and the CSV (#41)' {
+            $csvPath = Join-Path $TestDrive 'typed.csv'
+
+            $results = @(Invoke-FindOrphanedSid -OutputPath $csvPath)
+
+            $results[0].GetType().Name | Should -Be 'OrphanedSIDResult'
+            "$($results[0].ActiveDirectoryRights)" | Should -Be 'ReadProperty, WriteProperty'
+            "$($results[0].AccessControlType)" | Should -Be 'Allow'
+            $results[0].Timestamp.Kind | Should -Not -Be ([DateTimeKind]::Utc)
+            $row = @(Import-Csv -Path $csvPath)[0]
+            $row.ActiveDirectoryRights | Should -Be 'ReadProperty, WriteProperty'
+            $row.AccessControlType | Should -Be 'Allow'
+        }
+
         It 'Changes no ACL' {
             $null = Invoke-FindOrphanedSid
 
