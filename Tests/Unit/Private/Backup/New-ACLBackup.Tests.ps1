@@ -123,7 +123,10 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         }
 
         It 'Fits the name to a deep backup folder' {
-            $deep = Join-Path $script:backupDir ('d' * 120)
+            # Deep enough to leave exactly 60 characters for the name, whatever TestDrive's own length
+            $roomForName = 60
+            $depth = 259 - '_yyyyMMdd_HHmmss.xml'.Length - $roomForName - ($script:backupDir.TrimEnd('\').Length + 1) - 1
+            $deep = Join-Path $script:backupDir ('d' * $depth)
             $null = New-Item -Path $deep -ItemType Directory -Force
             $longDn = 'CN=' + ('y' * 200) + ',DC=contoso,DC=com'
 
@@ -131,6 +134,7 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
 
             $file = Get-ChildItem $deep -File | Select-Object -First 1
             $file.FullName.Length | Should -BeLessOrEqual 259
+            ($file.Name.Length - '_yyyyMMdd_HHmmss.xml'.Length) | Should -Be $roomForName
             (Import-Clixml -Path $file.FullName).ObjectDN | Should -Be $longDn
         }
 
