@@ -20,6 +20,16 @@ All notable changes to this module are recorded here. Format follows
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
   count for discovery and removal runs. It read those values only from an object's properties, and
   the processing results are a hashtable.
+- When reading an object failed, the retry never re-read it: it passed the error instead of the
+  object, so every attempt failed, and each failing object still waited through the back-off (12
+  seconds with the default `-MaxRetries 3`). The error and retry log lines also named no object. The
+  directory read is now retried on the object itself; an object that succeeds on a retry is no
+  longer counted as an error, and `Remove-OrphanedSid` removes what the retry finds. A failed
+  removal is not retried, so an object is never backed up and changed twice.
+  ([#22](https://github.com/fadwen/OrphanedSid/issues/22))
+- `Find-OrphanedSid` returned nothing when `$WhatIfPreference` was `$true` in the session, although
+  discovery ran and the summary counted what it found.
+  ([#14](https://github.com/fadwen/OrphanedSid/issues/14))
 
 ### Changed
 
