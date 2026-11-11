@@ -1,4 +1,4 @@
-﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
     Unit tests for Invoke-RestoreWorkflow, which finds backups and restores one object or many, and
@@ -127,9 +127,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             }
         }
 
-        # Module bug (#17): the foreach variable $backupFile overwrites the -BackupFile parameter (names are
-        # case-insensitive), so every piped DN after the first restores from the first DN's backup
-        It "Should restore each distinguished name piped in" -Skip {
+        It "Should restore each distinguished name piped in" {
             $second = 'CN=Second,OU=Users,DC=company,DC=com'
             $secondFile = New-BackupFile -Folder $script:folder -ObjectDN $second
 
@@ -157,6 +155,16 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             }
         }
 
+        It "Should refuse a backup file recorded for a different object, and restore nothing" {
+            $otherFile = New-BackupFile -Folder $script:folder -ObjectDN 'CN=Someone Else,OU=Users,DC=company,DC=com'
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $otherFile -WarningAction SilentlyContinue
+
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+            $result.Success | Should -BeFalse
+            $result.TargetObjectDN | Should -Be "Unknown (from $otherFile)"
+            $result.ErrorMessage | Should -Be "Backup file $otherFile is a backup of 'CN=Someone Else,OU=Users,DC=company,DC=com', not of '$($script:TargetDN)'"
+        }
         It "Should default to the Standard validation level" {
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
 

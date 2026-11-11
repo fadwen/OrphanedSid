@@ -114,10 +114,28 @@ Describe 'Test-BackupIntegrity' -Tag 'Unit', 'Backup', 'Private' {
             $result.Issues[0] | Should -BeLike 'SDDL integrity check failed: Hash mismatch (expected: tampered, calculated: *'
         }
 
-        # Module bug (#13): the hash and SDDL checks run only when SDDL and SDDLHash have values, and the
-        # required-property check tests only that the property exists, so an empty SDDL passes
-        It 'Rejects a backup whose SDDL and hash are empty' -Skip {
-            (Test-BackupIntegrity -BackupData (New-Backup -Override @{ SDDL = $null; SDDLHash = $null })).IsValid | Should -BeFalse
+        It 'Rejects a backup whose SDDL and hash are empty, at every level: <Level>' -ForEach @(
+            @{ Level = 'Basic' }
+            @{ Level = 'Standard' }
+            @{ Level = 'Comprehensive' }
+        ) {
+            $result = Test-BackupIntegrity -BackupData (New-Backup -Override @{ SDDL = $null; SDDLHash = '' }) -ValidationLevel $Level
+
+            $result.IsValid | Should -BeFalse
+            $result.Issues | Should -Contain 'Empty required property: SDDL'
+            $result.Issues | Should -Contain 'Empty required property: SDDLHash'
+        }
+
+        It 'Rejects a hash that differs from the computed one only in letter case' {
+            $hash = (New-Backup).SDDLHash
+            $flipped = -join ($hash.ToCharArray() | ForEach-Object {
+                if ([char]::IsUpper($_)) { [char]::ToLowerInvariant($_) } else { [char]::ToUpperInvariant($_) }
+            })
+
+            $result = Test-BackupIntegrity -BackupData (New-Backup -Override @{ SDDLHash = $flipped })
+
+            $result.IsValid | Should -BeFalse
+            $result.Issues[0] | Should -BeLike "SDDL integrity check failed: Hash mismatch (expected: $flipped, calculated: $hash)"
         }
 
         It 'Rejects an SDDL that does not parse' {

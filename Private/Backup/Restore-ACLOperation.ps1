@@ -156,7 +156,7 @@ function Set-ObjectACL {
             # Validate target object exists and is accessible
             $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
             if (-not $targetValidation.IsValid) {
-                throw "Target object validation failed: $($targetValidation.ErrorMessage)"
+                throw "Target object validation failed: $(@($targetValidation.Issues) -join '; ')"
             }
 
             # Prepare SDDL for application
@@ -254,14 +254,13 @@ function Get-RestorationTarget {
 
     .DESCRIPTION
         Performs comprehensive validation of target Active Directory objects
-        before ACL restoration operations. Ensures objects exist, are accessible,
-        and are suitable for ACL modification.
+        before ACL restoration operations: the DN is well formed, the object exists, and its
+        current ACL can be read. Write access is not probed. Rewriting a security descriptor
+        needs WRITE_DAC, which no attribute read can show, and Set-Acl reports a permission
+        failure itself when the restore is applied.
 
     .PARAMETER TargetObjectDN
         Distinguished name of the target object to validate.
-
-    .PARAMETER CheckPermissions
-        Whether to verify current user has permissions to modify ACL.
 
     .PARAMETER CorrelationId
         Unique identifier for tracking this validation operation.
@@ -281,9 +280,6 @@ function Get-RestorationTarget {
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
         [string]$TargetObjectDN,
-
-        [Parameter()]
-        [switch]$CheckPermissions,
 
         [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
@@ -320,7 +316,9 @@ function Get-RestorationTarget {
             try {
                 $adObject = Get-ADObject -Identity $TargetObjectDN -Properties objectClass -ErrorAction Stop
                 $objectExists = $true
-                $objectType = $adObject.objectClass[-1]  # Get most specific class
+                # ObjectClass is a single string from the AD module and the class chain from LDAP;
+                # @()[-1] is the most specific class either way, never the last character
+                $objectType = @($adObject.ObjectClass)[-1]
                 Write-Verbose "Target object exists: $TargetObjectDN (Type: $objectType)"
             }
             catch {
@@ -341,22 +339,6 @@ function Get-RestorationTarget {
                 }
             }
 
-            # Check write permissions if requested
-            $writePermissions = $null
-            if ($CheckPermissions -and $objectExists) {
-                try {
-                    # Try to read the security descriptor to check permissions
-                    $testAccess = [System.DirectoryServices.DirectoryEntry]::new("LDAP://$TargetObjectDN")
-                    $testAccess.RefreshCache(@("nTSecurityDescriptor"))
-                    $writePermissions = $true
-                    $testAccess.Dispose()
-                }
-                catch {
-                    $writePermissions = $false
-                    $issues += "Insufficient permissions to modify ACL: $($_.Exception.Message)"
-                }
-            }
-
             return [PSCustomObject]@{
                 PSTypeName = 'TargetValidationResult'
                 IsValid = $issues.Count -eq 0
@@ -364,7 +346,6 @@ function Get-RestorationTarget {
                 ObjectExists = $objectExists
                 ObjectType = $objectType
                 ACLReadable = $aclReadable
-                WritePermissions = $writePermissions
                 Issues = $issues
                 CorrelationId = $CorrelationId
                 ValidatedAt = Get-Date
@@ -378,7 +359,6 @@ function Get-RestorationTarget {
                 ObjectExists = $false
                 ObjectType = $null
                 ACLReadable = $false
-                WritePermissions = $null
                 Issues = @("Validation error: $($_.Exception.Message)")
                 CorrelationId = $CorrelationId
                 ValidatedAt = Get-Date
