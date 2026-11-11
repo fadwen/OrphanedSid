@@ -43,7 +43,6 @@ Describe 'Get-RestorationTarget' -Tag 'Unit', 'Backup', 'Private' {
         $result.ObjectExists | Should -BeTrue
         $result.ObjectType | Should -Be 'group'
         $result.ACLReadable | Should -BeTrue
-        $result.WritePermissions | Should -BeNullOrEmpty
         $result.Issues | Should -BeNullOrEmpty
         $result.CorrelationId | Should -Be 'tgt-1'
         Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $Identity -eq $script:dn }
@@ -109,24 +108,21 @@ Describe 'Get-RestorationTarget' -Tag 'Unit', 'Backup', 'Private' {
         $result.Issues[0] | Should -BeLike 'Cannot read current ACL:*Access is denied*'
     }
 
-    It 'Reports missing write permission when the LDAP bind fails under -CheckPermissions' {
-        # No domain here, so the DirectoryEntry bind throws; that is the branch under test
-        $result = Get-RestorationTarget -TargetObjectDN $script:dn -CheckPermissions
+    It 'Reports the class when the AD module returns ObjectClass as a single string' {
+        Mock Get-ADObject { [PSCustomObject]@{ DistinguishedName = $Identity; ObjectClass = 'user' } }
 
-        $result.IsValid | Should -BeFalse
-        $result.WritePermissions | Should -BeFalse
-        $result.Issues[-1] | Should -BeLike 'Insufficient permissions to modify ACL:*'
+        (Get-RestorationTarget -TargetObjectDN $script:dn).ObjectType | Should -Be 'user'
     }
 
-    It 'Does not check write permission for an object that does not exist' {
-        Mock Get-ADObject { throw 'not found' }
+    It 'Validates an existing, readable object without probing write access' {
+        # No domain controller is reachable here; only the two mocked cmdlets are consulted
+        $result = Get-RestorationTarget -TargetObjectDN $script:dn
 
-        $result = Get-RestorationTarget -TargetObjectDN $script:dn -CheckPermissions
-
-        $result.WritePermissions | Should -BeNullOrEmpty
+        $result.IsValid | Should -BeTrue
+        $result.PSObject.Properties.Name | Should -Not -Contain 'WritePermissions'
+        (Get-Command Get-RestorationTarget).Parameters.Keys | Should -Not -Contain 'CheckPermissions'
     }
 }
-
 Describe 'Confirm-RestorationSuccess' -Tag 'Unit', 'Backup', 'Private' {
 
     BeforeEach {

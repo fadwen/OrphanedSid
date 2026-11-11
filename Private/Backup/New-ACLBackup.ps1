@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -252,8 +252,35 @@ function New-ACLBackup {
 
             # Create safe filename with comprehensive sanitization
             $safeName = $ObjectDN.Trim() -replace '[\\/:*?"<>|,=]', '_' -replace '\s+', '_'
-            if ($safeName.Length -gt 200) {
-                $safeName = $safeName.Substring(0, 200) + "_truncated"
+
+            # The whole path must stay under the 260-character Windows limit, which .NET Framework
+            # enforces on Windows PowerShell 5.1: folder, separator, name and "_yyyyMMdd_HHmmss.xml".
+            # The object's DN is recorded inside the backup, so the name only has to be unique.
+            $maxPathLength = 259
+            $suffixLength = '_yyyyMMdd_HHmmss.xml'.Length
+            # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not $PWD
+            $fullFolder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
+            $folderLength = $fullFolder.TrimEnd('\', '/').Length + 1
+            $maxNameLength = [Math]::Min(200, $maxPathLength - $folderLength - $suffixLength)
+            if ($safeName.Length -gt $maxNameLength) {
+                # A prefix plus a hash of the full DN, so two long DNs that share a prefix and are
+                # backed up in the same second cannot overwrite each other
+                $sha256 = [System.Security.Cryptography.SHA256]::Create()
+                try {
+                    $dnHash = -join ($sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($ObjectDN.Trim()))[0..3] |
+                            ForEach-Object { $_.ToString('x2') })
+                }
+                finally {
+                    $sha256.Dispose()
+                }
+                $marker = "_${dnHash}_truncated"
+                $prefixLength = $maxNameLength - $marker.Length
+                if ($prefixLength -lt 16) {
+                    $message = "Backup folder path is too long to hold a backup file within the 260-character limit: $BackupPath"
+                    Write-StructuredLog $message -Level Error -CorrelationId $CorrelationId
+                    throw $message
+                }
+                $safeName = $safeName.Substring(0, $prefixLength) + $marker
                 Write-StructuredLog "Filename truncated for length: $safeName" -Level Debug -CorrelationId $CorrelationId
             }
 
@@ -303,7 +330,7 @@ function New-ACLBackup {
 
                 # Immediate integrity verification to ensure backup authenticity
                 $verifyData = Import-Clixml -Path $backupFile -ErrorAction Stop
-                if ($verifyData.SDDLHash -ne $backupData.SDDLHash) {
+                if ($verifyData.SDDLHash -cne $backupData.SDDLHash) {
                     Remove-Item $backupFile -Force -ErrorAction SilentlyContinue
                     throw "Backup integrity check failed - SHA256 hash mismatch detected"
                 }

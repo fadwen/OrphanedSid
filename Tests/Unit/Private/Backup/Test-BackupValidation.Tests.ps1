@@ -181,12 +181,28 @@ Describe "Test-BackupValidation" -Tag "Unit", "Backup", "Validation" {
             $result.Issues[0] | Should -BeLike 'Invalid SDDL format:*'
         }
 
-        # Module bug (#13): the SDDL checks run only when SDDL and SDDLHash have values, and the required-property
-        # check tests only that the property exists, so a backup with an empty SDDL is reported valid
-        It "Should reject a backup whose SDDL and hash are empty" -Skip {
-            $result = Test-BackupValidation -BackupData (New-Backup -Override @{ SDDL = $null; SDDLHash = $null }) -ValidationLevel Standard
+        It "Should reject a backup whose SDDL and hash are empty, at every level: <Level>" -ForEach @(
+            @{ Level = 'Basic' }
+            @{ Level = 'Standard' }
+            @{ Level = 'Comprehensive' }
+        ) {
+            $result = Test-BackupValidation -BackupData (New-Backup -Override @{ SDDL = $null; SDDLHash = '  ' }) -ValidationLevel $Level
 
             $result.IsValid | Should -BeFalse
+            $result.Issues | Should -Contain 'Empty required property: SDDL'
+            $result.Issues | Should -Contain 'Empty required property: SDDLHash'
+        }
+
+        It "Should reject a hash that differs from the computed one only in letter case" {
+            $hash = Get-Sha256Base64 -Text $script:ValidSddl
+            $flipped = -join ($hash.ToCharArray() | ForEach-Object {
+                if ([char]::IsUpper($_)) { [char]::ToLowerInvariant($_) } else { [char]::ToUpperInvariant($_) }
+            })
+
+            $result = Test-BackupValidation -BackupData (New-Backup -Override @{ SDDLHash = $flipped }) -ValidationLevel Standard
+
+            $result.IsValid | Should -BeFalse
+            $result.Issues | Should -Be @('Hash integrity check failed')
         }
 
         It "Should not run the comprehensive checks at the Standard level" {

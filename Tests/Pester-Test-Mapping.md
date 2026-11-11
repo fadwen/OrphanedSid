@@ -45,10 +45,10 @@ between module functions names only parameters the callee declares.
 ## Integration
 
 `Integration/OrphanedSidWorkflow.Tests.ps1` imports the module and runs `Find-OrphanedSid`,
-`Remove-OrphanedSid` and `Restore-OrphanedSidBackup` as an operator would. Only the boundary is
-mocked, in module scope: the Active Directory cmdlets and `Get-Acl`/`Set-Acl` on `AD:\` paths read
-and write a hashtable of objects whose security descriptors are real `ActiveDirectorySecurity`
-instances. The directory holds a built-in principal, a live user, an orphaned SID and a SID whose
+`Remove-OrphanedSid` and `Restore-OrphanedSidBackup` as an operator would. Nothing inside the
+module is mocked. Only the boundary is, in module scope: the Active Directory cmdlets and
+`Get-Acl`/`Set-Acl` on `AD:\` paths read and write a hashtable of objects whose security
+descriptors are real `ActiveDirectorySecurity` instances. The directory holds a built-in principal, a live user, an orphaned SID and a SID whose
 lookups fail with access denied, and the tests assert on what each command returns, the SDDL it
 leaves on each object, and the backups and CSV it writes:
 
@@ -58,9 +58,6 @@ leaves on each object, and the backups and CSV it writes:
 - restore puts a backed-up descriptor back and refuses a backup whose hash no longer matches;
 - a run looks up each SID once however many ACEs reference it, and a failed lookup is not cached
   (tagged `Performance`).
-
-The restore tests replace `Get-RestorationTarget`, whose write-access probe opens an LDAP
-`DirectoryEntry` that cannot be mocked.
 
 ## Helpers
 
