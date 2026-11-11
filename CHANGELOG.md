@@ -8,6 +8,11 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- `Remove-OrphanedSid` returns one `RemovalOperationResult` per object changed, covering all of its
+  removed entries, instead of one per entry, and confirms once per object. Under `-WhatIf` it
+  previews one object per object. When any of an object's orphaned SIDs is blocked by the security
+  check, none of that object's entries is removed.
+  ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
 - `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
   (`Orphaned` or `Unverified`) and `VerificationError`, which names each lookup that failed. An
   unverified SID is listed with `Confidence = Low`. Filter on `VerificationStatus -eq 'Orphaned'` to
@@ -43,6 +48,13 @@ All notable changes to this module are recorded here. Format follows
   retries). The next lookup, which searches deleted objects, also returns live objects, and any match
   there was taken as proof of deletion. Only a match marked `isDeleted` now counts as deleted; a
   live match means the SID exists. ([#39](https://github.com/fadwen/OrphanedSid/issues/39))
+- Restoring an object from which `Remove-OrphanedSid` had removed several orphaned SIDs brought back
+  only the last one. Each SID was removed in its own step with its own backup, so every backup after
+  the first already lacked the SIDs removed before it, and restore uses the newest. When two of
+  those backups fell in the same second, the second also overwrote the first. An object's orphaned
+  SIDs are now removed together after one backup, and a backup never overwrites an earlier one: a
+  second backup of the same object in the same second gets a `_2` suffix.
+  ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

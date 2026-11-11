@@ -1,4 +1,4 @@
-﻿# Backup and Restore Issues Troubleshooting Guide
+# Backup and Restore Issues Troubleshooting Guide
 
 ## Overview
 
@@ -17,7 +17,9 @@ Each backup is one `Export-Clixml` file written by `New-ACLBackup`
   `-BackupPath` must already exist. Under `-WhatIf` no folder is created.
 - **File name**: `<sanitized DN>_<yyyyMMdd_HHmmss>.xml`, where the DN has `\ / : * ? " < > | , =`
   and whitespace replaced by `_`. A name longer than 200 characters, or than the full path's
-  259-character budget allows, is cut and ends `_<8 hex digits of a DN hash>_truncated`.
+  259-character budget allows, is cut and ends `_<8 hex digits of a DN hash>_truncated`. A second
+  backup of the same object in the same second gets `_2` (then `_3`...) after the timestamp, and a
+  removal backs each object up once, before any of its entries is removed.
 - **Content**: a single object with these properties.
 
 | Property | Meaning |
@@ -58,8 +60,8 @@ Immediately after writing, `New-ACLBackup` re-imports the file and compares `SDD
    confirms the SIDs are gone.
 
 Under `-WhatIf`, `Invoke-MainProcessingLogic` prints `What if: Performing the operation "Remove
-Orphaned SID" on target "<DN> - SID: <sid>"` per orphaned entry, logs
-`WhatIf: Would remove orphaned SID: <sid> from <DN>` at Verbose level, and never calls the removal
+Orphaned SIDs" on target "<DN> - SIDs: <sid>, <sid>"` per object, logs
+`WhatIf: Would remove orphaned SIDs: <sid>, <sid> from <DN>` at Verbose level, and never calls the removal
 workflow, so no backup folder or file is written. `Backup creation was cancelled by
 user` (Warning) appears only when `New-ACLBackup`'s own confirmation is declined, for example with
 `-Confirm` answered No; the workflow then fails with `Failed to create ACL backup - aborting

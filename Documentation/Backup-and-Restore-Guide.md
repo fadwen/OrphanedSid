@@ -1,4 +1,4 @@
-﻿# ACL Backup and Restore Operations
+# ACL Backup and Restore Operations
 
 ## Overview
 
@@ -49,7 +49,9 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
   replaced by `_`. The name is limited to 200 characters, and less when the folder path is long
   enough that the full path would pass 259 characters; a longer name is cut and ends with
   `_<first 8 hex digits of the SHA256 of the DN>_truncated`, so two long DNs never share a name.
-  The DN itself is recorded inside the file. For example `CN=User1,CN=Users,DC=contoso,DC=com`
+  The budget keeps room for a counter: a second backup of the same object in the same second is
+  written as `..._<yyyyMMdd_HHmmss>_2.xml` rather than overwriting the first. A removal backs each
+  object up once, before any of its entries is removed. The DN itself is recorded inside the file. For example `CN=User1,CN=Users,DC=contoso,DC=com`
   becomes `CN_User1_CN_Users_DC_contoso_DC_com_20250127_143022.xml`.
 - **Integrity**: a SHA256 hash of the UTF-8 SDDL string, stored Base64-encoded in `SDDLHash`. The
   file is re-read immediately after writing and the hash and `ObjectDN` compared; a mismatch

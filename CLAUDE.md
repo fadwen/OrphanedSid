@@ -88,7 +88,7 @@ removal; without it every domain SID is rated
 
 ### Backups are Clixml with a hash, and nothing else reads them
 
-`New-ACLBackup` writes `<DN sanitized>_<yyyyMMdd_HHmmss>.xml` with the SDDL, its SHA256, the
+`New-ACLBackup` writes `<DN sanitized>_<yyyyMMdd_HHmmss>[_<n>].xml` with the SDDL, its SHA256, the
 object DN, the correlation ID and the writer's identity. `Restore-OrphanedSidBackup` is the only
 consumer and validates the hash before applying. Changing the file shape means changing
 `Test-BackupValidation` and `Test-BackupIntegrity` in the same change.

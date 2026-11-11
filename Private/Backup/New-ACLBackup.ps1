@@ -257,7 +257,8 @@ function New-ACLBackup {
             # enforces on Windows PowerShell 5.1: folder, separator, name and "_yyyyMMdd_HHmmss.xml".
             # The object's DN is recorded inside the backup, so the name only has to be unique.
             $maxPathLength = 259
-            $suffixLength = '_yyyyMMdd_HHmmss.xml'.Length
+            # Room for the timestamp and a same-second counter (_2 to _99) added below
+            $suffixLength = '_yyyyMMdd_HHmmss_99.xml'.Length
             # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not $PWD
             $fullFolder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
             $folderLength = $fullFolder.TrimEnd('\', '/').Length + 1
@@ -286,6 +287,13 @@ function New-ACLBackup {
 
             $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
             $backupFile = Join-Path $BackupPath "${safeName}_${timestamp}.xml"
+            # Never overwrite an earlier backup: a second backup of the same object in the same second
+            # gets a counter. The suffix space is kept free by the name budget above.
+            $sequence = 1
+            while (Test-Path -LiteralPath $backupFile) {
+                $sequence++
+                $backupFile = Join-Path $BackupPath "${safeName}_${timestamp}_$sequence.xml"
+            }
 
             # Ensure backup directory exists with proper error handling
             if (-not (Test-Path $BackupPath)) {

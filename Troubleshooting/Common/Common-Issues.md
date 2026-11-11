@@ -1,4 +1,4 @@
-﻿# OrphanedSid Common Issues Troubleshooting Guide
+# OrphanedSid Common Issues Troubleshooting Guide
 
 ## Overview
 
@@ -17,7 +17,7 @@ default 3), `-ConfigPath`, `-MaxMemoryUsageMB` (100-16384, default 1024), `-Pres
 `-Confirm`. There is no `-Credential`; every command runs as the current user.
 
 Each command writes its results to the pipeline as objects: one `OrphanedSIDResult` per orphaned
-entry, one `RemovalOperationResult` per orphaned entry removed, one restore result per target.
+entry, one `RemovalOperationResult` per object changed, one restore result per target.
 `-OutputPath` also writes them as CSV, and every run writes a log file.
 
 ## Critical Issues (Immediate Resolution Required)

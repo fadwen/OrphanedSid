@@ -370,23 +370,29 @@ function Invoke-MainProcessingLogic {
                                     Write-StructuredLog "Not removing unverified SID $($unverifiedResult.OrphanedSID) from $($unverifiedResult.ObjectDN): a directory lookup failed, so it may belong to a live principal ($($unverifiedResult.VerificationError))" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
                                 }
 
-                                # Apply ShouldProcess only to actual removal operations
-                                foreach ($orphanedResult in $verifiedResults) {
-                                    $target = "$($orphanedResult.ObjectDN) - SID: $($orphanedResult.OrphanedSID)"
-                                    if ($PSCmdlet.ShouldProcess($target, "Remove Orphaned SID")) {
-                                        Write-StructuredLog "Removing orphaned SID: $($orphanedResult.OrphanedSID) from $($orphanedResult.ObjectDN)" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                # One removal per object with all of its verified orphaned SIDs, so the
+                                # object is backed up once, before any entry is removed. Removing them one
+                                # call at a time backed it up again after each removal, and a restore from
+                                # the newest backup could not bring back the SIDs removed first.
+                                $sidsToRemove = @($verifiedResults | ForEach-Object { $_.OrphanedSID } | Select-Object -Unique)
+                                if ($sidsToRemove.Count -gt 0) {
+                                    $objectDN = $currentObject.DistinguishedName
+                                    $sidList = $sidsToRemove -join ', '
+                                    $target = "$objectDN - SIDs: $sidList"
+                                    if ($PSCmdlet.ShouldProcess($target, "Remove Orphaned SIDs")) {
+                                        Write-StructuredLog "Removing orphaned SIDs: $sidList from $objectDN" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
 
                                         # Log security audit for SID removal attempt
                                         Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Attempt' -SecurityContext @{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSID = $orphanedResult.OrphanedSID
+                                            ObjectDN = $objectDN
+                                            OrphanedSIDs = $sidList
                                             BackupPath = $BackupPath
                                             Operation = 'Remove-OrphanedSidEntry'
                                         } -CorrelationId $CorrelationId
 
                                         $removalParams = @{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSIDs = @($orphanedResult.OrphanedSID)
+                                            ObjectDN = $objectDN
+                                            OrphanedSIDs = $sidsToRemove
                                             CorrelationId = $CorrelationId
                                         }
                                         if ($BackupPath) {
@@ -399,8 +405,8 @@ function Invoke-MainProcessingLogic {
 
                                             # Log successful SID removal
                                             Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Success' -SecurityContext @{
-                                                ObjectDN = $orphanedResult.ObjectDN
-                                                OrphanedSID = $orphanedResult.OrphanedSID
+                                                ObjectDN = $objectDN
+                                                OrphanedSIDs = $sidList
                                                 BackupCreated = $removalResult.BackupCreated
                                                 BackupPath = $removalResult.BackupPath
                                                 RemovedCount = $removalResult.RemovedCount
@@ -408,30 +414,30 @@ function Invoke-MainProcessingLogic {
                                         } catch {
                                             # Log failed SID removal
                                             Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Failure' -SecurityContext @{
-                                                ObjectDN = $orphanedResult.ObjectDN
-                                                OrphanedSID = $orphanedResult.OrphanedSID
+                                                ObjectDN = $objectDN
+                                                OrphanedSIDs = $sidList
                                                 ErrorMessage = $_.Exception.Message
                                             } -CorrelationId $CorrelationId
                                             throw
                                         }
                                     } else {
-                                        Write-StructuredLog "WhatIf: Would remove orphaned SID: $($orphanedResult.OrphanedSID) from $($orphanedResult.ObjectDN)" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                        Write-StructuredLog "WhatIf: Would remove orphaned SIDs: $sidList from $objectDN" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
 
                                         # Log WhatIf simulation for audit trail
                                         Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Attempt' -SecurityContext @{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSID = $orphanedResult.OrphanedSID
+                                            ObjectDN = $objectDN
+                                            OrphanedSIDs = $sidList
                                             SimulationMode = $true
                                             WhatIfMode = $true
                                         } -CorrelationId $CorrelationId
                                         # Create a mock removal result for WhatIf mode
                                         $mockResult = [PSCustomObject]@{
-                                            ObjectDN = $orphanedResult.ObjectDN
-                                            OrphanedSID = $orphanedResult.OrphanedSID
+                                            ObjectDN = $objectDN
+                                            OrphanedSID = $sidList
                                             Success = $true
                                             ProcessingTime = [TimeSpan]::Zero
                                             ErrorMessage = $null
-                                            RemovedSIDs = @($orphanedResult.OrphanedSID)
+                                            RemovedSIDs = $sidsToRemove
                                             FailedSIDs = @()
                                             BlockedSIDs = @()
                                             SecurityValidation = 'WhatIf - Would Remove'
