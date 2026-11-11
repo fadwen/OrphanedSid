@@ -84,8 +84,8 @@ otherwise it falls back to `Write-SecurityFileEntryDirect`.
    Import-Module OrphanedSid
    & (Get-Module OrphanedSid) {
        Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Information
-       # A relative -LogPath resolves against the module folder, not the current directory
-       $null = Initialize-LogDirectory -LogPath (Join-Path $PWD 'Logs\manual-test.log')
+       # A relative path resolves against the current directory
+       $null = Initialize-LogDirectory -LogPath 'Logs\manual-test.log'
    }
    ```
 

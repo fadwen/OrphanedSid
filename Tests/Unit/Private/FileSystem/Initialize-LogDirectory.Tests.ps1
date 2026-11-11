@@ -97,10 +97,16 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             Test-Path $script:TestLogPath -PathType Leaf | Should -BeTrue
         }
 
-        It "Should resolve a relative path against the script root" {
-            Mock Get-ScriptRootDirectory { $script:TestRoot }
-
-            $result = Initialize-LogDirectory -LogPath 'Logs\relative.log'
+        It "Should resolve a relative path against the current location, not the module folder (#45)" {
+            Mock Get-ScriptRootDirectory { 'C:\ModuleFolderMustNotBeUsed' }
+            $null = New-Item -Path $script:TestRoot -ItemType Directory -Force
+            Push-Location -Path $script:TestRoot
+            try {
+                $result = Initialize-LogDirectory -LogPath 'Logs\relative.log'
+            }
+            finally {
+                Pop-Location
+            }
 
             $result | Should -Be (Join-Path $script:TestRoot 'Logs\relative.log')
             Test-Path $result -PathType Leaf | Should -BeTrue
@@ -192,16 +198,28 @@ Describe "Resolve-LogPath" -Tag "Unit", "Private", "FileSystem" {
         Resolve-LogPath -LogPath '  C:\Logs\run.log  ' | Should -Be 'C:\Logs\run.log'
     }
 
-    It "Should use a default timestamped name under Logs for a whitespace-only path" {
-        Mock Get-ScriptRootDirectory { 'C:\Scripts' }
+    It "Should use a default timestamped name under Logs in the current location for a whitespace-only path" {
+        Push-Location -Path $TestDrive
+        try {
+            $result = Resolve-LogPath -LogPath '   '
+        }
+        finally {
+            Pop-Location
+        }
 
-        Resolve-LogPath -LogPath '   ' | Should -Match '^C:\\Scripts\\Logs\\OrphanedSid_\d{8}_\d{6}\.log$'
+        $result | Should -Match ('^' + [regex]::Escape((Join-Path $TestDrive 'Logs')) + '\\OrphanedSid_\d{8}_\d{6}\.log$')
     }
 
     It "Should trim the spaces around a path" {
-        Mock Get-ScriptRootDirectory { 'C:\Scripts' }
+        Push-Location -Path $TestDrive
+        try {
+            $result = Resolve-LogPath -LogPath '  Logs\run.log  '
+        }
+        finally {
+            Pop-Location
+        }
 
-        Resolve-LogPath -LogPath '  Logs\run.log  ' | Should -Be 'C:\Scripts\Logs\run.log'
+        $result | Should -Be (Join-Path $TestDrive 'Logs\run.log')
     }
 
     It "Should reject a path containing '..'" {

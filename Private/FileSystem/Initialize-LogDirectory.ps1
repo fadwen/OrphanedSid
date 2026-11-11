@@ -210,9 +210,9 @@ function Resolve-LogPath {
         # Already absolute path
         $resolvedPath = $LogPath
     } else {
-        # Make relative paths relative to the main script directory
-        $scriptRoot = Get-ScriptRootDirectory
-        $resolvedPath = [System.IO.Path]::GetFullPath((Join-Path $scriptRoot $LogPath))
+        # A relative path is relative to the current location, as a path given to any cmdlet is. It
+        # was resolved against the module's folder, which put the log in the install folder.
+        $resolvedPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
     }
 
     # SECURITY: Final validation after resolution - ensure we haven't escaped the expected directory structure
