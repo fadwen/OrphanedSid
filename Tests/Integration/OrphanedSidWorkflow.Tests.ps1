@@ -560,6 +560,7 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
                 TargetObjectDN        = $dn
                 BackupPath            = $backupFolder
                 LogPath               = Join-Path $TestDrive 'restore-denied.log'
+                OutputPath            = Join-Path $TestDrive 'restore-denied.csv'
                 SuppressConsoleOutput = $true
                 Force                 = $true
             }
@@ -571,6 +572,9 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             foreach ($objectResult in $result.IndividualResults) {
                 $objectResult.ErrorMessage | Should -Be 'ACL application failed: Access is denied'
             }
+            # And the summary says why (#70)
+            $result.ErrorMessage | Should -Be '2 of 2 objects failed to restore: ACL application failed: Access is denied'
+            (Import-Csv -Path $parameters.OutputPath).ErrorMessage | Should -Be '2 of 2 objects failed to restore: ACL application failed: Access is denied'
         }
 
         It 'Refuses a backup whose security descriptor no longer matches its hash' {

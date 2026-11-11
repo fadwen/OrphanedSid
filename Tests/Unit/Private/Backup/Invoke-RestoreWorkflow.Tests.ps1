@@ -357,6 +357,8 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.FailedRestores | Should -Be 1
             $result.TotalObjects | Should -Be 4
             $result.EntriesRestored | Should -Be 12
+            # The summary says why, for the pipeline and the -OutputPath CSV row built from it (#70)
+            $result.ErrorMessage | Should -Be '1 of 4 objects failed to restore: Simulated failure'
             Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
                 $Message -eq 'Failed to restore: CN=User2,OU=Users,DC=company,DC=com - Simulated failure'
             }
@@ -373,6 +375,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.SuccessfulRestores | Should -Be 3
             $result.FailedRestores | Should -Be 1
             @($result.IndividualResults | Where-Object { -not $_.Success }).ErrorMessage | Should -Be 'Validation failed for user'
+            $result.ErrorMessage | Should -Be '1 of 4 objects failed to restore: Validation failed for user'
         }
 
         It "Should report failure with nothing restored when no backup is under the OU" {
@@ -383,7 +386,18 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.TotalObjects | Should -Be 0
             $result.SuccessfulRestores | Should -Be 0
             $result.EntriesRestored | Should -Be 0
+            $result.ErrorMessage | Should -Be 'No objects were restored'
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+        }
+
+        It "Should list each distinct reason once when several objects fail (#70)" {
+            Mock Restore-IndividualObject {
+                [PSCustomObject]@{ Success = $false; TargetObjectDN = $TargetObjectDN; EntriesRestored = 0; ErrorMessage = 'ACL application failed: Access is denied' }
+            } -ParameterFilter { $TargetObjectDN -like 'CN=User*' }
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:OuDN -BackupPath $script:folder
+
+            $result.ErrorMessage | Should -Be '3 of 4 objects failed to restore: ACL application failed: Access is denied'
         }
     }
 }

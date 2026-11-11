@@ -479,6 +479,22 @@ function Invoke-RestoreWorkflow {
 
         # Compile comprehensive workflow result
         if ($restoreMode -eq "Bulk") {
+            # Objects that failed without an exception leave $errorMessage unset; the summary, and the
+            # -OutputPath CSV row built from it, would then say nothing about why the restore failed
+            if (-not $overallSuccess -and -not $errorMessage) {
+                $failedResults = @($allResults | Where-Object { -not $_.Success })
+                $processedCount = $workflowSteps[-1].ProcessedObjects
+                if ($failedResults.Count -gt 0) {
+                    $reasons = @($failedResults | ForEach-Object { $_.ErrorMessage } | Where-Object { $_ } | Select-Object -Unique)
+                    $errorMessage = "$($failedResults.Count) of $processedCount objects failed to restore"
+                    if ($reasons.Count -gt 0) {
+                        $errorMessage += ": $($reasons -join '; ')"
+                    }
+                } else {
+                    $errorMessage = 'No objects were restored'
+                }
+            }
+
             # Return summary result for bulk operations
             $result = [PSCustomObject]@{
                 Success = $overallSuccess
