@@ -65,6 +65,10 @@ All notable changes to this module are recorded here. Format follows
   search base looked clean. Each such object is now named in a Warning, and the summary reports
   `Objects not examined (security descriptor not readable): N` and warns when N is above zero.
   ([#47](https://github.com/fadwen/OrphanedSid/issues/47))
+- `-CorrelationId` did not reach every log line and result row, as the help says it does: the
+  object-discovery and per-object detection steps generated their own IDs, so their log lines and
+  every `Find-OrphanedSid` result and CSV row carried other GUIDs. The run's ID is now passed through
+  every step. ([#42](https://github.com/fadwen/OrphanedSid/issues/42))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

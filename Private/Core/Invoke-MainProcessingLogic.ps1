@@ -236,7 +236,7 @@ function Invoke-MainProcessingLogic {
                 # Always perform discovery phase - ShouldProcess only applies to removal operations
                 # Get AD objects for processing using refactored sequential processing
                 try {
-                    $adObjects = Get-ADObjectsSequential -SearchBase @($searchPath)
+                    $adObjects = Get-ADObjectsSequential -SearchBase @($searchPath) -CorrelationId $CorrelationId
 
                     # Log successful AD discovery
                     Write-ADOperationSecurityLog -OperationName 'AD-ObjectDiscovery' -Outcome 'Success' -SecurityContext @{
@@ -298,7 +298,7 @@ function Invoke-MainProcessingLogic {
                     $currentObject = $_
                     try {
                         # Pinned: housekeeping, not the operation -WhatIf rehearses
-                        Invoke-MemoryCheck -MemoryManager $script:MemoryManager -WhatIf:$false
+                        Invoke-MemoryCheck -MemoryManager $script:MemoryManager -WhatIf:$false -CorrelationId $CorrelationId
                         $script:Statistics.ProcessedObjects++
                         $processedCount++
 
@@ -326,7 +326,7 @@ function Invoke-MainProcessingLogic {
                         $detectionAttempt = 0
                         while ($null -eq $orphanedResults) {
                             try {
-                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID)
+                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID -CorrelationId $CorrelationId)
                             }
                             catch {
                                 $detectionAttempt++

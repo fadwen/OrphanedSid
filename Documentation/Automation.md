@@ -39,7 +39,7 @@ data to CSV in addition.
 | `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. Pass an absolute path: a relative value is resolved against the module folder. An existing file is overwritten at the start of the run. |
 | `-LogLevel <level>` | all | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
 | `-SuppressConsoleOutput` | all | Suppresses console log output. File logging is unaffected. |
-| `-CorrelationId <string>` | all | Identifier stamped on the run's log lines (except object-discovery and per-object detection lines), on removal and restore results and on every backup. `Find-OrphanedSid` results carry a per-object ID instead. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
+| `-CorrelationId <string>` | all | Identifier stamped on every log line of the run, on every result and CSV row, and on every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
 | `-Force` | Remove, Restore | Required for an unattended run. Sets `$ConfirmPreference` to `None` for the command; `-Confirm:$false` has the same effect. See [Confirmation](#confirmation-in-non-interactive-sessions). |
 | `-WhatIf` | Remove, Restore | Previews without changing anything and never prompts. |
 | `-ConfigPath <path>` | Find, Remove | JSON configuration file. See [Configuration File](#configuration-file). |
@@ -162,9 +162,8 @@ Each operational log line has the form:
 Entries with structured details append ` | Details: {...}` as compact JSON. Security audit
 entries are written as one compact JSON object per line, with `"Component":"SecurityAudit"`,
 `"SecurityEventType"`, `"Outcome"`, `"Message"` and `"CorrelationId"` keys; they are written at
-every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run's lines (other
-than the object-discovery and per-object detection lines, which carry their own IDs) when several runs append to the
-same file through the `LogFilePath` configuration key:
+every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run's lines when
+several runs append to the same file through the `LogFilePath` configuration key:
 
 ```powershell
 Select-String -Path "C:\Logs\OrphanedSid.log" -Pattern "12345678-1234-1234-1234-123456789012" |

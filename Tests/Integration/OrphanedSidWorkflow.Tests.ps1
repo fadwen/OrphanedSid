@@ -104,6 +104,16 @@ BeforeAll {
         return $null
     }
 
+    # Every correlation ID a log line carries: the bracketed field of a text line and the
+    # CorrelationId of a JSON line
+    function Get-LogCorrelationId {
+        param([string]$Path)
+        foreach ($line in Get-Content -Path $Path) {
+            if ($line -match '^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\] \[([^\]]+)\]') { $Matches[1] }
+            elseif ($line -match '"CorrelationId":"([^"]+)"') { $Matches[1] }
+        }
+    }
+
     function Invoke-FindOrphanedSid {
         param([string]$OutputPath)
         $parameters = @{
@@ -243,6 +253,18 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             ($results | Where-Object OrphanedSID -eq $script:FailingSid).VerificationStatus | Should -Be 'Unverified'
         }
 
+        It 'Carries the run correlation ID on every result row and every log line (#42)' {
+            $log = Join-Path $TestDrive 'cid.log'
+
+            $results = @(Find-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-42')
+
+            $results.Count | Should -BeGreaterThan 0
+            @($results | Where-Object CorrelationId -ne 'RUN-42').Count | Should -Be 0
+            $ids = @(Get-LogCorrelationId -Path $log)
+            $ids.Count | Should -BeGreaterThan 20
+            @($ids | Where-Object { $_ -ne 'RUN-42' } | Select-Object -Unique) | Should -Be @()
+        }
+
         It 'Changes no ACL' {
             $null = Invoke-FindOrphanedSid
 
@@ -296,6 +318,14 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Should -Invoke -ModuleName OrphanedSid Set-Acl -Times 0 -Exactly -ParameterFilter { $Path -like '*CN=Child,*' }
             @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Child_*' -Recurse).Count | Should -Be 0
             @($results | Where-Object ObjectDN -eq $dn).Count | Should -Be 0
+        }
+
+        It 'Carries the run correlation ID on every log line of a removal (#42)' {
+            $log = Join-Path $TestDrive 'cid-remove.log'
+
+            $null = Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-42R'
+
+            @(Get-LogCorrelationId -Path $log | Where-Object { $_ -ne 'RUN-42R' } | Select-Object -Unique) | Should -Be @()
         }
 
         It 'Leaves an object with no orphaned ACE untouched' {
