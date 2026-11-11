@@ -5,8 +5,8 @@
 OrphanedSid keeps two logging paths. Ordinary entries go through `Write-StructuredLog` /
 `Write-StructuredLogEntry`, and their file output honours `-LogLevel`. Security audit entries go
 through `Write-SecurityStructuredLogEntry`, which writes to the log file regardless of `-LogLevel`,
-so an operator who lowers the file verbosity to `Error` still gets a complete record of Active
-Directory access and of every SID that was blocked or removed.
+so an operator who lowers the file verbosity to `Error` still gets the recorded Active Directory
+operations and every SID that was blocked or removed.
 
 ## Regular Logging and -LogLevel
 
@@ -44,9 +44,10 @@ run time.
 
 If the log file is not initialised or the write fails, the entry is retried directly against the
 configured log path and then written to `%TEMP%\OrphanedSid-Security-<yyyyMMdd>.log` with a
-warning naming that file. If formatting itself fails, a plain-text line is written to the log path,
-and as a last resort to `%TEMP%\OrphanedSid-Security-Emergency.log`. Only when every location
-fails does the function raise `CRITICAL SECURITY LOGGING FAILURE`.
+warning naming that file; when that fails too, it writes the error
+`CRITICAL: Cannot write security log entry anywhere: <message>`. If formatting itself fails, a
+plain-text line goes through the same direct write, and `%TEMP%\OrphanedSid-Security-Emergency.log`
+is used only when that direct write throws.
 
 ### Write-SecurityLog
 
@@ -61,8 +62,9 @@ It builds a data block (timestamp, event type, outcome, `UserContext` as `user@c
 ID, correlation ID, plus every `SecurityContext` key prefixed `Security_`), maps the outcome to a
 level (`Attempt` and `Success` to `Information`, `Failure` to `Warning`), and calls
 `Write-SecurityStructuredLogEntry` with the component `SecurityAudit` and the message
-`[<SecurityEventType>] [<Outcome>] <Message>`. If that call throws, the line is appended to
-`%TEMP%\OrphanedSid-Security-Fallback.log`.
+`[<SecurityEventType>] [<Outcome>] <Message>`. The data block's own `Message` key replaces that
+text in the written JSON, so the file shows the plain `<Message>`. If that call throws, the line is
+appended to `%TEMP%\OrphanedSid-Security-Fallback.log`.
 
 ### Write-ADOperationSecurityLog
 
@@ -80,8 +82,10 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
 
 ### Where Security Entries Come From
 
-- `Private/ActiveDirectory/Get-ADObjectsSequential.ps1` and
-  `Private/ActiveDirectory/Invoke-ADOperationWithRetry.ps1`: every AD query, attempt and outcome
+- `Private/ActiveDirectory/Get-ADObjectsSequential.ps1`: the start and end of object discovery
+- `Private/ActiveDirectory/Invoke-ADOperationWithRetry.ps1`: attempt and outcome of each operation
+  it wraps (SID lookups, and the ACL reads and writes of a removal). The discovery query itself,
+  `Get-Acl` during detection and `Get-ADDomain` are not wrapped and leave no security entry
 - `Private/Core/Invoke-MainProcessingLogic.ps1`: workflow-level access events
 - `Private/SID/Test-SIDSecurity.ps1`: `DataValidation` events for every SID checked before removal,
   including the reason a SID was blocked, and `RiskAssessment` events
@@ -95,15 +99,18 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
 logging functions, including the security writer, exist before any function that calls them is
 defined. `Private/Logging/Initialize-LoggingConfiguration.ps1` is the one file that does work at
 load time: it creates the shared logging state (`$script:LogLevel`, `$script:LogLevels`, the
-metrics tables) when the root module dot-sources it. Every other file only defines functions.
-`Start-OrphanedSidSession` configures that state per run.
+metrics tables) when the root module dot-sources it. Elsewhere, load-time code only sets initial
+module-scope values (`Initialize-MemoryManager.ps1`, `Test-OrphanedSID.ps1`) or defines guarded
+fallback functions (`Invoke-GarbageCollection.ps1`); it writes no log entries.
+`Start-OrphanedSidSession` configures the logging state per run.
 
 ## What This Provides
 
-- **Complete audit trail at any -LogLevel.** AD access attempts and results, SID validation
-  outcomes and ACL changes reach the file even with `-LogLevel Error` or `Critical`.
-- **Correlation.** Every security entry carries the run's correlation ID, the same value that is
-  on regular log lines and inside each backup file.
+- **Audit trail at any -LogLevel.** The AD operations listed above, SID validation outcomes and
+  ACL changes reach the file even with `-LogLevel Error` or `Critical`.
+- **Correlation.** Security entries carry a correlation ID: the run's, the same value that is on
+  regular log lines and inside each backup file, except for the `Get-ADObjectsSequential` entries
+  and the SID lookups made during per-object detection, which carry IDs of their own.
 - **Fallback locations.** A security event that cannot reach the log file lands in `%TEMP%` under
   one of the three names above rather than being lost.
 - **Separation from operational noise.** Security entries are identifiable by the `SecurityAudit`
@@ -120,7 +127,7 @@ and forward the file to a central log store if the audit trail must survive the 
 Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -LogLevel Error
 
 # Read back the security entries for a run
-Select-String -Path ".\Logs\<Command>_*.log" -Pattern "\[SecurityAudit\]" |
+Select-String -Path ".\Logs\Find-OrphanedSid_*.log" -Pattern '"Component":"SecurityAudit"' |
     Where-Object { $_.Line -match "12345678-1234-1234-1234-123456789012" }
 ```
 
@@ -137,7 +144,7 @@ Write-ADOperationSecurityLog -OperationName 'Get-Acl' -Outcome 'Success' -Correl
   outcomes (`Attempt`, `Success`); only `Warning`, `Error` and `Critical` are echoed.
 - **"Security log written to emergency location: ..."**: the main log file could not be written;
   check `-LogPath` permissions and collect the named `%TEMP%` file.
-- **No `[SecurityAudit]` lines at all**: the logging system failed to initialise before the first
+- **No `"Component":"SecurityAudit"` lines at all**: the logging system failed to initialise before the first
   security event; look for `Initialize-LoggingSystem` errors at the top of the console output.
 
 See [Security-Logging-Issues.md](../Troubleshooting/Security/Security-Logging-Issues.md).

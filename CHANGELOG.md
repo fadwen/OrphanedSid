@@ -6,14 +6,44 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
+  (`Orphaned` or `Unverified`) and `VerificationError`, which names each lookup that failed. An
+  unverified SID is listed with `Confidence = Low`. Filter on `VerificationStatus -eq 'Orphaned'` to
+  keep only confirmed orphans; re-run once the domain controller is reachable and the account can
+  read the targets to settle the unverified ones.
+- `Remove-OrphanedSid` logs a warning naming each unverified SID it skips, and the processing summary
+  reports how many SIDs were unverified.
+- `IntendedRemovals` on removal results is a number. It was a one-element string array holding the
+  count (`{"2"}`), unlike `ActualRemovals` and `FailedRemovals`.
+  ([#28](https://github.com/fadwen/OrphanedSid/issues/28))
+
+### Removed
+
+- The restore pre-check no longer reports write access. It opened an LDAP connection and read the
+  security descriptor, which shows read access only, so an account without the right to change
+  permissions passed it. A restore that lacks that right fails at the point it applies the ACL,
+  with the error from `Set-Acl`. ([#15](https://github.com/fadwen/OrphanedSid/issues/15))
+- Nine internal functions that no command called, each with defects of its own:
+  `Test-BackupSignature`, `Test-BackupFileIntegrity`, `Start-RestoreOperation`,
+  `Complete-RestoreOperation`, `Test-PathTraversal`, `Get-SIDProcessingStatistics`,
+  `ConvertTo-ResultSummary`, and the log sanitiser `Protect-LogMessage` with its only caller
+  `Write-SecurityLogEvent`. The troubleshooting guides that called three of them now check backups
+  with `Test-BackupIntegrity`, the check every restore runs, and summarise results with
+  `Group-Object`. ([#18](https://github.com/fadwen/OrphanedSid/issues/18),
+  [#24](https://github.com/fadwen/OrphanedSid/issues/24),
+  [#25](https://github.com/fadwen/OrphanedSid/issues/25),
+  [#30](https://github.com/fadwen/OrphanedSid/issues/30))
+
 ### Fixed
 
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the
-  removal was recoverable only from the backup. A SID is now orphaned only when every lookup
-  completed and none found it. A SID that no lookup found but at least one lookup failed to check is
-  reported as unverified and is never removed. This includes a SID from a trusted domain whose domain
+  removal was recoverable only from the backup. A SID is now orphaned only when its deleted object
+  is found, or when every lookup completed and none found it. A SID that no lookup found but at
+  least one lookup failed to check is reported as unverified and is never removed. This includes a SID from a trusted domain whose domain
   controllers cannot be reached. ([#9](https://github.com/fadwen/OrphanedSid/issues/9))
 - A failed lookup no longer sticks for the rest of the run. Unverified results are not cached, so
   the next object that carries the same SID looks it up again.
@@ -69,36 +99,6 @@ All notable changes to this module are recorded here. Format follows
 - `Find-OrphanedSid` returned nothing when `$WhatIfPreference` was `$true` in the session, although
   discovery ran and the summary counted what it found.
   ([#14](https://github.com/fadwen/OrphanedSid/issues/14))
-
-### Removed
-
-- The restore pre-check no longer reports write access. It opened an LDAP connection and read the
-  security descriptor, which shows read access only, so an account without the right to change
-  permissions passed it. A restore that lacks that right fails at the point it applies the ACL,
-  with the error from `Set-Acl`. ([#15](https://github.com/fadwen/OrphanedSid/issues/15))
-- Eight internal functions that no command called, each with defects of its own:
-  `Test-BackupSignature`, `Test-BackupFileIntegrity`, `Start-RestoreOperation`,
-  `Complete-RestoreOperation`, `Test-PathTraversal`, `Get-SIDProcessingStatistics`,
-  `ConvertTo-ResultSummary`, and the log sanitiser `Protect-LogMessage` with its only caller
-  `Write-SecurityLogEvent`. The troubleshooting guides that called three of them now check backups
-  with `Test-BackupIntegrity`, the check every restore runs, and summarise results with
-  `Group-Object`. ([#18](https://github.com/fadwen/OrphanedSid/issues/18),
-  [#24](https://github.com/fadwen/OrphanedSid/issues/24),
-  [#25](https://github.com/fadwen/OrphanedSid/issues/25),
-  [#30](https://github.com/fadwen/OrphanedSid/issues/30))
-
-### Changed
-
-- `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
-  (`Orphaned` or `Unverified`) and `VerificationError`, which names each lookup that failed. An
-  unverified SID is listed with `Confidence = Low`. Filter on `VerificationStatus -eq 'Orphaned'` to
-  keep only confirmed orphans; re-run once the domain controller is reachable and the account can
-  read the targets to settle the unverified ones.
-- `Remove-OrphanedSid` logs a warning naming each unverified SID it skips, and the processing summary
-  reports how many SIDs were unverified.
-- `IntendedRemovals` on removal results is a number. It was a one-element string array holding the
-  count (`{"2"}`), unlike `ActualRemovals` and `FailedRemovals`.
-  ([#28](https://github.com/fadwen/OrphanedSid/issues/28))
 
 ## [1.0.1] - 2026-11-09
 
@@ -195,8 +195,8 @@ its history is carried over in this repository.
   Every test file now passes alone in a fresh process with a shuffled order.
 - The quality-gates workflow set `$ErrorActionPreference = 'Stop'` before `Invoke-Pester`, so every
   `Write-Error` in a function under test terminated instead of continuing; the tests now run with
-  the default preference and the gates throw explicitly. The coverage gate is a ratchet at 60%,
-  the level the inherited suite measures, instead of an 80% it never met; raise it, never lower it.
+  the default preference and the gates throw explicitly. The coverage gate is a ratchet: raise it,
+  never lower it.
 - `.gitignore` ignored every folder named `Backup/`, including `Tests/Unit/Private/Backup/`, so a
   new test file there was never committed. The rule is anchored to the repository root.
 - `Write-SecurityLogEvent` and `Export-DiagnosticData` passed `-Data` and `-ErrorRecord` to
@@ -237,7 +237,7 @@ its history is carried over in this repository.
   Both defects above passed the unit tests, whose mocks accept any parameter name.
 - The test suite runs on Pester 6 and needs no RSAT: `Tests/TestHelpers/ADCmdletStubs.ps1`
   defines placeholder Active Directory cmdlets so they can be mocked.
-- The coverage gate is 80%, up from the 60% the first release shipped with. Six test files that
+- The coverage gate is 80%, up from the 62% the inherited suite measured. Six test files that
   defined and tested a stub of their subject (`Set-ModifiedACL`, `Get-ACLForRemoval`,
   `Invoke-SIDRemoval`, `New-ACLBackup`, `Initialize-ScriptExecution`, `Remove-OrphanedSidEntry`)
   now test the real functions, and the session start and stop, the per-object detector, the

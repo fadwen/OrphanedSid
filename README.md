@@ -22,12 +22,12 @@ wrong.
 search base, reads each security descriptor, resolves every identity reference and reports the
 ones that do not resolve. Removal validates each SID against protected and well-known lists, backs
 the ACL up as Clixml, then strips the orphaned entries. Restore validates the backup's hash and
-applies it. Results stream to batch files on disk so memory stays flat on large OUs.
+applies it. Discovery results stream to batch files on disk while the run is in progress.
 
 ### Key features
 
 - **Objects on the pipeline.** One `OrphanedSIDResult` per orphaned entry, one
-  `RemovalOperationResult` per modified object, one restore result per target. `-OutputPath` also
+  `RemovalOperationResult` per removed entry, one restore result per target. `-OutputPath` also
   writes CSV.
 - **Backup before change.** Every `Remove-OrphanedSid` run writes one Clixml file per modified
   object into a timestamped folder; `Restore-OrphanedSidBackup` validates the SHA256 hash before
@@ -35,7 +35,8 @@ applies it. Results stream to batch files on disk so memory stays flat on large 
 - **Protected SIDs.** The BUILTIN Administrators, Users and Guests groups, SYSTEM, LOCAL SERVICE and
   NETWORK SERVICE are never removed, and well-known SIDs are never reported as orphaned. Objects whose
   DN matches a critical pattern (Domain Admins, Enterprise Admins, Schema Admins, BUILTIN, the Users
-  and Computers containers) are flagged high risk. All three lists come from the configuration file.
+  and Computers containers) are flagged high risk. The configuration file can replace the first two
+  lists.
 - **A failed lookup is not an orphan.** A SID is reported orphaned only when every directory lookup
   completed and none found it. When a lookup fails with a timeout, access denied or an unreachable
   domain controller, the entry is reported with `VerificationStatus = Unverified` and the failure in
@@ -127,7 +128,7 @@ Remove-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -Force `
 ```
 
 Backups land in `D:\ADBackups\<yyyyMMdd_HHmmss>\`, one `.xml` per modified object, named from
-the object's distinguished name with path-unsafe characters replaced by `_`.
+the object's distinguished name with path-unsafe characters, `,`, `=` and spaces replaced by `_`.
 
 ### Targeted rollback from a removal's own CSV
 
@@ -162,7 +163,7 @@ cause is fixed.
 | Key | Range | Effect |
 | --- | --- | --- |
 | `WellKnownSIDPatterns` | regex list | Matching identity references are never reported |
-| `ProtectedSIDs` | SID list | Never removed, even if unresolvable |
+| `ProtectedSIDs` | SID list | Never removed, even if unresolvable; replaces the default list |
 | `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
 | `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
 | `LogLevel` | Critical to Verbose | Default file log level; `-LogLevel` wins |

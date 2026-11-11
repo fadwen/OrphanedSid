@@ -30,8 +30,9 @@ LONG DESCRIPTION
 
 HOW RESULTS ARE REPORTED
     Each command writes its results to the pipeline as objects. -OutputPath additionally
-    writes the same rows as CSV. A summary (objects processed, orphaned SIDs found, unverified
-    SIDs, duration, peak memory) goes to the console and to the log file.
+    writes a CSV: the discovered entries for Find-OrphanedSid and Remove-OrphanedSid, the
+    restore results for Restore-OrphanedSidBackup. A summary goes to the console and to the
+    log file.
 
 UNVERIFIED SIDS
     A SID is reported orphaned only when every directory lookup completed and none found it.
@@ -64,7 +65,7 @@ BACKUPS
 PROTECTED SIDS
     SIDs in the ProtectedSIDs list (the BUILTIN Administrators, Users and Guests groups,
     SYSTEM, LOCAL SERVICE and NETWORK SERVICE) and SIDs matching WellKnownSIDPatterns are
-    never reported as orphaned and never removed. Both lists can be extended through a JSON
+    never reported as orphaned and never removed. Either list can be replaced through a JSON
     file passed as -ConfigPath.
 
 CONFIGURATION FILE

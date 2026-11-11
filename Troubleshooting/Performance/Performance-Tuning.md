@@ -14,14 +14,14 @@ measure their effect.
 |---|---|---|
 | Object discovery | `Get-ADObjectFromSearchBase` requesting `nTSecurityDescriptor` | Objects under each search base |
 | ACL retrieval | `Get-ObjectAccessRule`: `Get-Acl -Path AD:\<DN>`, falling back to the binary descriptor, then a fresh `Get-ADObject` | One call per object; inherited ACEs multiply the entries to inspect |
-| SID resolution | `Test-OrphanedSID`: `Get-ADObject` by `objectSid`, deleted-object lookup, `SecurityIdentifier.Translate`, then `Get-ADUser`/`Get-ADGroup`/`Get-ADComputer` | One round of lookups per distinct SID; results are cached per SID for the run |
+| SID resolution | `Test-OrphanedSID`: `Get-ADObject` by `objectSid`, deleted-object lookup, `SecurityIdentifier.Translate`, then `Get-ADUser`/`Get-ADGroup`/`Get-ADComputer` | One round of lookups per distinct SID; Orphaned and Exists results are cached per SID for the PowerShell session |
 | Retries | `Invoke-OperationWithRetry` for AD calls, per-object retry loop in `Invoke-MainProcessingLogic` | Transient failures multiply wall time through back-off sleeps |
 | Memory management | `Invoke-MemoryCheck` per object, `Invoke-Cleanup` every 100 objects | Fixed overhead; three forced collections per cleanup |
 | Export | `StreamingResultsManager.ExportToCsv` | Reads every batch file back before `Export-Csv` |
 
 An orphaned SID costs the most: every lookup method fails before it is declared orphaned. A valid
 SID usually returns on the first `Get-ADObject`. The validation cache means each distinct SID pays
-this once per run.
+this once per PowerShell session, unless a lookup failed and left it Unverified.
 
 ## Tuning Levers
 
@@ -64,13 +64,13 @@ Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 
 ### -MaxRetries
 
-Range 1-10, default 3. Two retry layers use it:
+Range 1-10, default 3. It is the number of times `Invoke-MainProcessingLogic` retries reading an
+object's ACL and SIDs after a detection error, sleeping `2 * attempt` seconds between attempts. A
+removal error is not retried.
 
-- `Invoke-OperationWithRetry` wraps AD cmdlet calls. It retries only errors matching its
-  retryable-error pattern, sleeping `2^(attempt-1)` seconds plus up to 1 second of jitter, capped
-  at 30 seconds, between attempts.
-- `Invoke-MainProcessingLogic` retries a whole object after a processing error, sleeping
-  `2 * attempt` seconds between attempts.
+Separately, `Invoke-OperationWithRetry` wraps AD cmdlet calls with its own fixed limit (3 attempts
+by default), not `-MaxRetries`. It retries only errors matching its retryable-error pattern,
+sleeping `2^(attempt-1)` seconds plus 0 or 1 second of jitter, capped at 30 seconds.
 
 On a healthy domain controller retries never fire and the value is irrelevant. On a flaky link,
 lower it to fail fast and re-run the affected search base, or raise it to ride out short outages
@@ -113,9 +113,8 @@ foreach ($base in $searchBases) {
 }
 ```
 
-Each run starts a fresh SID validation cache, so an orphaned SID that appears under several OUs is
-re-resolved once per run. For domains where the same few orphans are everywhere, a single run
-over the parent container is faster.
+Runs in the same PowerShell session share the SID validation cache, so an orphaned SID that
+appears under several OUs is resolved once. Runs in separate processes each resolve it again.
 
 ### -PreserveTempFiles
 
@@ -125,7 +124,7 @@ intermediate results without re-running, or to recover results when the CSV expo
 ```powershell
 Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -PreserveTempFiles -CorrelationId 'perf-01'
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) 'OrphanedSid-perf-01'
-Get-ChildItem $dir -Filter 'batch_*.json' | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json } |
+Get-ChildItem $dir -Filter 'batch_*.json' | ForEach-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json) } |
     Export-Csv .\recovered.csv -NoTypeInformation
 ```
 
@@ -140,7 +139,7 @@ summary at the end of the log and on the console:
 === PROCESSING SUMMARY ===
 Total objects processed: 4812
 Processing duration: 00:06:41.208
-Processing rate: 12.0 objects/second
+Processing rate: 11.99 objects/second
 Peak memory usage: 611 MB
 ```
 
@@ -154,7 +153,7 @@ $elapsed = Measure-Command {
 "Wall time: $($elapsed.TotalSeconds) s"
 
 # Log files are named by timestamp, not by correlation ID; take the newest
-$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log = Get-ChildItem .\Logs\Find-OrphanedSid_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 Select-String -Path $log.FullName -Pattern 'Total objects processed|Processing duration|Processing rate|Peak memory usage|Orphaned SIDs found'
 ```
 

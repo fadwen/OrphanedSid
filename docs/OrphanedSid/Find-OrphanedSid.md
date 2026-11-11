@@ -59,9 +59,8 @@ An account that cannot read a principal gets no error from Active Directory, onl
 search, so missing read permission alone does not make a SID unverified.
 Run the command as an account that can read every object in scope.
 
-Results stream to batch files in the temp directory while the run is in progress so memory
-stays flat on large OUs; the files are removed when the command finishes unless
--PreserveTempFiles is set.
+Results stream to batch files in the temp directory while the run is in progress; the files
+are removed when the command finishes unless -PreserveTempFiles is set.
 
 ## EXAMPLES
 

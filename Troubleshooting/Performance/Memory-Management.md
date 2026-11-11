@@ -40,7 +40,7 @@ Defined in `Classes\MemoryManager.ps1`, created by `Initialize-MemoryManager` du
   working set.
 - **Check frequency**: every `MemoryCheckInterval` operations. The value comes from the
   configuration object (`Classes\ScriptConfiguration.ps1`), default 50, overridable through a
-  `-ConfigPath` JSON file with a value from 1 to 100.
+  `-ConfigPath` JSON file with a value from 1 to 1000.
 - **On exceeding the threshold**: two `GC.Collect()` calls around `WaitForPendingFinalizers()`,
   `AddMemoryPressure(50MB)` followed immediately by `RemoveMemoryPressure(50MB)`, then a second
   measurement. If still above the limit a warning is written; processing continues.
@@ -96,7 +96,7 @@ set belongs to the session (loaded modules, the AD provider drive). Start large 
 process:
 
 ```powershell
-powershell.exe -NoProfile -File Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -MaxMemoryUsageMB 2048
+powershell.exe -NoProfile -Command "Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxMemoryUsageMB 2048"
 ```
 
 ### Issue: Temporary file accumulation
@@ -140,8 +140,8 @@ Memory events use the `MemoryManagement` component. Debug-level lines reach the 
 `-LogLevel Debug`.
 
 ```powershell
-$log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
-Select-String -Path $log.FullName -Pattern 'MemoryManagement|threshold exceeded|Peak memory usage|Memory usage at'
+$log = Get-ChildItem .\Logs\Find-OrphanedSid_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
+Select-String -Path $log.FullName -Pattern 'MemoryManagement|Peak memory usage'
 ```
 
 Messages written at Information level and above:
@@ -149,9 +149,12 @@ Messages written at Information level and above:
 - `Initializing memory manager with threshold N MB`
 - `Memory manager initialized successfully`
 - `Starting memory cleanup operation...` and `Memory after cleanup: N MB (Freed: M MB)`
-- `Memory usage threshold exceeded: ...` (warning, from the class)
 - `Memory manager disposed successfully`
 - `Peak memory usage: N MB` (processing summary)
+
+`Memory usage threshold exceeded: ...` (warning stream) and `Memory usage at N objects: ...`
+(verbose stream) come from `Write-Warning` and `Write-Verbose`, so they reach the console, not the
+log file.
 
 ### Streaming diagnostics
 
@@ -192,7 +195,7 @@ Suggested thresholds by object count; adjust to the host's free memory:
 
 ### StreamingResultsManager key members
 
-- `AddResult($result)`: adds to the current batch and flushes when 50 are held
+- `AddResult($result)`: adds to the current batch and flushes when `BatchSize` are held
 - `FlushBatch()`: writes `batch_N.json`, clears the list, collects
 - `GetSummary()`: returns totals and batch file list, updating the summary file
 - `GetAllResults()`: flushes, then reads every batch file back

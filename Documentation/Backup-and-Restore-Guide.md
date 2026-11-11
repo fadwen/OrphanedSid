@@ -46,9 +46,11 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
 - **Location**: `<BackupPath>\<yyyyMMdd_HHmmss>\` (the run timestamp)
 - **File name**: `<SafeObjectName>_<yyyyMMdd_HHmmss>.xml`, where `SafeObjectName` is the object's
   distinguished name with every `\ / : * ? " < > | , =` character and every run of whitespace
-  replaced by `_`, truncated to 200 characters with a `_truncated` suffix when longer. For example
-  `CN=User1,CN=Users,DC=contoso,DC=com` becomes
-  `CN_User1_CN_Users_DC_contoso_DC_com_20250127_143022.xml`.
+  replaced by `_`. The name is limited to 200 characters, and less when the folder path is long
+  enough that the full path would pass 259 characters; a longer name is cut and ends with
+  `_<first 8 hex digits of the SHA256 of the DN>_truncated`, so two long DNs never share a name.
+  The DN itself is recorded inside the file. For example `CN=User1,CN=Users,DC=contoso,DC=com`
+  becomes `CN_User1_CN_Users_DC_contoso_DC_com_20250127_143022.xml`.
 - **Integrity**: a SHA256 hash of the UTF-8 SDDL string, stored Base64-encoded in `SDDLHash`. The
   file is re-read immediately after writing and the hash and `ObjectDN` compared; a mismatch
   deletes the file and fails the backup.
@@ -58,7 +60,7 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
 | Property | Value |
 |----------|-------|
 | `ObjectDN` | Distinguished name of the backed-up object |
-| `BackupDate` | Timestamp in `yyyy-MM-ddTHH:mm:ss.fffZ` format |
+| `BackupDate` | Local time in `yyyy-MM-ddTHH:mm:ss.fffZ` format (the `Z` is a literal, not UTC) |
 | `CorrelationId` | Correlation ID of the run that created the backup |
 | `SDDL` | Full security descriptor in SDDL form (all sections) |
 | `SDDLHash` | Base64 SHA256 of the SDDL string |
@@ -99,12 +101,14 @@ Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPa
 
 The command processes each `-TargetObjectDN` value in turn and selects backup files as follows:
 
-- **Bulk mode**: the value starts with `OU=` or `DC=` and the folder holds more than one backup
-  file. Every file whose `ObjectDN` ends with the target DN is restored.
-- **Single mode**: any other case. Files whose name contains the first DN component (for example
-  `CN=User1`, or its sanitized form `CN_User1`) are candidates, and the most recently modified
-  candidate is used. No candidate is an error for that target; the run continues with the next
-  one.
+- **Bulk mode**: the value starts with `OU=` or `DC=`. Every object whose recorded `ObjectDN` is
+  the target DN or ends with `,<target DN>` is restored.
+- **Single mode**: any other value. Only files whose recorded `ObjectDN` equals the target DN
+  (ignoring case) are candidates. No candidate is an error for that target; the run continues with
+  the next one.
+
+Selection reads the `ObjectDN` inside each file, not the file name. When the folder holds several
+backups of one object, only the most recently modified file is used.
 
 Under `-WhatIf` each selected backup is still read and validated, and one line
 `What if: Performing the operation "Apply ACL from backup" on target "<DN>".` is printed per
@@ -143,7 +147,8 @@ Before a backup is applied, `Test-BackupIntegrity` (defined in
 `Private/Backup/Test-BackupValidation.ps1`) runs at the `Standard` level and fails the restore of
 that object on any of these:
 
-- A missing required property: `ObjectDN`, `BackupDate`, `SDDL`, `SDDLHash`, `ValidationSignature`
+- A missing or empty required property: `ObjectDN`, `BackupDate`, `SDDL`, `SDDLHash`,
+  `ValidationSignature`
 - A `ValidationSignature` other than `PSSecurityBackup_v1.0`, `PSSecurityBackup_v2.0` or
   `PSSecurityBackup_v2.1`
 - An `ObjectDN` that does not match the target object
@@ -163,7 +168,8 @@ result is attached to the restore result rather than changing its `Success` valu
 
 - **Confirmation**: one prompt per run unless `-Force`, `-Confirm:$false` or `-WhatIf` is given
 - **WhatIf**: `-WhatIf` lists what would be restored and writes nothing
-- **Logging**: every step is logged with the run's correlation ID
+- **Logging**: the start of each target and the summary, with its failed count, are logged with
+  the run's correlation ID; the individual restore steps write to the verbose and warning streams
 - **Failure isolation**: a failed object is recorded and the run continues with the next target
 
 ## Recovery Scenarios
@@ -197,8 +203,8 @@ Restore-OrphanedSidBackup -TargetObjectDN $problemObjects -BackupPath "C:\Backup
 
 1. Preview with `-WhatIf` before every restore.
 2. Point `-BackupPath` at the exact run folder you intend to restore from.
-3. Keep the correlation ID from the removal run; it is stored in each backup and appears in every
-   log line of the run.
+3. Keep the correlation ID from the removal run; it is stored in each backup and appears in the
+   run's log lines other than the object-discovery and per-object detection lines.
 4. Store backup folders where only the operators who may restore them have access; a backup holds
    the complete security descriptor of each object.
 5. Remove old run folders deliberately; the module never deletes backups.
@@ -212,7 +218,7 @@ Restore-OrphanedSidBackup -TargetObjectDN $problemObjects -BackupPath "C:\Backup
   `SID removal workflow failed for <DN> : <message>`, the removal of that object is abandoned with
   the result's `ErrorMessage` set to `Workflow failed: <message>`, and the run continues.
 - **"No backup files found for object ... in path ..."**: `-BackupPath` points at the base folder
-  rather than a run subfolder, or the file name does not contain the object's first DN component.
+  rather than a run subfolder, or no backup in the folder records exactly that `ObjectDN`.
 - **"Backup validation failed: ..."**: a required property is missing, the signature is unknown, the
   `ObjectDN` does not match, or the SHA256 hash does not match the stored SDDL.
 - **"Target validation failed: ..."**: the object no longer exists or cannot be read.

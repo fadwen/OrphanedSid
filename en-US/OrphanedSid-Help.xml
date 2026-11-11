@@ -41,9 +41,8 @@ An account that cannot read a principal gets no error from Active Directory, onl
 search, so missing read permission alone does not make a SID unverified.
 Run the command as an account that can read every object in scope.
 
-Results stream to batch files in the temp directory while the run is in progress so memory
-stays flat on large OUs; the files are removed when the command finishes unless
--PreserveTempFiles is set.</maml:para>
+Results stream to batch files in the temp directory while the run is in progress; the files
+are removed when the command finishes unless -PreserveTempFiles is set.</maml:para>
     </maml:description>
     <command:syntax>
       <command:syntaxItem>
@@ -725,9 +724,9 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:name>RemovalOperationResult</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>One object per Active Directory object whose ACL was modified, with the object DN, the SIDs that
-were intended for removal and the ones actually removed, the backup file written, the verification
-outcome, any error, and the correlation ID.</maml:para>
+          <maml:para>One object per orphaned entry removed, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
+`FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
+`ProcessingTime`, `CorrelationId` and `SecurityValidation`.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>
@@ -755,7 +754,7 @@ TROUBLESHOOTING:
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: One WhatIf line per entry that would be removed
+OUTPUT: A WhatIf line for the run and one per entry that would be removed
 USE CASE: The review step before a cleanup</maml:para>
         </maml:introduction>
         <dev:code />
@@ -767,7 +766,7 @@ USE CASE: The review step before a cleanup</maml:para>
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\&lt;timestamp&gt;\, then removes
-OUTPUT: One RemovalOperationResult per modified object
+OUTPUT: One RemovalOperationResult per removed entry
 USE CASE: An interactive cleanup with the backup on a dedicated drive</maml:para>
         </maml:introduction>
         <dev:code />
@@ -841,8 +840,8 @@ The command has ConfirmImpact High: it asks once before writing anything.
 the restore.
 An unattended run must pass -Force or -Confirm:$false.
 
-One result object per restored object is written to the pipeline; -OutputPath writes the
-same rows as CSV.</maml:para>
+One result object per target is written to the pipeline; -OutputPath writes the same rows
+as CSV.</maml:para>
     </maml:description>
     <command:syntax>
       <command:syntaxItem>
@@ -1073,8 +1072,8 @@ TROUBLESHOOTING:
         <maml:introduction>
           <maml:para>Restore-OrphanedSidBackup -TargetObjectDN 'CN=SRV01,OU=Servers,DC=contoso,DC=com' -BackupPath '.\Backup\20260703_104232' -WhatIf</maml:para>
           <maml:para>&#x80;</maml:para>
-          <maml:para>DESCRIPTION: Shows which backup file would be applied to SRV01
-OUTPUT: A WhatIf line naming the backup and the object
+          <maml:para>DESCRIPTION: Previews restoring SRV01 from one run folder without changing it
+OUTPUT: WhatIf lines naming the backup folder and the object
 USE CASE: Confirming the right run folder before a rollback</maml:para>
         </maml:introduction>
         <dev:code />
@@ -1086,7 +1085,7 @@ USE CASE: Confirming the right run folder before a rollback</maml:para>
           <maml:para>Restore-OrphanedSidBackup -TargetObjectDN 'OU=Servers,DC=contoso,DC=com' -BackupPath 'D:\ADBackups\20260703_104232' -Force</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Rolls back every object under the Servers OU from one run's backups, unattended
-OUTPUT: One result per object with Success, EntriesRestored and any error
+OUTPUT: One summary result for the OU, with each object's result in IndividualResults
 USE CASE: Undoing a cleanup that removed an entry still in use</maml:para>
         </maml:introduction>
         <dev:code />

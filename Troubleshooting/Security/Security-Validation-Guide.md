@@ -68,9 +68,10 @@ Every SID that discovery marks orphaned passes through `Invoke-SecurityValidatio
 (`Private\Security\Invoke-SecurityValidation.ps1`) inside `Invoke-RemovalWorkflow` before any ACL
 is touched. It calls `Test-SIDSecurity -ValidationLevel Standard` for each SID and produces a
 `SecurityValidationResult` with `IsValid`, `RiskLevel`, `AllowedSIDs`, `BlockedSIDs`, `Issues` and
-`RequiresElevatedConfirmation`. If any SID is blocked the whole object is skipped with
-`SECURITY BLOCK: Security validation failed: <issues>` at Error level, and only `AllowedSIDs` are
-ever passed to `Invoke-SIDRemoval`.
+`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` removes one SID per call, so a
+blocked SID skips that removal with `SECURITY BLOCK: Security validation failed: <issues>` at
+Error level (a call given several SIDs is skipped whole if any is blocked), and only `AllowedSIDs`
+are ever passed to `Invoke-SIDRemoval`.
 
 ### Test-SIDSecurity
 
@@ -116,11 +117,11 @@ ever passed to `Invoke-SIDRemoval`.
    `High-risk SID requires elevated confirmation for removal`; at `Strict` level it also blocks.
    `Medium` sets `RequiresElevatedConfirmation` only at `Strict`. `Invoke-MainProcessingLogic`
    reads the domain SID once with `Get-ADDomain` and passes it down through
-   `Invoke-SecurityValidation` and `Test-SIDSecurity`, so SIDs from the current domain are rated
-   `Medium` and foreign ones `High`. If that lookup fails the log carries
+   `Invoke-SecurityValidation` and `Test-SIDSecurity`, so SIDs from the current domain are rated by
+   RID as above and foreign ones `High`. If that lookup fails the log carries
    `Could not determine the current domain SID` and every domain SID is analysed as
-   `Unknown Domain` with `RiskLevel = High`; removal still proceeds at `Standard` level, but the
-   issue text appears in the result.
+   `Unknown Domain` with `RiskLevel = High`; removal still proceeds at `Standard` level, and the
+   result's `Issues` carry `High-risk SID detected: <SID>`.
 5. **Critical object context.** If `ObjectDN` matches a `CriticalObjectPatterns` wildcard
    (`*CN=Domain Admins*`, `*CN=Enterprise Admins*`, `*CN=Schema Admins*`, `*CN=BUILTIN*`,
    `*CN=Users,DC=*`, `*CN=Computers,DC=*`), `RequiresElevatedConfirmation` is set and
@@ -139,21 +140,21 @@ approval). It is a reporting helper and no command calls it.
 
 ### Verifying the validation
 
-The functions are private. Load them, then test representative SIDs:
+The functions, classes and `$script:Config` are private, so run the test at the prompt through the
+module scope:
 
 ```powershell
 Import-Module OrphanedSid
-# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-. .\Classes\ScriptConfiguration.ps1
-. .\Classes\SecurityValidationResult.ps1
-. .\Classes\SIDAnalysisResult.ps1
-Initialize-LoggingSystem -LogLevel Information
-$script:Config = [ScriptConfiguration]::new()
-
+$osid = Get-Module OrphanedSid
 $domainSID = (Get-ADDomain).DomainSID.Value
-foreach ($sid in 'S-1-5-32-544', 'S-1-5-18', "$domainSID-512", "$domainSID-500", "$domainSID-1001", 'S-1-5-21-1-2-3-1001;cmd') {
-    $v = Test-SIDSecurity -SIDString $sid -ObjectDN 'CN=Test,OU=Users,DC=contoso,DC=com'
-    "{0,-45} Valid={1,-5} Risk={2,-8} Elevated={3,-5} {4}" -f $sid, $v.IsValid, $v.RiskLevel, $v.RequiresElevatedConfirmation, ($v.Issues -join '; ')
+& $osid {
+    Initialize-LoggingSystem -LogLevel Information
+    $script:Config = [ScriptConfiguration]::new()
+
+    foreach ($sid in 'S-1-5-32-544', 'S-1-5-18', "$domainSID-512", "$domainSID-500", "$domainSID-1001", 'S-1-5-21-1-2-3-1001;cmd') {
+        $v = Test-SIDSecurity -SIDString $sid -ObjectDN 'CN=Test,OU=Users,DC=contoso,DC=com'
+        "{0,-45} Valid={1,-5} Risk={2,-8} Elevated={3,-5} {4}" -f $sid, $v.IsValid, $v.RiskLevel, $v.RequiresElevatedConfirmation, ($v.Issues -join '; ')
+    }
 }
 ```
 
@@ -162,7 +163,7 @@ Expected: the first three are blocked (protected or well-known), `-500` and `-10
 last is blocked as a malicious pattern.
 
 ```powershell
-$result = Invoke-SecurityValidation -OrphanedSIDs @("$domainSID-1001", 'S-1-5-32-544') -ObjectDN 'CN=Test,OU=Users,DC=contoso,DC=com'
+$result = & $osid { Invoke-SecurityValidation -OrphanedSIDs @("$domainSID-1001", 'S-1-5-32-544') -ObjectDN 'CN=Test,OU=Users,DC=contoso,DC=com' }
 $result.IsValid        # False: one SID blocked blocks the object
 $result.BlockedSIDs    # S-1-5-32-544
 $result.AllowedSIDs    # <domain>-1001
@@ -200,7 +201,8 @@ with `Component = SecurityAudit`. Events written during a run:
 | ObjectAccess | `AD-ObjectDiscovery` | Attempt/Success/Failure per search base |
 | ObjectAccess | `OrphanedSID-Detection` | Success per object with findings, listing the SIDs |
 | ObjectAccess | `OrphanedSID-Removal` | Attempt/Success/Failure per SID; WhatIf attempts carry `WhatIfMode = true` |
-| DataValidation | `Test-SIDSecurity` | Attempt, then Success or Failure (blocked) per SID |
+| ObjectAccess | `Invoke-ADOperationWithRetry` (`Get-ADObject-BySID`, `Get-ADUser`, ...) | Attempt, then Success or Failure, per directory call |
+| DataValidation | `Test-SIDSecurity` | Attempt, then Success, Failure (blocked) or a second Attempt (high risk) per SID |
 | SecurityViolation | `Test-SIDSecurity` | Malicious pattern detected |
 | PrivilegeUse | `Invoke-RemovalWorkflow` | ACL modification initiated |
 
@@ -209,7 +211,9 @@ How to read them, and what to do when they land in emergency files, is in
 
 ## Customising the Lists
 
-Supply a JSON file with `-ConfigPath`. Only these keys are read:
+Supply a JSON file with `-ConfigPath`. The lists are set by the keys below; the file may also set
+`BatchSize`, `EnableDetailedLogging`, `LogFilePath`, `EnableLogFileRotation` and
+`MaxLogFileSizeMB`:
 
 ```json
 {

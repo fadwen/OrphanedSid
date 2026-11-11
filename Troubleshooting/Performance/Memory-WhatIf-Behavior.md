@@ -91,27 +91,32 @@ modes. Under `-WhatIf` the log shows `WhatIf: Would dispose and cleanup resource
   `WhatIf: Would perform garbage collection`, and returns `MemoryAfter` equal to `MemoryBefore`
   with `WhatIfMode = $true`.
 - `StreamingResultsManager` in WhatIf mode creates no temp directory and writes no batch files; it
-  still clears each batch from memory and collects, so memory behaviour matches a real run.
+  keeps each flushed batch in memory (`WhatIfResults`) so `GetAllResults()` can return it, so a
+  preview holds every result in memory where a real run holds at most one batch.
 
 ## Verification
 
-Load the helpers into a session (see
-[Memory-Management-Issues.md](./Memory-Management-Issues.md#validation-commands) for the
-dot-source list), then:
+The helpers are private, so run this inside the module scope (see
+[Memory-Management-Issues.md](./Memory-Management-Issues.md#validation-commands)):
 
 ```powershell
-# Manager is created despite -WhatIf
-$manager = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 10 -WhatIf
-$null -ne $manager                      # True
+Import-Module OrphanedSid
+. (Get-Module OrphanedSid) {
+    Initialize-LoggingSystem -LogLevel Information
 
-# Cleanup runs despite -WhatIf
-$result = Invoke-Cleanup -WhatIf -Verbose
-$result.WhatIfMode                      # True
-$result.GCCycles                        # 3
+    # Manager is created despite -WhatIf
+    $manager = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 10 -WhatIf
+    $null -ne $manager                  # True
 
-# Disposal runs despite -WhatIf
-Invoke-ResourceCleanup -MemoryManager $manager -WhatIf
-$manager.Disposed                       # True
+    # Cleanup runs despite -WhatIf
+    $result = Invoke-Cleanup -WhatIf -Verbose
+    $result.WhatIfMode                  # True
+    $result.GCCycles                    # 3
+
+    # Disposal runs despite -WhatIf
+    Invoke-ResourceCleanup -MemoryManager $manager -WhatIf
+    $manager.Disposed                   # True
+}
 ```
 
 Comparing `[System.GC]::GetTotalMemory($false)` before and after `Invoke-Cleanup -WhatIf` on an
@@ -120,7 +125,9 @@ idle session proves little, because there may be nothing to reclaim; the `Dispos
 
 ## Log Analysis
 
-Lines that prove the operations executed, regardless of mode (Debug lines need `-LogLevel Debug`):
+Lines that prove the operations executed in a command run, with or without `-WhatIf`, because the
+memory functions are pinned (Debug lines need `-LogLevel Debug`). A direct call with `-WhatIf`
+does not write them:
 
 ```text
 Garbage collection completed (3 cycles)

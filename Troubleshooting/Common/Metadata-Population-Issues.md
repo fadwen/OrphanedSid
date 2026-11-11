@@ -23,13 +23,15 @@ the object it came from. This guide covers the metadata that can look wrong and 
 #### Issue: Timestamps are local time, not UTC
 
 `Timestamp` is set with `Get-Date` in the class constructor and again in `Add-ProcessingMetadata`,
-so it carries the local time of the machine running the command with `Kind = Local`. The CSV written
-by `-OutputPath` serialises it in the local culture's format. This is by design; convert on the way
-out when a downstream system needs UTC:
+so it carries the local time of the machine running the command with `Kind = Local`. The results a
+command emits and exports are read back from JSON batch files: on PowerShell 7 they keep local time,
+on Windows PowerShell 5.1 they come back as UTC (`Kind = Utc`). The CSV written by `-OutputPath`
+serialises the value in the local culture's format. Convert on the way out when a downstream system
+needs UTC:
 
 ```powershell
 Import-Csv -Path .\Reports\orphaned-sids.csv | ForEach-Object {
-    $_.Timestamp = ([datetime]$_.Timestamp).ToUniversalTime().ToString('o')
+    $_.Timestamp = ([datetime]::Parse($_.Timestamp)).ToUniversalTime().ToString('o')
     $_
 } | Export-Csv -Path .\Reports\orphaned-sids-utc.csv -NoTypeInformation
 ```
@@ -40,9 +42,9 @@ Backup files use a different field: `BackupDate` is written as `yyyy-MM-ddTHH:mm
 #### Issue: Timestamps appear out of order or far apart in one run
 
 Results are created when each access rule is evaluated, so the `Timestamp` spread equals the
-run's duration. A gap of minutes between consecutive objects usually reflects SID lookups being
-retried (`Retry attempt N of M for object <DN>` in the log). Check the system clock only when
-timestamps are in the future relative to the log file's own timestamps.
+run's duration. A gap of minutes between consecutive objects usually reflects slow SID lookups or
+detection being retried (`Retry attempt N of M for object <DN>` in the log). Check the system
+clock only when timestamps are in the future relative to the log file's own timestamps.
 
 ### 2. Processing Metrics
 
@@ -57,35 +59,32 @@ property that `Find-OrphanedSIDsInObject` attaches to every result from one obje
 | `StartTime`, `EndTime` | `Get-Date` at start and end of that object |
 | `Duration` | Milliseconds between them |
 | `AccessRulesRetrieved` | Rules returned by `Get-ObjectAccessRule` |
-| `ProcessedSIDs` | Rules evaluated |
-| `SkippedSIDs` | Rules skipped (no identity, well-known, or error) |
-| `OrphanedSIDsFound` | Results created |
+| `ProcessedSIDs` | Rules evaluated, including well-known and resolved ones |
+| `SkippedSIDs` | Rules whose evaluation threw an error |
+| `WellKnownSIDsSkipped` | Never incremented; always `0` |
+| `OrphanedSIDsFound` | Orphaned results created |
+| `UnverifiedSIDsFound` | Unverified results created |
 | `ErrorsEncountered` | Exceptions caught for that object |
 | `ProcessingMethod` | `Orchestrated-Workflow` |
 
-`Duration` is a `Get-Date` difference, so sub-millisecond work shows as `0`. It is not written to
-the CSV (only class members are exported). To see it, run the per-object function directly in a
-diagnostic session:
+`Duration` is the `TotalMilliseconds` of a `Get-Date` difference, a fractional number. The CSV
+holds `ProcessingStatistics` only as text (`@{...}`). To see it as a table, run the per-object
+function directly in a diagnostic session:
 
 ```powershell
-Import-Module OrphanedSid
 Import-Module ActiveDirectory
 Import-Module OrphanedSid
 # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-Get-ChildItem .\Classes\*.ps1 | ForEach-Object { . $_.FullName }
-'SID\Test-SIDFormat', 'SID\Get-SIDAnalysis', 'ActiveDirectory\Invoke-ADOperationWithRetry',
-'Operations\Invoke-OperationWithRetry', 'Logging\Write-ADOperationSecurityLog', 'SID\Test-OrphanedSID',
-'Security\Get-SecurityDescriptor', 'SID\Resolve-SIDIdentity', 'SID\New-SIDResult', 'SID\Invoke-SIDProcessing' |
-    ForEach-Object { . ".\Private\$_.ps1" }
 
 $object = Get-ADObject -Identity 'CN=User1,OU=Test,DC=contoso,DC=com' -Properties nTSecurityDescriptor, ObjectClass
-$results = Find-OrphanedSIDsInObject -ADObject $object -IncludeInherited
+$results = & (Get-Module OrphanedSid) {
+    param($ADObject) Find-OrphanedSIDsInObject -ADObject $ADObject -IncludeInherited
+} $object
 $results | Select-Object -First 1 -ExpandProperty ProcessingStatistics
 ```
 
 Every result from one object shares the same `ProcessingStatistics` table, so read it from one
-result per object. The CSV holds only its text form, so read it from live results, not from a
-result read back with `Import-Csv`.
+result per object, from live results rather than a result read back with `Import-Csv`.
 
 #### Issue: Memory figures missing from the summary
 
@@ -101,12 +100,14 @@ no WMI query is involved. See `.\Troubleshooting\Performance\Memory-Management-I
 
 Expected. `New-OrphanedSIDResult` receives `-CorrelationId` from the calling chain
 (`Find-OrphanedSIDsInObject` -> `Test-AccessRuleForOrphanedSID`), so every result from one object
-shares that object's ID. A result generates its own GUID in the class constructor only when no ID is
-passed. Uniqueness per result is not a goal; traceability from result to log lines is.
+shares that object's ID. The GUID the class constructor assigns is always overwritten by
+`Add-ProcessingMetadata`. Uniqueness per result is not a goal; traceability from result to log
+lines is.
 
 The main run's `-CorrelationId` is what appears in the `[Main]`, `[MainProcessing]` and `[Summary]`
-log lines. Per-object IDs are generated inside `Invoke-MainProcessingLogic` when it calls
-`Find-OrphanedSIDsInObject`, so a result's `CorrelationId` is the per-object GUID, not the run's.
+log lines. `Invoke-MainProcessingLogic` calls `Find-OrphanedSIDsInObject` without one, so that
+function generates a GUID per object and a result's `CorrelationId` is the per-object GUID, not
+the run's.
 To tie a result back to a run, filter the log file by `ObjectDN` instead:
 
 ```powershell
@@ -127,8 +128,8 @@ Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
 ### 4. Processing Context
 
 Each result also carries a `ProcessingContext` note property (hashtable) with `MachineName`,
-`UserName`, `ProcessId`, `PowerShellVersion` and `ModuleVersion`. Like `ProcessingStatistics` it is
-not a class member and is not exported to CSV; it is available on the live objects only.
+`UserName`, `ProcessId`, `PowerShellVersion` and `ModuleVersion` (always `1.0.0`). Like
+`ProcessingStatistics` it is not a class member; the CSV holds it only as text.
 
 ### 5. ACL Metadata Defaults
 
@@ -144,7 +145,8 @@ Debug level:
 | `IsInherited` | `$false` | `IsInherited property missing, set to false` |
 
 Defaults appear mainly on deserialized access rules. If many results show `GenericRead` and
-`Allow`, run with `-LogLevel Debug` and look for these messages to confirm.
+`Allow` (`131220` and `0` in emitted results and the CSV, which carry the numeric enum values), run
+with `-LogLevel Debug` and look for these messages to confirm.
 
 ## Validation Commands
 
@@ -156,7 +158,7 @@ $rows = Import-Csv -Path .\Reports\orphaned-sids.csv
 $rows | Where-Object { -not $_.ObjectDN -or -not $_.OrphanedSID -or -not $_.CorrelationId }
 
 # Timestamps fall inside the run window recorded in the log
-$rows | ForEach-Object { [datetime]$_.Timestamp } | Measure-Object -Minimum -Maximum
+$rows | ForEach-Object { [datetime]::Parse($_.Timestamp) } | Measure-Object -Minimum -Maximum
 
 # SIDs are well formed
 $rows | Where-Object { $_.OrphanedSID -notmatch '^S-1-\d+(-\d+)+$' }

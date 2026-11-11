@@ -172,17 +172,19 @@ the affected search base alone.
 ## Performance Notes
 
 - Each object costs one `Get-Acl` call in the normal case. The binary and fresh-query strategies
-  add work only when Get-Acl returns nothing.
+  add work only when Get-Acl returns no rules, which without `-IncludeInherited` includes an object
+  whose ACEs are all inherited.
 - `-IncludeInherited` increases the number of rules returned per object, often several-fold on
   deep OU trees, and each extra rule is a SID lookup downstream.
 - `ConvertTo-SecurityDescriptor` and `Invoke-FreshADQuery` null their `ActiveDirectorySecurity`
   reference after extracting the rules; `Find-OrphanedSIDsInObject` nulls the rule array after each
-  object and collects every 100 rules.
+  object and forces a garbage collection after an object whose processed-rule count is a multiple
+  of 100.
 
 ```powershell
 # Measure ACL retrieval for a sample of objects
 $objects = Get-ADObject -SearchBase "OU=Users,DC=contoso,DC=com" -Filter * -Properties nTSecurityDescriptor -ResultSetSize 100
-(Measure-Command { $objects | ForEach-Object { Get-ObjectAccessRule -ADObject $_ } }).TotalSeconds
+(Measure-Command { & (Get-Module OrphanedSid) { $objects | Get-ObjectAccessRule } }).TotalSeconds
 ```
 
 ## Debugging Techniques
@@ -192,7 +194,7 @@ $objects = Get-ADObject -SearchBase "OU=Users,DC=contoso,DC=com" -Filter * -Prop
 ```powershell
 $obj = Get-ADObject -Identity $dn -Properties nTSecurityDescriptor
 $correlationId = [guid]::NewGuid().ToString()
-$rules = Get-ObjectAccessRule -ADObject $obj -CorrelationId $correlationId -Verbose
+$rules = & (Get-Module OrphanedSid) { Get-ObjectAccessRule -ADObject $obj -CorrelationId $correlationId -Verbose }
 $rules.Count
 $rules | Select-Object IdentityReference, ActiveDirectoryRights, IsInherited -First 10
 ```
@@ -200,9 +202,11 @@ $rules | Select-Object IdentityReference, ActiveDirectoryRights, IsInherited -Fi
 ### Test each strategy
 
 ```powershell
-Get-SecurityDescriptorFromGetAcl -ADObject $obj
-Get-SecurityDescriptorFromBinary -ADObject $obj
-Invoke-FreshADQuery -ADObject $obj
+& (Get-Module OrphanedSid) {
+    Get-SecurityDescriptorFromGetAcl -ADObject $obj
+    Get-SecurityDescriptorFromBinary -ADObject $obj
+    Invoke-FreshADQuery -ADObject $obj
+}
 ```
 
 Each returns the rule array or `$null`; compare the counts to see which strategy the run would
@@ -213,7 +217,7 @@ have used.
 | Message | Level | Meaning |
 |---|---|---|
 | `Get-Acl failed for <DN>: <error>` | Debug | Strategy 1 failed; falling back |
-| `Get-Acl returned null or empty access list for <DN>` | Debug | Object has no explicit ACEs, or no ACL readable |
+| `Get-Acl returned null or empty access list for <DN>` | Debug | The ACL has no entries at all, or none were readable |
 | `No nTSecurityDescriptor property found for <DN>` | Debug | Strategy 2 has nothing to parse |
 | `Failed to convert binary security descriptor for <DN> : <error>` | Warning | Strategy 2 conversion failed |
 | `Fresh AD query returned no security descriptor for <DN>` | Warning | Strategy 3 found the object but no descriptor |
@@ -221,7 +225,7 @@ have used.
 | `All security descriptor retrieval methods failed for <DN>` | Warning | Object skipped |
 | `Successfully retrieved access rules using <method> for <DN>` | Debug | Which strategy succeeded |
 
-Debug lines reach the log file only with `-LogLevel Debug`.
+Debug lines reach the log file only with `-LogLevel Debug` or `Verbose`.
 
 ## Related Documentation
 

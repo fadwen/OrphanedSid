@@ -62,7 +62,7 @@ discovered entries as CSV.
 Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf
 
 DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: One WhatIf line per entry that would be removed
+OUTPUT: A WhatIf line for the run and one per entry that would be removed
 USE CASE: The review step before a cleanup
 
 ### EXAMPLE 2
@@ -70,7 +70,7 @@ USE CASE: The review step before a cleanup
 Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'
 
 DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\<timestamp>\, then removes
-OUTPUT: One RemovalOperationResult per modified object
+OUTPUT: One RemovalOperationResult per removed entry
 USE CASE: An interactive cleanup with the backup on a dedicated drive
 
 ### EXAMPLE 3
@@ -436,9 +436,9 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 
 ### RemovalOperationResult
 
-One object per Active Directory object whose ACL was modified, with the object DN, the SIDs that
-were intended for removal and the ones actually removed, the backup file written, the verification
-outcome, any error, and the correlation ID.
+One object per orphaned entry removed, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
+`FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
+`ProcessingTime`, `CorrelationId` and `SecurityValidation`.
 ## NOTES
 
 Author: Jeffrey Stuhr

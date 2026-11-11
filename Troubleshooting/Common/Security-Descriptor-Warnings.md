@@ -16,8 +16,9 @@ The log file records the same event as:
 
 The message is written by `Get-ObjectAccessRule` in `Private\Security\Get-SecurityDescriptor.ps1`
 after every retrieval strategy returned nothing for that object. The object is skipped, nothing is
-counted as an error, and processing continues with the next object. A handful of these per run is
-normal in most domains.
+counted as an error, and processing continues with the next object. In a lab run over 38 ordinary
+objects without `-IncludeInherited`, the only object that produced it was one whose ACL had no
+explicit entries.
 
 ## How Retrieval Works
 
@@ -40,18 +41,25 @@ Two related Debug-level messages are not warnings and need no action:
 
 - `No security descriptor found for <DN>` - the object came back without an `nTSecurityDescriptor`
   value.
-- `No access rules retrieved for <DN>` - retrieval succeeded but produced no rules. Without
-  `-IncludeInherited` only explicit (non-inherited) entries are kept, so an object whose ACL is
-  entirely inherited is reported this way.
+- `No access rules retrieved for <DN>` - logged after every strategy came back empty, so it follows
+  the warning above.
 
 ## Why These Warnings Occur
 
-- **Read Permissions missing**: the running account cannot read the object's security descriptor.
-  Common on objects protected by AdminSDHolder, the Deleted Objects container, and system
-  containers under `CN=System` and `CN=Configuration`.
-- **Transient connectivity**: the per-object `Get-Acl` call failed against the domain controller.
-- **Replication state**: the object exists in the search results but its security descriptor is
-  not yet readable on the responding domain controller.
+- **Entirely inherited ACL**: without `-IncludeInherited` each strategy keeps only explicit
+  (non-inherited) entries. An object with none comes back empty from all three, which is reported
+  as the warning above although nothing failed. Running with `-IncludeInherited` makes it go away;
+  this was reproduced against a domain controller.
+- **A descriptor that cannot be parsed**: `Get-Acl` fails and the descriptor fetched with the
+  object cannot be converted, so strategies 2 and 3 log their own Warning first.
+
+A transient `Get-Acl` failure on its own does not produce the warning: strategy 2 then parses the
+descriptor that was already fetched with the object.
+
+An object whose descriptor the running account is not allowed to read does not produce it either.
+Active Directory returns such an object without `nTSecurityDescriptor`, and it is skipped before
+retrieval with the Debug-level `No security descriptor found for <DN>`, so it is easy to miss. Run
+with `-LogLevel Debug` and search for that line to list the objects a run could not examine.
 
 Well-known SIDs such as `S-1-5-18`, `S-1-5-19` and `S-1-5-20` do not cause these warnings. They are
 filtered later, per access rule, by `Test-WellKnownSID` (`Private\SID\Test-SIDFormat.ps1`), and
@@ -72,9 +80,10 @@ Messages that indicate an actual problem rather than an expected skip:
   block in `Get-ObjectAccessRule` fired; the object shape was not one the three strategies handle.
 - `[Error] [General] Error in orchestrated processing for object <DN> : <message>` - the per-object
   workflow in `Find-OrphanedSIDsInObject` failed after retrieval.
-- `[Error] [MainProcessing] Error processing object <DN>: <message>` followed by
-  `Retry attempt N of M for object <DN>` - `Invoke-MainProcessingLogic` caught an exception and is retrying up to
-  `-MaxRetries` times with a 2, 4, 6... second back-off.
+- `[Warning] [MainProcessing] Retry attempt N of M for object <DN>: <message>` -
+  `Invoke-MainProcessingLogic` caught an exception from detection and is retrying up to
+  `-MaxRetries` times with a 2, 4, 6... second back-off; `Error processing object <DN>: <message>`
+  follows when the retries run out.
 
 ## Troubleshooting
 
@@ -101,7 +110,7 @@ the problem; check that the `ActiveDirectory` module loaded in the same session.
 ### Make the cause visible
 
 ```powershell
-Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -LogLevel Debug -WhatIf
+Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -LogLevel Debug
 ```
 
 With `-LogLevel Debug` the file receives the strategy-1 `Get-Acl failed for <DN>: <message>` line,
@@ -110,9 +119,8 @@ which carries the underlying exception text.
 ### Reduce console noise
 
 `-LogLevel` filters what is written to the **file**; console output is not filtered, so warnings
-still print. `-SuppressConsoleOutput` silences only security-event console lines
-(`Write-SecurityStructuredLogEntry`), not these warnings. To keep the console quiet, redirect the
-warning stream:
+still print. `-SuppressConsoleOutput` silences every console line the logger writes, these warnings
+included. To silence only the warning stream, redirect it:
 
 ```powershell
 Find-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' 3> $null

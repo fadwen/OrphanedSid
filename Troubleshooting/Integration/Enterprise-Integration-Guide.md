@@ -6,13 +6,16 @@ from schedulers, pipelines and monitoring systems, and the integration problems 
 they behave:
 
 - Each command writes its **results to the pipeline** as objects: one `OrphanedSIDResult` per
-  orphaned entry, one `RemovalOperationResult` per modified object, one restore result per target.
-  `-OutputPath` also writes them as CSV, and every run writes a log file.
-- The log file is **plain text**, one line per entry:
-  `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`. Entries with
-  extra data end with a space followed by `| Details: <json>`.
-- The correlation ID is in every line but **never in the file name**
-  (`<Command>_<yyyyMMdd_HHmmss>.log` by default).
+  orphaned or unverified entry, one `RemovalOperationResult` per orphaned SID removed, one restore result per
+  target. `-OutputPath` also writes them as CSV, and every run writes a log file.
+- The log file starts with a plain-text header block. Regular entries are **plain text**, one line
+  each: `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`, ending
+  with ` | Details: <json>` when there is extra data. Security audit entries are **one JSON object
+  per line** with `Timestamp`, `Level`, `Component` (`SecurityAudit`), `CorrelationId`, `Message`
+  and the event's context fields.
+- The run's correlation ID is in most lines (object-discovery and per-object detection lines
+  carry their own IDs) but **never in the file name** (`<Command>_<yyyyMMdd_HHmmss>.log` by
+  default).
 - `-OutputPath` always produces **CSV**, whatever extension is given.
 - There is no parallel mode, no throttle parameter and no `-Credential`; every command runs as the
   invoking account.
@@ -24,32 +27,35 @@ they behave:
 
 ### 1. SIEM Integration
 
-Point `-LogPath` at a folder the forwarder watches and parse the bracketed fields:
+Point `-LogPath` at a folder the forwarder watches and parse the bracketed fields. A path containing
+`Program Files`, `Windows` or `system32` is refused and no entry reaches it, so use a dedicated
+folder:
 
 ```powershell
-$logPath = 'C:\Program Files\SplunkUniversalForwarder\var\log\splunk\OrphanedSid.log'
+$logPath = 'D:\SIEM\OrphanedSid\OrphanedSid.log'
 Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogPath $logPath -LogLevel Information `
     -CorrelationId ([guid]::NewGuid().ToString())
 ```
 
-Field extraction (regex for the SIEM):
+Field extraction for the plain-text lines (regex for the SIEM):
 
 ```text
 ^\[(?<timestamp>[^\]]+)\] \[(?<level>[^\]]+)\] \[(?<component>[^\]]+)\] \[(?<correlationId>[^\]]+)\] (?<message>.*?)(?: \| Details: (?<details>\{.*\}))?$
 ```
 
-Security-relevant events carry the component names `Security`, `SecurityAudit`, `SecurityAlert`,
-`ADOperations` and `RemovalSecurityLogging`, and bypass the `-LogLevel` filter, so they are written
-even with `-LogLevel Error`. Fields worth indexing: `level`, `component`, `correlationId`, and the
+Security audit entries are the lines that start with `{`; parse them as JSON. Their `Component` is
+`SecurityAudit`, and `Security_Component` names the source (`ADOperations` or
+`RemovalSecurityLogging`). They bypass the `-LogLevel` filter, so they are written even with
+`-LogLevel Error`. Fields worth indexing: `level`, `component`, `correlationId`, and the
 `Orphaned SIDs found: N` summary message.
 
 **Common issues:**
 
-- **Expecting JSON lines**: the file is not JSON. Use the regex above, or post-process with
-  `ConvertTo-Json` per line.
-- **Log rotation**: an existing log larger than `MaxLogFileSizeMB` (config, default 10 MB) is
-  renamed to `<name>_<yyyyMMdd_HHmmss>.log` at start-up when `EnableLogFileRotation` is true. Watch
-  the folder, not a single file name.
+- **Mixed formats**: one file holds a header, plain-text lines and JSON lines. Route lines starting
+  with `{` to a JSON parser and the rest to the regex above.
+- **Fixed log path**: each run recreates the file at `-LogPath` with a new header, so a fixed name
+  keeps only the last run. Leave `-LogPath` unset (timestamped name) or put the date in it, and
+  watch the folder, not a single file name.
 - **Correlation ID format**: any string is accepted on all three commands, so a change or ticket
   number can be used directly and searched for in the SIEM.
 
@@ -72,7 +78,7 @@ if ($found -gt 100) {
 Register the event source once with `New-EventLog -LogName Application -Source 'OrphanedSid'`.
 `Write-EventLog` and `New-EventLog` exist in Windows PowerShell 5.1 only; on PowerShell 7 use
 `New-WinEvent` or load them through the `WindowsCompatibility` module. The CSV exists only when at
-least one orphaned SID was found; `Test-Path $csv` is a valid zero-result check.
+least one orphaned or unverified SID was found; `Test-Path $csv` is a valid zero-result check.
 
 ### 3. Desired State Configuration
 
@@ -124,8 +130,14 @@ $command = 'Import-Module OrphanedSid; Find-OrphanedSid -SearchBase ''DC=contoso
     '-OutputPath ''D:\Reports\sid-audit.csv'' -LogLevel Warning'
 $action  = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -NonInteractive -Command `"$command`""
 $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 02:00
-Register-ScheduledTask -TaskName 'OrphanedSid Audit' -Action $action -Trigger $trigger -User 'CONTOSO\svc-adsecurity' -RunLevel Highest
+# A group managed service account runs logged off without a stored password
+$principal = New-ScheduledTaskPrincipal -UserId 'CONTOSO\svc-adsecurity$' -LogonType Password -RunLevel Highest
+Register-ScheduledTask -TaskName 'OrphanedSid Audit' -Action $action -Trigger $trigger -Principal $principal
 ```
+
+For an ordinary account, pass `-User` and `-Password` to `Register-ScheduledTask` instead. With
+`-User` alone the task is registered with an interactive logon type and runs only while that
+account is logged on.
 
 The task's account needs Read permissions for discovery and Modify permissions for
 `Remove-OrphanedSid`. Because the task is non-interactive, a `Remove-OrphanedSid` run must include
@@ -173,12 +185,13 @@ cap. Splitting the domain by OU across several runs is the only way to shorten a
 Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxRetries 5
 ```
 
-`-MaxRetries` (1-10) controls the per-object retry loop: an object whose processing threw is
-re-run up to that many times. SID lookups and the ACL steps of `Remove-OrphanedSid` are wrapped by
-`Invoke-ADOperationWithRetry` with a fixed default of 3 attempts for transient errors. Object
-discovery is not retried. There are no timeout settings in the configuration file. When every lookup
-for a SID fails, that SID is reported as orphaned; do not run `Remove-OrphanedSid` against a scope whose discovery log contains
-`lookup failed for SID`.
+`-MaxRetries` (1-10) controls the per-object retry loop: reading an object's ACL and SIDs is
+retried up to that many times after an error; a removal is not retried. SID lookups and the ACL
+steps of `Remove-OrphanedSid` are wrapped by `Invoke-ADOperationWithRetry` with fixed limits of 2 or
+3 attempts for transient errors. Object discovery is not retried. There are no timeout settings in
+the configuration file. When a lookup for a SID fails and no other lookup finds it, the SID is
+reported with `VerificationStatus` `Unverified` and is never removed; re-run discovery once the
+domain controller is reachable.
 
 ### 3. Logging and Monitoring
 
@@ -189,7 +202,7 @@ Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -LogLevel Warning -LogPath '\\f
 ```
 
 `-LogLevel` filters file output only; console output is unaffected. The folder part of `-LogPath`
-is created if missing (`Cannot create log directory: <dir> - <message>` on failure).
+is created if missing (`Log directory initialization failed: <message>` on failure).
 
 #### Issue: Correlating one run across systems
 
@@ -198,7 +211,7 @@ Generate the ID once and pass it everywhere:
 ```powershell
 $id = [guid]::NewGuid().ToString()
 Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -CorrelationId $id -OutputPath ".\Reports\$id.csv"
-Select-String -Path .\Logs\<Command>_*.log -Pattern "\[$id\]"
+Select-String -Path .\Logs\Find-OrphanedSid_*.log -Pattern $id -SimpleMatch
 ```
 
 Every row of the CSV carries a `CorrelationId` column, but that value is the per-object ID
@@ -285,8 +298,8 @@ keys are ignored silently:
 ```
 
 `LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
-automatically, so it must already exist or every entry fails with
-`Failed to write log entry to file: <message>`. Search base, memory limit, retries, and output path
+automatically, so it must already exist or every entry fails with an `Add-Content` error
+(`Could not find a part of the path '<path>'`). Search base, memory limit, retries, and output path
 are parameters only and cannot be set in the file. Validate a file before deploying it:
 
 ```powershell
@@ -358,7 +371,7 @@ function Get-IntegrationDiagnostics {
 | `The ActiveDirectory PowerShell module is not available. Install RSAT: ...` | RSAT AD module missing on the agent | Install RSAT-AD-PowerShell |
 | `The RPC server is unavailable` inside AD lookups | DC connectivity | Check port 389/636 and DNS; raise `-MaxRetries` |
 | `The folder for -OutputPath does not exist: <dir>` | Folder in `-OutputPath` does not exist | Create it first |
-| CSV missing after a run | No orphaned SIDs found | Treat as a zero result; check `Orphaned SIDs found: 0` in the log |
+| CSV missing after a run | No orphaned or unverified SIDs found | Treat as a zero result; check `Orphaned SIDs found: 0` in the log |
 
 ### Batch processing for large environments
 

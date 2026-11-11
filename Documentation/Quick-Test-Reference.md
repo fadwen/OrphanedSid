@@ -27,7 +27,8 @@ Invoke-Pester ./Tests
 
 `Tests/Unit` covers the classes, the private functions and the three public commands one at a
 time. `Tests/Integration` runs the three public commands end to end through the real module, with
-only the Active Directory cmdlets and `Get-Acl`/`Set-Acl` mocked against an in-memory directory.
+only the ActiveDirectory module check, its cmdlets and `Get-Acl`/`Set-Acl` mocked against an
+in-memory directory.
 See [Tests/Pester-Test-Mapping.md](../Tests/Pester-Test-Mapping.md) for what each folder covers.
 
 ## Run one file
@@ -44,7 +45,7 @@ functions names a parameter the callee does not declare.
 
 ## Coverage
 
-CI fails below 90% line coverage over `Public/` and `Private/`. To measure it locally:
+CI fails below 90% command coverage over `Public/` and `Private/`. To measure it locally:
 
 ```powershell
 $cfg = New-PesterConfiguration

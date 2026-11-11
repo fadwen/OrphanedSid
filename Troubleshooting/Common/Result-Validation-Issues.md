@@ -15,7 +15,8 @@ the CSV named by `-OutputPath` (always CSV, whatever the extension).
 The columns are the class members: `ObjectDN`, `ObjectClass`, `OrphanedSID`, `LikelySource`,
 `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`, `InheritanceType`,
 `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`, `ActionTaken`,
-`CorrelationId`, `Timestamp`.
+`VerificationStatus`, `VerificationError`, `CorrelationId`, `Timestamp`, followed by the
+`ProcessingContext` and `ProcessingStatistics` note properties as text. Enum columns hold numbers.
 
 ```powershell
 $rows = Import-Csv -Path .\Reports\orphaned-sids.csv
@@ -34,35 +35,37 @@ $rows.ObjectDN | Sort-Object -Unique | ForEach-Object {
 }
 
 # 4. Timestamps inside the run window and ActionTaken as expected
-$rows | ForEach-Object { [datetime]$_.Timestamp } | Measure-Object -Minimum -Maximum
+$rows | ForEach-Object { [datetime]::Parse($_.Timestamp) } | Measure-Object -Minimum -Maximum
 $rows | Where-Object ActionTaken -ne 'Detected'
 
-# 5. Counts agree with the log summary line "Orphaned SIDs found: N"
-$rows.Count
+# 5. Counts agree with the log summary lines "Orphaned SIDs found: N" (Orphaned rows) and
+#    "Unverified SIDs (lookup failed, not removed): N" (Unverified rows)
+$rows | Group-Object VerificationStatus -NoElement
 ```
 
 A SID in the well-known ranges should never appear: `Test-WellKnownSID` filters them before a
-result is created. Finding one means the `WellKnownSIDPatterns` list in a `-ConfigPath` file
-removed a default pattern.
+result is created. The SIDs check 2 matches are in a list built into that function, so no
+`-ConfigPath` setting lets them through.
 
 ## Common Findings and Their Meaning
 
 | Finding | Meaning |
 | --- | --- |
 | Many rows share one `CorrelationId` | Expected: results from the same object share the ID generated for that object |
-| `ActiveDirectoryRights = GenericRead`, `AccessControlType = Allow` on every row | Access rules lacked those properties and defaults were applied; see Result-Creation-Issues.md |
-| `LikelySource = Unknown` | `Get-SIDAnalysis` had no domain SID to compare against; see `.\Troubleshooting\Security\SID-Analysis-Issues.md` |
-| `Timestamp` is local time | By design; convert on export when UTC is required |
+| `ActiveDirectoryRights = 131220` (GenericRead), `AccessControlType = 0` (Allow) on every row | Access rules lacked those properties and defaults were applied; see Result-Creation-Issues.md |
+| `LikelySource = Unknown Domain` | `Get-SIDAnalysis` had no domain SID to compare against; see `.\Troubleshooting\Security\SID-Analysis-Issues.md` |
+| `Timestamp` is local time (UTC on Windows PowerShell 5.1) | See Metadata-Population-Issues.md; convert on export when UTC is required |
 | Row count lower than `ORPHANED ACCOUNT DETECTED` log entries suggest | Name-form identities that fail translation are logged but produce no result; see Result-Creation-Issues.md |
-| A SID that does resolve today | `Test-OrphanedSID` marks a SID orphaned when every AD lookup fails, so a run against an unreachable domain controller over-reports; re-run and compare |
+| A SID that does resolve today | `Test-OrphanedSID` marks a SID orphaned only when every lookup completed and none found it; a failed lookup gives `VerificationStatus = Unverified`. Re-run and compare |
 
 ## Validating Live Objects
 
-In a diagnostic session (prepared as shown in Result-Creation-Issues.md), type checks replace
-property-name checks:
+Results emitted by `Find-OrphanedSid` are read back from JSON batch files, so they are
+`PSCustomObject`s, not class instances. For results from `Find-OrphanedSIDsInObject` run in the
+module scope (as shown in Metadata-Population-Issues.md), type checks replace property-name checks:
 
 ```powershell
-$results | Where-Object { $_ -isnot [OrphanedSIDResult] }
+& (Get-Module OrphanedSid) { param($r) $r | Where-Object { $_ -isnot [OrphanedSIDResult] } } $results
 $results | Where-Object { -not $_.PSObject.Properties['ProcessingStatistics'] }   # attached by Find-OrphanedSIDsInObject
 ```
 
