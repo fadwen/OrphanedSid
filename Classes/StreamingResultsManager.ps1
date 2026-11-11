@@ -301,8 +301,16 @@ class StreamingResultsManager : System.IDisposable {
             return $item
         }
 
-        # Resolved at run time: a type literal here would bind when this file is parsed
+        # Resolved at run time: a type literal here would bind when this file is parsed. A class
+        # method resolves names in the scope where its class was first compiled; PowerShell 7 reuses
+        # that compiled class when the same file is loaded again, so when that scope does not know
+        # OrphanedSIDResult, the loaded assemblies are searched. Every copy has the same properties.
         $resultType = 'OrphanedSIDResult' -as [type]
+        if ($null -eq $resultType) {
+            $resultType = [AppDomain]::CurrentDomain.GetAssemblies() |
+                ForEach-Object { $_.GetType('OrphanedSIDResult', $false) } |
+                Where-Object { $_ } | Select-Object -Last 1
+        }
         if ($null -eq $resultType) {
             return $item
         }
