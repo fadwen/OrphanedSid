@@ -217,6 +217,7 @@ HelpMessage: ''
 
 CSV file for the restore results.
 The parent folder must exist.
+Not written under -WhatIf; the log says so.
 
 ```yaml
 Type: System.String

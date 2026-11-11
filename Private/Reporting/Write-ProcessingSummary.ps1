@@ -262,13 +262,25 @@ function Write-ProcessingSummary {
             if ($hasStreamingResults -or $hasRestoreResults) {
                 if ($OutputPath) {
                     try {
+                        # Under -WhatIf neither export writes a file: the streaming manager skips it in
+                        # WhatIf mode, and Export-Csv honours the inherited $WhatIfPreference
+                        $exported = $false
                         if ($hasStreamingResults) {
                             # Use StreamingManager's efficient CSV export
-                            $ProcessingResults.StreamingManager.ExportToCsv($OutputPath)
+                            $exported = $ProcessingResults.StreamingManager.ExportToCsv($OutputPath)
                         } elseif ($hasRestoreResults) {
-                            $ProcessingResults.RestoreResults | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+                            if (-not $WhatIfPreference) {
+                                $ProcessingResults.RestoreResults | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+                                $exported = $true
+                            }
                         }
-                        Write-StructuredLog "Results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                        if ($exported) {
+                            Write-StructuredLog "Results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                        } elseif ($WhatIfPreference -or ($hasStreamingResults -and $ProcessingResults.StreamingManager.WhatIfMode)) {
+                            Write-StructuredLog "WhatIf: results would be exported to $OutputPath; no file was written" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                        } else {
+                            Write-StructuredLog "No results were read back to export; $OutputPath was not written" -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+                        }
                     }
                     catch {
                         Write-StructuredLog "Failed to export results to CSV: $($_.Exception.Message)" -Level Error -Component 'Summary' -CorrelationId $CorrelationId

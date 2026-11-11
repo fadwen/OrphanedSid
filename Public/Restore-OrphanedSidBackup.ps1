@@ -134,10 +134,16 @@ function Restore-OrphanedSidBackup {
             Write-StructuredLog "Backup source: $BackupPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
 
             if ($OutputPath -and $allResults.Count -gt 0) {
-                $allResults |
-                    Select-Object Success, TargetObjectDN, EntriesRestored, ErrorMessage, CorrelationId |
-                    Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-                Write-StructuredLog "Restore results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                # Export-Csv honours the inherited $WhatIfPreference and writes nothing under -WhatIf
+                if ($WhatIfPreference) {
+                    Write-StructuredLog "WhatIf: results would be exported to $OutputPath; no file was written" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                }
+                else {
+                    $allResults |
+                        Select-Object Success, TargetObjectDN, EntriesRestored, ErrorMessage, CorrelationId |
+                        Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+                    Write-StructuredLog "Restore results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                }
             }
         }
         catch {

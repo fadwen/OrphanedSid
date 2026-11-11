@@ -131,6 +131,19 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
             $rows.Count | Should -Be 1
             $rows[0].TargetObjectDN | Should -Be 'CN=A,DC=contoso,DC=com'
             $rows[0].EntriesRestored | Should -Be '3'
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Restore results exported to: $csv" }
+        }
+
+        It 'Writes no CSV under -WhatIf and logs that none was written (#50)' {
+            $csv = Join-Path $TestDrive 'restore-whatif.csv'
+
+            Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com' -BackupPath $script:backupDir -OutputPath $csv -WhatIf | Out-Null
+
+            Test-Path $csv | Should -BeFalse
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 0 -ParameterFilter { $Message -like '*exported to:*' }
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "WhatIf: results would be exported to $csv; no file was written"
+            }
         }
 
         It 'Starts the session under its own command name' {

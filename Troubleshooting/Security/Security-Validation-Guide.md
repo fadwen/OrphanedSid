@@ -244,7 +244,8 @@ Supply a JSON file with `-ConfigPath`. The lists are set by the keys below; the 
 
 ## Security Checklist Before a Removal Run
 
-- [ ] A `-WhatIf` run has been reviewed and the CSV examined for false positives.
+- [ ] A `Find-OrphanedSid -OutputPath` CSV, or the results of a `Remove-OrphanedSid -WhatIf`
+      preview, has been examined for false positives. A `-WhatIf` run writes no CSV.
 - [ ] `-ConfigPath` lists any domain-specific principals that must never be removed.
 - [ ] `-BackupPath` points at storage that is itself backed up; the default `.\Backup\` is under
       the current directory of the machine running the command.

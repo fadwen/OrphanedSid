@@ -344,8 +344,11 @@ class StreamingResultsManager : System.IDisposable {
         return $this.Summary
     }
 
-    [void]ExportToCsv([string]$outputPath) {
+    # True when the file was written: nothing is written under WhatIf or when there are no results,
+    # and the caller's log line has to say which
+    [bool]ExportToCsv([string]$outputPath) {
         $allResults = $this.GetAllResults()
+        $written = $false
 
         if ($this.WhatIfMode) {
             Write-Verbose "WhatIf: Would export $($allResults.Count) results to $outputPath"
@@ -353,12 +356,14 @@ class StreamingResultsManager : System.IDisposable {
             if ($allResults.Count -gt 0) {
                 $allResults | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
                 Write-Verbose "Exported $($allResults.Count) results to $outputPath"
+                $written = $true
             }
         }
 
         # Clean up memory
         $allResults = $null
         [System.GC]::Collect()
+        return $written
     }
 
     [long]GetCurrentMemoryUsage() {
