@@ -81,6 +81,7 @@ USE CASE: Targeted rollback driven by the removal's own CSV
 
 Folder containing the backup .xml files.
 Must exist.
+A relative path is resolved against the current location.
 
 ```yaml
 Type: System.String

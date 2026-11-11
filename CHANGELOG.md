@@ -69,6 +69,11 @@ All notable changes to this module are recorded here. Format follows
   item with no DN is reported and skipped. A `-SearchBase` that is given but holds no usable DN,
   such as only blank strings, now stops the command instead of falling back to the domain root.
   ([#79](https://github.com/fadwen/OrphanedSid/issues/79))
+- `Restore-OrphanedSidBackup` with a relative `-BackupPath`, such as `.\Backup\20260703_104232`,
+  failed with `Backup directory not found: <user profile>\Backup\...`: the restore resolved the
+  path against the process directory rather than the current location. It now resolves it against
+  the current location, as `Remove-OrphanedSid -BackupPath` and `-LogPath` already do.
+  ([#80](https://github.com/fadwen/OrphanedSid/issues/80))
 - A fixed `-LogPath` reused across runs was emptied at the start of each run, so the previous run's
   log was lost, and log rotation never applied to it. A run now appends to an existing log file.
   When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it

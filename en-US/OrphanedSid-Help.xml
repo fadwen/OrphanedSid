@@ -954,7 +954,8 @@ as CSV.</maml:para>
         <maml:name>BackupPath</maml:name>
         <maml:description>
           <maml:para>Folder containing the backup .xml files.
-Must exist.</maml:para>
+Must exist.
+A relative path is resolved against the current location.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
