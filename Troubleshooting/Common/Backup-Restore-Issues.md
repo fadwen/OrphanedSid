@@ -197,7 +197,7 @@ or more of these issues, joined by a semicolon and a space:
 encoding, or is not an OrphanedSid backup at all.
 
 **Resolution:** inspect each file with the check the restore itself runs, `Test-BackupIntegrity`
-(`Private\Backup\Test-BackupValidation.ps1`). It takes the imported backup, so a file that cannot
+(`Private\Backup\Test-BackupIntegrity.ps1`). It takes the imported backup, so a file that cannot
 be imported at all is reported as unreadable:
 
 ```powershell
@@ -222,17 +222,23 @@ Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Obje
 `Test-BackupIntegrity` checks the required properties, the signature, and at the default
 `Standard` level the SHA256 hash and that the SDDL parses.
 
-For an inventory of a backup folder with filtering:
+For an inventory of the backups under a folder, including every run folder below the backup root:
 
 ```powershell
-# Find-BackupFile returns its results as one array; the parentheses unroll it
-(& (Get-Module OrphanedSid) {
-    Find-BackupFile -BackupPath 'D:\ACLBackups\20250702_103631' -ObjectDN '*OU=Test,DC=contoso,DC=com'
-}) | Select-Object FileName, ObjectDN, BackupDate, ACLEntryCount, BackupVersion
+Get-ChildItem -Path 'D:\ACLBackups' -Filter *.xml -Recurse | ForEach-Object {
+    $backup = Import-Clixml -Path $_.FullName
+    [PSCustomObject]@{
+        File          = $_.FullName
+        ObjectDN      = $backup.ObjectDN
+        BackupDate    = $backup.BackupDate
+        ACLEntryCount = $backup.ACLEntryCount
+        BackupVersion = $backup.BackupVersion
+    }
+} | Where-Object ObjectDN -like '*OU=Test,DC=contoso,DC=com'
 ```
 
-`Find-BackupFile` is private and no command calls it; it recurses, so it can be pointed at the backup root. A corrupt file cannot be
-repaired; restore from a different backup set or rebuild the ACL by hand (see Recovery Procedures).
+A corrupt file cannot be repaired; restore from a different backup set or rebuild the ACL by hand
+(see Recovery Procedures).
 
 ## Critical Restore Issues
 

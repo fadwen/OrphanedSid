@@ -14,7 +14,7 @@
 #>
 
 BeforeAll {
-    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupValidation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 

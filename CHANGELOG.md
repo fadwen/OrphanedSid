@@ -43,6 +43,13 @@ All notable changes to this module are recorded here. Format follows
 - The `EnableDetailedLogging` configuration key, which was read but never acted on. A `-ConfigPath`
   file that still sets it loads as before; the key is ignored like any other unknown key.
   ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
+- Five internal backup helpers that no command called: `Test-BackupValidation`,
+  `Test-BackupFormat`, `Get-BackupMetadata`, `Find-BackupFile` and `Get-BackupFileMetadata`. A
+  restore checks each backup with `Test-BackupIntegrity` and finds backups in
+  `Invoke-RestoreWorkflow`; neither used them. `Test-BackupIntegrity` now lives in
+  `Private/Backup/Test-BackupIntegrity.ps1`. The troubleshooting guide's backup inventory, which
+  called `Find-BackupFile`, reads the files directly.
+  ([#53](https://github.com/fadwen/OrphanedSid/issues/53))
 
 ### Fixed
 

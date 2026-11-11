@@ -18,7 +18,7 @@
 .NOTES
     Author: Jeffrey Stuhr
     Module: Find-UnknownSID.RestoreOperations
-    Dependencies: Test-BackupValidation, Restore-ACLOperation modules
+    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1
     Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
@@ -175,7 +175,7 @@ function Invoke-RestoreWorkflow {
 
         # Import required modules if not already loaded
         if (-not (Get-Command Test-BackupIntegrity -ErrorAction SilentlyContinue)) {
-            . $PSScriptRoot\Test-BackupValidation.ps1
+            . $PSScriptRoot\Test-BackupIntegrity.ps1
         }
 
         if (-not (Get-Command Set-ObjectACL -ErrorAction SilentlyContinue)) {
