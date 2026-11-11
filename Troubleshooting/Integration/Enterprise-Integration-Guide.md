@@ -286,7 +286,6 @@ keys are ignored silently:
 {
   "BatchSize": 50,
   "MemoryCheckInterval": 50,
-  "EnableDetailedLogging": false,
   "LogLevel": "Information",
   "LogFilePath": "\\\\fileserver\\logs\\ADSecurity\\OrphanedSid.log",
   "EnableLogFileRotation": true,
@@ -296,7 +295,8 @@ keys are ignored silently:
 }
 ```
 
-`LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
+`LogLevel` in the file sets the file log level when the command is run without `-LogLevel`,
+`-Verbose` or `-Debug`. `LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
 automatically, so it must already exist or every entry fails with the warning
 `Failed to write log entry to file: Could not find a part of the path '<path>'.`. Search base,
 memory limit, retries, and output path
@@ -304,7 +304,7 @@ are parameters only and cannot be set in the file. Validate a file before deploy
 
 ```powershell
 $known = 'WellKnownSIDPatterns', 'ProtectedSIDs', 'BatchSize', 'MemoryCheckInterval',
-    'EnableDetailedLogging', 'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
+    'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
 (Get-Content -Path .\config.json -Raw | ConvertFrom-Json).PSObject.Properties.Name |
     Where-Object { $_ -notin $known } | ForEach-Object { "Ignored key: $_" }
 ```

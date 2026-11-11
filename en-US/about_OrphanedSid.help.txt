@@ -53,7 +53,8 @@ UNVERIFIED SIDS
     -LogPath is given. Every line carries the run's correlation ID, so one run can be pulled
     out of a shared log with Select-String. Pass -CorrelationId to tie a run to a change
     record. -LogLevel sets the lowest level written to the file; security events are written
-    at every level.
+    at every level. Without -LogLevel the level is Verbose under -Verbose, Debug under -Debug,
+    and otherwise the LogLevel of the -ConfigPath file, or Information.
 
 BACKUPS
     Remove-OrphanedSid writes one backup file per modified object into
@@ -71,8 +72,8 @@ PROTECTED SIDS
 CONFIGURATION FILE
     -ConfigPath accepts a JSON file. Only these top-level keys are read; anything else is
     ignored: WellKnownSIDPatterns, ProtectedSIDs, BatchSize (results per streaming batch file,
-    default 50), MemoryCheckInterval (default 50), EnableDetailedLogging, LogLevel,
-    LogFilePath, EnableLogFileRotation, MaxLogFileSizeMB.
+    default 50), MemoryCheckInterval (default 50), LogLevel, LogFilePath,
+    EnableLogFileRotation, MaxLogFileSizeMB.
 
 REQUIREMENTS
     Windows PowerShell 5.1 or PowerShell 7 on Windows, and the RSAT ActiveDirectory module.

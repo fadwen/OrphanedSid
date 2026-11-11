@@ -129,6 +129,38 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like "Loading configuration from file: $cfg" }
         }
 
+        It "Applies the file's LogLevel when asked to, after the file is validated (#43)" {
+            $cfg = Join-Path $script:workDir 'level.json'
+            @{ LogLevel = 'Error' } | ConvertTo-Json | Set-Content $cfg
+            $script:LogLevel = 'Information'
+
+            Initialize-ScriptExecution -ConfigPath $cfg -UseConfigLogLevel -CorrelationId 'init-5' | Out-Null
+
+            $script:LogLevel | Should -Be 'Error'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'File log level set to Error by the configuration file' -and $CorrelationId -eq 'init-5'
+            }
+        }
+
+        It "Leaves the command's level alone without -UseConfigLogLevel" {
+            $cfg = Join-Path $script:workDir 'level2.json'
+            @{ LogLevel = 'Error' } | ConvertTo-Json | Set-Content $cfg
+            $script:LogLevel = 'Debug'
+
+            Initialize-ScriptExecution -ConfigPath $cfg -LogLevel 'Debug' | Out-Null
+
+            $script:LogLevel | Should -Be 'Debug'
+        }
+
+        It 'Leaves the level alone with -UseConfigLogLevel when there is no configuration file' {
+            $script:LogLevel = 'Warning'
+
+            Initialize-ScriptExecution -ConfigPath (Join-Path $script:workDir 'none.json') -UseConfigLogLevel | Out-Null
+
+            $script:LogLevel | Should -Be 'Warning'
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'File log level set to*' }
+        }
+
         It 'Falls back to the defaults when the file does not exist' {
             $result = Initialize-ScriptExecution -ConfigPath (Join-Path $script:workDir 'missing.json')
 

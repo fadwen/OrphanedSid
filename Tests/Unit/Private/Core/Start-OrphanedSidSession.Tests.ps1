@@ -15,7 +15,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Core\Start-OrphanedSidSession.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
-    function Initialize-ScriptExecution { param($ConfigPath, $LogPath, $MaxMemoryUsageMB, $CorrelationId, $LogLevel, [switch]$SuppressConsoleOutput) }
+    function Initialize-ScriptExecution { param($ConfigPath, $LogPath, $MaxMemoryUsageMB, $CorrelationId, $LogLevel, [switch]$UseConfigLogLevel, [switch]$SuppressConsoleOutput) }
 }
 
 Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
@@ -137,6 +137,20 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -LogLevel 'Warning' -LogLevelBound $true | Out-Null
 
             Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly -ParameterFilter { $LogLevel -eq 'Warning' }
+        }
+
+        It "Lets the configuration file's LogLevel apply only when the command line chose no level (#43): <Case>" -ForEach @(
+            @{ Case = 'nothing chosen'; Bound = $false; Verbose = $false; Debug = $false; Expected = $true }
+            @{ Case = '-LogLevel bound'; Bound = $true; Verbose = $false; Debug = $false; Expected = $false }
+            @{ Case = '-Verbose'; Bound = $false; Verbose = $true; Debug = $false; Expected = $false }
+            @{ Case = '-Debug'; Bound = $false; Verbose = $false; Debug = $true; Expected = $false }
+        ) {
+            if ($Verbose) { $VerbosePreference = 'Continue' }
+            if ($Debug) { $DebugPreference = 'Continue' }
+
+            Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -LogLevelBound $Bound | Out-Null
+
+            Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly -ParameterFilter { [bool]$UseConfigLogLevel -eq $Expected }
         }
     }
 

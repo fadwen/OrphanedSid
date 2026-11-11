@@ -166,8 +166,8 @@ cause is fixed.
 | `ProtectedSIDs` | SID list | Never removed, even if unresolvable; replaces the default list |
 | `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
 | `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
-| `LogLevel` | Critical to Verbose | Default file log level; `-LogLevel` wins |
-| `EnableDetailedLogging`, `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+| `LogLevel` | Critical to Verbose | File log level when the command line sets none; `-LogLevel`, `-Verbose` and `-Debug` win |
+| `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
 
 Everything else is a command parameter. See `Get-Help Find-OrphanedSid -Full` and
 `Get-Help about_OrphanedSid`.

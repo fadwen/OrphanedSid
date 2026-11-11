@@ -227,6 +227,8 @@ HelpMessage: ''
 
 Lowest level written to the log file.
 Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug; without either, the LogLevel of
+the -ConfigPath file applies, and Information when there is none.
 
 ```yaml
 Type: System.String

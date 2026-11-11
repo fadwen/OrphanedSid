@@ -234,8 +234,7 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 | `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$` |
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
-| `EnableDetailedLogging` | bool | false | read but has no effect |
-| `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; validated but has no effect, use `-LogLevel` |
+| `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent |
 | `LogFilePath` | string | null | overrides `-LogPath` for entries after the configuration loads; its folder must exist |
 | `EnableLogFileRotation` | bool | true | |
 | `MaxLogFileSizeMB` | int | 10 | |
@@ -251,7 +250,7 @@ if (Test-Path $configPath) {
         $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
         'Configuration file parses'
         $known = 'WellKnownSIDPatterns', 'ProtectedSIDs', 'BatchSize', 'MemoryCheckInterval',
-            'EnableDetailedLogging', 'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
+            'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
         $config.PSObject.Properties.Name | Where-Object { $_ -notin $known } |
             ForEach-Object { "Ignored key: $_" }
     } catch {
@@ -379,7 +378,8 @@ Security events bypass the `-LogLevel` filter and are always written.
 #### Issue: `-Verbose` or `-Debug` changes the log level unexpectedly
 
 When `-LogLevel` is not given, `-Verbose` sets the file level to `Verbose` and `-Debug` sets it to
-`Debug`. Pass `-LogLevel` explicitly to keep a fixed level while using the common parameters.
+`Debug`, over the `LogLevel` of a `-ConfigPath` file. Pass `-LogLevel` explicitly to keep a fixed
+level while using the common parameters.
 
 ## Diagnostic Commands
 

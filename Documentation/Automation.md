@@ -37,7 +37,7 @@ data to CSV in addition.
 | `-BackupPath <path>` | Remove, Restore | Remove: folder that receives the per-run `<yyyyMMdd_HHmmss>` subfolder, default `.\Backup` under the current directory; its parent must exist. Restore: mandatory, the timestamped run folder that holds the `.xml` files. |
 | `-OutputPath <path>` | all | CSV file for the results. The parent folder must exist. |
 | `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. A relative path is resolved against the current directory. An existing file is overwritten at the start of the run. |
-| `-LogLevel <level>` | all | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
+| `-LogLevel <level>` | all | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. Without it the level is `Verbose` under `-Verbose`, `Debug` under `-Debug`, and otherwise the `-ConfigPath` file's `LogLevel`, or `Information`. |
 | `-SuppressConsoleOutput` | all | Suppresses console log output. File logging is unaffected. |
 | `-CorrelationId <string>` | all | Identifier stamped on every log line of the run, on every result and CSV row, and on every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
 | `-Force` | Remove, Restore | Required for an unattended run. Sets `$ConfirmPreference` to `None` for the command; `-Confirm:$false` has the same effect. See [Confirmation](#confirmation-in-non-interactive-sessions). |
@@ -190,8 +190,7 @@ is not created.
 | `ProtectedSIDs` | string[] | `S-1-5-32-544`, `S-1-5-32-545`, `S-1-5-32-546`, `S-1-5-18`, `S-1-5-19`, `S-1-5-20` | Each value must match `^S-1-\d+(-\d+)*$` |
 | `BatchSize` | int | 50 | 1 to 1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1 to 1000; objects processed between memory checks |
-| `EnableDetailedLogging` | bool | false | Read; no command acts on it |
-| `LogLevel` | string | `Information` | Must be one of the `-LogLevel` values; no command acts on it, so use `-LogLevel` |
+| `LogLevel` | string | `Information` | One of the `-LogLevel` values. Sets the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent; entries written before the file is loaded use `Information` |
 | `LogFilePath` | string | none | When set, entries written after configuration load go to this file instead of `-LogPath`; its folder must exist. Startup entries are already in `-LogPath`. Runs append to this file |
 | `EnableLogFileRotation` | bool | true | At startup, rename the `LogFilePath` file with a timestamp suffix when it is larger than `MaxLogFileSizeMB`. A `-LogPath` file is recreated each run, so rotation only matters for `LogFilePath` |
 | `MaxLogFileSizeMB` | int | 10 | |

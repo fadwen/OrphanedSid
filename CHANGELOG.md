@@ -40,6 +40,9 @@ All notable changes to this module are recorded here. Format follows
   [#24](https://github.com/fadwen/OrphanedSid/issues/24),
   [#25](https://github.com/fadwen/OrphanedSid/issues/25),
   [#30](https://github.com/fadwen/OrphanedSid/issues/30))
+- The `EnableDetailedLogging` configuration key, which was read but never acted on. A `-ConfigPath`
+  file that still sets it loads as before; the key is ignored like any other unknown key.
+  ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
 
 ### Fixed
 
@@ -85,6 +88,10 @@ All notable changes to this module are recorded here. Format follows
   by the fallback strategies. Without `-IncludeInherited` such an object has nothing to examine,
   and it is now skipped after the first read with a Debug entry.
   ([#48](https://github.com/fadwen/OrphanedSid/issues/48))
+- The `LogLevel` key of a `-ConfigPath` file was validated but had no effect: a file with
+  `"LogLevel": "Error"` still produced `Information` entries. It now sets the file log level when
+  the command line sets none. `-LogLevel` wins over it, and so do `-Verbose` and `-Debug`.
+  ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the
