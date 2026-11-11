@@ -46,6 +46,12 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- A fixed `-LogPath` reused across runs was emptied at the start of each run, so the previous run's
+  log was lost, and log rotation never applied to it. A run now appends to an existing log file.
+  When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it
+  is first renamed to `<name>_<yyyyMMdd_HHmmss>.log`, so a run is never split across two files.
+  ([#44](https://github.com/fadwen/OrphanedSid/issues/44))
+
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the
   retries). The next lookup, which searches deleted objects, also returns live objects, and any match

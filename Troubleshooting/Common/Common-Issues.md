@@ -370,10 +370,12 @@ Get-ChildItem -Path .\Logs -Filter '<Command>_*.log' |
     Remove-Item -Force
 ```
 
-Each run starts its log file afresh: a file already at `-LogPath` is overwritten, not appended to
-or rotated. Rotation to `<name>_<yyyyMMdd_HHmmss>.log` (`EnableLogFileRotation`, over
-`MaxLogFileSizeMB`) applies only to an existing file named by the config key `LogFilePath`.
-Security events bypass the `-LogLevel` filter and are always written.
+A run appends to a file already at `-LogPath`, after a blank line and its own header. When that file
+is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on (the default), it
+is first renamed to `<name>_<yyyyMMdd_HHmmss>.log` and the run starts a new file; the run logs
+`Rotated log file to: <path>`. The same applies to a file named by the config key `LogFilePath`.
+Rotated files are never deleted; remove old ones as above. Security events bypass the `-LogLevel`
+filter and are always written.
 
 #### Issue: `-Verbose` or `-Debug` changes the log level unexpectedly
 
