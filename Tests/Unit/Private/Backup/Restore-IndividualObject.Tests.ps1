@@ -17,7 +17,7 @@ BeforeAll {
     # Placeholders so the helpers can be mocked; the real ones live in other files
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Test-BackupIntegrity { param($BackupData, $ExpectedObjectDN, $ValidationLevel, $CorrelationId) }
-    function Get-RestorationTarget { param($TargetObjectDN, [switch]$CheckPermissions, $CorrelationId) }
+    function Get-RestorationTarget { param($TargetObjectDN, $CorrelationId) }
     function Set-ObjectACL { param($TargetObjectDN, $BackupData, [switch]$VerifyApplication, $CorrelationId) }
 
     $script:backup = [PSCustomObject]@{
@@ -109,7 +109,7 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
                 $BackupData.SDDL -eq $script:backup.SDDL -and $CorrelationId -eq 'corr-7'
             }
             Should -Invoke Get-RestorationTarget -Times 1 -Exactly -ParameterFilter {
-                $TargetObjectDN -eq $script:backup.ObjectDN -and $CheckPermissions -and $CorrelationId -eq 'corr-7'
+                $TargetObjectDN -eq $script:backup.ObjectDN -and $CorrelationId -eq 'corr-7'
             }
             Should -Invoke Set-ObjectACL -Times 1 -Exactly -ParameterFilter {
                 $TargetObjectDN -eq $script:backup.ObjectDN -and -not $VerifyApplication -and $CorrelationId -eq 'corr-7'

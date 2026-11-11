@@ -136,7 +136,7 @@ function Invoke-RemovalVerification {
         # Get current ACL for verification with retry logic
         $verificationACL = Invoke-ADOperationWithRetry -ScriptBlock {
             Get-Acl -Path "AD:\$($ObjectDN.Trim())" -ErrorAction Stop
-        } -MaxRetries 3 -OperationName 'Get-ACL-Verification' -ObjectContext $ObjectDN
+        } -MaxRetries 3 -OperationName 'Get-ACL-Verification' -ObjectContext $ObjectDN -CorrelationId $CorrelationId
 
         # Check for remaining orphaned SIDs
         $remainingOrphanedSIDs = @()

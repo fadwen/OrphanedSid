@@ -165,6 +165,12 @@ Describe "Invoke-RemovalVerification" -Tag 'Unit', 'Private', 'Security' {
             Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $CorrelationId -ne 'ver-1' }
         }
 
+        It "Passes the caller's correlation ID to the audited ACL read" {
+            Invoke-RemovalVerification -ObjectDN $script:dn -AllowedSIDs @("S-1-5-21-1-2-3-1001") -CorrelationId 'ver-2' | Out-Null
+
+            Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq 'ver-2' }
+        }
+
         It "Generates a GUID correlation ID when none is given" {
             Invoke-RemovalVerification -ObjectDN $script:dn -AllowedSIDs @("S-1-5-21-1-2-3-1001") | Out-Null
 

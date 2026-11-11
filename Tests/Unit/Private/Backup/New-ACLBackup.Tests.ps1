@@ -110,18 +110,55 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             @(Get-ChildItem $script:backupDir -File).Count | Should -Be 1
         }
 
-        # Fails on Windows PowerShell 5.1 when TestDrive's path is longer than about 30
-        # characters: the truncated name alone is 230 characters and the full path passes the
-        # 260-character limit (#19). The GitHub runner's temp path is short enough.
-        It 'Truncates a very long DN in the filename' {
+        It 'Truncates a very long DN so the whole path stays under 260 characters' {
             $longDn = 'CN=' + ('x' * 260) + ',DC=contoso,DC=com'
 
             New-ACLBackup -ObjectDN $longDn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
 
             $file = Get-ChildItem $script:backupDir -File | Select-Object -First 1
-            $file.Name | Should -BeLike '*_truncated_*.xml'
-            $file.BaseName.Length | Should -BeLessThan 240
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like 'Filename truncated*' }
+            $file.Name | Should -Match '^CN_x+_[0-9a-f]{8}_truncated_\d{8}_\d{6}\.xml$'
+            $file.FullName.Length | Should -BeLessOrEqual 259
+            (Import-Clixml -Path $file.FullName).ObjectDN | Should -Be $longDn
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like 'Filename truncated*' }
+        }
+
+        It 'Fits the name to a deep backup folder' {
+            # Deep enough to leave exactly 60 characters for the name, whatever TestDrive's own length
+            $roomForName = 60
+            $depth = 259 - '_yyyyMMdd_HHmmss.xml'.Length - $roomForName - ($script:backupDir.TrimEnd('\').Length + 1) - 1
+            $deep = Join-Path $script:backupDir ('d' * $depth)
+            $null = New-Item -Path $deep -ItemType Directory -Force
+            $longDn = 'CN=' + ('y' * 200) + ',DC=contoso,DC=com'
+
+            New-ACLBackup -ObjectDN $longDn -ACL $script:acl -BackupPath $deep | Out-Null
+
+            $file = Get-ChildItem $deep -File | Select-Object -First 1
+            $file.FullName.Length | Should -BeLessOrEqual 259
+            ($file.Name.Length - '_yyyyMMdd_HHmmss.xml'.Length) | Should -Be $roomForName
+            (Import-Clixml -Path $file.FullName).ObjectDN | Should -Be $longDn
+        }
+
+        It 'Gives two long DNs that share a prefix different file names' {
+            $prefix = 'CN=' + ('z' * 230)
+            $first = "$prefix,OU=One,DC=contoso,DC=com"
+            $second = "$prefix,OU=Two,DC=contoso,DC=com"
+            # Both backups in the same second, so only the name can tell them apart
+            $script:fixedTime = [datetime]::new(2026, 1, 1, 12, 0, 0)
+            Mock Get-Date { if ($Format) { $script:fixedTime.ToString($Format) } else { $script:fixedTime } }
+
+            New-ACLBackup -ObjectDN $first -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+            New-ACLBackup -ObjectDN $second -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+
+            $files = @(Get-ChildItem $script:backupDir -File)
+            $files.Count | Should -Be 2
+            @($files | ForEach-Object { (Import-Clixml -Path $_.FullName).ObjectDN } | Sort-Object) | Should -Be @($first, $second)
+        }
+
+        It 'Refuses a backup folder too long to hold any backup file' {
+            $tooDeep = 'C:\' + ('p' * 230)
+
+            { New-ACLBackup -ObjectDN ('CN=' + ('w' * 100) + ',DC=contoso,DC=com') -ACL $script:acl -BackupPath $tooDeep } |
+                Should -Throw '*Backup folder path is too long to hold a backup file within the 260-character limit*'
         }
 
         It 'Backs up an ACL with no entries and warns' {

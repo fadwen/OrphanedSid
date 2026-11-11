@@ -171,8 +171,13 @@ function Test-BackupValidation {
             # Phase 1: Basic validation - Required properties
             $requiredProperties = @('ObjectDN', 'BackupDate', 'SDDL', 'SDDLHash', 'ValidationSignature')
             foreach ($prop in $requiredProperties) {
-                if (-not $BackupData.PSObject.Properties[$prop]) {
+                $property = $BackupData.PSObject.Properties[$prop]
+                if (-not $property) {
                     $issues += "Missing required property: $prop"
+                }
+                elseif ([string]::IsNullOrWhiteSpace([string]$property.Value)) {
+                    # Present but empty: an empty SDDL and hash would otherwise skip every check below
+                    $issues += "Empty required property: $prop"
                 }
             }
 
@@ -208,7 +213,7 @@ function Test-BackupValidation {
                         $computedHashBytes = $sha256.ComputeHash($sddlBytes)
                         $computedHash = [System.Convert]::ToBase64String($computedHashBytes)
                         
-                        if ($computedHash -ne $BackupData.SDDLHash) {
+                        if ($computedHash -cne $BackupData.SDDLHash) {
                             $issues += "Hash integrity check failed"
                         }
                     }
@@ -453,10 +458,14 @@ function Test-BackupIntegrity {
             # Phase 1: Basic validation - Required properties
             $requiredProperties = @('ObjectDN', 'BackupDate', 'SDDL', 'SDDLHash', 'ValidationSignature')
             foreach ($prop in $requiredProperties) {
-                if (-not $BackupData.PSObject.Properties[$prop]) {
+                $property = $BackupData.PSObject.Properties[$prop]
+                if (-not $property) {
                     $issues += "Missing required property: $prop"
+                } elseif ([string]::IsNullOrWhiteSpace([string]$property.Value)) {
+                    # Present but empty: an empty SDDL and hash would otherwise skip every check below
+                    $issues += "Empty required property: $prop"
                 } else {
-                    $backupInfo[$prop] = $BackupData.$prop
+                    $backupInfo[$prop] = $property.Value
                 }
             }
 
@@ -493,7 +502,7 @@ function Test-BackupIntegrity {
                     $calculatedHash = [System.Convert]::ToBase64String($sha256.ComputeHash($sddlBytes))
                     $sha256.Dispose()
 
-                    if ($calculatedHash -ne $BackupData.SDDLHash) {
+                    if ($calculatedHash -cne $BackupData.SDDLHash) {
                         $issues += "SDDL integrity check failed: Hash mismatch (expected: $($BackupData.SDDLHash), calculated: $calculatedHash)"
                     }
                 }

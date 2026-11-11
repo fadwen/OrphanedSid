@@ -386,24 +386,31 @@ function Invoke-RestoreWorkflow {
                 ErrorMessage = $null
             }
 
-            foreach ($backupFile in $backupFilesToProcess) {
+            foreach ($fileToProcess in $backupFilesToProcess) {
                 try {
-                    Write-Verbose "Processing backup file: $backupFile"
+                    Write-Verbose "Processing backup file: $fileToProcess"
 
                     # Load backup data to get the actual target object DN
-                    $backupData = Import-Clixml -Path $backupFile -ErrorAction Stop
+                    $backupData = Import-Clixml -Path $fileToProcess -ErrorAction Stop
                     $actualTargetDN = $backupData.ObjectDN
+
+                    # A backup chosen by file must be of the object asked for. Directory mode already
+                    # selects files by the DN they record.
+                    if ($restoreMode -eq 'Single' -and $BackupFile -and
+                        -not [string]::Equals([string]$actualTargetDN, $TargetObjectDN, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        throw "Backup file $fileToProcess is a backup of '$actualTargetDN', not of '$TargetObjectDN'"
+                    }
 
                     # Set-ObjectACL honours $WhatIfPreference and prints the preview itself, so under
                     # -WhatIf the restore still runs through validation; this guard only answers -Confirm.
                     if (-not $WhatIfPreference -and
-                        -not $PSCmdlet.ShouldProcess($actualTargetDN, "Restore ACL from backup $backupFile")) {
+                        -not $PSCmdlet.ShouldProcess($actualTargetDN, "Restore ACL from backup $fileToProcess")) {
                         Write-Verbose "Restore declined at the confirmation prompt: $actualTargetDN"
                         continue
                     }
 
                     # Restore this individual object
-                    $individualResult = Restore-IndividualObject -TargetObjectDN $actualTargetDN -BackupData $backupData -BackupFile $backupFile -ValidationLevel $ValidationLevel -VerifyRestoration:$VerifyRestoration -CorrelationId $CorrelationId
+                    $individualResult = Restore-IndividualObject -TargetObjectDN $actualTargetDN -BackupData $backupData -BackupFile $fileToProcess -ValidationLevel $ValidationLevel -VerifyRestoration:$VerifyRestoration -CorrelationId $CorrelationId
                     
                     # Add workflow-specific type name
                     $individualResult.PSObject.TypeNames.Insert(0, 'RestoreWorkflowResult')
@@ -428,15 +435,15 @@ function Invoke-RestoreWorkflow {
                     
                     $failedResult = [PSCustomObject]@{
                         Success = $false
-                        TargetObjectDN = "Unknown (from $backupFile)"
+                        TargetObjectDN = "Unknown (from $fileToProcess)"
                         ErrorMessage = $originalErrorMessage
-                        BackupFile = $backupFile
+                        BackupFile = $fileToProcess
                         CorrelationId = $CorrelationId
                     }
                     $failedResult.PSTypeNames.Insert(0, 'RestoreWorkflowResult')
                     $allResults += $failedResult
                     
-                    Write-Warning "Failed to process backup file $backupFile : $originalErrorMessage"
+                    Write-Warning "Failed to process backup file $fileToProcess : $originalErrorMessage"
                 }
             }
 
@@ -596,7 +603,7 @@ function Restore-IndividualObject {
         }
 
         # Validate target object exists and is accessible
-        $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CheckPermissions -CorrelationId $CorrelationId
+        $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
 
         if (-not $targetValidation.IsValid) {
             throw "Target validation failed: $($targetValidation.Issues -join '; ')"
