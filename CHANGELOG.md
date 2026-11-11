@@ -80,6 +80,11 @@ All notable changes to this module are recorded here. Format follows
   into the module's install folder. It is now resolved against the current directory. A log entry
   that cannot be written now produces the module's `Failed to write log entry to file: ...` warning
   instead of a raw `Add-Content` error. ([#45](https://github.com/fadwen/OrphanedSid/issues/45))
+- An object whose access control entries are all inherited produced the warning `All security
+  descriptor retrieval methods failed`, although its ACL was read, and was read up to twice more
+  by the fallback strategies. Without `-IncludeInherited` such an object has nothing to examine,
+  and it is now skipped after the first read with a Debug entry.
+  ([#48](https://github.com/fadwen/OrphanedSid/issues/48))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the
