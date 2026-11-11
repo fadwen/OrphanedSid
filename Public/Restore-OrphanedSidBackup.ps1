@@ -7,9 +7,12 @@ function Restore-OrphanedSidBackup {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     [OutputType('RestoreWorkflowResult')]
     param(
-        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        # [object[]], not [string[]]: by-property binding asks an AD object for 'TargetObjectDN'
+        # before the aliases, the AD adapter answers with an empty collection, and binding failed.
+        # Each item is read by ConvertTo-DistinguishedName instead.
+        [Parameter(Mandatory, ValueFromPipeline)]
         [Alias('DistinguishedName', 'SearchBase')]
-        [string[]]$TargetObjectDN,
+        [object[]]$TargetObjectDN,
 
         [Parameter(Mandatory)]
         [ValidateScript({
@@ -68,15 +71,16 @@ function Restore-OrphanedSidBackup {
     }
 
     process {
-        foreach ($dn in $TargetObjectDN) {
-            if (-not [string]::IsNullOrWhiteSpace($dn)) {
-                $targets.Add($dn.Trim())
-            }
+        foreach ($dn in @(ConvertTo-DistinguishedName -InputObject $TargetObjectDN)) {
+            $targets.Add($dn)
         }
     }
 
     end {
         try {
+            if ($targets.Count -eq 0) {
+                throw 'No usable restore target in the input. Pass distinguished names, or objects with a DistinguishedName property.'
+            }
             $targetList = $targets -join ', '
             if (-not $PSCmdlet.ShouldProcess($targetList, "Restore ACLs from backup folder $BackupPath")) {
                 if (-not $WhatIfPreference) {

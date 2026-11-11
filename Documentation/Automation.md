@@ -32,8 +32,8 @@ data to CSV in addition.
 
 | Parameter | Commands | Purpose in automation |
 |-----------|----------|----------------------|
-| `-SearchBase <string[]>` | Find, Remove | OU or object DNs to scan; accepts pipeline input. Omitted: the current domain root, with a warning. |
-| `-TargetObjectDN <string[]>` | Restore | Object or container DNs to restore. Mandatory; accepts pipeline input; aliases `DistinguishedName` and `SearchBase`. |
+| `-SearchBase <Object[]>` | Find, Remove | OU or object DNs to scan, as strings or objects with a `DistinguishedName` property (AD objects, `Import-Csv` rows); accepts pipeline input. Omitted: the current domain root, with a warning. Given but holding no usable DN: the command stops. |
+| `-TargetObjectDN <Object[]>` | Restore | Object or container DNs to restore, as strings or objects with a `DistinguishedName` property. Mandatory; accepts pipeline input; aliases `DistinguishedName` and `SearchBase`. |
 | `-BackupPath <path>` | Remove, Restore | Remove: folder that receives the per-run `<yyyyMMdd_HHmmss>` subfolder, default `.\Backup` under the current directory; its parent must exist. Restore: mandatory, the timestamped run folder that holds the `.xml` files. |
 | `-OutputPath <path>` | all | CSV file for the results. The parent folder must exist. |
 | `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. A relative path is resolved against the current directory. An existing file is appended to, and is first renamed aside when it is larger than `MaxLogFileSizeMB` (see the configuration file). |

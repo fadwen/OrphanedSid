@@ -139,6 +139,39 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
         }
     }
 
+    Context "Relative paths (#80)" {
+        BeforeEach {
+            # Any session that has run Set-Location has a PowerShell location that differs from the
+            # process directory; [IO.Path]::GetFullPath resolved against the latter
+            $script:priorLocation = Get-Location
+            $script:priorProcessDirectory = [Environment]::CurrentDirectory
+            [Environment]::CurrentDirectory = New-TestFolder
+            Set-Location -LiteralPath (Split-Path $script:folder -Parent)
+            $script:relativeFolder = Join-Path '.' (Split-Path $script:folder -Leaf)
+        }
+
+        AfterEach {
+            Set-Location $script:priorLocation
+            [Environment]::CurrentDirectory = $script:priorProcessDirectory
+        }
+
+        It "Should resolve a relative BackupPath against the current location" {
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $script:relativeFolder
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $script:singleFile }
+        }
+
+        It "Should resolve a relative BackupFile against the current location" {
+            $relativeFile = Join-Path $script:relativeFolder (Split-Path $script:singleFile -Leaf)
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $relativeFile
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $script:singleFile }
+        }
+    }
+
     Context "Single Backup File" {
         It "Should hand the backup's object, data, file, level and correlation ID to Restore-IndividualObject" {
             $null = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -ValidationLevel 'Comprehensive' -CorrelationId 'wf-1'

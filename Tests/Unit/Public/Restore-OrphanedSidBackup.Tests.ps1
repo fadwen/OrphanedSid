@@ -81,6 +81,37 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
             }
         }
 
+        It 'Restores piped AD objects by their DistinguishedName (#79)' {
+            # The AD adapter answers 'TargetObjectDN' with an empty collection; by-property binding
+            # to a [string[]] parameter took that and failed with "an empty array"
+            $adLike = [PSCustomObject]@{
+                DistinguishedName = 'CN=FromAD,DC=contoso,DC=com'
+                TargetObjectDN    = [System.Collections.Generic.List[object]]::new()
+                SearchBase        = [System.Collections.Generic.List[object]]::new()
+            }
+            $adLike | Restore-OrphanedSidBackup -BackupPath $script:backupDir -Force | Out-Null
+
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter {
+                $Parameters.TargetObjectDN -eq 'CN=FromAD,DC=contoso,DC=com'
+            }
+        }
+
+        It 'Restores Import-Csv rows by their DistinguishedName' {
+            [PSCustomObject]@{ DistinguishedName = 'CN=Row,DC=contoso,DC=com' } |
+                Restore-OrphanedSidBackup -BackupPath $script:backupDir -Force | Out-Null
+
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter {
+                $Parameters.TargetObjectDN -eq 'CN=Row,DC=contoso,DC=com'
+            }
+        }
+
+        It 'Refuses input with no usable DN and restores nothing' {
+            { [PSCustomObject]@{ Name = 'NoDN' } | Restore-OrphanedSidBackup -BackupPath $script:backupDir -Force -ErrorAction SilentlyContinue } |
+                Should -Throw '*No usable restore target*'
+
+            Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 0 -Exactly
+        }
+
         It 'Passes WhatIf to the workflow and still calls it' {
             Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com' -BackupPath $script:backupDir -WhatIf | Out-Null
 

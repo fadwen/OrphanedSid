@@ -202,8 +202,9 @@ function Invoke-RestoreWorkflow {
 
         # Validate file/path existence and security
         if ($BackupFile) {
-            # Sanitize the file path
-            $BackupFile = [System.IO.Path]::GetFullPath($BackupFile)
+            # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not
+            # the current location, so a relative path pointed at the user profile (#80)
+            $BackupFile = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupFile)
             
             # Validate file extension
             $allowedExtensions = @('.xml', '.clixml')
@@ -219,8 +220,9 @@ function Invoke-RestoreWorkflow {
         }
 
         if ($BackupPath) {
-            # Sanitize the directory path
-            $BackupPath = [System.IO.Path]::GetFullPath($BackupPath)
+            # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not
+            # the current location, so a relative path pointed at the user profile (#80)
+            $BackupPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
             
             # Check if directory exists
             if (-not (Test-Path $BackupPath -PathType Container)) {
@@ -269,7 +271,9 @@ function Invoke-RestoreWorkflow {
                 $BackupFile = $BackupFile.Trim()
                 # Normalize path to prevent traversal attacks
                 try {
-                    $BackupFile = [System.IO.Path]::GetFullPath($BackupFile)
+                    # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not
+                    # the current location, so a relative path pointed at the user profile (#80)
+                    $BackupFile = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupFile)
                 } catch {
                     throw "Invalid backup file path: $BackupFile"
                 }
@@ -293,7 +297,9 @@ function Invoke-RestoreWorkflow {
                 $BackupPath = $BackupPath.Trim()
                 # Normalize path to prevent traversal attacks
                 try {
-                    $BackupPath = [System.IO.Path]::GetFullPath($BackupPath)
+                    # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not
+                    # the current location, so a relative path pointed at the user profile (#80)
+                    $BackupPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
                 } catch {
                     throw "Invalid backup directory path: $BackupPath"
                 }
