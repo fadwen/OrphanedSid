@@ -19,11 +19,16 @@ BeforeAll {
 
     # An ACL whose access rules name the given SIDs, as Get-Acl on the AD: drive returns it
     function New-TestAcl {
-        param([string[]]$Sid)
+        param([string[]]$Sid, [string[]]$InheritedSid = @())
         [PSCustomObject]@{
-            Access = @($Sid | ForEach-Object {
-                    [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]$_ }
-                })
+            Access = @(
+                $Sid | ForEach-Object {
+                    [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]$_; IsInherited = $false }
+                }
+                $InheritedSid | ForEach-Object {
+                    [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]$_; IsInherited = $true }
+                }
+            )
         }
     }
 }
@@ -98,6 +103,16 @@ Describe "Invoke-RemovalVerification" -Tag 'Unit', 'Private', 'Security' {
             $result.Success | Should -Be $false
             @($result.RemainingOrphanedSIDs) | Should -Be @('S-1-5-21-1-2-3-1001', 'S-1-5-21-1-2-3-1002')
             $result.ErrorMessage | Should -Be 'Verification failed: 2 of 3 SIDs still present'
+        }
+    }
+
+    Context "Inherited entries" {
+        It "Succeeds when only an inherited entry for a removed SID remains (#46)" {
+            Mock Get-Acl { New-TestAcl -Sid 'S-1-5-32-544' -InheritedSid 'S-1-5-21-1-2-3-1001' }
+
+            $result = Invoke-RemovalVerification -ObjectDN $script:dn -AllowedSIDs @("S-1-5-21-1-2-3-1001")
+
+            $result.Success | Should -Be $true
         }
     }
 

@@ -201,7 +201,10 @@ HelpMessage: ''
 
 Also evaluate inherited access control entries.
 Inherited entries cannot be removed from the
-child object; they are reported and the parent is where the cleanup belongs.
+child object, so they are not touched there: each is named in a Warning,
+`Not removing inherited entry for orphaned SID <SID> on <DN>: it is inherited from a parent object, so remove it there`,
+and the object is neither backed up nor changed for it. The explicit entry is
+removed on the parent when the parent is in the search base.
 
 ```yaml
 Type: System.Management.Automation.SwitchParameter

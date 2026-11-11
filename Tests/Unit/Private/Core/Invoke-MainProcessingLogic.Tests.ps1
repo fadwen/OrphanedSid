@@ -371,6 +371,35 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             @($result.RemovalResults).Count | Should -Be 1
         }
 
+        It "Does not remove, or back up, an object whose orphaned entry is only inherited, and says why (#46)" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'Child' -ObjectClass 'group' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $true }
+            }
+
+            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; IncludeInherited = $true }
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 0 -Exactly
+            @($result.RemovalResults).Count | Should -Be 0
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and
+                $Message -eq "Not removing inherited entry for orphaned SID $($script:SidA) on CN=Child,OU=Test,DC=test,DC=com: it is inherited from a parent object, so remove it there"
+            }
+        }
+
+        It "Removes a SID that is set explicitly even when an inherited entry names it too" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'Child' -ObjectClass 'group' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $true }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $false }
+            }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; IncludeInherited = $true } | Out-Null
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter { @($OrphanedSIDs).Count -eq 1 -and $OrphanedSIDs[0] -eq $script:SidA }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like 'Not removing inherited entry*' }
+        }
+
         It "Leaves an object's unverified SID out of its single removal call" {
             Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
             Mock Find-OrphanedSIDsInObject {

@@ -138,10 +138,11 @@ function Invoke-RemovalVerification {
             Get-Acl -Path "AD:\$($ObjectDN.Trim())" -ErrorAction Stop
         } -MaxRetries 3 -OperationName 'Get-ACL-Verification' -ObjectContext $ObjectDN -CorrelationId $CorrelationId
 
-        # Check for remaining orphaned SIDs
+        # Check for remaining orphaned SIDs. Only explicit entries count: an inherited entry for the
+        # same SID belongs to a parent object and is not removed here.
         $remainingOrphanedSIDs = @()
         foreach ($ace in $verificationACL.Access) {
-            if ($AllowedSIDs -contains $ace.IdentityReference.Value) {
+            if (-not $ace.IsInherited -and $AllowedSIDs -contains $ace.IdentityReference.Value) {
                 $remainingOrphanedSIDs += $ace.IdentityReference.Value
             }
         }

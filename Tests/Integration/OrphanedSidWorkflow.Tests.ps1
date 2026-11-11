@@ -116,7 +116,7 @@ BeforeAll {
     }
 
     function Invoke-RemoveOrphanedSid {
-        param([switch]$WhatIf)
+        param([switch]$WhatIf, [switch]$IncludeInherited)
         $parameters = @{
             SearchBase            = "OU=Finance,$script:DomainDN"
             BackupPath            = $script:BackupRoot
@@ -124,6 +124,7 @@ BeforeAll {
             SuppressConsoleOutput = $true
             Force                 = $true
             WhatIf                = $WhatIf
+            IncludeInherited      = $IncludeInherited
         }
         Remove-OrphanedSid @parameters
     }
@@ -281,6 +282,20 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:FlakySid
             $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
             @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Shared_*' -Recurse).Count | Should -Be 0
+        }
+
+        It 'Leaves an orphaned entry that is only inherited, and backs nothing up (#46)' {
+            $dn = "CN=Child,OU=Finance,$script:DomainDN"
+            # ID marks the entry as inherited from a parent object
+            $script:Directory[$dn] = @{ ObjectClass = 'group'; Sddl = "O:BAG:BAD:(A;;GA;;;BA)(A;ID;RPWP;;;$($script:OrphanSid))" }
+            $script:OriginalSddl[$dn] = $script:Directory[$dn].Sddl
+
+            $results = @(Invoke-RemoveOrphanedSid -IncludeInherited)
+
+            $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            Should -Invoke -ModuleName OrphanedSid Set-Acl -Times 0 -Exactly -ParameterFilter { $Path -like '*CN=Child,*' }
+            @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Child_*' -Recurse).Count | Should -Be 0
+            @($results | Where-Object ObjectDN -eq $dn).Count | Should -Be 0
         }
 
         It 'Leaves an object with no orphaned ACE untouched' {
