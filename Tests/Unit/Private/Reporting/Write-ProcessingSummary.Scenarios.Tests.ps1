@@ -18,7 +18,7 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
     function New-DiscoveryResults {
-        param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [switch]$AsHashtable)
+        param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [int]$Unexamined = -1, [switch]$AsHashtable)
         $manager = [PSCustomObject]@{ Summary = [PSCustomObject]@{ TotalResults = $TotalResults }; Exported = $null }
         $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path }
         $results = [ordered]@{
@@ -33,6 +33,9 @@ BeforeAll {
         }
         if ($Unverified -ge 0) {
             $results.UnverifiedSIDsFound = $Unverified
+        }
+        if ($Unexamined -ge 0) {
+            $results.UnexaminedObjects = $Unexamined
         }
         # Invoke-MainProcessingLogic hands the summary a hashtable
         if ($AsHashtable) {
@@ -93,6 +96,25 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 0)
 
             Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*could not be verified*' }
+        }
+
+        It 'Counts objects that could not be examined and warns that they were not checked (#47)' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 2)
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Objects not examined (security descriptor not readable): 2' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like '2 object(s) could not be examined*Re-run with an account that may read them.' }
+        }
+
+        It 'Does not warn when every object was examined' {
+            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 0)
+
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*could not be examined*' }
+        }
+
+        It 'Includes the unexamined count in automation output' {
+            $info = Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 5) -AutomationMode 6>&1
+
+            ($info | Out-String) | Should -Match '"UnexaminedObjects":\s*5'
         }
 
         It 'Includes the unverified count in automation output' {

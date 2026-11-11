@@ -308,6 +308,16 @@ function Invoke-MainProcessingLogic {
                             Write-StructuredLog "Processing: $processedCount/$($objectArray.Count) objects ($percentComplete%) - Orphaned SIDs found: $orphanedFoundCount" -Level Information -Component 'MainProcessing' -CorrelationId $CorrelationId
                         }
 
+                        # Active Directory returns an object without nTSecurityDescriptor when the
+                        # account may not read it. Such an object cannot be examined; say so at
+                        # Warning level and count it, so a clean run is not mistaken for a clean
+                        # directory.
+                        if (-not $currentObject.nTSecurityDescriptor) {
+                            $script:Statistics.UnexaminedObjects++
+                            Write-StructuredLog "Not examined: the security descriptor of $($currentObject.DistinguishedName) could not be read, usually because the running account lacks permission to read it" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
+                            return
+                        }
+
                         # Detection is the step that reads the directory, so it is the one retried.
                         # Removal below runs once, on the result; a removal error is not retried,
                         # because a second attempt would take a second backup and act on an ACL
@@ -480,6 +490,7 @@ function Invoke-MainProcessingLogic {
                 TotalObjectsProcessed = $script:Statistics.ProcessedObjects
                 OrphanedSIDsFound = $script:Statistics.OrphanedSIDsFound
                 UnverifiedSIDsFound = $script:Statistics.UnverifiedSIDsFound
+                UnexaminedObjects = $script:Statistics.UnexaminedObjects
                 ProcessingErrors = $script:Statistics.ProcessingErrors
                 ProcessingDuration = $script:Statistics.Duration
                 ObjectsPerSecond = $script:Statistics.ObjectsPerSecond

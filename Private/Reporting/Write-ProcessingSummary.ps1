@@ -225,6 +225,13 @@ function Write-ProcessingSummary {
                     Write-StructuredLog "Orphaned SIDs found: $($ProcessingResults.OrphanedSIDsFound)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
 
+                if ($resultKeys -contains 'UnexaminedObjects') {
+                    Write-StructuredLog "Objects not examined (security descriptor not readable): $($ProcessingResults.UnexaminedObjects)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    if ($ProcessingResults.UnexaminedObjects -gt 0) {
+                        Write-StructuredLog "$($ProcessingResults.UnexaminedObjects) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+                    }
+                }
+
                 if ($resultKeys -contains 'UnverifiedSIDsFound') {
                     Write-StructuredLog "Unverified SIDs (lookup failed, not removed): $($ProcessingResults.UnverifiedSIDsFound)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                     if ($ProcessingResults.UnverifiedSIDsFound -gt 0) {
@@ -308,8 +315,18 @@ function Write-ProcessingSummary {
                             $summaryData.OrphanedSIDsFound = $ProcessingResults.OrphanedSIDsFound
                         }
 
-                        if ($resultKeys -contains 'UnverifiedSIDsFound') {
+                        if ($resultKeys -contains 'UnexaminedObjects') {
+                    Write-StructuredLog "Objects not examined (security descriptor not readable): $($ProcessingResults.UnexaminedObjects)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    if ($ProcessingResults.UnexaminedObjects -gt 0) {
+                        Write-StructuredLog "$($ProcessingResults.UnexaminedObjects) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+                    }
+                }
+
+                if ($resultKeys -contains 'UnverifiedSIDsFound') {
                             $summaryData.UnverifiedSIDsFound = $ProcessingResults.UnverifiedSIDsFound
+                        }
+                if ($resultKeys -contains 'UnexaminedObjects') {
+                            $summaryData.UnexaminedObjects = $ProcessingResults.UnexaminedObjects
                         }
 
                         if ($resultKeys -contains 'ProcessingErrors') {

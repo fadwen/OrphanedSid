@@ -107,8 +107,10 @@ appears together with a Get-Acl failure for the same object.
 
 #### Symptom
 
-- Debug log line `No security descriptor found for <DN>` from `Find-OrphanedSIDsInObject`, or
-  `No nTSecurityDescriptor property found for <DN>` from the binary strategy.
+- Warning `Not examined: the security descriptor of <DN> could not be read, usually because the running account lacks permission to read it`, and
+  `Objects not examined (security descriptor not readable): N` in the summary. Calling
+  `Find-OrphanedSIDsInObject` directly logs the Debug `No security descriptor found for <DN>`
+  instead, and the binary strategy logs `No nTSecurityDescriptor property found for <DN>`.
 - The object is counted as processed but yields no results.
 
 #### Root causes

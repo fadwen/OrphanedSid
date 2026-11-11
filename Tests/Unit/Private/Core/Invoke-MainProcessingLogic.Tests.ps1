@@ -41,9 +41,13 @@ BeforeAll {
     $script:SidB = 'S-1-5-21-123456789-123456789-123456789-1002'
     $script:DomainSid = 'S-1-5-21-123456789-123456789-123456789'
 
+    # A readable object, as discovery returns it: with a security descriptor. -Unreadable leaves the
+    # descriptor out, as Active Directory does for an account that may not read it.
     function New-TestObject {
-        param([string]$Name, [string]$ObjectClass)
-        [PSCustomObject]@{ DistinguishedName = "CN=$Name,OU=Test,DC=test,DC=com"; ObjectClass = $ObjectClass }
+        param([string]$Name, [string]$ObjectClass, [switch]$Unreadable)
+        $object = [PSCustomObject]@{ DistinguishedName = "CN=$Name,OU=Test,DC=test,DC=com"; ObjectClass = $ObjectClass; nTSecurityDescriptor = $null }
+        if (-not $Unreadable) { $object.nTSecurityDescriptor = [PSCustomObject]@{ Sddl = 'D:' } }
+        $object
     }
 
     # Runs the subject with a fresh correlation ID unless the test supplies one
@@ -534,6 +538,31 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Find-OrphanedSIDsInObject -Times 2 -Exactly -ParameterFilter {
                 $ADObject.DistinguishedName -eq 'CN=User1,OU=Test,DC=test,DC=com'
             }
+        }
+    }
+
+    Context "Objects that cannot be read" {
+        It "Warns about, counts and skips an object returned without a readable security descriptor (#47)" {
+            Mock Get-ADObjectsSequential {
+                New-TestObject -Name 'Hidden' -ObjectClass 'user' -Unreadable
+                New-TestObject -Name 'User1' -ObjectClass 'user'
+            }
+
+            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true }
+
+            $result.UnexaminedObjects | Should -Be 1
+            $result.TotalObjectsProcessed | Should -Be 2
+            Should -Invoke Find-OrphanedSIDsInObject -Times 1 -Exactly
+            Should -Invoke Find-OrphanedSIDsInObject -Times 0 -Exactly -ParameterFilter { $ADObject.DistinguishedName -like 'CN=Hidden,*' }
+            Should -Invoke Remove-OrphanedSidEntry -Times 0 -Exactly -ParameterFilter { $ObjectDN -like 'CN=Hidden,*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and
+                $Message -eq 'Not examined: the security descriptor of CN=Hidden,OU=Test,DC=test,DC=com could not be read, usually because the running account lacks permission to read it'
+            }
+        }
+
+        It "Reports zero unexamined objects when every object is readable" {
+            (Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com' }).UnexaminedObjects | Should -Be 0
         }
     }
 
