@@ -4,10 +4,11 @@
 
 This guide provides troubleshooting information for the `Test-SIDFormat.ps1` module, which handles SID format validation and well-known SID identification.
 
-The functions are private, and `$script:Config` is the module's own variable, set only while a
-command runs; run the samples in the module's scope as shown in
+The functions are private, and `$script:Config` is the module's own variable, set when a command
+starts; run the samples in the module's scope as shown in
 [Identity-Resolution-Issues.md](./Identity-Resolution-Issues.md#loading-the-functions-in-a-session).
-Outside a command `$script:Config` is empty and `Test-WellKnownSID` uses only its built-in list.
+Until a command has run in the session `$script:Config` is empty and `Test-WellKnownSID` uses only
+its built-in list; after one, it keeps that run's configuration until the next command starts.
 
 ## Common Issues
 
@@ -136,12 +137,11 @@ Measure-Command {
 
 **Problem:** `$script:Config` is not available
 
-**Solution:**
+**Solution:** it is empty until a command has run in the session. To test the functions against the
+default lists, set it in the module's scope:
 ```powershell
-# Verify configuration loading
-if (-not $script:Config) {
-    Write-Warning "Configuration not loaded. Loading default configuration..."
-    # Load configuration or use defaults
+& (Get-Module OrphanedSid) {
+    if (-not $script:Config) { $script:Config = [ScriptConfiguration]::new() }
 }
 ```
 

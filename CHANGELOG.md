@@ -15,7 +15,6 @@ All notable changes to this module are recorded here. Format follows
   server could not be contacted: <lookups>`. The SID is still `Unverified` and is never removed.
   The local name lookup still runs and can still show that the SID exists.
   ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
-
 - The documentation now states that `ProtectedSIDs` and `WellKnownSIDPatterns` in a `-ConfigPath`
   file replace the default lists in full, with nothing merged, and that this is intended: the file
   is the list. It also says what the built-in well-known check protects whatever the file says,
@@ -24,7 +23,7 @@ All notable changes to this module are recorded here. Format follows
   ([#54](https://github.com/fadwen/OrphanedSid/issues/54))
 - `Remove-OrphanedSid` returns one `RemovalOperationResult` per object changed, covering all of its
   removed entries, instead of one per entry, and confirms once per object. Under `-WhatIf` it
-  previews one object per object. When any of an object's orphaned SIDs is blocked by the security
+  previews one result per object. When any of an object's orphaned SIDs is blocked by the security
   check, none of that object's entries is removed.
   ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
 - `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
@@ -37,6 +36,10 @@ All notable changes to this module are recorded here. Format follows
 - `IntendedRemovals` on removal results is a number. It was a one-element string array holding the
   count (`{"2"}`), unlike `ActualRemovals` and `FailedRemovals`.
   ([#28](https://github.com/fadwen/OrphanedSid/issues/28))
+- `-SearchBase` and `-TargetObjectDN` no longer bind pipeline input by property name. A piped
+  object is read only through its `DistinguishedName` property, so one that carries its DN in a
+  `SearchBase` or `TargetObjectDN` property instead is reported and skipped.
+  ([#79](https://github.com/fadwen/OrphanedSid/issues/79))
 
 ### Removed
 
@@ -172,8 +175,9 @@ All notable changes to this module are recorded here. Format follows
   treated the same as "this SID does not exist", so live principals could lose their access; the
   removal was recoverable only from the backup. A SID is now orphaned only when its deleted object
   is found, or when every lookup completed and none found it. A SID that no lookup found but at
-  least one lookup failed to check is reported as unverified and is never removed. This includes a SID from a trusted domain whose domain
-  controllers cannot be reached. ([#9](https://github.com/fadwen/OrphanedSid/issues/9))
+  least one lookup failed to check is reported as unverified and is never removed. This includes a
+  SID from a trusted domain whose domain controllers cannot be reached.
+  ([#9](https://github.com/fadwen/OrphanedSid/issues/9))
 - A failed lookup no longer sticks for the rest of the run. Unverified results are not cached, so
   the next object that carries the same SID looks it up again.
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
@@ -217,7 +221,6 @@ All notable changes to this module are recorded here. Format follows
 - When `Restore-OrphanedSidBackup` rejected a target object, the error ended in an empty reason
   (`Target object validation failed: `). It now names each problem found.
   ([#16](https://github.com/fadwen/OrphanedSid/issues/16))
-- A missing backup folder was logged twice. ([#20](https://github.com/fadwen/OrphanedSid/issues/20))
 - The internal restore workflow could restore the wrong object in two ways: given one backup file,
   it restored whichever object the file recorded rather than the target; given several targets in
   one call, it restored every target after the first from the first one's backup. It now refuses a

@@ -53,7 +53,8 @@ Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 `BatchSize` (1-1000, default 50) is the number of results `StreamingResultsManager` holds in
 memory before writing a batch file to `<TEMP>\OrphanedSid-<CorrelationId>\`. A larger value
 means fewer, larger writes and a slightly higher working set; a smaller value flushes more often.
-The effect is small either way because each result is a few hundred bytes. Change it only when the
+The effect is small either way because each result is about 1.5 KB of JSON, its processing
+statistics included (measured on a domain controller). Change it only when the
 log shows memory warnings on a host with very little RAM (lower it) or when the temp folder fills
 with thousands of tiny files on a very large OU (raise it).
 
@@ -72,9 +73,10 @@ Separately, `Invoke-OperationWithRetry` wraps AD cmdlet calls with its own fixed
 by default), not `-MaxRetries`. It retries only errors matching its retryable-error pattern,
 sleeping `2^(attempt-1)` seconds plus 0 or 1 second of jitter, capped at 30 seconds.
 
-On a healthy domain controller retries never fire and the value is irrelevant. On a flaky link,
-lower it to fail fast and re-run the affected search base, or raise it to ride out short outages
-at the cost of long pauses.
+In practice the per-object loop does not retry: `Find-OrphanedSIDsInObject` catches its own
+errors (a failed access rule is logged and skipped, a failed SID lookup gives an `Unverified`
+result), so changing `-MaxRetries` has no visible effect on a flaky link. Re-run the affected
+search base once the domain controller is reachable.
 
 ### -LogLevel
 
@@ -164,7 +166,7 @@ objects; the gap between their timestamps gives the throughput for that segment.
 
 Run the same search base with two settings on a quiet domain controller and compare `Processing
 duration`. Only change one lever at a time. The levers with a visible effect on wall time are
-`-IncludeInherited`, `-LogLevel Debug`/`Verbose`, and `-MaxRetries` when the link is unreliable.
+`-IncludeInherited` and `-LogLevel Debug`/`Verbose`.
 `-MaxMemoryUsageMB` matters only when the threshold is being crossed; `MemoryCheckInterval` is
 noise.
 
@@ -173,7 +175,7 @@ noise.
 | Observation | Likely cause | Action |
 |---|---|---|
 | Progress lines far apart, CPU idle | Domain controller or network latency on per-SID lookups | Run on or near a DC; check `Test-NetConnection <dc> -Port 389` |
-| `Retry attempt N of M for object ...` warnings | Transient AD errors | Check DC health; lower `-MaxRetries` to fail fast |
+| `SID could not be verified` warnings, about 42 s each | Domain controller unreachable; one connection timeout per SID, and Unverified answers are not cached, so each object carrying the SID pays again | Restore connectivity, then re-run the search base |
 | `Memory usage threshold exceeded` warnings | Threshold too low for the session | Raise `-MaxMemoryUsageMB` |
 | Rate collapses when `-IncludeInherited` is set | Inherited ACEs multiply entries | Drop the switch unless a full audit is required |
 | Long pause after `Completed <searchbase>` | CSV export reading all batch files | Split the search base; smaller exports |

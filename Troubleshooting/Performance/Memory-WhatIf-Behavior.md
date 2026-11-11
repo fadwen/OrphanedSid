@@ -12,7 +12,8 @@ preference on to everything they call, so the commands pin the housekeeping call
 calls `Invoke-MemoryCheck` and `Invoke-Cleanup`, and `Stop-OrphanedSidSession` calls
 `Invoke-ResourceCleanup`, all pinned. A command run under `-WhatIf` therefore logs the normal memory
 lines and prints no `What if:` line for memory work; `-WhatIf` reaches only the ACL change, the backup
-folder and the streaming manager's temp files. `Find-OrphanedSid` has no `-WhatIf`.
+folder, the streaming manager's temp files and the `-OutputPath` CSV. `Find-OrphanedSid` has no
+`-WhatIf`.
 
 **Called directly.** The sections below describe the functions when they are called on their own
 with `-WhatIf`, as in a diagnostic session. There `ShouldProcess` guards their log statements, not
@@ -126,8 +127,8 @@ idle session proves little, because there may be nothing to reclaim; the `Dispos
 ## Log Analysis
 
 Lines that prove the operations executed in a command run, with or without `-WhatIf`, because the
-memory functions are pinned (Debug lines need `-LogLevel Debug`). A direct call with `-WhatIf`
-does not write them:
+memory functions are pinned (Debug lines need `-LogLevel Debug` or `Verbose`). A direct call
+with `-WhatIf` does not write them:
 
 ```text
 Garbage collection completed (3 cycles)
@@ -158,9 +159,10 @@ WhatIf: Would dispose and cleanup resources
 every `Get-Acl` and every SID lookup, and only skips the ACL writes. Tune `-MaxMemoryUsageMB` and
 the search base as for a real run.
 
-**Verbose output is noisy under -WhatIf.** When the memory functions are called directly, each
-guarded log statement is replaced by a `WhatIf: Would ...` verbose line. Drop `-Verbose` to silence
-them; the operations still run. A command run does not produce them.
+**Output is noisy under -WhatIf.** When the memory functions are called directly, each guarded log
+statement prints a `What if:` line, and some add a `WhatIf: Would ...` verbose line. Dropping
+`-Verbose` silences only the verbose lines; the operations still run. A command run produces
+neither.
 
 **Disposal errors under -WhatIf.** Resource disposal is real in both modes, so a disposal error
 points at an actual resource problem (for example a temp directory removed by another process), not

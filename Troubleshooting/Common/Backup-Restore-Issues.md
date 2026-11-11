@@ -25,7 +25,7 @@ Each backup is one `Export-Clixml` file written by `New-ACLBackup`
 | Property | Meaning |
 | --- | --- |
 | `ObjectDN` | Distinguished name the ACL belongs to |
-| `BackupDate` | ISO 8601 timestamp |
+| `BackupDate` | UTC ISO 8601 timestamp ending in `Z` |
 | `CorrelationId` | Correlation ID of the removal run |
 | `SDDL` | Full security descriptor in SDDL form |
 | `SDDLHash` | Base64 SHA256 of the SDDL string |
@@ -34,7 +34,8 @@ Each backup is one `Export-Clixml` file written by `New-ACLBackup`
 | `ACLEntryCount` | Number of access rules at backup time |
 | `BackupMethod` | `New-ACLBackup` |
 | `UserContext`, `ComputerName`, `DomainContext` | Who and where |
-| `PowerShellVersion`, `Platform`, `PSEdition`, `ScriptVersion` | Environment |
+| `PowerShellVersion`, `Platform`, `PSEdition` | Environment |
+| `ScriptVersion` | Version of the OrphanedSid module that wrote the file |
 
 Read a backup with `Import-Clixml`, not `ConvertFrom-Json`:
 
@@ -188,6 +189,7 @@ or more of these issues, joined by a semicolon and a space:
 | Issue text | Meaning |
 | --- | --- |
 | `Missing required property: <name>` | One of `ObjectDN`, `BackupDate`, `SDDL`, `SDDLHash`, `ValidationSignature` is absent |
+| `Empty required property: <name>` | One of those properties is present but empty |
 | `Invalid backup signature: <value>. Expected: PSSecurityBackup_v1.0, PSSecurityBackup_v2.0, PSSecurityBackup_v2.1` | Not a file written by `New-ACLBackup` |
 | `ObjectDN mismatch: Expected '<target>', found '<backup>'` | The file belongs to a different object |
 | `SDDL integrity check failed: Hash mismatch (expected: ..., calculated: ...)` | The SDDL text changed after the backup was written |
@@ -337,7 +339,9 @@ $actualAces   = $current     -split '\(' | Where-Object { $_ -like '*;*' }
 Mixed successful and failed results in one run are expected when some objects were deleted,
 moved, or are protected. Each failed result carries its own `ErrorMessage`; address them
 individually. A per-object failure does not raise an error from the command; read the result
-objects or the CSV.
+objects or the CSV. A container target's own result has `Success = False` and an `ErrorMessage` of
+`<failed> of <total> objects failed to restore: <reasons>`, or `No objects were restored` when
+nothing was restored.
 
 ## Performance Issues
 
@@ -345,8 +349,8 @@ objects or the CSV.
 
 Backups cost one `Get-Acl`, one SDDL hash, one `Export-Clixml` and one `Import-Clixml` per object
 and are rarely the bottleneck; SID resolution during discovery is (see
-`.\Troubleshooting\Performance\Performance-Tuning.md`). Restores cost two `Import-Clixml`, two
-`Get-ADObject`, three `Get-Acl` and one `Set-Acl` per object.
+`.\Troubleshooting\Performance\Performance-Tuning.md`). Restores cost two `Import-Clixml`, one
+`Get-ADObject`, two `Get-Acl` and one `Set-Acl` per object.
 
 To keep runs bounded, split large OUs across several `Remove-OrphanedSid` runs, each producing its own
 timestamped backup subfolder, and restore each subfolder separately:

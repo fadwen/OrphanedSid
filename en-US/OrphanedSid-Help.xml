@@ -22,11 +22,15 @@ CSV when that parameter is given.
 A summary (objects processed, orphaned SIDs found, unverified SIDs,
 duration, peak memory) goes to the console and the log.
 
-A SID is reported orphaned only when every directory lookup completed and none found it.
+A SID is reported orphaned only when every directory lookup completed and none found it, or
+when it is found only among deleted objects.
 When no lookup found the SID but at least one failed for another reason, such as a timeout,
 access denied or an unreachable domain controller, the SID may still belong to a live
 principal. It is listed with VerificationStatus Unverified, Confidence Low and a
 VerificationError that names each failed lookup, so it can be re-checked.
+When a directory server cannot be contacted, the SID's remaining directory lookups are skipped
+rather than each waiting for the same timeout, and VerificationError lists them after
+"Not attempted because the directory server could not be contacted:".
 Remove-OrphanedSid never removes an unverified SID.
 Unverified results are not cached, so a later object or a later run looks the SID up again.
 
@@ -292,8 +296,9 @@ DN stops the command instead.</maml:para>
 `ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`, plus the
 note properties `ProcessingContext` and `ProcessingStatistics`.
 
-`VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
-`Unverified` when a lookup failed; `VerificationError` then names each failed lookup.</maml:para>
+`VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, or the
+SID was found only among deleted objects, and `Unverified` when a lookup failed;
+`VerificationError` then names each failed lookup and any lookup not attempted.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>
@@ -346,7 +351,7 @@ USE CASE: Periodic compliance evidence</maml:para>
         Sort-Object Count -Descending</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Pipes OUs in and groups the findings by SID
-OUTPUT: The SIDs that appear most often across the domain
+OUTPUT: The SIDs that appear most often across the top-level OUs
 USE CASE: Deciding which deleted principals left the widest footprint</maml:para>
         </maml:introduction>
         <dev:code />
@@ -747,8 +752,9 @@ DN stops the command instead, so a mistake in the input never widens a removal t
           <maml:name>RemovalOperationResult</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>One object per object changed, covering all of its orphaned entries, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
-`FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
+          <maml:para>One object per object with orphaned entries to remove, covering all of them, including an
+object whose removal failed (`Success` false), with `ObjectDN`, `IntendedRemovals`,
+`ActualRemovals`, `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
 `ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
 backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
 -BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.</maml:para>
@@ -779,7 +785,8 @@ TROUBLESHOOTING:
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: A WhatIf line for the run and one per object with entries that would be removed
+OUTPUT: A WhatIf line for the run and one per object with entries that would be removed, and a
+RemovalOperationResult per such object whose RemovedSIDs lists what would be removed
 USE CASE: The review step before a cleanup</maml:para>
         </maml:introduction>
         <dev:code />
@@ -791,7 +798,7 @@ USE CASE: The review step before a cleanup</maml:para>
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\&lt;timestamp&gt;\, then removes
-OUTPUT: One RemovalOperationResult per object changed
+OUTPUT: One RemovalOperationResult per object with entries to remove
 USE CASE: An interactive cleanup with the backup on a dedicated drive</maml:para>
         </maml:introduction>
         <dev:code />
@@ -803,7 +810,7 @@ USE CASE: An interactive cleanup with the backup on a dedicated drive</maml:para
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -Force -CorrelationId 'CHG0012345' -OutputPath '.\Reports\CHG0012345.csv'</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Unattended removal tagged with a change number
-OUTPUT: Result objects, a CSV, a log and a backup folder that all carry CHG0012345
+OUTPUT: Result objects, a CSV, a log and backup files that all carry CHG0012345
 USE CASE: A scheduled task or a pipeline step</maml:para>
         </maml:introduction>
         <dev:code />
@@ -852,9 +859,10 @@ and its SHA256 hash), applies the saved security descriptor to the object, and r
 ACL back to verify the result.
 
 -TargetObjectDN decides the scope.
-A container (an OU or the domain root) restores every
+A container (a DN that starts with OU= or DC=, such as an OU or the domain root) restores every
 object that is the container or sits under it.
-A single object restores only backups whose recorded object DN equals
+Any other DN, including a CN= container such as CN=Users, is treated as a single object, which
+restores only backups whose recorded object DN equals
 -TargetObjectDN, compared without regard to letter case.
 Either way each object is restored once, from its most recent backup in the folder.
 -BackupPath is the folder that holds the .xml files, normally one timestamped run
@@ -866,7 +874,8 @@ the restore.
 An unattended run must pass -Force or -Confirm:$false.
 
 One result object per target is written to the pipeline; -OutputPath writes the same rows
-as CSV.</maml:para>
+as CSV, with the columns Success, TargetObjectDN, EntriesRestored, ErrorMessage and
+CorrelationId.</maml:para>
     </maml:description>
     <command:syntax>
       <command:syntaxItem>
@@ -1133,8 +1142,9 @@ USE CASE: Undoing a cleanup that removed an entry still in use</maml:para>
           <maml:para>Import-Csv .\Reports\CHG0012345.csv | Select-Object -ExpandProperty ObjectDN -Unique |
         Restore-OrphanedSidBackup -BackupPath 'D:\ADBackups\20260703_104232' -Force</maml:para>
           <maml:para>&#x80;</maml:para>
-          <maml:para>DESCRIPTION: Restores exactly the objects a removal run reported
-OUTPUT: One result per object
+          <maml:para>DESCRIPTION: Restores the objects listed in a removal run's CSV
+OUTPUT: One result per object; an object that run did not change, such as one with only
+unverified entries, has no backup in the folder and comes back with Success False
 USE CASE: Targeted rollback driven by the removal's own CSV</maml:para>
         </maml:introduction>
         <dev:code />

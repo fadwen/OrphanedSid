@@ -6,10 +6,11 @@ This guide covers the issues most often reported when running `Find-OrphanedSid`
 `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`, with the exact messages they emit and fixes
 that use their real parameters.
 
-`Find-OrphanedSid` and `Remove-OrphanedSid` accept `-SearchBase` (string array, also from the
-pipeline, alias `DistinguishedName`), `-OutputPath`, `-IncludeInherited`, `-MaxRetries` (1-10,
-default 3), `-ConfigPath`, `-MaxMemoryUsageMB` (100-16384, default 1024), `-PreserveTempFiles`,
-`-LogPath`, `-CorrelationId`, `-LogLevel` (`Critical`, `Error`, `Warning`, `Information`, `Debug`,
+`Find-OrphanedSid` and `Remove-OrphanedSid` accept `-SearchBase` (distinguished names, or objects
+with a `DistinguishedName` property, also from the pipeline, alias `DistinguishedName`; omitted, the
+domain root is used with a warning; given but holding no usable DN, the command stops),
+`-OutputPath`, `-IncludeInherited`, `-MaxRetries` (1-10, default 3), `-ConfigPath`,
+`-MaxMemoryUsageMB` (100-16384, default 1024), `-PreserveTempFiles`, `-LogPath`, `-CorrelationId`, `-LogLevel` (`Critical`, `Error`, `Warning`, `Information`, `Debug`,
 `Verbose`; default `Information`) and `-SuppressConsoleOutput`. `Remove-OrphanedSid` adds
 `-BackupPath` and `-Force`. `Restore-OrphanedSidBackup` takes `-TargetObjectDN`, a mandatory
 `-BackupPath`, `-Force`, `-OutputPath`, `-LogPath`, `-CorrelationId`, `-LogLevel` and
@@ -195,7 +196,10 @@ so result count does not drive memory use. See `.\Troubleshooting\Performance\Me
 **Root Cause:** most often a slow domain controller during SID lookups. Each unknown SID can cost
 up to five AD queries (`Get-ADObject` by `objectSid`, deleted-objects query, `Get-ADUser`,
 `Get-ADGroup`, `Get-ADComputer`), each retried up to 3 times by `Invoke-ADOperationWithRetry`
-when the error looks transient.
+when the error looks transient. When the directory server cannot be contacted, the first lookup
+waits out a connect timeout of about 42 seconds, the remaining directory lookups for that SID are
+skipped and listed in `VerificationError` as `Not attempted because the directory server could not
+be contacted: ...`, and the SID is reported `Unverified`, which is never removed.
 
 **Resolution:**
 
@@ -282,8 +286,9 @@ if (Test-Path $configPath) {
   file is written.
 - `Failed to export results to CSV: <message>` in the summary section.
 
-**Root Cause:** the export runs only when at least one orphaned SID was found, and under
-`Remove-OrphanedSid -WhatIf` no file is written although `Results exported to:` is still logged.
+**Root Cause:** the export runs only when at least one result (orphaned or `Unverified`) was found,
+and under `Remove-OrphanedSid -WhatIf` no file is written; the log says `WhatIf: results would be
+exported to <path>; no file was written` instead of `Results exported to:`.
 The file is always CSV (`StreamingResultsManager.ExportToCsv`), whatever extension `-OutputPath` carries. The folder
 must already exist. The same results are written to the pipeline whether or not `-OutputPath` is
 given.
@@ -333,8 +338,8 @@ can be used directly.
 - `Failed to create ACL backup for <DN> : <message>` followed by
   `SID removal workflow failed for <DN> : <message>` for that object.
 
-**Root Cause:** every removal first writes `<sanitized DN>_<yyyyMMdd_HHmmss>.xml` (Export-Clixml)
-to `<BackupPath>\<yyyyMMdd_HHmmss>\`. When `-BackupPath` is omitted it is `.\Backup` under the
+**Root Cause:** every removal first writes `<sanitized DN>_<yyyyMMdd_HHmmss>[_<n>].xml`
+(Export-Clixml) to `<BackupPath>\<yyyyMMdd_HHmmss>\`. When `-BackupPath` is omitted it is `.\Backup` under the
 current directory. A failed backup aborts that object's removal; other objects continue.
 
 **Resolution:**

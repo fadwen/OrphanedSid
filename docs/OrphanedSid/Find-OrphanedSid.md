@@ -40,11 +40,15 @@ CSV when that parameter is given.
 A summary (objects processed, orphaned SIDs found, unverified SIDs,
 duration, peak memory) goes to the console and the log.
 
-A SID is reported orphaned only when every directory lookup completed and none found it.
+A SID is reported orphaned only when every directory lookup completed and none found it, or
+when it is found only among deleted objects.
 When no lookup found the SID but at least one failed for another reason, such as a timeout,
 access denied or an unreachable domain controller, the SID may still belong to a live
 principal. It is listed with VerificationStatus Unverified, Confidence Low and a
 VerificationError that names each failed lookup, so it can be re-checked.
+When a directory server cannot be contacted, the SID's remaining directory lookups are skipped
+rather than each waiting for the same timeout, and VerificationError lists them after
+"Not attempted because the directory server could not be contacted:".
 Remove-OrphanedSid never removes an unverified SID.
 Unverified results are not cached, so a later object or a later run looks the SID up again.
 
@@ -88,7 +92,7 @@ Get-ADOrganizationalUnit -Filter * -SearchScope OneLevel |
         Sort-Object Count -Descending
 
 DESCRIPTION: Pipes OUs in and groups the findings by SID
-OUTPUT: The SIDs that appear most often across the domain
+OUTPUT: The SIDs that appear most often across the top-level OUs
 USE CASE: Deciding which deleted principals left the widest footprint
 
 ### EXAMPLE 4
@@ -384,8 +388,9 @@ One object per orphaned access control entry, with `ObjectDN`, `ObjectClass`, `O
 `ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`, plus the
 note properties `ProcessingContext` and `ProcessingStatistics`.
 
-`VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
-`Unverified` when a lookup failed; `VerificationError` then names each failed lookup.
+`VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, or the
+SID was found only among deleted objects, and `Unverified` when a lookup failed;
+`VerificationError` then names each failed lookup and any lookup not attempted.
 ## NOTES
 
 Author: Jeffrey Stuhr

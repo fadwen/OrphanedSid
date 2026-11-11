@@ -24,8 +24,8 @@ LONG DESCRIPTION
         previews, and an unattended run needs -Force.
 
     Restore-OrphanedSidBackup
-        Applies the backed-up ACL of an object, or of every object under a container, from
-        a backup folder, after validating the file's format, DN and SHA256 hash. Also
+        Applies the backed-up ACL of an object, or of every object under an OU or domain,
+        from a backup folder, after validating the file's format, DN and SHA256 hash. Also
         ConfirmImpact High.
 
 HOW RESULTS ARE REPORTED
@@ -35,12 +35,14 @@ HOW RESULTS ARE REPORTED
     log file.
 
 UNVERIFIED SIDS
-    A SID is reported orphaned only when every directory lookup completed and none found it.
-    When no lookup found the SID but at least one failed for another reason, such as a
-    timeout, access denied or an unreachable domain controller, the SID may still belong to a
-    live principal. Find-OrphanedSid lists it with VerificationStatus Unverified and a
-    VerificationError naming each failed lookup. Remove-OrphanedSid never removes it, and logs
-    a warning naming it. Unverified results are not cached, so the next lookup tries again.
+    A SID is reported orphaned only when every directory lookup completed and none found it,
+    or when it is found among deleted objects. When no lookup found the SID but at least one
+    failed for another reason, such as a timeout, access denied or an unreachable domain
+    controller, the SID may still belong to a live principal. Find-OrphanedSid lists it with
+    VerificationStatus Unverified and a VerificationError naming each failed lookup, and any
+    lookup skipped because the directory server could not be contacted. Remove-OrphanedSid
+    never removes it, and logs a warning naming it. Unverified results are not cached, so the
+    next lookup tries again.
 
     A SID from a trusted domain can only be checked by that domain. When it answers that the
     principal is gone, the SID is orphaned (LikelySource Foreign Domain/Trust). When its domain
@@ -51,11 +53,11 @@ UNVERIFIED SIDS
 
     Logs go to .\Logs\<Command>_<yyyyMMdd_HHmmss>.log under the current directory unless
     -LogPath is given. An existing log file is appended to, and renamed aside first when it is
-    larger than MaxLogFileSizeMB (default 10). Every line carries the run's correlation ID, so one run can be pulled
-    out of a shared log with Select-String. Pass -CorrelationId to tie a run to a change
-    record. -LogLevel sets the lowest level written to the file; security events are written
-    at every level. Without -LogLevel the level is Verbose under -Verbose, Debug under -Debug,
-    and otherwise the LogLevel of the -ConfigPath file, or Information.
+    larger than MaxLogFileSizeMB (default 10). Every line carries the run's correlation ID, so
+    one run can be pulled out of a shared log with Select-String. Pass -CorrelationId to tie a
+    run to a change record. -LogLevel sets the lowest level written to the file; security
+    events are written at every level. Without -LogLevel the level is Verbose under -Verbose,
+    Debug under -Debug, and otherwise the LogLevel of the -ConfigPath file, or Information.
 
 BACKUPS
     Remove-OrphanedSid writes one backup file per modified object into

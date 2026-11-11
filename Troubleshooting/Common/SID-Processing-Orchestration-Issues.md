@@ -25,7 +25,8 @@ Invoke-MainProcessingLogic                      (Private\Core)
           New-OrphanedSIDResult                 (Private\SID\New-SIDResult.ps1; Orphaned or Unverified)
       attach ProcessingStatistics to each result
     StreamingResultsManager.AddResult(...)      (batch files under <temp>\OrphanedSid-<CorrelationId>)
-    under Remove-OrphanedSid: Remove-OrphanedSidEntry per Orphaned result
+    under Remove-OrphanedSid: Remove-OrphanedSidEntry once per object, for its Orphaned,
+      non-inherited SIDs (Unverified and inherited entries are reported, not removed)
 ```
 
 Objects are processed sequentially; there is no parallel path.
@@ -34,7 +35,7 @@ Objects are processed sequentially; there is no parallel path.
 
 | Component | Input | Output |
 | --- | --- | --- |
-| `Get-ObjectAccessRule -ADObject <PSObject> [-IncludeInherited]` | AD object with `DistinguishedName` (and usually `nTSecurityDescriptor`) | `ActiveDirectoryAccessRule[]`; `$null` when every strategy fails |
+| `Get-ObjectAccessRule -ADObject <PSObject> [-IncludeInherited]` | AD object with `DistinguishedName` (and usually `nTSecurityDescriptor`) | `ActiveDirectoryAccessRule[]`; `$null` when every strategy fails, or when every entry is inherited and `-IncludeInherited` is off |
 | `Resolve-IdentityReference -IdentityReference <PSObject>` | `SecurityIdentifier`, `NTAccount`, or a deserialized identity | SID string; `ORPHANED_ACCOUNT:<name>` for an untranslatable `NTAccount`; `$null` otherwise |
 | `Test-SIDValidityAndType -SIDString <string>` | SID string | `$true` only for a well-formed, non-well-known SID |
 | `Test-OrphanedSID -SID <string>` | SID string | object with `Status` `Orphaned`, `Exists` or `Unverified` and `ErrorMessage`; `Orphaned` and `Exists` cached per SID for the session |
@@ -53,7 +54,7 @@ see them.
 | `Skipping error object: <message>` | Input object carries `IsError = $true`; no module function emits one |
 | `Object missing DistinguishedName property, skipping` | Malformed pipeline input |
 | `No security descriptor found for <DN>` | Object arrived without `nTSecurityDescriptor` when `Find-OrphanedSIDsInObject` is called directly; a command run skips such an object earlier with the Warning `Not examined: ...` and counts it under `Objects not examined` |
-| `No access rules retrieved for <DN>` | `Get-ObjectAccessRule` returned nothing; a Warning `All security descriptor retrieval methods failed for <DN>` usually precedes it (see `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`) |
+| `No access rules retrieved for <DN>` | `Get-ObjectAccessRule` returned nothing: either every entry is inherited (Debug `No explicit access rules on <DN> (all N are inherited)` precedes it; use `-IncludeInherited` to examine them), or a Warning `All security descriptor retrieval methods failed for <DN>` precedes it (see `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`) |
 
 Skips are not errors. `Processing errors` in the summary counts exceptions caught by the per-object
 loop in `Invoke-MainProcessingLogic`,
@@ -91,8 +92,11 @@ it). Only when every lookup completes and none finds the SID is it marked orphan
 (`SID could not be resolved - marking as orphaned: <sid>` at Debug) and cached for the session.
 When a lookup fails instead, the SID is `Unverified` (`SID could not be verified - N lookup(s)
 failed: <sid> (<failures>)` at Warning), is not cached, and `Remove-OrphanedSid` does not remove it
-(`Not removing unverified SID ...`). An exception in the function itself also gives `Unverified`
-(`Error testing SID for orphaned status <sid> : <message>` at Error level).
+(`Not removing unverified SID ...`). When the directory server cannot be contacted, the first
+lookup waits out a connect timeout of about 42 seconds and the remaining directory lookups for that
+SID are skipped: the Warning reads `N lookup(s) failed, M not attempted`, and `VerificationError`
+ends with `Not attempted because the directory server could not be contacted: <lookups>`. An
+exception in the function itself also gives `Unverified` (`Error testing SID for orphaned status <sid> : <message>` at Error level).
 
 Check before acting on results:
 

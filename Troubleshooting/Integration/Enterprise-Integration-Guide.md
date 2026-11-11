@@ -7,7 +7,9 @@ they behave:
 
 - Each command writes its **results to the pipeline** as objects: one `OrphanedSIDResult` per
   orphaned or unverified entry, one `RemovalOperationResult` per object changed, one restore result per
-  target. `-OutputPath` also writes them as CSV, and every run writes a log file.
+  target. `-OutputPath` writes CSV: the discovered entries for `Find-OrphanedSid` and
+  `Remove-OrphanedSid`, the restore results for `Restore-OrphanedSidBackup`. Every run writes a
+  log file.
 - The log file starts with a plain-text header block. Regular entries are **plain text**, one line
   each: `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`, ending
   with ` | Details: <json>` when there is extra data. Security audit entries are **one JSON object
@@ -52,9 +54,9 @@ Security audit entries are the lines that start with `{`; parse them as JSON. Th
 
 - **Mixed formats**: one file holds a header, plain-text lines and JSON lines. Route lines starting
   with `{` to a JSON parser and the rest to the regex above.
-- **Fixed log path**: each run recreates the file at `-LogPath` with a new header, so a fixed name
-  keeps only the last run. Leave `-LogPath` unset (timestamped name) or put the date in it, and
-  watch the folder, not a single file name.
+- **Fixed log path**: a reused `-LogPath` is appended to, each run adding its own header block
+  after a blank line, and the file is rotated aside once it exceeds `MaxLogFileSizeMB` (when
+  `EnableLogFileRotation` is on). Leave `-LogPath` unset (timestamped name) for one file per run.
 - **Correlation ID format**: any string is accepted on all three commands, so a change or ticket
   number can be used directly and searched for in the SIEM.
 
@@ -75,8 +77,9 @@ if ($found -gt 100) {
 ```
 
 Register the event source once with `New-EventLog -LogName Application -Source 'OrphanedSid'`.
-`Write-EventLog` and `New-EventLog` exist in Windows PowerShell 5.1 only; on PowerShell 7 use
-`New-WinEvent` or load them through the `WindowsCompatibility` module. The CSV exists only when at
+`Write-EventLog` and `New-EventLog` are Windows PowerShell cmdlets; PowerShell 7 on Windows reaches
+them through its compatibility layer
+(`Import-Module Microsoft.PowerShell.Management -UseWindowsPowerShell`). The CSV exists only when at
 least one orphaned or unverified SID was found; `Test-Path $csv` is a valid zero-result check.
 
 ### 3. Desired State Configuration
@@ -181,16 +184,20 @@ cap. Splitting the domain by OU across several runs is the only way to shorten a
 #### Issue: Network timeouts
 
 ```powershell
-Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -MaxRetries 5
+Test-NetConnection -ComputerName (Get-ADDomainController).HostName -Port 389
 ```
 
 `-MaxRetries` (1-10) controls the per-object retry loop: reading an object's ACL and SIDs is
-retried up to that many times after an error; a removal is not retried. SID lookups and the ACL
+retried up to that many times after an error; a removal is not retried. In practice that loop does
+not fire, because the detection step catches its own errors, so raising `-MaxRetries` does not help
+with an unreachable domain controller. SID lookups and the ACL
 steps of `Remove-OrphanedSid` are wrapped by `Invoke-ADOperationWithRetry` with fixed limits of 2 or
 3 attempts for transient errors. Object discovery is not retried. There are no timeout settings in
 the configuration file. When a lookup for a SID fails and no other lookup finds it, the SID is
 reported with `VerificationStatus` `Unverified` and is never removed; re-run discovery once the
-domain controller is reachable.
+domain controller is reachable. While it is unreachable, each SID that needs a lookup costs about
+42 s (one connection timeout; the remaining directory lookups for it are skipped), and because
+Unverified answers are not cached, every object carrying that SID pays it again.
 
 ### 3. Logging and Monitoring
 
@@ -260,8 +267,9 @@ schedules:
     include:
     - main
 
+# Self-hosted agent on a domain-joined Windows host with RSAT; hosted images have neither
 pool:
-  vmImage: 'windows-latest'
+  name: 'AD-Agents'
 
 steps:
 - powershell: |
@@ -373,7 +381,7 @@ function Get-IntegrationDiagnostics {
 | --- | --- | --- |
 | A prompting error from `Remove-OrphanedSid` or `Restore-OrphanedSidBackup` | Non-interactive run without `-Force` | Add `-Force`, or `-WhatIf` for a preview |
 | `The ActiveDirectory PowerShell module is not available. Install RSAT: ...` | RSAT AD module missing on the agent | Install RSAT-AD-PowerShell |
-| `The RPC server is unavailable` inside AD lookups | DC connectivity | Check port 389/636 and DNS; raise `-MaxRetries` |
+| `The RPC server is unavailable` inside AD lookups | DC connectivity | Check port 389/636 and DNS; re-run once the DC is reachable |
 | `The folder for -OutputPath does not exist: <dir>` | Folder in `-OutputPath` does not exist | Create it first |
 | CSV missing after a run | No orphaned or unverified SIDs found | Treat as a zero result; check `Orphaned SIDs found: 0` in the log |
 

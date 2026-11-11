@@ -29,7 +29,8 @@ arbitrary until you know why, and that are cheap to break by accident.
 The ActiveDirectory module is Windows-only RSAT and is not on the Gallery. Declaring it would make
 the module unimportable, and the suite unrunnable, on any host without RSAT, including every CI
 runner. `Start-OrphanedSidSession -RequireActiveDirectory` performs the check when a public command
-starts. Tests never set that switch.
+starts. Tests that reach the check mock `Get-Module` and `Import-Module` for it, so none needs
+RSAT.
 
 ### Windows PowerShell 5.1 is a real target
 
@@ -97,9 +98,10 @@ consumer and validates the hash before applying. Changing the file shape means c
 
 Each class and private-function test file loads the files it needs inside `BeforeAll` and stubs or
 loads what they log through. The public-command, contract and integration tests import
-`OrphanedSid.psd1` instead. Pester 6 runs nothing a file defines at its top level, so setup outside
-`BeforeAll` is invisible to the tests. Tests that mock an Active Directory cmdlet first dot-source
-`Tests/TestHelpers/ADCmdletStubs.ps1`, which defines global placeholders when RSAT is absent;
+`OrphanedSid.psd1` instead, and so does the `Get-OrphanedSidModuleVersion` test, because that
+helper reads the version of the module it runs in. Pester 6 runs nothing a file defines at its top
+level, so setup outside `BeforeAll` is invisible to the tests. Tests that mock an Active Directory
+cmdlet first dot-source `Tests/TestHelpers/ADCmdletStubs.ps1`, which defines global placeholders when RSAT is absent;
 Pester can only mock a command that exists. Add to that list when a new test mocks a new cmdlet.
 
 ### One scope, so one definition per name and real parameter names at every call
@@ -115,7 +117,7 @@ shared one name that way, and the file-path version silently replaced the other.
 ### The coverage gate is 90% and only goes up, and every test must be able to fail
 
 `quality-gates.yml` fails below 90% command coverage over `Public/` and `Private/`; the suite measures
-about 93%. The module arrived with test files that defined a stub of their subject and tested the
+about 94%. The module arrived with test files that defined a stub of their subject and tested the
 stub (`Set-ModifiedACL.Tests.ps1` defined its own `Set-ModifiedACL`), which is why coverage was 62%
 with 2,400 passing tests, and with Integration and Performance folders that ran only in-file
 simulators. Coverage does not catch the rest: a test with no assertion, an assertion swallowed by a

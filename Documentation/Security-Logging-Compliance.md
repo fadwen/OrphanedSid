@@ -62,9 +62,8 @@ It builds a data block (timestamp, event type, outcome, `UserContext` as `user@c
 ID, correlation ID, plus every `SecurityContext` key prefixed `Security_`), maps the outcome to a
 level (`Attempt` and `Success` to `Information`, `Failure` to `Warning`), and calls
 `Write-SecurityStructuredLogEntry` with the component `SecurityAudit` and the message
-`[<SecurityEventType>] [<Outcome>] <Message>`. The data block's own `Message` key replaces that
-text in the written JSON, so the file shows the plain `<Message>`. If that call throws, the line is
-appended to `%TEMP%\OrphanedSid-Security-Fallback.log`.
+`[<SecurityEventType>] [<Outcome>] <Message>`, which is the `Message` value in the written JSON.
+If that call throws, the line is appended to `%TEMP%\OrphanedSid-Security-Fallback.log`.
 
 ### Write-ADOperationSecurityLog
 
@@ -88,7 +87,8 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
   `Get-Acl` during detection and `Get-ADDomain` are not wrapped and leave no security entry
 - `Private/Core/Invoke-MainProcessingLogic.ps1`: workflow-level access events
 - `Private/SID/Test-SIDSecurity.ps1`: `DataValidation` events for every SID checked before removal,
-  including the reason a SID was blocked, and `RiskAssessment` events
+  including the reason a SID was blocked, and a `SecurityViolation` event for a malicious input
+  pattern
 - `Private/Operations/Invoke-RemovalWorkflow.ps1` via `Write-RemovalSecurityLog`
   (`Private/Logging/Write-RemovalSecurityLog.ps1`): `PrivilegeUse` events around each ACL
   modification, forwarded to `Write-SecurityLog`
@@ -108,9 +108,8 @@ fallback functions (`Invoke-GarbageCollection.ps1`); it writes no log entries.
 
 - **Audit trail at any -LogLevel.** The AD operations listed above, SID validation outcomes and
   ACL changes reach the file even with `-LogLevel Error` or `Critical`.
-- **Correlation.** Security entries carry a correlation ID: the run's, the same value that is on
-  regular log lines and inside each backup file, except for the `Get-ADObjectsSequential` entries
-  and the SID lookups made during per-object detection, which carry IDs of their own.
+- **Correlation.** Security entries carry the run's correlation ID, the same value that is on
+  regular log lines and inside each backup file.
 - **Fallback locations.** A security event that cannot reach the log file lands in `%TEMP%` under
   one of the three names above rather than being lost.
 - **Separation from operational noise.** Security entries are identifiable by the `SecurityAudit`

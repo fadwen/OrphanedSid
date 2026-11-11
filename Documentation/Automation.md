@@ -144,7 +144,8 @@ hashtables.
 No CSV is written when nothing was found, or under `-WhatIf`.
 
 `Restore-OrphanedSidBackup` exports one row per target with `Success`, `TargetObjectDN`,
-`EntriesRestored`, `ErrorMessage` and `CorrelationId`, whenever it produced at least one result.
+`EntriesRestored`, `ErrorMessage` and `CorrelationId`, whenever it produced at least one result
+and the run is not a `-WhatIf` preview.
 
 ```powershell
 $results = Import-Csv "C:\Reports\orphaned-sids.csv"

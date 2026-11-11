@@ -15,8 +15,8 @@ WARNING: Memory usage threshold exceeded: <n> MB (Limit: <max> MB) - Correlation
 
 and forces a full garbage collection. If the working set is still above the threshold afterwards
 it adds `Memory usage still exceeds limit after garbage collection: <n> MB. Consider reducing batch
-size or increasing memory limit.` The threshold is advisory: it triggers cleanup, it does not stop
-the run or cap the process.
+size or increasing memory limit. - CorrelationId: <id>`. The threshold is advisory: it triggers
+cleanup, it does not stop the run or cap the process.
 
 Discovery results are not held in memory. `StreamingResultsManager`
 (`Classes/StreamingResultsManager.ps1`) writes them in batches of `BatchSize` objects (configuration
@@ -91,7 +91,8 @@ validated and removed in one call, and a block stops the whole call, so the obje
 unchanged. The workflow logs `SECURITY BLOCK: Security validation failed: <issues>` at `Error`
 level. The blocked SIDs are also
 written as security audit entries (`"Component":"SecurityAudit"`, `DataValidation` events with
-outcome `Failure`), which are always logged regardless of `-LogLevel`.
+outcome `Failure`, or a `SecurityViolation` event for a malicious input pattern), which are always
+logged regardless of `-LogLevel`.
 
 There is no parameter that overrides a block. The only adjustable inputs are `ProtectedSIDs` and
 `WellKnownSIDPatterns` in the `-ConfigPath` file; `CriticalObjectPatterns` and the risk rating are
@@ -111,9 +112,9 @@ entries that would be removed but does not evaluate these checks.
 
 1. Confirm the SID really is orphaned; a protected or well-known SID is almost never a candidate
    for removal.
-2. If a SID in the default `ProtectedSIDs` list is genuinely orphaned in this forest, supply a
-   configuration file with a `ProtectedSIDs` array that omits it, and keep that file under change
-   control.
+2. The six default `ProtectedSIDs` are also built-in well-known SIDs, so omitting one from a
+   configuration file does not make it removable. A SID that was added to `ProtectedSIDs` in a
+   configuration file can be dropped from that file's array; keep the file under change control.
 3. Review the security audit entries for the run before re-running with the changed
    configuration.
 
@@ -167,6 +168,5 @@ See [Security-Validation-Guide.md](../Troubleshooting/Security/Security-Validati
 
 ### Error Recovery
 
-- Record the run's correlation ID; it is on the run's log lines (other than object-discovery and
-  per-object detection lines) and inside every backup file.
+- Record the run's correlation ID; it is on every log line of the run and inside every backup file.
 - Rehearse `Restore-OrphanedSidBackup -WhatIf` against a real backup folder before relying on it.

@@ -24,7 +24,8 @@ Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com"
 ```
 
 The parent of `-BackupPath` must already exist; the folder itself and the per-run timestamped
-subfolder are created on demand, and the log records `Created backup folder: <path>`. Each run
+subfolder are created when the run starts, after the confirmation prompt, and the log records
+`Created backup folder: <path>`. Each run
 gets its own subfolder, so repeated runs never overwrite one another.
 
 Under `-WhatIf` no backup folder or file is written, because no ACL is changed.
@@ -33,9 +34,10 @@ Under `-WhatIf` no backup folder or file is written, because no ACL is changed.
 
 Backups are produced by `New-ACLBackup` in `Private/Backup/New-ACLBackup.ps1`. It takes
 `-ObjectDN`, `-ACL` (the `System.DirectoryServices.ActiveDirectorySecurity` object read from the
-`AD:` drive), `-BackupPath` and an optional `-CorrelationId`. It returns `$true` when the file was
-written and verified, `$false` when its own confirmation was declined, and throws when the write
-or the verification fails. It is a private function and is not exported; `Remove-OrphanedSid` is
+`AD:` drive), `-BackupPath` and an optional `-CorrelationId`. It returns the full path of the file
+when it was written and verified, nothing when its own confirmation was declined, and throws when
+the write or the verification fails; `Remove-OrphanedSid` records that path in the result's
+`BackupFile` property. It is a private function and is not exported; `Remove-OrphanedSid` is
 the supported way to create backups.
 
 ### Backup File Format
@@ -114,7 +116,7 @@ backups of one object, only the most recently modified file is used.
 
 Under `-WhatIf` each selected backup is still read and validated, and one line
 `What if: Performing the operation "Apply ACL from backup" on target "<DN>".` is printed per
-object.
+object, after one line for the whole run.
 
 ### Confirmation and -Force
 
@@ -205,8 +207,8 @@ Restore-OrphanedSidBackup -TargetObjectDN $problemObjects -BackupPath "C:\Backup
 
 1. Preview with `-WhatIf` before every restore.
 2. Point `-BackupPath` at the exact run folder you intend to restore from.
-3. Keep the correlation ID from the removal run; it is stored in each backup and appears in the
-   run's log lines other than the object-discovery and per-object detection lines.
+3. Keep the correlation ID from the removal run; it is stored in each backup and appears on every
+   log line of the run.
 4. Store backup folders where only the operators who may restore them have access; a backup holds
    the complete security descriptor of each object.
 5. Remove old run folders deliberately; the module never deletes backups.
