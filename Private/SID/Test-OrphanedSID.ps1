@@ -81,6 +81,15 @@ function Test-OrphanedSID {
           ErrorMessage names each failure. Unverified SIDs are never removed and are not
           cached, so a later call performs the lookups again.
 
+        UNREACHABLE DIRECTORY SERVER:
+        Each directory lookup against a server that does not answer waits for the AD Web
+        Services connect timeout, about 42 seconds. Once one lookup fails with
+        ADServerDownException, the remaining directory lookups for this SID would fail the
+        same way, so they are skipped and listed in ErrorMessage as skipped. The SID is
+        Unverified, exactly as if each had been tried. SecurityIdentifier.Translate still runs:
+        it goes through LSA rather than AD Web Services, and a name it returns proves the SID
+        exists.
+
         BUSINESS VALUE:
         - Enables accurate identification of orphaned SIDs for security cleanup
         - Reduces false positives through comprehensive validation methods
@@ -192,6 +201,10 @@ function Test-OrphanedSID {
         # A lookup that throws anything other than "not found" proves nothing about the SID. Each such
         # failure is collected here; with any present, the SID is Unverified rather than Orphaned.
         $lookupFailures = [System.Collections.Generic.List[string]]::new()
+        # Once a directory lookup finds the server unreachable, the rest would wait out the same ~42 s
+        # connect timeout and fail the same way (#82). They are skipped and named in the failure text.
+        $serverDown = $false
+        $skippedLookups = [System.Collections.Generic.List[string]]::new()
 
         try {
             Write-StructuredLog "Testing SID for orphaned status: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
@@ -227,40 +240,46 @@ function Test-OrphanedSID {
             }
             catch {
                 $lookupFailures.Add("Get-ADObject: $($_.Exception.Message)")
+                if (Test-ADServerDownError -ErrorRecord $_) { $serverDown = $true }
                 Write-StructuredLog "Get-ADObject lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
 
             # Method 1a: Check for deleted objects specifically. -IncludeDeletedObjects returns live
             # objects as well as tombstones, so this step is reached with a live match whenever
             # Method 1 failed rather than came back empty; isDeleted tells the two apart.
-            try {
-                $matchedObjects = @(Invoke-ADOperationWithRetry -ScriptBlock {
-                        Get-ADObject -Filter "objectSid -eq '$SID'" -IncludeDeletedObjects -Properties isDeleted -ErrorAction Stop
-                    } -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId)
+            if ($serverDown) {
+                $skippedLookups.Add('Get-ADObject -IncludeDeletedObjects')
+            } else {
+                try {
+                    $matchedObjects = @(Invoke-ADOperationWithRetry -ScriptBlock {
+                            Get-ADObject -Filter "objectSid -eq '$SID'" -IncludeDeletedObjects -Properties isDeleted -ErrorAction Stop
+                        } -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId)
 
-                $liveObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -ne $true } | Select-Object -First 1
-                $deletedObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -eq $true } | Select-Object -First 1
+                    $liveObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -ne $true } | Select-Object -First 1
+                    $deletedObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -eq $true } | Select-Object -First 1
 
-                if ($liveObject) {
-                    Write-StructuredLog "SID found as a live object by the deleted-objects lookup: $($liveObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
-                    return $script:SIDValidationCache[$SID]
+                    if ($liveObject) {
+                        Write-StructuredLog "SID found as a live object by the deleted-objects lookup: $($liveObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                        $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
+                        return $script:SIDValidationCache[$SID]
+                    }
+
+                    if ($deletedObject) {
+                        # A tombstone is positive evidence of deletion, so it settles the question even when
+                        # an earlier lookup failed
+                        Write-StructuredLog "SID found in deleted objects: $($deletedObject.DistinguishedName) - treating as orphaned" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                        $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Orphaned'
+                        return $script:SIDValidationCache[$SID]
+                    }
                 }
-
-                if ($deletedObject) {
-                    # A tombstone is positive evidence of deletion, so it settles the question even when
-                    # an earlier lookup failed
-                    Write-StructuredLog "SID found in deleted objects: $($deletedObject.DistinguishedName) - treating as orphaned" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Orphaned'
-                    return $script:SIDValidationCache[$SID]
+                catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+                    Write-StructuredLog "SID not found in deleted objects: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
                 }
-            }
-            catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
-                Write-StructuredLog "SID not found in deleted objects: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-            }
-            catch {
-                $lookupFailures.Add("Get-ADObject -IncludeDeletedObjects: $($_.Exception.Message)")
-                Write-StructuredLog "Deleted objects lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                catch {
+                    $lookupFailures.Add("Get-ADObject -IncludeDeletedObjects: $($_.Exception.Message)")
+                    if (Test-ADServerDownError -ErrorRecord $_) { $serverDown = $true }
+                    Write-StructuredLog "Deleted objects lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                }
             }
 
             # Method 2: Try direct SecurityIdentifier translation
@@ -290,6 +309,10 @@ function Test-OrphanedSID {
             )
 
             foreach ($objectType in $objectTypes) {
+                if ($serverDown) {
+                    $skippedLookups.Add($objectType.CmdLet)
+                    continue
+                }
                 try {
                     $result = Invoke-ADOperationWithRetry -ScriptBlock {
                         & $objectType.CmdLet -Filter $objectType.Filter -ErrorAction Stop
@@ -307,6 +330,7 @@ function Test-OrphanedSID {
                 }
                 catch {
                     $lookupFailures.Add("$($objectType.CmdLet): $($_.Exception.Message)")
+                    if (Test-ADServerDownError -ErrorRecord $_) { $serverDown = $true }
                     Write-StructuredLog "$($objectType.CmdLet) lookup failed for $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
                 }
             }
@@ -314,8 +338,13 @@ function Test-OrphanedSID {
             # Nothing found the SID, but a lookup that failed might have. Unverified is not cached, so
             # a transient failure does not decide the answer for every later object in the run.
             if ($lookupFailures.Count -gt 0) {
+                $countText = "$($lookupFailures.Count) lookup(s) failed"
+                if ($skippedLookups.Count -gt 0) {
+                    $countText += ", $($skippedLookups.Count) not attempted"
+                    $lookupFailures.Add("Not attempted because the directory server could not be contacted: $($skippedLookups -join ', ')")
+                }
                 $failureText = $lookupFailures -join '; '
-                Write-StructuredLog "SID could not be verified - $($lookupFailures.Count) lookup(s) failed: $SID ($failureText)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                Write-StructuredLog "SID could not be verified - $($countText): $SID ($failureText)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
                 return New-SIDLookupResult -SID $SID -Status 'Unverified' -ErrorMessage $failureText
             }
 
@@ -568,3 +597,51 @@ function Get-SIDValidationCacheStat {
     }
 }
 
+function Test-ADServerDownError {
+    <#
+    .SYNOPSIS
+        Tells whether an error means the directory server could not be contacted.
+
+    .DESCRIPTION
+        Test-OrphanedSID runs up to five directory lookups for one SID. When the server that
+        answers them is down, each waits for the AD Web Services connect timeout, about 42
+        seconds, and fails with Microsoft.ActiveDirectory.Management.ADServerDownException
+        ("Unable to contact the server"). This identifies that failure so the remaining lookups
+        can be skipped.
+
+        The exception chain is walked and compared by type name, so the function works when the
+        ActiveDirectory module is not loaded and the type does not exist, as in unit tests.
+
+    .PARAMETER ErrorRecord
+        The error caught from a directory lookup.
+
+    .OUTPUTS
+        [bool] True when the error, or an exception inside it, is ADServerDownException.
+
+    .EXAMPLE
+        PS> try { Get-ADObject -Server dc01 -Filter * } catch { Test-ADServerDownError -ErrorRecord $_ }
+
+        DESCRIPTION: Classifies a lookup failure
+        OUTPUT: True when dc01 could not be contacted
+
+    .NOTES
+        Author: Jeffrey Stuhr
+        Blog: https://www.techbyjeff.net
+        LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    $exception = $ErrorRecord.Exception
+    while ($exception) {
+        if ($exception.GetType().FullName -eq 'Microsoft.ActiveDirectory.Management.ADServerDownException') {
+            return $true
+        }
+        $exception = $exception.InnerException
+    }
+    return $false
+}

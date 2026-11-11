@@ -79,3 +79,20 @@ namespace Microsoft.ActiveDirectory.Management
 }
 '@
 }
+
+# What a directory lookup throws when the server cannot be contacted. Test-OrphanedSID matches it by
+# type name to stop looking a SID up against a server that is down (#82); the stand-in lets tests
+# throw it without RSAT.
+if (-not ('Microsoft.ActiveDirectory.Management.ADServerDownException' -as [type])) {
+    Add-Type -TypeDefinition @'
+namespace Microsoft.ActiveDirectory.Management
+{
+    public class ADServerDownException : System.Exception
+    {
+        public ADServerDownException() : base() { }
+        public ADServerDownException(string message) : base(message) { }
+        public ADServerDownException(string message, System.Exception inner) : base(message, inner) { }
+    }
+}
+'@
+}

@@ -231,6 +231,119 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
         }
     }
 
+    Context 'An unreachable directory server (#82)' {
+
+        BeforeAll {
+            $script:downMessage = 'Unable to contact the server. This may be because this server does not exist, it is currently down, or it does not have the Active Directory Web Services running.'
+        }
+
+        It 'Skips the remaining directory lookups once the first finds the server down' {
+            Mock Get-ADObject { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) }
+
+            $lookup = Test-OrphanedSID -SID $script:orphan
+
+            $lookup.Status | Should -Be 'Unverified'
+            $lookup.IsOrphaned | Should -BeFalse
+            Should -Invoke Get-ADObject -Times 1 -Exactly
+            Should -Invoke Get-ADUser -Times 0 -Exactly
+            Should -Invoke Get-ADGroup -Times 0 -Exactly
+            Should -Invoke Get-ADComputer -Times 0 -Exactly
+            $lookup.ErrorMessage | Should -BeLike "Get-ADObject: $($script:downMessage)*"
+            $lookup.ErrorMessage | Should -BeLike '*Not attempted because the directory server could not be contacted: Get-ADObject -IncludeDeletedObjects, Get-ADUser, Get-ADGroup, Get-ADComputer'
+            $script:SIDValidationCache.ContainsKey($script:orphan) | Should -BeFalse
+            # The count says what happened: one lookup failed, four were not tried
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -like "SID could not be verified - 1 lookup(s) failed, 4 not attempted: $($script:orphan) (*"
+            }
+        }
+
+        It 'Still asks the local name lookup, which can prove the SID exists' {
+            # BUILTIN\Administrators resolves through LSA without the directory
+            Mock Get-ADObject { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) }
+
+            (Test-OrphanedSID -SID 'S-1-5-32-544').Status | Should -Be 'Exists'
+            Should -Invoke Get-ADUser -Times 0 -Exactly
+        }
+
+        It 'Skips the typed lookups when the deleted-objects lookup finds the server down' {
+            Mock Get-ADObject { if ($IncludeDeletedObjects) { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) } }
+
+            $lookup = Test-OrphanedSID -SID $script:orphan
+
+            $lookup.Status | Should -Be 'Unverified'
+            Should -Invoke Get-ADObject -Times 2 -Exactly
+            Should -Invoke Get-ADUser -Times 0 -Exactly
+            $lookup.ErrorMessage | Should -BeLike '*Not attempted because the directory server could not be contacted: Get-ADUser, Get-ADGroup, Get-ADComputer'
+        }
+
+        It 'Skips the later typed lookups when an earlier one finds the server down' {
+            Mock Get-ADUser { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) }
+
+            $lookup = Test-OrphanedSID -SID $script:orphan
+
+            $lookup.Status | Should -Be 'Unverified'
+            Should -Invoke Get-ADUser -Times 1 -Exactly
+            Should -Invoke Get-ADGroup -Times 0 -Exactly
+            Should -Invoke Get-ADComputer -Times 0 -Exactly
+            $lookup.ErrorMessage | Should -BeLike '*Not attempted because the directory server could not be contacted: Get-ADGroup, Get-ADComputer'
+        }
+
+        It 'Recognises the server-down exception inside another one' {
+            Mock Get-ADObject {
+                $inner = [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage)
+                throw [System.InvalidOperationException]::new('Lookup failed', $inner)
+            }
+
+            $null = Test-OrphanedSID -SID $script:orphan
+
+            Should -Invoke Get-ADUser -Times 0 -Exactly
+        }
+
+        It 'Keeps trying every lookup after a failure that is not server-down' {
+            Mock Get-ADObject { throw [System.TimeoutException]::new('The operation timed out') }
+
+            $lookup = Test-OrphanedSID -SID $script:orphan
+
+            $lookup.Status | Should -Be 'Unverified'
+            Should -Invoke Get-ADObject -Times 2 -Exactly
+            Should -Invoke Get-ADComputer -Times 1 -Exactly
+            $lookup.ErrorMessage | Should -Not -BeLike '*Not attempted*'
+        }
+
+        It 'Starts each SID afresh, so one server-down SID does not skip the next' {
+            Mock Get-ADObject { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) }
+            $null = Test-OrphanedSID -SID $script:orphan
+
+            Mock Get-ADObject { $null }
+            (Test-OrphanedSID -SID 'S-1-5-21-111-222-333-9002').Status | Should -Be 'Orphaned'
+            # The second SID runs every lookup; nothing from the first SID's failure carries over
+            Should -Invoke Get-ADObject -Times 2 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+            Should -Invoke Get-ADComputer -Times 1 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+        }
+    }
+
+    Context 'Test-ADServerDownError' {
+        It 'Is true for ADServerDownException' {
+            $record = [System.Management.Automation.ErrorRecord]::new([Microsoft.ActiveDirectory.Management.ADServerDownException]::new('down'), 'id', 'ConnectionError', $null)
+            Test-ADServerDownError -ErrorRecord $record | Should -BeTrue
+        }
+
+        It 'Is true when ADServerDownException is an inner exception' {
+            $inner = [Microsoft.ActiveDirectory.Management.ADServerDownException]::new('down')
+            $record = [System.Management.Automation.ErrorRecord]::new([System.Exception]::new('outer', $inner), 'id', 'ConnectionError', $null)
+            Test-ADServerDownError -ErrorRecord $record | Should -BeTrue
+        }
+
+        It 'Is false for <Kind>' -ForEach @(
+            @{ Kind = 'a timeout'; Make = { [System.TimeoutException]::new('timed out') } }
+            @{ Kind = 'access denied'; Make = { [System.UnauthorizedAccessException]::new('Access is denied') } }
+            @{ Kind = 'a server-down message on another type'; Make = { [System.Exception]::new('Unable to contact the server') } }
+        ) {
+            $record = [System.Management.Automation.ErrorRecord]::new((& $Make), 'id', 'NotSpecified', $null)
+            Test-ADServerDownError -ErrorRecord $record | Should -BeFalse
+        }
+    }
+
     It 'Answers from the cache on a repeat and counts the hit' {
         Mock Get-ADObject { if (-not $IncludeDeletedObjects) { [PSCustomObject]@{ DistinguishedName = 'CN=Live,DC=contoso,DC=com' } } }
 

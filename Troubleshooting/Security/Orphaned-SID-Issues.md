@@ -244,6 +244,20 @@ $results | Where-Object VerificationStatus -eq 'Orphaned'
 Fix the cause the error names, then run the command again. Unverified results are never cached, so
 the new run looks every such SID up afresh.
 
+**When the domain controller is down.** A directory lookup against a server that does not answer
+waits for the AD Web Services connect timeout, about 42 seconds, and fails with `Unable to contact
+the server`. After the first such failure for a SID, its remaining directory lookups are not tried,
+because they would wait and fail the same way. `VerificationError` then ends with `Not attempted
+because the directory server could not be contacted: <lookups>`. The local name lookup still runs.
+Each SID that needs the directory still costs one timeout, so a run against an unreachable domain
+controller slows by about 42 seconds per distinct SID. Every object that carries the same SID pays
+it again, because unverified answers are not cached. Check the domain controller before re-running:
+
+```powershell
+Get-ADDomainController -Discover -Service ADWS   # which DC the AD cmdlets will use
+Test-NetConnection <dc> -Port 9389               # AD Web Services
+```
+
 ### 6. SIDs from a trusted domain
 
 The local `Get-ADObject` and typed lookups search the local domain only. They find a SID from
@@ -263,8 +277,10 @@ Only the domain that issued a SID can say whether it still exists. When that dom
 found", the SID is reported orphaned. When it cannot be reached, nothing is decided and the SID is
 left in place.
 
-Each unreachable-trust lookup waits for the trust to time out, about 40 seconds per distinct SID in
-testing, and an unverified answer is not cached, so every ACE that names such a SID pays it again.
+An unreachable-trust lookup can wait for the trust to time out, about 40 seconds per distinct SID
+in testing. Once Windows has marked the trust broken (`nltest` below reports
+`ERROR_NO_LOGON_SERVERS`), each lookup fails in a few seconds instead; 4 seconds in testing. An
+unverified answer is not cached, so every ACE that names such a SID pays the cost again.
 A run that slows down sharply on objects with foreign entries is usually waiting on a trust:
 
 ```powershell

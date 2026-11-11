@@ -8,6 +8,14 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- A SID that cannot be verified because the domain controller does not answer is reported in about
+  42 seconds instead of about 3.5 minutes. Each of its five directory lookups waited for the AD Web
+  Services connect timeout in turn. After the first fails with `Unable to contact the server`, the
+  others are now skipped and listed in `VerificationError` as `Not attempted because the directory
+  server could not be contacted: <lookups>`. The SID is still `Unverified` and is never removed.
+  The local name lookup still runs and can still show that the SID exists.
+  ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
+
 - The documentation now states that `ProtectedSIDs` and `WellKnownSIDPatterns` in a `-ConfigPath`
   file replace the default lists in full, with nothing merged, and that this is intended: the file
   is the list. It also says what the built-in well-known check protects whatever the file says,
