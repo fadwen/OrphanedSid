@@ -38,6 +38,11 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
+  the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the
+  retries). The next lookup, which searches deleted objects, also returns live objects, and any match
+  there was taken as proof of deletion. Only a match marked `isDeleted` now counts as deleted; a
+  live match means the SID exists. ([#39](https://github.com/fadwen/OrphanedSid/issues/39))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

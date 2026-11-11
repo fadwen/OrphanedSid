@@ -230,11 +230,22 @@ function Test-OrphanedSID {
                 Write-StructuredLog "Get-ADObject lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
             }
 
-            # Method 1a: Check for deleted objects specifically
+            # Method 1a: Check for deleted objects specifically. -IncludeDeletedObjects returns live
+            # objects as well as tombstones, so this step is reached with a live match whenever
+            # Method 1 failed rather than came back empty; isDeleted tells the two apart.
             try {
-                $deletedObject = Invoke-ADOperationWithRetry -ScriptBlock {
-                    Get-ADObject -Filter "objectSid -eq '$SID'" -IncludeDeletedObjects -ErrorAction Stop
-                } -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId
+                $matchedObjects = @(Invoke-ADOperationWithRetry -ScriptBlock {
+                        Get-ADObject -Filter "objectSid -eq '$SID'" -IncludeDeletedObjects -Properties isDeleted -ErrorAction Stop
+                    } -OperationName 'Get-ADObject-Deleted-BySID' -ObjectContext $SID -CorrelationId $CorrelationId)
+
+                $liveObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -ne $true } | Select-Object -First 1
+                $deletedObject = $matchedObjects | Where-Object { $_ -and $_.isDeleted -eq $true } | Select-Object -First 1
+
+                if ($liveObject) {
+                    Write-StructuredLog "SID found as a live object by the deleted-objects lookup: $($liveObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
+                    return $script:SIDValidationCache[$SID]
+                }
 
                 if ($deletedObject) {
                     # A tombstone is positive evidence of deletion, so it settles the question even when
