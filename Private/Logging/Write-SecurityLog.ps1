@@ -61,12 +61,13 @@
     )
 
     process {
-        # Build comprehensive security log entry
+        # Build comprehensive security log entry. No Message key: Format-LogMessage copies these keys
+        # over the entry's own properties, so a plain Message here replaced the composed
+        # "[<type>] [<outcome>] <message>" in the file.
         $securityLogEntry = @{
             Timestamp = Get-Date
             SecurityEventType = $SecurityEventType
             Outcome = $Outcome
-            Message = $Message
             UserContext = "$env:USERNAME@$env:COMPUTERNAME"
             ProcessId = $PID
             CorrelationId = $CorrelationId

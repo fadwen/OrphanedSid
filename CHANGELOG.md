@@ -83,6 +83,11 @@ All notable changes to this module are recorded here. Format follows
   parsed it was off by the machine's UTC offset. It is now written in UTC. Backups made earlier
   keep their local time.
   ([#52](https://github.com/fadwen/OrphanedSid/issues/52))
+- A security audit line's `Message` lost its `[<type>] [<outcome>]` prefix: a plain copy of the
+  message among the entry's data overwrote the composed one, in the file and in the console
+  warning for a failure. Both now carry the prefixed message, as the Verbose stream and the
+  fallback files already did.
+  ([#55](https://github.com/fadwen/OrphanedSid/issues/55))
 - The module version recorded in a backup's `ScriptVersion`, a result's `ProcessingContext` and the
   log header was hard-coded (`2.1.0`, `1.0.0` and `2.0.0`). It is now read from the loaded module,
   and the log header line is `Module Version: <version>`. The `WellKnownSIDsSkipped` counter in a
