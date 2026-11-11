@@ -62,9 +62,6 @@ Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConso
 - **LogPath**: the directory is created if missing.
 - **MaxRetries** 1-10, **MaxMemoryUsageMB** 100-16384, **LogLevel** from a fixed set.
 
-`Test-PathTraversal` (`Private\Security\Test-PathTraversal.ps1`) exists as a utility for checking
-that a path stays under a base directory, but no command calls it.
-
 ## SID Validation Before Removal
 
 Every SID that discovery marks orphaned passes through `Invoke-SecurityValidation`

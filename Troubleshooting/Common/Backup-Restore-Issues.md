@@ -190,28 +190,31 @@ or more of these issues, joined by a semicolon and a space:
 **Root Cause:** the file was edited or truncated after creation, copied through a tool that altered
 encoding, or is not an OrphanedSid backup at all.
 
-**Resolution:** inspect the file with the shipped validator. Dot-source the logging system first so
-the private functions can log, then the file-based `Test-BackupIntegrity` from `Private\Utilities`:
+**Resolution:** inspect each file with the check the restore itself runs, `Test-BackupIntegrity`
+(`Private\Backup\Test-BackupValidation.ps1`). It takes the imported backup, so a file that cannot
+be imported at all is reported as unreadable:
 
 ```powershell
 Import-Module OrphanedSid
 # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
 Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Object {
-    $file = $_.FullName
-    $check = & (Get-Module OrphanedSid) { param($Path) Test-BackupFileIntegrity -BackupFilePath $Path } $file
+    $check = try {
+        $data = Import-Clixml -Path $_.FullName -ErrorAction Stop
+        & (Get-Module OrphanedSid) { param($Data) Test-BackupIntegrity -BackupData $Data } $data
+    } catch {
+        [PSCustomObject]@{ IsValid = $false; Issues = @("Cannot read the file: $($_.Exception.Message)") }
+    }
     [PSCustomObject]@{
         File    = $_.Name
         IsValid = $check.IsValid
-        Error   = $check.ErrorMessage
-        Details = $check.ValidationDetails -join '; '
+        Issues  = $check.Issues -join '; '
     }
 } | Format-Table -AutoSize
 ```
 
-`Test-BackupFileIntegrity` (`Private\Utilities`) takes `-BackupFilePath` and reads the file.
-`Test-BackupIntegrity` (`Private\Backup\Test-BackupValidation.ps1`) takes `-BackupData`, an
-already imported object, and is the one the restore workflow calls.
+`Test-BackupIntegrity` checks the required properties, the signature, and at the default
+`Standard` level the SHA256 hash and that the SDDL parses.
 
 For an inventory of a backup folder with filtering:
 
@@ -364,9 +367,18 @@ $source   = 'D:\ACLBackups\20250702_103631'
 $recovery = 'D:\ACLBackups\Recovered_20250702_103631'
 New-Item -Path $recovery -ItemType Directory -Force | Out-Null
 
+function Test-BackupFileUsable {
+    param([string]$Path)
+    try {
+        $data = Import-Clixml -Path $Path -ErrorAction Stop
+        (& (Get-Module OrphanedSid) { param($Data) Test-BackupIntegrity -BackupData $Data } $data).IsValid
+    } catch {
+        $false
+    }
+}
+
 Get-ChildItem -Path $source -Filter *.xml | ForEach-Object {
-    $file = $_.FullName
-    if ((& (Get-Module OrphanedSid) { param($p) Test-BackupFileIntegrity -BackupFilePath $p } $file).IsValid) {
+    if (Test-BackupFileUsable -Path $_.FullName) {
         Copy-Item -Path $_.FullName -Destination $recovery
         "Salvaged: $($_.Name)"
     } else {
@@ -416,10 +428,8 @@ Import-Module OrphanedSid
 $root = 'D:\ACLBackups'
 Get-ChildItem -Path $root -Directory | Where-Object CreationTime -gt (Get-Date).AddHours(-24) | ForEach-Object {
     $files = Get-ChildItem -Path $_.FullName -Filter *.xml
-    $valid = @($files | Where-Object {
-        $path = $_.FullName
-        (& (Get-Module OrphanedSid) { param($p) Test-BackupFileIntegrity -BackupFilePath $p } $path).IsValid
-    }).Count
+    # Test-BackupFileUsable is defined in the salvage example above
+    $valid = @($files | Where-Object { Test-BackupFileUsable -Path $_.FullName }).Count
     [PSCustomObject]@{ BackupSet = $_.Name; Files = $files.Count; Valid = $valid }
 } | Format-Table -AutoSize
 ```

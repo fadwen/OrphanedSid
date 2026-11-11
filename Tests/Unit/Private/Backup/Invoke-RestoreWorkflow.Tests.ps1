@@ -1,8 +1,7 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 <#
 .SYNOPSIS
-    Unit tests for Invoke-RestoreWorkflow, which finds backups and restores one object or many, and
-    for the Start-RestoreOperation and Complete-RestoreOperation helpers in the same file.
+    Unit tests for Invoke-RestoreWorkflow, which finds backups and restores one object or many.
 
 .DESCRIPTION
     Tests the real workflow against Clixml backup files written to the Pester test drive: parameter
@@ -386,87 +385,5 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.EntriesRestored | Should -Be 0
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
         }
-    }
-}
-
-Describe "Start-RestoreOperation" -Tag "Unit", "Backup", "RestoreWorkflow" {
-
-    BeforeEach {
-        Mock Write-Warning { }
-    }
-
-    It "Should build a context with the scope, correlation ID and process" -Skip:($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
-        Mock Import-Module { } -ParameterFilter { $Name -eq 'ActiveDirectory' }
-
-        $context = Start-RestoreOperation -OperationScope 'Bulk' -CorrelationId 'ctx-1'
-
-        $context.PSTypeNames | Should -Contain 'RestoreOperationContext'
-        $context.OperationScope | Should -Be 'Bulk'
-        $context.CorrelationId | Should -Be 'ctx-1'
-        $context.ADModuleAvailable | Should -BeTrue
-        $context.ProcessId | Should -Be $PID
-        $context.CurrentUser | Should -Be ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
-        Should -Invoke Write-Warning -Times 0 -Exactly
-    }
-
-    It "Should record the Active Directory module as unavailable and warn when it does not load" -Skip:($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
-        Mock Import-Module { throw 'module not found' } -ParameterFilter { $Name -eq 'ActiveDirectory' }
-
-        $context = Start-RestoreOperation
-
-        $context.ADModuleAvailable | Should -BeFalse
-        $context.OperationScope | Should -Be 'Single'
-        Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -eq 'Active Directory module not available: module not found' }
-    }
-
-    It "Should reject an unknown scope" {
-        { Start-RestoreOperation -OperationScope 'Everything' } | Should -Throw "*parameter 'OperationScope'*"
-    }
-}
-
-Describe "Complete-RestoreOperation" -Tag "Unit", "Backup", "RestoreWorkflow" {
-
-    BeforeAll {
-        $script:context = [PSCustomObject]@{ OperationScope = 'Bulk'; MemoryUsage = 0 }
-        $script:results = @(
-            [PSCustomObject]@{ Success = $true; Duration = [TimeSpan]::FromSeconds(1) }
-            [PSCustomObject]@{ Success = $false; Duration = [TimeSpan]::FromSeconds(2) }
-            [PSCustomObject]@{ Success = $true; Duration = [TimeSpan]::FromSeconds(3) }
-        )
-    }
-
-    It "Should count successes and failures and compute the success rate" {
-        $summary = Complete-RestoreOperation -OperationContext $script:context -Results $script:results -CorrelationId 'sum-1' -ErrorAction SilentlyContinue
-
-        $summary.PSTypeNames | Should -Contain 'RestoreOperationSummary'
-        $summary.OperationScope | Should -Be 'Bulk'
-        $summary.TotalOperations | Should -Be 3
-        $summary.SuccessfulOperations | Should -Be 2
-        $summary.FailedOperations | Should -Be 1
-        $summary.SuccessRate | Should -Be 66.67
-        $summary.CorrelationId | Should -Be 'sum-1'
-    }
-
-    # Module bug (#18): Measure-Object -Sum rejects TimeSpan values, so TotalDuration is null and AverageDuration zero
-    It "Should total and average the durations of the results" -Skip {
-        $summary = Complete-RestoreOperation -OperationContext $script:context -Results $script:results
-
-        $summary.TotalDuration | Should -Be ([TimeSpan]::FromSeconds(6))
-        $summary.AverageDuration | Should -Be ([TimeSpan]::FromSeconds(2))
-    }
-
-    It "Should report zeros for a run with no results" {
-        $summary = Complete-RestoreOperation -OperationContext $script:context
-
-        $summary.TotalOperations | Should -Be 0
-        $summary.SuccessfulOperations | Should -Be 0
-        $summary.FailedOperations | Should -Be 0
-        $summary.SuccessRate | Should -Be 0
-        $summary.TotalDuration | Should -Be ([TimeSpan]::Zero)
-        $summary.AverageDuration | Should -Be ([TimeSpan]::Zero)
-    }
-
-    It "Should reject a null operation context" {
-        { Complete-RestoreOperation -OperationContext $null } | Should -Throw "*parameter 'OperationContext'*"
     }
 }

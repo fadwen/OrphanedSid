@@ -167,7 +167,8 @@ $rules   = Get-ObjectAccessRule -ADObject $object -IncludeInherited
 $results = Find-OrphanedSIDsInObject -ADObject $object -IncludeInherited
 "Orphaned SIDs: $($results.Count)"
 $results | Select-Object ObjectDN, OrphanedSID, LikelySource, Confidence, IsInherited
-$results | Get-SIDProcessingStatistics | Select-Object TotalSIDsProcessed, TotalOrphanedSIDsFound, TotalErrorsEncountered, AverageProcessingTimeMS
+# One statistics table per object, shared by all of that object's results
+$results | Select-Object -First 1 -ExpandProperty ProcessingStatistics
 Get-SIDValidationCacheStat
 ```
 
@@ -183,5 +184,5 @@ Get-SIDValidationCacheStat
 ## Support Information
 
 - **Module**: `Private\SID\Invoke-SIDProcessing.ps1`
-- **Functions**: `Find-OrphanedSIDsInObject`, `Get-SIDProcessingStatistics`
+- **Functions**: `Find-OrphanedSIDsInObject`
 - **Correlation ID**: include the run's `-CorrelationId` in support requests
