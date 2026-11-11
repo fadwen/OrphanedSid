@@ -68,7 +68,11 @@ PROTECTED SIDS
     SIDs in the ProtectedSIDs list (the BUILTIN Administrators, Users and Guests groups,
     SYSTEM, LOCAL SERVICE and NETWORK SERVICE) and SIDs matching WellKnownSIDPatterns are
     never reported as orphaned and never removed. Either list can be replaced through a JSON
-    file passed as -ConfigPath.
+    file passed as -ConfigPath. A list in the file replaces the default list in full; nothing
+    is merged, so a file that adds a SID must repeat the defaults it keeps. The built-in
+    well-known check cannot be changed by a file: BUILTIN groups (S-1-5-32-*), the universal
+    and NT Authority SIDs, service SIDs, and the Domain, Schema and Enterprise Admins groups
+    of any domain are never reported as orphaned whatever the file says.
 
 CONFIGURATION FILE
     -ConfigPath accepts a JSON file. Only these top-level keys are read; anything else is

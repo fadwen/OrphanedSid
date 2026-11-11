@@ -110,6 +110,8 @@ Only WellKnownSIDPatterns, ProtectedSIDs, BatchSize,
 MemoryCheckInterval, LogLevel, LogFilePath, EnableLogFileRotation
 and MaxLogFileSizeMB are read.
 The file's LogLevel applies when -LogLevel, -Verbose and -Debug are all absent.
+ProtectedSIDs and WellKnownSIDPatterns replace the default lists in full; repeat the defaults to
+keep them. See about_OrphanedSid.
 
 ```yaml
 Type: System.String

@@ -111,7 +111,8 @@ HelpMessage: ''
 
 JSON configuration file; see Find-OrphanedSid for the keys read.
 ProtectedSIDs and
-WellKnownSIDPatterns are the ones that matter here.
+WellKnownSIDPatterns are the ones that matter here. Each replaces its default list in full, so a
+file that adds a SID must repeat the defaults it keeps. See about_OrphanedSid.
 
 ```yaml
 Type: System.String

@@ -289,11 +289,15 @@ keys are ignored silently:
   "LogLevel": "Information",
   "LogFilePath": "\\\\fileserver\\logs\\ADSecurity\\OrphanedSid.log",
   "EnableLogFileRotation": true,
-  "MaxLogFileSizeMB": 10,
-  "ProtectedSIDs": ["S-1-5-32-544", "S-1-5-32-545", "S-1-5-32-546", "S-1-5-18", "S-1-5-19", "S-1-5-20"],
-  "WellKnownSIDPatterns": ["^S-1-1-0$", "^S-1-5-11$", "^S-1-5-32-", "^S-1-3-[0-4]$", "^S-1-5-18$", "^S-1-5-19$", "^S-1-5-20$"]
+  "MaxLogFileSizeMB": 10
 }
 ```
+
+`ProtectedSIDs` and `WellKnownSIDPatterns` can be set in the same file, but each replaces its
+default list in full, so a partial list drops the defaults it leaves out. The built-in well-known
+check does not cover some of those, such as the integrity-level (`^S-1-16-`) and app-package
+(`^S-1-15-2-`) patterns. Build such a file from the defaults as
+[Automation](../../Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows.
 
 `LogLevel` in the file sets the file log level when the command is run without `-LogLevel`,
 `-Verbose` or `-Debug`. `LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created

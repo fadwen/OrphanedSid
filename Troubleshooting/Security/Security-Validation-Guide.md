@@ -238,8 +238,12 @@ Supply a JSON file with `-ConfigPath`. The lists are set by the keys below; the 
 - `ProtectedSIDs` must each match `^S-1-\d+(-\d+)*$`; a match blocks removal outright.
 - `WellKnownSIDPatterns` must compile as .NET regular expressions; a match excludes the SID from
   discovery as well as from removal.
-- Supplying either key replaces the default list for that key; include the defaults you want to
-  keep.
+- Supplying either key replaces the default list for that key in full; nothing is merged. The
+  example above repeats every default and adds to it. A file listing only the extra entries would
+  drop the defaults, by design: the file is the list. The built-in well-known check still applies
+  whatever the file says; see
+  [Automation](../../Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) for what it
+  covers and how to start a file from the defaults.
 - `CriticalObjectPatterns` is not read from the file; the defaults listed above always apply.
 
 ## Security Checklist Before a Removal Run

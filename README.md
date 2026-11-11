@@ -162,12 +162,16 @@ cause is fixed.
 
 | Key | Range | Effect |
 | --- | --- | --- |
-| `WellKnownSIDPatterns` | regex list | Matching identity references are never reported |
-| `ProtectedSIDs` | SID list | Never removed, even if unresolvable; replaces the default list |
+| `WellKnownSIDPatterns` | regex list | Matching identity references are never reported; **replaces the default list in full** |
+| `ProtectedSIDs` | SID list | Never removed, even if unresolvable; **replaces the default list in full** |
 | `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
 | `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
 | `LogLevel` | Critical to Verbose | File log level when the command line sets none; `-LogLevel`, `-Verbose` and `-Debug` win |
 | `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+
+A file that sets either SID list uses exactly that list; to add to the defaults, repeat them in the
+file. [Automation](Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows how
+to start a file from the defaults and what stays protected regardless.
 
 Everything else is a command parameter. See `Get-Help Find-OrphanedSid -Full` and
 `Get-Help about_OrphanedSid`.

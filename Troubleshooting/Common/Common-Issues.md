@@ -230,8 +230,8 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 
 | Key | Type | Default | Accepted |
 | --- | --- | --- | --- |
-| `WellKnownSIDPatterns` | string[] of regex | built-in list | each must compile |
-| `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$` |
+| `WellKnownSIDPatterns` | string[] of regex | built-in list | each must compile; replaces the default list in full |
+| `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$`; replaces the default list in full |
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
 | `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent |
