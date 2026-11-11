@@ -19,7 +19,7 @@ Describe "RemovalOperationResult Class Tests" -Tag "Unit", "Classes", "RemovalOp
         It "Should initialize the SID lists as empty string arrays" {
             $result = [RemovalOperationResult]::new()
 
-            foreach ($name in 'IntendedRemovals', 'RemovedSIDs', 'FailedSIDs', 'BlockedSIDs') {
+            foreach ($name in 'RemovedSIDs', 'FailedSIDs', 'BlockedSIDs') {
                 $result.$name.GetType().Name | Should -Be 'String[]' -Because "$name is a string array"
                 $result.$name.Count | Should -Be 0 -Because "$name starts empty"
             }
@@ -28,6 +28,8 @@ Describe "RemovalOperationResult Class Tests" -Tag "Unit", "Classes", "RemovalOp
         It "Should initialize counters to zero" {
             $result = [RemovalOperationResult]::new()
 
+            $result.IntendedRemovals | Should -BeOfType [int]
+            $result.IntendedRemovals | Should -Be 0
             $result.ActualRemovals | Should -Be 0
             $result.FailedRemovals | Should -Be 0
         }

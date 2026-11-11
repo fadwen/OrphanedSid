@@ -273,8 +273,7 @@ Describe "Test-SIDSecurity" -Tag 'Unit', 'Private', 'SID' {
             }
         }
 
-        # Module bug (#26): the 'Low' branch and the final determination both add the SID to AllowedSIDs
-        It "Lists an allowed Low risk SID in AllowedSIDs once" -Skip {
+        It "Lists an allowed Low risk SID in AllowedSIDs once" {
             $result = Test-SIDSecurity -SIDString $ServiceSID
 
             $result.AllowedSIDs | Should -Be @($ServiceSID)

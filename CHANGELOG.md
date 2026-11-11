@@ -20,6 +20,14 @@ All notable changes to this module are recorded here. Format follows
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
   count for discovery and removal runs. It read those values only from an object's properties, and
   the processing results are a hashtable.
+- The security check before a removal reported a batch as `High` risk when a high-risk SID followed
+  a blocked one, although a blocked SID makes the batch `Critical`. The blocked SID was still not
+  removed. ([#27](https://github.com/fadwen/OrphanedSid/issues/27))
+- The SID security check listed a low-risk SID twice among the allowed SIDs.
+  ([#26](https://github.com/fadwen/OrphanedSid/issues/26))
+- The audit entries for the ACL read that verifies a removal carried a new correlation ID instead of
+  the run's, so they could not be tied to the removal.
+  ([#29](https://github.com/fadwen/OrphanedSid/issues/29))
 - `Remove-OrphanedSid` could not back up an object whose distinguished name is longer than about 200
   characters under Windows PowerShell 5.1 unless the backup folder path was very short. The backup
   file name alone could reach 230 characters and the full path passed the 260-character limit, so
@@ -69,6 +77,9 @@ All notable changes to this module are recorded here. Format follows
   read the targets to settle the unverified ones.
 - `Remove-OrphanedSid` logs a warning naming each unverified SID it skips, and the processing summary
   reports how many SIDs were unverified.
+- `IntendedRemovals` on removal results is a number. It was a one-element string array holding the
+  count (`{"2"}`), unlike `ActualRemovals` and `FailedRemovals`.
+  ([#28](https://github.com/fadwen/OrphanedSid/issues/28))
 
 ## [1.0.1] - 2026-11-09
 
