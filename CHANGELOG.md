@@ -76,9 +76,6 @@ All notable changes to this module are recorded here. Format follows
   security descriptor, which shows read access only, so an account without the right to change
   permissions passed it. A restore that lacks that right fails at the point it applies the ACL,
   with the error from `Set-Acl`. ([#15](https://github.com/fadwen/OrphanedSid/issues/15))
-
-### Removed
-
 - Eight internal functions that no command called, each with defects of its own:
   `Test-BackupSignature`, `Test-BackupFileIntegrity`, `Start-RestoreOperation`,
   `Complete-RestoreOperation`, `Test-PathTraversal`, `Get-SIDProcessingStatistics`,
