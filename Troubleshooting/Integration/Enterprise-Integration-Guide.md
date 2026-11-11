@@ -297,8 +297,9 @@ keys are ignored silently:
 ```
 
 `LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
-automatically, so it must already exist or every entry fails with an `Add-Content` error
-(`Could not find a part of the path '<path>'`). Search base, memory limit, retries, and output path
+automatically, so it must already exist or every entry fails with the warning
+`Failed to write log entry to file: Could not find a part of the path '<path>'.`. Search base,
+memory limit, retries, and output path
 are parameters only and cannot be set in the file. Validate a file before deploying it:
 
 ```powershell

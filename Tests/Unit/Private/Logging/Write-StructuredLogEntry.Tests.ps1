@@ -19,7 +19,17 @@ Describe "Write-StructuredLogEntry" {
     }
 
     Context "Parameter Validation" {
-        It "Should reject an empty Message" {
+        It 'Reports a log file it cannot write through its own warning (#45)' {
+        # A folder where the file should be: Add-Content fails with a non-terminating error, which
+        # skipped the function's catch and its warning
+        $folder = Join-Path $TestDrive 'not-a-file.log'
+        $null = New-Item -Path $folder -ItemType Directory -Force
+
+        $warnings = @(Write-StructuredLogEntry -Message 'Test' -Level 'Error' -LogPath $folder 3>&1 2>$null)
+
+        @($warnings | Where-Object { "$_" -like 'Failed to write log entry to file:*' }).Count | Should -Be 1
+    }
+    It "Should reject an empty Message" {
             { Write-StructuredLogEntry -Message "" -Level "Information" } | Should -Throw
         }
 

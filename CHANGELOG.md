@@ -76,6 +76,10 @@ All notable changes to this module are recorded here. Format follows
   as `OrphanedSIDResult` with enum names and local time on both, and `Remove-OrphanedSid -WhatIf`
   previews with the same `RemovalOperationResult` type a real removal returns.
   ([#41](https://github.com/fadwen/OrphanedSid/issues/41))
+- A relative `-LogPath` was resolved against the module's own folder, so `-LogPath .\run.log` wrote
+  into the module's install folder. It is now resolved against the current directory. A log entry
+  that cannot be written now produces the module's `Failed to write log entry to file: ...` warning
+  instead of a raw `Add-Content` error. ([#45](https://github.com/fadwen/OrphanedSid/issues/45))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

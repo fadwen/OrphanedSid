@@ -36,7 +36,7 @@ data to CSV in addition.
 | `-TargetObjectDN <string[]>` | Restore | Object or container DNs to restore. Mandatory; accepts pipeline input; aliases `DistinguishedName` and `SearchBase`. |
 | `-BackupPath <path>` | Remove, Restore | Remove: folder that receives the per-run `<yyyyMMdd_HHmmss>` subfolder, default `.\Backup` under the current directory; its parent must exist. Restore: mandatory, the timestamped run folder that holds the `.xml` files. |
 | `-OutputPath <path>` | all | CSV file for the results. The parent folder must exist. |
-| `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. Pass an absolute path: a relative value is resolved against the module folder. An existing file is overwritten at the start of the run. |
+| `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. A relative path is resolved against the current directory. An existing file is overwritten at the start of the run. |
 | `-LogLevel <level>` | all | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
 | `-SuppressConsoleOutput` | all | Suppresses console log output. File logging is unaffected. |
 | `-CorrelationId <string>` | all | Identifier stamped on every log line of the run, on every result and CSV row, and on every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
