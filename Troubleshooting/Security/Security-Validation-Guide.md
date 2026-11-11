@@ -212,7 +212,7 @@ How to read them, and what to do when they land in emergency files, is in
 ## Customising the Lists
 
 Supply a JSON file with `-ConfigPath`. The lists are set by the keys below; the file may also set
-`BatchSize`, `EnableDetailedLogging`, `LogFilePath`, `EnableLogFileRotation` and
+`BatchSize`, `MemoryCheckInterval`, `LogLevel`, `LogFilePath`, `EnableLogFileRotation` and
 `MaxLogFileSizeMB`:
 
 ```json

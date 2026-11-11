@@ -16,7 +16,8 @@ function Start-OrphanedSidSession {
 
         The log level follows -Verbose and -Debug on the calling command when -LogLevel was not
         given explicitly, because an operator who asked for verbose console output expects the
-        same detail in the file.
+        same detail in the file. When the command line chose no level at all, the LogLevel of the
+        -ConfigPath file applies, and Information when the file has none.
 
     .PARAMETER CommandName
         Name of the public command starting the run. Used for the default log file name and the
@@ -121,12 +122,18 @@ function Start-OrphanedSidSession {
     $script:CorrelationId = $CorrelationId
     $script:SuppressConsoleOutput = [bool]$SuppressConsoleOutput
 
+    # Precedence: -LogLevel, then -Verbose or -Debug, then the -ConfigPath file's LogLevel, then
+    # Information. The file is read later, so only the decision is made here.
+    $useConfigLogLevel = $false
     if (-not $LogLevelBound) {
         if ($VerbosePreference -eq 'Continue') {
             $LogLevel = 'Verbose'
         }
         elseif ($DebugPreference -eq 'Continue') {
             $LogLevel = 'Debug'
+        }
+        else {
+            $useConfigLogLevel = $true
         }
     }
     $script:LogLevel = $LogLevel
@@ -148,6 +155,7 @@ function Start-OrphanedSidSession {
         MaxMemoryUsageMB      = $MaxMemoryUsageMB
         CorrelationId         = $CorrelationId
         LogLevel              = $LogLevel
+        UseConfigLogLevel     = $useConfigLogLevel
         SuppressConsoleOutput = $SuppressConsoleOutput
     }
     $initResults = Initialize-ScriptExecution @initParams

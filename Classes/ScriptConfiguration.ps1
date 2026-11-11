@@ -6,7 +6,6 @@ class ScriptConfiguration {
     [string[]]$CriticalObjectPatterns
     [int]$BatchSize
     [int]$MemoryCheckInterval
-    [bool]$EnableDetailedLogging
     [string]$LogLevel
     [string]$LogFilePath
     [bool]$EnableLogFileRotation
@@ -55,7 +54,7 @@ class ScriptConfiguration {
         # Results per streaming batch file written by StreamingResultsManager
         $this.BatchSize = 50
         $this.MemoryCheckInterval = 50
-        $this.EnableDetailedLogging = $false
+        # File log level when the command line sets none; see Start-OrphanedSidSession
         $this.LogLevel = 'Information'
         $this.LogFilePath = $null
         $this.EnableLogFileRotation = $true
@@ -110,7 +109,6 @@ class ScriptConfiguration {
                 $config.MemoryCheckInterval = $configData.MemoryCheckInterval
             }
 
-            if ($null -ne $configData.EnableDetailedLogging) { $config.EnableDetailedLogging = $configData.EnableDetailedLogging }
             if ($configData.LogLevel) { $config.LogLevel = $configData.LogLevel }
             if ($configData.LogFilePath) { $config.LogFilePath = $configData.LogFilePath }
             if ($null -ne $configData.EnableLogFileRotation) { $config.EnableLogFileRotation = $configData.EnableLogFileRotation }

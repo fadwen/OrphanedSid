@@ -107,8 +107,9 @@ USE CASE: Re-checking after a domain controller outage or a permissions problem 
 
 JSON configuration file.
 Only WellKnownSIDPatterns, ProtectedSIDs, BatchSize,
-MemoryCheckInterval, EnableDetailedLogging, LogLevel, LogFilePath, EnableLogFileRotation
+MemoryCheckInterval, LogLevel, LogFilePath, EnableLogFileRotation
 and MaxLogFileSizeMB are read.
+The file's LogLevel applies when -LogLevel, -Verbose and -Debug are all absent.
 
 ```yaml
 Type: System.String
@@ -176,6 +177,8 @@ HelpMessage: ''
 
 Lowest level written to the log file.
 Security events are written at every level.
+When omitted, -Verbose sets Verbose and -Debug sets Debug; without either, the LogLevel of
+the -ConfigPath file applies, and Information when there is none.
 
 ```yaml
 Type: System.String

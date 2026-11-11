@@ -265,6 +265,24 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @($ids | Where-Object { $_ -ne 'RUN-42' } | Select-Object -Unique) | Should -Be @()
         }
 
+        It "Filters the log at the -ConfigPath file's LogLevel unless the command line sets one (#43)" {
+            $config = Join-Path $TestDrive 'warning-level.json'
+            @{ LogLevel = 'Warning' } | ConvertTo-Json | Set-Content -Path $config
+            $fromFile = Join-Path $TestDrive 'level-file.log'
+            $fromCommand = Join-Path $TestDrive 'level-command.log'
+            $search = "OU=Finance,$script:DomainDN"
+
+            $null = Find-OrphanedSid -SearchBase $search -ConfigPath $config -LogPath $fromFile -SuppressConsoleOutput
+            $null = Find-OrphanedSid -SearchBase $search -ConfigPath $config -LogPath $fromCommand -SuppressConsoleOutput -LogLevel Information
+
+            # Written once the configuration is loaded, at Information
+            Select-String -Path $fromFile -Pattern 'Find-OrphanedSid starting' -SimpleMatch | Should -BeNullOrEmpty
+            Select-String -Path $fromFile -Pattern 'Total objects processed' -SimpleMatch | Should -BeNullOrEmpty
+            Select-String -Path $fromFile -Pattern '] [Warning] [' -SimpleMatch | Should -Not -BeNullOrEmpty
+            Select-String -Path $fromCommand -Pattern 'Find-OrphanedSid starting' -SimpleMatch | Should -Not -BeNullOrEmpty
+            Select-String -Path $fromCommand -Pattern 'Total objects processed' -SimpleMatch | Should -Not -BeNullOrEmpty
+        }
+
         It 'Returns typed results with enum names, in the pipeline and the CSV (#41)' {
             $csvPath = Join-Path $TestDrive 'typed.csv'
 

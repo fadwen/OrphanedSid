@@ -129,6 +129,12 @@ function Initialize-ScriptExecution {
         [String] (Optional) Logging level for output control (Default: Information).
         Controls verbosity of logging output for different environments.
 
+    .PARAMETER UseConfigLogLevel
+        [Switch] (Optional) Replace -LogLevel with the LogLevel of the -ConfigPath file once that
+        file is loaded. Start-OrphanedSidSession sets it only when the command line chose no level
+        (-LogLevel, -Verbose or -Debug), so the command line always wins over the file. A file
+        without LogLevel leaves the level at Information. Without -ConfigPath it has no effect.
+
     .OUTPUTS
         [Hashtable] Initialization results containing:
         - Config: Loaded and validated configuration object
@@ -209,6 +215,9 @@ function Initialize-ScriptExecution {
         [string]$LogLevel = 'Information',
 
         [Parameter()]
+        [switch]$UseConfigLogLevel,
+
+        [Parameter()]
         [switch]$SuppressConsoleOutput
     )
 
@@ -254,7 +263,8 @@ function Initialize-ScriptExecution {
             # Initialize configuration
             Write-StructuredLog "Loading configuration..." -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
 
-            $script:Config = if ($ConfigPath -and (Test-Path $ConfigPath)) {
+            $configFromFile = [bool]($ConfigPath -and (Test-Path $ConfigPath))
+            $script:Config = if ($configFromFile) {
                 Write-StructuredLog "Loading configuration from file: $ConfigPath" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
                 [ScriptConfiguration]::LoadFromFile($ConfigPath)
             } else {
@@ -265,6 +275,13 @@ function Initialize-ScriptExecution {
             # Validate configuration
             if (-not $script:Config.ValidateConfiguration()) {
                 throw "Configuration validation failed"
+            }
+
+            # Validated above, so the level is one Test-LogLevel knows. Applied after the lines that
+            # precede it, which were filtered at the command's level.
+            if ($UseConfigLogLevel -and $configFromFile) {
+                $script:LogLevel = $script:Config.LogLevel
+                Write-StructuredLog "File log level set to $($script:Config.LogLevel) by the configuration file" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
             }
 
             Write-StructuredLog "Configuration loaded and validated successfully" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
