@@ -7,8 +7,8 @@
     Imports the module and runs Find-OrphanedSid, Remove-OrphanedSid and Restore-OrphanedSidBackup
     exactly as an operator would. Only the boundary is mocked: the ActiveDirectory cmdlets and
     Get-Acl/Set-Acl on AD:\ paths read and write a hashtable of objects whose security descriptors
-    are real ActiveDirectorySecurity instances held as SDDL. The one exception is
-    Get-RestorationTarget in the restore tests, explained there. Every assertion is made on what
+    are real ActiveDirectorySecurity instances held as SDDL. Nothing inside the module is mocked.
+    Every assertion is made on what
     the commands return, what they leave in that directory, and what they write to disk.
 
     The directory holds four kinds of trustee:
@@ -307,27 +307,6 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
     }
 
     Context 'Restore-OrphanedSidBackup' {
-        BeforeAll {
-            # Get-RestorationTarget probes write access with [DirectoryEntry]::new('LDAP://...'),
-            # which needs a reachable domain controller and cannot be mocked. It is the one module
-            # function replaced here; backup discovery, hash validation, ACL rebuild and Set-Acl
-            # all run for real.
-            Mock -ModuleName OrphanedSid Get-RestorationTarget {
-                [PSCustomObject]@{
-                    PSTypeName       = 'TargetValidationResult'
-                    IsValid          = $true
-                    TargetObjectDN   = $TargetObjectDN
-                    ObjectExists     = $true
-                    ObjectType       = 'organizationalUnit'
-                    ACLReadable      = $true
-                    WritePermissions = $true
-                    Issues           = @()
-                    CorrelationId    = $CorrelationId
-                    ValidatedAt      = Get-Date
-                }
-            }
-        }
-
         It 'Puts back the security descriptor a removal backed up' {
             $null = Invoke-RemoveOrphanedSid
             $dn = "OU=Finance,$script:DomainDN"

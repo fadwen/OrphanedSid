@@ -20,6 +20,35 @@ All notable changes to this module are recorded here. Format follows
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
   count for discovery and removal runs. It read those values only from an object's properties, and
   the processing results are a hashtable.
+- `Remove-OrphanedSid` could not back up an object whose distinguished name is longer than about 200
+  characters under Windows PowerShell 5.1 unless the backup folder path was very short. The backup
+  file name alone could reach 230 characters and the full path passed the 260-character limit, so
+  the backup failed and that object's orphaned entries were not removed. The name is now shortened
+  to fit the folder it is written to. When it has to be shortened, it carries a hash of the full
+  DN, so two long DNs backed up in the same second no longer get the same file name. A backup folder
+  too long to hold any backup file is refused with a message saying so.
+  ([#19](https://github.com/fadwen/OrphanedSid/issues/19))
+- A backup whose SHA256 hash differed from the computed one only in letter case passed the integrity
+  check before a restore. The hash is compared case-sensitively now.
+  ([#12](https://github.com/fadwen/OrphanedSid/issues/12))
+- A backup with an empty `SDDL` or `SDDLHash` passed validation because the integrity checks ran
+  only when both had values. An empty required property now fails validation at every level.
+  ([#13](https://github.com/fadwen/OrphanedSid/issues/13))
+- When `Restore-OrphanedSidBackup` rejected a target object, the error ended in an empty reason
+  (`Target object validation failed: `). It now names each problem found.
+  ([#16](https://github.com/fadwen/OrphanedSid/issues/16))
+- A missing backup folder was logged twice. ([#20](https://github.com/fadwen/OrphanedSid/issues/20))
+- Restoring from a specific backup file restored whichever object the file recorded, even when it
+  was not the object asked for. A backup file recorded for a different object is now refused.
+  Several distinguished names piped into one restore from a backup folder are each restored from
+  their own backup. ([#17](https://github.com/fadwen/OrphanedSid/issues/17))
+
+### Removed
+
+- The restore pre-check no longer reports write access. It opened an LDAP connection and read the
+  security descriptor, which shows read access only, so an account without the right to change
+  permissions passed it. A restore that lacks that right fails at the point it applies the ACL,
+  with the error from `Set-Acl`. ([#15](https://github.com/fadwen/OrphanedSid/issues/15))
 
 ### Changed
 

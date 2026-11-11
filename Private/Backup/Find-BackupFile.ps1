@@ -194,17 +194,16 @@ function Find-BackupFile {
             $sanitizedPath = $BackupPath.Trim()
             Write-StructuredLog "Starting backup file discovery in: $sanitizedPath" -Level Debug -CorrelationId $CorrelationId
 
-            # Validate directory existence and accessibility
+            # Validate directory existence and accessibility. Only Test-Path is inside the try: a
+            # path it cannot evaluate counts as missing, and the failure is reported once, below.
+            $directoryExists = $false
             try {
-                if (-not (Test-Path $sanitizedPath -PathType Container)) {
-                    $errorMessage = "Backup directory not found or inaccessible: $sanitizedPath"
-                    Write-StructuredLog $errorMessage -Level Error -CorrelationId $CorrelationId
-                    Write-Error $errorMessage -ErrorAction Stop
-                    return
-                }
+                $directoryExists = Test-Path $sanitizedPath -PathType Container -ErrorAction Stop
             }
             catch {
-                # Handle path traversal and other path validation errors
+                Write-Verbose "Could not evaluate backup path $sanitizedPath : $($_.Exception.Message)"
+            }
+            if (-not $directoryExists) {
                 $errorMessage = "Backup directory not found or inaccessible: $sanitizedPath"
                 Write-StructuredLog $errorMessage -Level Error -CorrelationId $CorrelationId
                 Write-Error $errorMessage -ErrorAction Stop
