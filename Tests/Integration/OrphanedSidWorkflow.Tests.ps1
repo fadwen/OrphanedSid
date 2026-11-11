@@ -38,6 +38,7 @@ BeforeAll {
     $script:DomainDN = 'DC=lab,DC=test'
     $script:LiveSid = "$script:DomainSid-1105"
     $script:OrphanSid = "$script:DomainSid-1999"
+    $script:SecondOrphanSid = "$script:DomainSid-1998"
     $script:FailingSid = "$script:DomainSid-1777"
     # A live principal whose ordinary lookups time out; only the deleted-objects lookup answers (#39)
     $script:FlakySid = "$script:DomainSid-1300"
@@ -364,6 +365,30 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:LiveSid
         }
 
+        It 'Puts back every orphaned SID removed from one object (#40)' {
+            $dn = "CN=Two,OU=Finance,$script:DomainDN"
+            $script:Directory[$dn] = New-DirectoryObject -DN $dn -ObjectClass 'group' -Trustee $script:OrphanSid, $script:SecondOrphanSid
+            $script:OriginalSddl[$dn] = $script:Directory[$dn].Sddl
+
+            $null = Invoke-RemoveOrphanedSid
+
+            Get-TrusteeSid -DN $dn | Should -Not -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $dn | Should -Not -Contain $script:SecondOrphanSid
+            $backups = @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Two_*' -Recurse)
+            $backups.Count | Should -Be 1
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupPath            = $backups[0].DirectoryName
+                LogPath               = Join-Path $TestDrive 'restore.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            (Restore-OrphanedSidBackup @parameters).Success | Should -BeTrue
+
+            Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $dn | Should -Contain $script:SecondOrphanSid
+        }
         It 'Refuses a backup whose security descriptor no longer matches its hash' {
             $null = Invoke-RemoveOrphanedSid
             $dn = "OU=Finance,$script:DomainDN"

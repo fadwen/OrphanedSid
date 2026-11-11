@@ -1,4 +1,4 @@
-﻿# Security Validation Guide - OrphanedSid
+# Security Validation Guide - OrphanedSid
 ## Overview
 
 This guide describes the security controls built into `Find-OrphanedSid`: how a run is gated
@@ -17,9 +17,9 @@ to verify each control and how to customise the lists it relies on.
 ### -WhatIf
 
 `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` honour `SupportsShouldProcess`. With
-`Remove-OrphanedSid -WhatIf` the full discovery runs, every planned removal prints
-`What if: Performing the operation "Remove Orphaned SID" on target "<DN> - SID: <SID>"` and is
-written to the pipeline with `SecurityValidation = 'WhatIf - Would Remove'`, and no ACL is written
+`Remove-OrphanedSid -WhatIf` the full discovery runs, every object with planned removals prints
+`What if: Performing the operation "Remove Orphaned SIDs" on target "<DN> - SIDs: <SID>, <SID>"`
+and is written to the pipeline with `SecurityValidation = 'WhatIf - Would Remove'`, and no ACL is written
 and no backup folder is created. `Find-OrphanedSid` never changes anything and has no `-WhatIf`.
 
 ### Confirmation and -Force
@@ -68,10 +68,10 @@ Every SID that discovery marks orphaned passes through `Invoke-SecurityValidatio
 (`Private\Security\Invoke-SecurityValidation.ps1`) inside `Invoke-RemovalWorkflow` before any ACL
 is touched. It calls `Test-SIDSecurity -ValidationLevel Standard` for each SID and produces a
 `SecurityValidationResult` with `IsValid`, `RiskLevel`, `AllowedSIDs`, `BlockedSIDs`, `Issues` and
-`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` removes one SID per call, so a
-blocked SID skips that removal with `SECURITY BLOCK: Security validation failed: <issues>` at
-Error level (a call given several SIDs is skipped whole if any is blocked), and only `AllowedSIDs`
-are ever passed to `Invoke-SIDRemoval`.
+`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` passes all of an object's verified
+orphaned SIDs in one call, and a call is skipped whole if any of its SIDs is blocked, with
+`SECURITY BLOCK: Security validation failed: <issues>` at Error level, so the object's ACL is left
+unchanged. Only `AllowedSIDs` are ever passed to `Invoke-SIDRemoval`.
 
 ### Test-SIDSecurity
 

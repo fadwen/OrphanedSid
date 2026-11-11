@@ -1,4 +1,4 @@
-﻿# OrphanedSid
+# OrphanedSid
 
 [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/OrphanedSid?label=PowerShell%20Gallery)](https://www.powershellgallery.com/packages/OrphanedSid)
 [![Gallery downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fadwen/OrphanedSid/badges/gallery-downloads.json)](https://www.powershellgallery.com/packages/OrphanedSid)
@@ -27,7 +27,7 @@ applies it. Discovery results stream to batch files on disk while the run is in 
 ### Key features
 
 - **Objects on the pipeline.** One `OrphanedSIDResult` per orphaned entry, one
-  `RemovalOperationResult` per removed entry, one restore result per target. `-OutputPath` also
+  `RemovalOperationResult` per object changed, one restore result per target. `-OutputPath` also
   writes CSV.
 - **Backup before change.** Every `Remove-OrphanedSid` run writes one Clixml file per modified
   object into a timestamped folder; `Restore-OrphanedSidBackup` validates the SHA256 hash before

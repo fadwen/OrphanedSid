@@ -724,7 +724,7 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:name>RemovalOperationResult</maml:name>
         </dev:type>
         <maml:description>
-          <maml:para>One object per orphaned entry removed, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
+          <maml:para>One object per object changed, covering all of its orphaned entries, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
 `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
 `ProcessingTime`, `CorrelationId` and `SecurityValidation`.</maml:para>
         </maml:description>
@@ -754,7 +754,7 @@ TROUBLESHOOTING:
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: A WhatIf line for the run and one per entry that would be removed
+OUTPUT: A WhatIf line for the run and one per object with entries that would be removed
 USE CASE: The review step before a cleanup</maml:para>
         </maml:introduction>
         <dev:code />
@@ -766,7 +766,7 @@ USE CASE: The review step before a cleanup</maml:para>
           <maml:para>Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'</maml:para>
           <maml:para>&#x80;</maml:para>
           <maml:para>DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\&lt;timestamp&gt;\, then removes
-OUTPUT: One RemovalOperationResult per removed entry
+OUTPUT: One RemovalOperationResult per object changed
 USE CASE: An interactive cleanup with the backup on a dedicated drive</maml:para>
         </maml:introduction>
         <dev:code />

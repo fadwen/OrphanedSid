@@ -1,4 +1,4 @@
-﻿# Enterprise Integration Guide - OrphanedSid
+# Enterprise Integration Guide - OrphanedSid
 ## Overview
 
 This guide covers running `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`
@@ -6,7 +6,7 @@ from schedulers, pipelines and monitoring systems, and the integration problems 
 they behave:
 
 - Each command writes its **results to the pipeline** as objects: one `OrphanedSIDResult` per
-  orphaned or unverified entry, one `RemovalOperationResult` per orphaned SID removed, one restore result per
+  orphaned or unverified entry, one `RemovalOperationResult` per object changed, one restore result per
   target. `-OutputPath` also writes them as CSV, and every run writes a log file.
 - The log file starts with a plain-text header block. Regular entries are **plain text**, one line
   each: `[<yyyy-MM-ddTHH:mm:ss.fff>] [<Level>] [<Component>] [<CorrelationId>] <Message>`, ending

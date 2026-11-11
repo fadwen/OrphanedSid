@@ -38,6 +38,7 @@ BeforeAll {
     function Invoke-Cleanup { param($CorrelationId, [switch]$WhatIf) }
 
     $script:SidA = 'S-1-5-21-123456789-123456789-123456789-1001'
+    $script:SidB = 'S-1-5-21-123456789-123456789-123456789-1002'
     $script:DomainSid = 'S-1-5-21-123456789-123456789-123456789'
 
     function New-TestObject {
@@ -352,6 +353,35 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             $result.RemovalResults[0].BackupPath | Should -Be 'C:\Backups'
         }
 
+        It "Removes all of an object's orphaned SIDs in one call, so the object is backed up once (#40)" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+            }
+
+            $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; BackupPath = 'C:\Backups' }
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter {
+                $ObjectDN -eq 'CN=User1,OU=Test,DC=test,DC=com' -and
+                @($OrphanedSIDs).Count -eq 2 -and $OrphanedSIDs -contains $script:SidA -and $OrphanedSIDs -contains $script:SidB
+            }
+            @($result.RemovalResults).Count | Should -Be 1
+        }
+
+        It "Leaves an object's unverified SID out of its single removal call" {
+            Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
+            Mock Find-OrphanedSIDsInObject {
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Access is denied.' }
+            }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
+
+            Should -Invoke Remove-OrphanedSidEntry -Times 1 -Exactly -ParameterFilter { @($OrphanedSIDs).Count -eq 1 -and $OrphanedSIDs[0] -eq $script:SidA }
+        }
         It "Leaves BackupPath unbound when none is given" {
             Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
 
@@ -363,7 +393,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
 
             Should -Invoke Write-ADOperationSecurityLog -Times 3 -Exactly -ParameterFilter {
                 $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Attempt' -and
-                $SecurityContext.OrphanedSID -eq $script:SidA -and $SecurityContext.BackupPath -eq 'C:\Backups' -and
+                $SecurityContext.OrphanedSIDs -eq $script:SidA -and $SecurityContext.BackupPath -eq 'C:\Backups' -and
                 -not $SecurityContext.ContainsKey('SimulationMode')
             }
             Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {

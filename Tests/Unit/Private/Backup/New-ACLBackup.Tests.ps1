@@ -125,7 +125,8 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         It 'Fits the name to a deep backup folder' {
             # Deep enough to leave exactly 60 characters for the name, whatever TestDrive's own length
             $roomForName = 60
-            $depth = 259 - '_yyyyMMdd_HHmmss.xml'.Length - $roomForName - ($script:backupDir.TrimEnd('\').Length + 1) - 1
+            # The name budget reserves room for a same-second counter after the timestamp
+            $depth = 259 - '_yyyyMMdd_HHmmss_99.xml'.Length - $roomForName - ($script:backupDir.TrimEnd('\').Length + 1) - 1
             $deep = Join-Path $script:backupDir ('d' * $depth)
             $null = New-Item -Path $deep -ItemType Directory -Force
             $longDn = 'CN=' + ('y' * 200) + ',DC=contoso,DC=com'
@@ -138,6 +139,18 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             (Import-Clixml -Path $file.FullName).ObjectDN | Should -Be $longDn
         }
 
+        It 'Keeps both backups of one object taken in the same second' {
+            $script:fixedTime = [datetime]::new(2026, 1, 1, 12, 0, 0)
+            Mock Get-Date { if ($Format) { $script:fixedTime.ToString($Format) } else { $script:fixedTime } }
+
+            New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+            New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+
+            $names = @(Get-ChildItem $script:backupDir -File | ForEach-Object Name)
+            $names.Count | Should -Be 2
+            @($names | Where-Object { $_ -match '_20260101_120000\.xml$' }).Count | Should -Be 1
+            @($names | Where-Object { $_ -match '_20260101_120000_2\.xml$' }).Count | Should -Be 1
+        }
         It 'Gives two long DNs that share a prefix different file names' {
             $prefix = 'CN=' + ('z' * 230)
             $first = "$prefix,OU=One,DC=contoso,DC=com"

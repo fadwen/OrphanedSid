@@ -1,4 +1,4 @@
-﻿# OrphanedSid Automation Guide
+# OrphanedSid Automation Guide
 
 This guide covers running the OrphanedSid commands from a scheduled task, a CI/CD job or any other
 session where nobody can answer a prompt, and how such a job reads the results.
@@ -22,7 +22,7 @@ in the log and in the per-object results. Wrap the call in `try`/`catch`, or pas
 | Command | Writes to the pipeline |
 |---------|------------------------|
 | `Find-OrphanedSid` | One result per orphaned or unverified access control entry, with the `OrphanedSIDResult` properties; `VerificationStatus` is `Orphaned` or `Unverified` |
-| `Remove-OrphanedSid` | One `RemovalOperationResult` per removal attempted, one for each verified orphaned entry found; under `-WhatIf`, one preview object per entry that would be removed |
+| `Remove-OrphanedSid` | One `RemovalOperationResult` per object with verified orphaned entries, covering all of them; under `-WhatIf`, one preview object per such object |
 | `Restore-OrphanedSidBackup` | One `RestoreWorkflowResult` per `-TargetObjectDN` value, with `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage` and `CorrelationId` |
 
 `$found = @(Find-OrphanedSid ...)` captures the findings directly. `-OutputPath` writes the same
