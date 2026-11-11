@@ -1,7 +1,7 @@
 # OrphanedSid
 
 [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/OrphanedSid?label=PowerShell%20Gallery)](https://www.powershellgallery.com/packages/OrphanedSid)
-[![Gallery downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fadwen/OrphanedSid/badges/gallery-downloads.json)](https://www.powershellgallery.com/packages/OrphanedSid)
+[![Gallery downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fadwen/OrphanedSid/badges/downloads.json)](https://www.powershellgallery.com/packages/OrphanedSid)
 [![Quality Gates](https://github.com/fadwen/OrphanedSid/actions/workflows/quality-gates.yml/badge.svg)](https://github.com/fadwen/OrphanedSid/actions/workflows/quality-gates.yml)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207.x%20(Windows)-blue)](https://github.com/PowerShell/PowerShell)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
