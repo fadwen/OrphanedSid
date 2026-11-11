@@ -23,11 +23,9 @@ the object it came from. This guide covers the metadata that can look wrong and 
 #### Issue: Timestamps are local time, not UTC
 
 `Timestamp` is set with `Get-Date` in the class constructor and again in `Add-ProcessingMetadata`,
-so it carries the local time of the machine running the command with `Kind = Local`. The results a
-command emits and exports are read back from JSON batch files: on PowerShell 7 they keep local time,
-on Windows PowerShell 5.1 they come back as UTC (`Kind = Utc`). The CSV written by `-OutputPath`
-serialises the value in the local culture's format. Convert on the way out when a downstream system
-needs UTC:
+so it carries the local time of the machine running the command with `Kind = Local`, on Windows
+PowerShell 5.1 and PowerShell 7 alike. The CSV written by `-OutputPath` serialises the value in the
+local culture's format. Convert on the way out when a downstream system needs UTC:
 
 ```powershell
 Import-Csv -Path .\Reports\orphaned-sids.csv | ForEach-Object {
@@ -141,8 +139,7 @@ Debug level:
 | `IsInherited` | `$false` | `IsInherited property missing, set to false` |
 
 Defaults appear mainly on deserialized access rules. If many results show `GenericRead` and
-`Allow` (`131220` and `0` in emitted results and the CSV, which carry the numeric enum values), run
-with `-LogLevel Debug` and look for these messages to confirm.
+`Allow`, run with `-LogLevel Debug` and look for these messages to confirm.
 
 ## Validation Commands
 

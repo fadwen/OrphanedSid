@@ -443,6 +443,12 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             @($result.RemovalResults).Count | Should -Be 3
             $result.RemovalResults[0].SecurityValidation | Should -Be 'WhatIf - Would Remove'
             $result.RemovalResults[0].ObjectDN | Should -Be 'CN=User1,OU=Test,DC=test,DC=com'
+            # The same type a real removal returns (#41), with nothing removed
+            $result.RemovalResults[0].GetType().Name | Should -Be 'RemovalOperationResult'
+            $result.RemovalResults[0].IntendedRemovals | Should -Be 1
+            $result.RemovalResults[0].ActualRemovals | Should -Be 0
+            @($result.RemovalResults[0].RemovedSIDs) | Should -Be @($script:SidA)
+            $result.RemovalResults[0].CorrelationId | Should -Be $script:LastCorrelationId
             Should -Invoke Write-ADOperationSecurityLog -Times 3 -Exactly -ParameterFilter {
                 $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Attempt' -and
                 $SecurityContext.SimulationMode -eq $true -and $SecurityContext.WhatIfMode -eq $true
@@ -614,7 +620,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         It "Leaves the unverified SID out of a -WhatIf preview" {
             $result = Invoke-Subject @{ SearchBase = 'OU=Users,DC=test,DC=com'; Remove = $true; WhatIf = $true }
 
-            @($result.RemovalResults.OrphanedSID) | Should -Be @($script:verifiedSid)
+            @($result.RemovalResults.RemovedSIDs) | Should -Be @($script:verifiedSid)
         }
     }
 }

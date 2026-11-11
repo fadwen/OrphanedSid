@@ -69,6 +69,13 @@ All notable changes to this module are recorded here. Format follows
   object-discovery and per-object detection steps generated their own IDs, so their log lines and
   every `Find-OrphanedSid` result and CSV row carried other GUIDs. The run's ID is now passed through
   every step. ([#42](https://github.com/fadwen/OrphanedSid/issues/42))
+- `Find-OrphanedSid` returned untyped objects instead of the `OrphanedSIDResult` its help describes.
+  Its results are read back from batch files on disk, which turned `ActiveDirectoryRights`,
+  `AccessControlType` and `InheritanceType` into numbers (also in the `-OutputPath` CSV) and made
+  `Timestamp` UTC on Windows PowerShell 5.1 but local time on PowerShell 7. Results are now rebuilt
+  as `OrphanedSIDResult` with enum names and local time on both, and `Remove-OrphanedSid -WhatIf`
+  previews with the same `RemovalOperationResult` type a real removal returns.
+  ([#41](https://github.com/fadwen/OrphanedSid/issues/41))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

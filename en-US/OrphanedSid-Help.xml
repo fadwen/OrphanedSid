@@ -279,7 +279,8 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.</maml:para>
           <maml:para>One object per orphaned access control entry, with `ObjectDN`, `ObjectClass`, `OrphanedSID`,
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
-`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`.
+`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId` and `Timestamp`, plus the
+note properties `ProcessingContext` and `ProcessingStatistics`.
 
 `VerificationStatus` is `Orphaned` when every lookup completed and none found the SID, and
 `Unverified` when a lookup failed; `VerificationError` then names each failed lookup.</maml:para>

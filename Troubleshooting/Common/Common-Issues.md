@@ -303,7 +303,7 @@ Columns follow the `OrphanedSIDResult` class: `ObjectDN`, `ObjectClass`, `Orphan
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
 `ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId`, `Timestamp`, then the
-note properties `ProcessingContext` and `ProcessingStatistics` as text. Enum columns hold numbers.
+note properties `ProcessingContext` and `ProcessingStatistics` as text. Enum columns hold names.
 
 #### Issue: Correlation ID cannot be found in the logs
 

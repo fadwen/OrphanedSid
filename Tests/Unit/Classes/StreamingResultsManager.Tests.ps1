@@ -3,6 +3,7 @@
 BeforeAll {
     $ModuleRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
+    . "$ModuleRoot\Classes\OrphanedSIDResult.ps1"
     . "$ModuleRoot\Classes\StreamingResultsManager.ps1"
 
     function New-TestDirectoryPath {
@@ -180,6 +181,43 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $results.Count | Should -Be 5
             $results.OrphanedSID | Should -Be @(1..5 | ForEach-Object { "S-1-5-21-1-2-3-$_" })
             $manager.Summary.BatchFiles.Count | Should -Be 3
+            $manager.Dispose()
+        }
+
+        It "Should give back an OrphanedSIDResult with its enum names, local timestamp and note properties (#41)" {
+            $original = [OrphanedSIDResult]::new()
+            $original.ObjectDN = 'CN=Object1,DC=contoso,DC=com'
+            $original.OrphanedSID = 'S-1-5-21-1-2-3-1'
+            $original.AccessControlType = 'Deny'
+            $original.ActiveDirectoryRights = 'ReadProperty, WriteProperty'
+            $original.InheritanceType = 'ContainerInherit'
+            $original.ObjectType = [guid]'bf967aba-0de6-11d0-a285-00aa003049e2'
+            $original.Timestamp = [datetime]::new(2026, 3, 4, 5, 6, 7, [DateTimeKind]::Local)
+            $original | Add-Member -NotePropertyName ProcessingContext -NotePropertyValue @{ Source = 'test' }
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 1, $false)
+            $manager.AddResult($original)
+
+            $result = @($manager.GetAllResults())[0]
+
+            $result.GetType().Name | Should -Be 'OrphanedSIDResult'
+            $result.AccessControlType | Should -Be ([System.Security.AccessControl.AccessControlType]::Deny)
+            "$($result.ActiveDirectoryRights)" | Should -Be 'ReadProperty, WriteProperty'
+            "$($result.InheritanceType)" | Should -Be 'ContainerInherit'
+            $result.ObjectType | Should -Be ([guid]'bf967aba-0de6-11d0-a285-00aa003049e2')
+            $result.Timestamp.Kind | Should -Not -Be ([DateTimeKind]::Utc)
+            $result.Timestamp.ToString('yyyy-MM-dd HH:mm:ss') | Should -Be '2026-03-04 05:06:07'
+            $result.ProcessingContext.Source | Should -Be 'test'
+            $manager.Dispose()
+        }
+
+        It "Should give back any other object as it was read" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 1, $false)
+            $manager.AddResult([PSCustomObject]@{ Name = 'not a result'; Count = 3 })
+
+            $result = @($manager.GetAllResults())[0]
+
+            $result | Should -BeOfType [System.Management.Automation.PSCustomObject]
+            $result.Name | Should -Be 'not a result'
             $manager.Dispose()
         }
 

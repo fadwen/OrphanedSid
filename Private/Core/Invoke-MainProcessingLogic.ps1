@@ -447,19 +447,17 @@ function Invoke-MainProcessingLogic {
                                             SimulationMode = $true
                                             WhatIfMode = $true
                                         } -CorrelationId $CorrelationId
-                                        # Create a mock removal result for WhatIf mode
-                                        $mockResult = [PSCustomObject]@{
-                                            ObjectDN = $objectDN
-                                            OrphanedSID = $sidList
-                                            Success = $true
-                                            ProcessingTime = [TimeSpan]::Zero
-                                            ErrorMessage = $null
-                                            RemovedSIDs = $sidsToRemove
-                                            FailedSIDs = @()
-                                            BlockedSIDs = @()
-                                            SecurityValidation = 'WhatIf - Would Remove'
-                                        }
-                                        $script:RemovalResults += $mockResult
+                                        # The preview is the same type a real removal returns: nothing
+                                        # was removed, and RemovedSIDs lists what would have been
+                                        $previewResult = [RemovalOperationResult]::new()
+                                        $previewResult.ObjectDN = $objectDN
+                                        $previewResult.IntendedRemovals = $sidsToRemove.Count
+                                        $previewResult.ActualRemovals = 0
+                                        $previewResult.RemovedSIDs = $sidsToRemove
+                                        $previewResult.Success = $true
+                                        $previewResult.CorrelationId = $CorrelationId
+                                        $previewResult.SecurityValidation = 'WhatIf - Would Remove'
+                                        $script:RemovalResults += $previewResult
                                     }
                                 }
                             }
