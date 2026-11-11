@@ -179,11 +179,15 @@ function Resolve-LogPath {
         [string]$LogPath
     )
 
-    # Handle empty or whitespace-only paths
-    $LogPath = $LogPath.Trim()
-    if ([string]::IsNullOrWhiteSpace($LogPath)) {
+    # Handle empty or whitespace-only paths. Trimmed into a plain variable first: assigning '' to
+    # the [ValidateNotNullOrEmpty()] parameter would throw before the default could be applied.
+    $trimmedPath = $LogPath.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmedPath)) {
         Write-Verbose "LogPath is empty, using default log file name"
         $LogPath = ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    }
+    else {
+        $LogPath = $trimmedPath
     }
 
     # SECURITY: Validate against directory traversal BEFORE path resolution

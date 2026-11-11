@@ -192,12 +192,16 @@ Describe "Resolve-LogPath" -Tag "Unit", "Private", "FileSystem" {
         Resolve-LogPath -LogPath '  C:\Logs\run.log  ' | Should -Be 'C:\Logs\run.log'
     }
 
-    # Module bug (#31): '$LogPath = $LogPath.Trim()' assigns '' to a [ValidateNotNullOrEmpty()] parameter, which
-    # throws a validation error, so the default-name branch for a whitespace-only path is unreachable
-    It "Should use a default timestamped name under Logs for a whitespace-only path" -Skip {
+    It "Should use a default timestamped name under Logs for a whitespace-only path" {
         Mock Get-ScriptRootDirectory { 'C:\Scripts' }
 
         Resolve-LogPath -LogPath '   ' | Should -Match '^C:\\Scripts\\Logs\\OrphanedSid_\d{8}_\d{6}\.log$'
+    }
+
+    It "Should trim the spaces around a path" {
+        Mock Get-ScriptRootDirectory { 'C:\Scripts' }
+
+        Resolve-LogPath -LogPath '  Logs\run.log  ' | Should -Be 'C:\Scripts\Logs\run.log'
     }
 
     It "Should reject a path containing '..'" {

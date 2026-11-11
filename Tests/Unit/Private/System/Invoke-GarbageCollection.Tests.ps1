@@ -127,6 +127,7 @@ Describe "Invoke-GarbageCollection" -Tag 'Unit' {
 
         It "Should report and log LOH compaction when asked" {
             $result = Invoke-GarbageCollection -CompactLOH
+            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode = [System.Runtime.GCLargeObjectHeapCompactionMode]::Default
 
             $result.LOHCompacted | Should -Be $true
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'LOH compaction enabled' }
@@ -137,11 +138,32 @@ Describe "Invoke-GarbageCollection" -Tag 'Unit' {
             Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -eq 'LOH compaction enabled' }
         }
 
-        # Module bug (#23): -CompactLOH logs and reports compaction but never sets GCSettings.LargeObjectHeapCompactionMode
-        It "Should request a one-time LOH compaction before collecting" -Skip {
-            Invoke-GarbageCollection -CompactLOH | Out-Null
+        It "Should request a one-time LOH compaction before collecting" {
+            # Invoke-GCCollect is mocked, so no collection consumes the request before it is read
+            try {
+                Invoke-GarbageCollection -CompactLOH | Out-Null
 
-            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode | Should -Be ([System.Runtime.GCLargeObjectHeapCompactionMode]::CompactOnce)
+                [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode | Should -Be ([System.Runtime.GCLargeObjectHeapCompactionMode]::CompactOnce)
+            }
+            finally {
+                [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode = [System.Runtime.GCLargeObjectHeapCompactionMode]::Default
+            }
+        }
+
+        It "Should not request LOH compaction for a generation 0 or 1 collection, and say why" {
+            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode = [System.Runtime.GCLargeObjectHeapCompactionMode]::Default
+
+            $result = Invoke-GarbageCollection -CompactLOH -Generation 1
+
+            $result.LOHCompacted | Should -Be $false
+            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode | Should -Be ([System.Runtime.GCLargeObjectHeapCompactionMode]::Default)
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'LOH compaction skipped: it needs a generation 2 collection, not generation 1'
+            }
+        }
+
+        It "Should not report LOH compaction under -WhatIf" {
+            (Invoke-GarbageCollection -CompactLOH -WhatIf).LOHCompacted | Should -Be $false
         }
     }
 

@@ -20,6 +20,15 @@ All notable changes to this module are recorded here. Format follows
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
   count for discovery and removal runs. It read those values only from an object's properties, and
   the processing results are a hashtable.
+- `BatchSize` or `MemoryCheckInterval` set to `0` in a `-ConfigPath` file was silently ignored and
+  the default used. It is now rejected like any other value outside 1-1000.
+  ([#21](https://github.com/fadwen/OrphanedSid/issues/21))
+- A `-LogPath` of only spaces made the log set-up fail over to its emergency location with a
+  warning. It now gets the default name, `.\Logs\OrphanedSid_<timestamp>.log`.
+  ([#31](https://github.com/fadwen/OrphanedSid/issues/31))
+- The internal garbage-collection helper reported compacting the large object heap without asking
+  .NET to do it. It now requests the compaction, and reports it, only for a collection that can
+  perform it. ([#23](https://github.com/fadwen/OrphanedSid/issues/23))
 
 ### Changed
 

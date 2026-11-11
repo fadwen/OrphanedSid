@@ -263,7 +263,7 @@ function Invoke-GarbageCollection {
             MemoryFreed = 0
             CollectionTime = [TimeSpan]::Zero
             GenerationsCollected = @()
-            LOHCompacted = $CompactLOH.IsPresent
+            LOHCompacted = $false
             CorrelationId = $CorrelationId
             WhatIfMode = $WhatIfPreference
             Gen0Collections = [System.GC]::CollectionCount(0)
@@ -285,14 +285,23 @@ function Invoke-GarbageCollection {
                     Write-StructuredLog "High memory pressure detected: $currentMemory MB" -Level Warning -Component 'GarbageCollection' -CorrelationId $CorrelationId
                 }
 
-                # Set LOH compaction mode if requested
+                # The large object heap is compacted only by a blocking generation 2 collection, so
+                # the request is made only for a full or generation 2 collection. CompactOnce
+                # resets itself after that collection.
+                $collectionResults.LOHCompacted = $false
                 if ($CompactLOH) {
-                    try {
-                        # Note: In real implementation this would be [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode
-                        Write-StructuredLog "LOH compaction enabled" -Level Information -Component 'GarbageCollection' -CorrelationId $CorrelationId
+                    if ($Generation -lt 0 -or $Generation -ge 2) {
+                        try {
+                            [System.Runtime.GCSettings]::LargeObjectHeapCompactionMode = [System.Runtime.GCLargeObjectHeapCompactionMode]::CompactOnce
+                            $collectionResults.LOHCompacted = $true
+                            Write-StructuredLog "LOH compaction enabled" -Level Information -Component 'GarbageCollection' -CorrelationId $CorrelationId
+                        }
+                        catch {
+                            Write-StructuredLog "LOH compaction setting failed: $($_.Exception.Message)" -Level Warning -Component 'GarbageCollection' -CorrelationId $CorrelationId
+                        }
                     }
-                    catch {
-                        Write-StructuredLog "LOH compaction setting failed: $($_.Exception.Message)" -Level Warning -Component 'GarbageCollection' -CorrelationId $CorrelationId
+                    else {
+                        Write-StructuredLog "LOH compaction skipped: it needs a generation 2 collection, not generation $Generation" -Level Information -Component 'GarbageCollection' -CorrelationId $CorrelationId
                     }
                 }
 
