@@ -18,7 +18,7 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Test-BackupIntegrity { param($BackupData, $ExpectedObjectDN, $ValidationLevel, $CorrelationId) }
     function Get-RestorationTarget { param($TargetObjectDN, $CorrelationId) }
-    function Set-ObjectACL { param($TargetObjectDN, $BackupData, [switch]$VerifyApplication, $CorrelationId) }
+    function Set-ObjectACL { param($TargetObjectDN, $BackupData, [switch]$VerifyApplication, [switch]$SkipTargetValidation, $CorrelationId) }
 
     $script:backup = [PSCustomObject]@{
         ObjectDN = 'CN=Host 1,OU=Orphaned,DC=contoso,DC=com'
@@ -65,14 +65,15 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
     }
 
     Context 'Failed restore' {
-        It 'Reports the ACL operation failure without throwing' {
-            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $false; ErrorMessage = 'access denied' } }
+        It 'Reports the ACL operation failure without throwing, with its prefix once (#51)' {
+            # The message Set-ObjectACL builds when Set-Acl fails
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $false; ErrorMessage = 'ACL application failed: access denied' } }
 
             $result = Restore-IndividualObject -TargetObjectDN $script:backup.ObjectDN -BackupData $script:backup -BackupFile 'C:\Backup\host1.xml' -CorrelationId 'test' -WarningAction SilentlyContinue
 
             $result.Success | Should -BeFalse
             $result.EntriesRestored | Should -Be 0
-            $result.ErrorMessage | Should -BeLike '*ACL application failed*access denied*'
+            $result.ErrorMessage | Should -Be 'ACL application failed: access denied'
         }
 
         It 'Stops before touching the ACL when the backup fails validation' {
@@ -111,8 +112,9 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
             Should -Invoke Get-RestorationTarget -Times 1 -Exactly -ParameterFilter {
                 $TargetObjectDN -eq $script:backup.ObjectDN -and $CorrelationId -eq 'corr-7'
             }
+            # Validated once here, so Set-ObjectACL is told not to read the object again (#51)
             Should -Invoke Set-ObjectACL -Times 1 -Exactly -ParameterFilter {
-                $TargetObjectDN -eq $script:backup.ObjectDN -and -not $VerifyApplication -and $CorrelationId -eq 'corr-7'
+                $TargetObjectDN -eq $script:backup.ObjectDN -and -not $VerifyApplication -and $SkipTargetValidation -and $CorrelationId -eq 'corr-7'
             }
         }
     }

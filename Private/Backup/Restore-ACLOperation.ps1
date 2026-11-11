@@ -57,6 +57,10 @@ function Set-ObjectACL {
         Whether to verify successful ACL application after setting.
         Recommended for critical operations requiring confirmation.
 
+    .PARAMETER SkipTargetValidation
+        Skip the Get-RestorationTarget check of the target object. For a caller that has just run
+        that check itself, such as Restore-IndividualObject, so a restore reads the object once.
+
     .PARAMETER WhatIf
         Shows what ACL changes would be applied without making modifications.
         Useful for validation and approval workflows.
@@ -132,6 +136,9 @@ function Set-ObjectACL {
         [switch]$VerifyApplication,
 
         [Parameter()]
+        [switch]$SkipTargetValidation,
+
+        [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
@@ -153,10 +160,13 @@ function Set-ObjectACL {
         try {
             Write-Verbose "Applying ACL to object: $TargetObjectDN - CorrelationId: $CorrelationId"
 
-            # Validate target object exists and is accessible
-            $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
-            if (-not $targetValidation.IsValid) {
-                throw "Target object validation failed: $(@($targetValidation.Issues) -join '; ')"
+            # Validate target object exists and is accessible, unless the caller just did: each check
+            # is a Get-ADObject and a Get-Acl against the domain controller
+            if (-not $SkipTargetValidation) {
+                $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
+                if (-not $targetValidation.IsValid) {
+                    throw "Target object validation failed: $(@($targetValidation.Issues) -join '; ')"
+                }
             }
 
             # Prepare SDDL for application
