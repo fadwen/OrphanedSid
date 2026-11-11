@@ -609,11 +609,12 @@ function Restore-IndividualObject {
             throw "Target validation failed: $($targetValidation.Issues -join '; ')"
         }
 
-        # Apply ACL restoration
-        $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
+        # Apply ACL restoration. The target was validated above, so Set-ObjectACL does not read it again.
+        $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -SkipTargetValidation -CorrelationId $CorrelationId
 
         if (-not $aclOperation.Success) {
-            throw "ACL application failed: $($aclOperation.ErrorMessage)"
+            # Set-ObjectACL's message already starts "ACL application failed:" or "ACL operation failed:"
+            throw $aclOperation.ErrorMessage
         }
 
         # Create success result

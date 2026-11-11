@@ -521,6 +521,29 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
             Get-TrusteeSid -DN $dn | Should -Contain $script:SecondOrphanSid
         }
+        It 'Reports a failed write once, with one prefix (#51)' {
+            $null = Invoke-RemoveOrphanedSid
+            $dn = "OU=Finance,$script:DomainDN"
+            $backupFolder = (Get-ChildItem -Path $script:BackupRoot -Directory | Select-Object -First 1).FullName
+            Mock -ModuleName OrphanedSid Set-Acl -ParameterFilter { $Path -like 'AD:*' } { throw 'Access is denied' }
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-denied.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+            # The OU and its child are restored together, one per-object result each
+            $result.Success | Should -BeFalse
+            @($result.IndividualResults).Count | Should -Be 2
+            foreach ($objectResult in $result.IndividualResults) {
+                $objectResult.ErrorMessage | Should -Be 'ACL application failed: Access is denied'
+            }
+        }
+
         It 'Refuses a backup whose security descriptor no longer matches its hash' {
             $null = Invoke-RemoveOrphanedSid
             $dn = "OU=Finance,$script:DomainDN"

@@ -62,6 +62,10 @@ All notable changes to this module are recorded here. Format follows
   logged `Results exported to: <path>` although `-WhatIf` writes no CSV. They now log
   `WhatIf: results would be exported to <path>; no file was written`.
   ([#50](https://github.com/fadwen/OrphanedSid/issues/50))
+- A restore that `Set-Acl` refused reported `ACL application failed: ACL application failed:
+  <message>`; the prefix now appears once. Each restored object was also checked twice, at the cost
+  of an extra `Get-ADObject` and `Get-Acl` against the domain controller per object; it is checked
+  once. ([#51](https://github.com/fadwen/OrphanedSid/issues/51))
 
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the
