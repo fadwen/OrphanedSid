@@ -193,10 +193,11 @@ function Invoke-RemovalWorkflow {
         # Phase 4: Backup Creation (if requested and not WhatIf mode)
         if (-not $WhatIfMode -and $BackupPath) {
             Write-StructuredLog "Phase 4: Backup creation" -Level Debug -CorrelationId $CorrelationId
-            $backupSuccess = New-ACLBackup -ObjectDN $ObjectDistinguishedName -ACL $acl -BackupPath $BackupPath -CorrelationId $CorrelationId
-            if (-not $backupSuccess) {
+            $backupFile = New-ACLBackup -ObjectDN $ObjectDistinguishedName -ACL $acl -BackupPath $BackupPath -CorrelationId $CorrelationId
+            if (-not $backupFile) {
                 throw "Failed to create ACL backup - aborting removal operation"
             }
+            $result.BackupFile = $backupFile
         }
 
         # Phase 5: SID Removal Processing
@@ -215,7 +216,8 @@ function Invoke-RemovalWorkflow {
             SIDsToRemove = $removalResults.RemovedSIDs.Count
             SIDsFailedRemoval = $removalResults.FailedSIDs.Count
             WhatIfMode = $WhatIfMode
-            BackupCreated = (-not $WhatIfMode -and $BackupPath)
+            BackupCreated = [bool]$result.BackupFile
+            BackupFile = $result.BackupFile
             SecurityValidation = @{
                 IsValid = $securityValidation.IsValid
                 RiskLevel = $securityValidation.RiskLevel
@@ -239,7 +241,7 @@ function Invoke-RemovalWorkflow {
                         TargetObjectDN = $ObjectDistinguishedName
                         SIDsRemoved = $removalResults.RemovedSIDs
                         ActualRemovals = $result.ActualRemovals
-                        BackupPath = $BackupPath
+                        BackupFile = $result.BackupFile
                         SecurityValidationPassed = $true
                     }
 

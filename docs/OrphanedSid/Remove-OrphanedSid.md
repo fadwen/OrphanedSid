@@ -445,7 +445,9 @@ output of `Get-ADOrganizationalUnit` or `Get-ADObject`.
 
 One object per object changed, covering all of its orphaned entries, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
 `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
-`ProcessingTime`, `CorrelationId` and `SecurityValidation`.
+`ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
+backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
+-BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.
 ## NOTES
 
 Author: Jeffrey Stuhr

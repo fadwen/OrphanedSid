@@ -88,8 +88,17 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         Mock Find-OrphanedSIDsInObject {
             [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
         }
+        # The real result type: a double with properties of its own once let the audit entry read
+        # BackupCreated, BackupPath and RemovedCount, none of which the module returns (#49)
         Mock Remove-OrphanedSidEntry {
-            [PSCustomObject]@{ ObjectDN = $ObjectDN; RemovedSIDs = $OrphanedSIDs; BackupCreated = $true; BackupPath = $BackupPath; RemovedCount = @($OrphanedSIDs).Count }
+            $removal = [RemovalOperationResult]::new()
+            $removal.ObjectDN = $ObjectDN
+            $removal.IntendedRemovals = @($OrphanedSIDs).Count
+            $removal.ActualRemovals = @($OrphanedSIDs).Count
+            $removal.RemovedSIDs = $OrphanedSIDs
+            $removal.Success = $true
+            if ($BackupPath) { $removal.BackupFile = Join-Path $BackupPath "$($ObjectDN -replace '[,=]', '_')_20260101_120000.xml" }
+            $removal
         }
     }
 
@@ -356,7 +365,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
                 $CorrelationId -eq $script:LastCorrelationId
             }
             @($result.RemovalResults).Count | Should -Be 3
-            $result.RemovalResults[0].BackupPath | Should -Be 'C:\Backups'
+            $result.RemovalResults[0].BackupFile | Should -BeLike 'C:\Backups\CN_User1_*.xml'
         }
 
         It "Removes all of an object's orphaned SIDs in one call, so the object is backed up once (#40)" {
@@ -434,7 +443,32 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Write-ADOperationSecurityLog -Times 1 -Exactly -ParameterFilter {
                 $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Success' -and
                 $SecurityContext.ObjectDN -eq 'CN=Group1,OU=Test,DC=test,DC=com' -and
-                $SecurityContext.BackupCreated -eq $true -and $SecurityContext.RemovedCount -eq 1
+                $SecurityContext.BackupCreated -eq $true -and $SecurityContext.ActualRemovals -eq 1 -and
+                $SecurityContext.FailedRemovals -eq 0 -and
+                $SecurityContext.BackupFile -eq 'C:\Backups\CN_Group1_OU_Test_DC_test_DC_com_20260101_120000.xml' -and
+                -not $SecurityContext.ContainsKey('RemovedCount')
+            }
+        }
+
+        It "Logs the removal as a Failure when the returned result says it failed (#49)" {
+            Mock Remove-OrphanedSidEntry {
+                $removal = [RemovalOperationResult]::new()
+                $removal.ObjectDN = $ObjectDN
+                $removal.IntendedRemovals = 1
+                $removal.Success = $false
+                $removal.ErrorMessage = 'Failed to apply ACL changes'
+                $removal
+            }
+
+            Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
+
+            Should -Invoke Write-ADOperationSecurityLog -Times 0 -Exactly -ParameterFilter {
+                $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Success'
+            }
+            Should -Invoke Write-ADOperationSecurityLog -Times 3 -Exactly -ParameterFilter {
+                $OperationName -eq 'OrphanedSID-Removal' -and $Outcome -eq 'Failure' -and
+                $SecurityContext.ErrorMessage -eq 'Failed to apply ACL changes' -and
+                $SecurityContext.BackupCreated -eq $false -and $SecurityContext.ActualRemovals -eq 0
             }
         }
 

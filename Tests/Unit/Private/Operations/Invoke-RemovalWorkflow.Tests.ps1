@@ -44,7 +44,8 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
         Mock Invoke-SecurityValidation {
             [PSCustomObject]@{ IsValid = $true; RiskLevel = 'Low'; AllowedSIDs = @($script:sid1); BlockedSIDs = @(); Issues = @() }
         }
-        Mock New-ACLBackup { $true }
+        # Like the real function: the full path of the file it wrote
+        Mock New-ACLBackup { Join-Path $BackupPath 'CN_User1_20260101_120000.xml' }
         Mock Invoke-SIDRemoval {
             [PSCustomObject]@{ RemovedSIDs = @($script:sid1); FailedSIDs = @(); ModifiedACL = $script:modifiedAcl }
         }
@@ -172,9 +173,32 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
                 $ObjectDN -eq $script:dn -and $ACL -eq $script:readAcl -and $BackupPath -eq 'C:\Backups' -and $CorrelationId -eq 'wf-3'
             }
         }
+        It "Records the backup file in the result and in both security log entries (#49)" {
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1 -BackupPath 'C:\Backups'
+
+            $result.BackupFile | Should -Be 'C:\Backups\CN_User1_20260101_120000.xml'
+            Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Attempt' -and $SecurityContext.BackupCreated -eq $true -and
+                $SecurityContext.BackupFile -eq 'C:\Backups\CN_User1_20260101_120000.xml'
+            }
+            Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Success' -and $SecurityContext.BackupFile -eq 'C:\Backups\CN_User1_20260101_120000.xml' -and
+                -not $SecurityContext.ContainsKey('BackupPath')
+            }
+        }
+
+        It "Reports no backup file, and BackupCreated false, when no backup path is given (#49)" {
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1
+
+            $result.BackupFile | Should -BeNullOrEmpty
+            Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Attempt' -and $SecurityContext.BackupCreated -eq $false
+            }
+        }
 
         It "Aborts without removing anything when the backup fails" {
-            Mock New-ACLBackup { $false }
+            # A backup declined through ShouldProcess emits nothing
+            Mock New-ACLBackup { }
 
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1 -BackupPath 'C:\Backups'
 

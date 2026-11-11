@@ -374,6 +374,28 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @($results | Where-Object ObjectDN -eq $dn).Count | Should -Be 0
         }
 
+        It 'Names the backup file in each removal result and in its audit entry (#49)' {
+            $log = Join-Path $TestDrive 'audit-remove.log'
+
+            $results = @(Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput)
+
+            $results.Count | Should -Be 2
+            foreach ($result in $results) {
+                $result.BackupFile | Should -Exist
+                (Import-Clixml -Path $result.BackupFile).ObjectDN | Should -Be $result.ObjectDN
+            }
+            # Security entries are JSON lines with the context flattened under a Security_ prefix
+            $audit = @(Get-Content -Path $log | Where-Object { $_.StartsWith('{') } | ForEach-Object { $_ | ConvertFrom-Json } |
+                    Where-Object { $_.Security_OperationName -eq 'OrphanedSID-Removal' -and $_.Outcome -eq 'Success' })
+            $audit.Count | Should -Be 2
+            foreach ($entry in $audit) {
+                $entry.Security_BackupFile | Should -BeIn $results.BackupFile
+                $entry.Security_BackupCreated | Should -BeTrue
+                $entry.Security_ActualRemovals | Should -Be 1
+                $entry.PSObject.Properties.Name | Should -Not -Contain 'Security_RemovedCount'
+            }
+        }
+
         It 'Carries the run correlation ID on every log line of a removal (#42)' {
             $log = Join-Path $TestDrive 'cid-remove.log'
 

@@ -14,6 +14,8 @@ class RemovalOperationResult {
     [System.TimeSpan]$ProcessingTime
     [string]$CorrelationId
     [object]$SecurityValidation
+    # Full path of the backup written before the change; empty when none was written
+    [string]$BackupFile
 
     RemovalOperationResult() {
         $this.IntendedRemovals = 0
@@ -27,5 +29,6 @@ class RemovalOperationResult {
         $this.ProcessingTime = [System.TimeSpan]::Zero
         $this.CorrelationId = [System.Guid]::NewGuid().ToString()
         $this.SecurityValidation = $null
+        $this.BackupFile = $null
     }
 }
