@@ -23,9 +23,13 @@ All notable changes to this module are recorded here. Format follows
 - `BatchSize` or `MemoryCheckInterval` set to `0` in a `-ConfigPath` file was silently ignored and
   the default used. It is now rejected like any other value outside 1-1000.
   ([#21](https://github.com/fadwen/OrphanedSid/issues/21))
-- A `-LogPath` of only spaces made the log set-up fail over to its emergency location with a
-  warning. It now gets the default name, `.\Logs\OrphanedSid_<timestamp>.log`.
+- A `-LogPath` of only spaces left the run unable to write its log: every entry failed with an error
+  that the path is a directory. It is now treated as no `-LogPath`, so the log goes to
+  `.\Logs\<Command>_<timestamp>.log` under the current directory.
   ([#31](https://github.com/fadwen/OrphanedSid/issues/31))
+- A `-LogPath` that the log set-up refuses, such as one under `C:\Windows` or `C:\Program Files`, is
+  replaced with a warning by `OrphanedSid_<timestamp>.log` in the current directory; the refused
+  path was then put back, and every log entry failed to write. The fallback is now kept.
 - The internal garbage-collection helper reported compacting the large object heap without asking
   .NET to do it. It now requests the compaction, and reports it, only for a collection that can
   perform it. ([#23](https://github.com/fadwen/OrphanedSid/issues/23))

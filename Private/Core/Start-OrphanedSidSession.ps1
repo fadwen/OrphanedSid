@@ -131,7 +131,8 @@ function Start-OrphanedSidSession {
     }
     $script:LogLevel = $LogLevel
 
-    if (-not $LogPath) {
+    # A path of only spaces is no path: it gets the same default under the current directory
+    if ([string]::IsNullOrWhiteSpace($LogPath)) {
         $logDirectory = Join-Path -Path (Get-Location).Path -ChildPath 'Logs'
         $LogPath = Join-Path -Path $logDirectory -ChildPath "${CommandName}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     }
