@@ -39,6 +39,8 @@ BeforeAll {
     $script:LiveSid = "$script:DomainSid-1105"
     $script:OrphanSid = "$script:DomainSid-1999"
     $script:FailingSid = "$script:DomainSid-1777"
+    # A live principal whose ordinary lookups time out; only the deleted-objects lookup answers (#39)
+    $script:FlakySid = "$script:DomainSid-1300"
     $script:BuiltinAdmins = 'S-1-5-32-544'
 
     function New-DirectoryObject {
@@ -91,6 +93,9 @@ BeforeAll {
         param([string]$Sid)
         if ($Sid -eq $script:FailingSid) {
             throw [System.UnauthorizedAccessException]::new('Access is denied.')
+        }
+        if ($Sid -eq $script:FlakySid) {
+            throw [System.TimeoutException]::new('The operation returned because the timeout limit was exceeded.')
         }
         if ($Sid -eq $script:LiveSid) {
             return [PSCustomObject]@{ DistinguishedName = "CN=Alice,OU=Users,$script:DomainDN"; ObjectClass = 'user'; SID = $Sid }
@@ -156,6 +161,10 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
                 throw "Directory object not found: $Identity"
             }
             $sid = Get-SidFromFilter -Filter $Filter
+            # Like Active Directory, -IncludeDeletedObjects also returns live objects, without isDeleted
+            if ($IncludeDeletedObjects -and $sid -eq $script:FlakySid) {
+                return [PSCustomObject]@{ DistinguishedName = "CN=Flaky,OU=Users,$script:DomainDN"; ObjectClass = 'user'; isDeleted = $null }
+            }
             if ($IncludeDeletedObjects -and $sid -ne $script:FailingSid) { return $null }
             Invoke-SidLookup -Sid $sid
         }
@@ -257,6 +266,20 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             $finance | Should -Contain $script:LiveSid
             $finance | Should -Contain $script:BuiltinAdmins
             Get-TrusteeSid -DN "CN=Payroll,OU=Finance,$script:DomainDN" | Should -Contain $script:FailingSid
+        }
+
+        It 'Keeps the entry of a live principal whose ordinary lookups time out (#39)' {
+            # The retry back-off would only slow the test down
+            Mock -ModuleName OrphanedSid Start-Sleep { }
+            $dn = "CN=Shared,OU=Finance,$script:DomainDN"
+            $script:Directory[$dn] = New-DirectoryObject -DN $dn -ObjectClass 'group' -Trustee $script:FlakySid
+            $script:OriginalSddl[$dn] = $script:Directory[$dn].Sddl
+
+            $null = Invoke-RemoveOrphanedSid
+
+            Get-TrusteeSid -DN $dn | Should -Contain $script:FlakySid
+            $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Shared_*' -Recurse).Count | Should -Be 0
         }
 
         It 'Leaves an object with no orphaned ACE untouched' {

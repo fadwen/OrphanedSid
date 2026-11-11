@@ -70,7 +70,7 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
     }
 
     It 'Is orphaned when the SID is found only among deleted objects' {
-        Mock Get-ADObject { if ($IncludeDeletedObjects) { [PSCustomObject]@{ DistinguishedName = 'CN=Gone\0ADEL:...,CN=Deleted Objects,DC=contoso,DC=com' } } }
+        Mock Get-ADObject { if ($IncludeDeletedObjects) { [PSCustomObject]@{ DistinguishedName = 'CN=Gone\0ADEL:...,CN=Deleted Objects,DC=contoso,DC=com'; isDeleted = $true } } }
 
         $lookup = Test-OrphanedSID -SID $script:orphan
 
@@ -82,13 +82,49 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
 
     It 'Is orphaned when found among deleted objects even though the live lookup failed' {
         Mock Get-ADObject {
-            if ($IncludeDeletedObjects) { [PSCustomObject]@{ DistinguishedName = 'CN=Gone\0ADEL:...,CN=Deleted Objects,DC=contoso,DC=com' } }
+            if ($IncludeDeletedObjects) { [PSCustomObject]@{ DistinguishedName = 'CN=Gone\0ADEL:...,CN=Deleted Objects,DC=contoso,DC=com'; isDeleted = $true } }
             else { throw 'The operation returned because the timeout limit was exceeded' }
         }
 
         (Test-OrphanedSID -SID $script:orphan).Status | Should -Be 'Orphaned'
     }
 
+    It 'Exists, not orphaned, when the live lookup failed and the deleted-objects lookup finds the live object (#39)' {
+        # -IncludeDeletedObjects returns live objects too; a live one has no isDeleted value
+        Mock Get-ADObject {
+            if ($IncludeDeletedObjects) { [PSCustomObject]@{ DistinguishedName = 'CN=Live,DC=contoso,DC=com'; isDeleted = $null } }
+            else { throw 'The operation returned because the timeout limit was exceeded' }
+        }
+
+        $lookup = Test-OrphanedSID -SID $script:live
+
+        $lookup.Status | Should -Be 'Exists'
+        $lookup.IsOrphaned | Should -BeFalse
+        $script:SIDValidationCache[$script:live].Status | Should -Be 'Exists'
+        Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+            $Message -eq 'SID found as a live object by the deleted-objects lookup: CN=Live,DC=contoso,DC=com'
+        }
+    }
+
+    It 'Exists when the deleted-objects lookup returns both a tombstone and a live object' {
+        Mock Get-ADObject {
+            if ($IncludeDeletedObjects) {
+                [PSCustomObject]@{ DistinguishedName = 'CN=Gone\0ADEL:...,CN=Deleted Objects,DC=contoso,DC=com'; isDeleted = $true }
+                [PSCustomObject]@{ DistinguishedName = 'CN=Live,DC=contoso,DC=com'; isDeleted = $null }
+            }
+            else { throw 'The operation returned because the timeout limit was exceeded' }
+        }
+
+        (Test-OrphanedSID -SID $script:live).Status | Should -Be 'Exists'
+    }
+
+    It 'Asks the deleted-objects lookup for isDeleted' {
+        Mock Get-ADObject { }
+
+        $null = Test-OrphanedSID -SID $script:orphan
+
+        Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $IncludeDeletedObjects -and @($Properties) -contains 'isDeleted' }
+    }
     It 'Exists when the SID translates to an account locally' {
         # BUILTIN\Administrators resolves on any Windows machine without a domain
         (Test-OrphanedSID -SID 'S-1-5-32-544').Status | Should -Be 'Exists'

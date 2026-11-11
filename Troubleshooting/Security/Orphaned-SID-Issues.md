@@ -20,8 +20,9 @@ It works through these steps and stops at the first that decides:
    `SID format invalid - cannot be verified: <SID>`).
 2. Cache lookup in `$script:SIDValidationCache` (Debug `SID validation cache hit for <SID>`).
 3. `Get-ADObject -Filter "objectSid -eq '<SID>'"`; found means `Exists`.
-4. The same query with `-IncludeDeletedObjects`; a match in the Deleted Objects container is
-   `Orphaned` (the account is gone and the ACE should be cleaned), even when step 3 failed.
+4. The same query with `-IncludeDeletedObjects -Properties isDeleted`. That query returns live
+   objects too, so a match with `isDeleted` true is a tombstone and means `Orphaned` (the account
+   is gone and the ACE should be cleaned), even when step 3 failed; a live match means `Exists`.
 5. `SecurityIdentifier.Translate([NTAccount])`; a resolved name that is not itself a SID means
    `Exists`.
 6. `Get-ADUser`, `Get-ADGroup`, `Get-ADComputer` with `SID -eq '<SID>'`.
@@ -131,8 +132,9 @@ orphaned.
 
 $testSID = "S-1-5-21-1234567890-1234567890-1234567890-1001"
 try {
-    $deleted = Get-ADObject -Filter "objectSid -eq '$testSID'" -IncludeDeletedObjects -ErrorAction Stop
-    if ($deleted) { "In deleted objects: $($deleted.DistinguishedName)" }
+    # -IncludeDeletedObjects also returns live objects; isDeleted marks a tombstone
+    Get-ADObject -Filter "objectSid -eq '$testSID'" -IncludeDeletedObjects -Properties isDeleted -ErrorAction Stop |
+        ForEach-Object { if ($_.isDeleted) { "In deleted objects: $($_.DistinguishedName)" } else { "Live: $($_.DistinguishedName)" } }
 } catch {
     "Not in deleted objects: $($_.Exception.Message)"
 }
