@@ -51,11 +51,12 @@ UNVERIFIED SIDS
     unverified: Active Directory returns an empty search, not an error. Run the commands as an
     account that can read every object in scope.
 
-    Logs go to .\Logs\<Command>_<yyyyMMdd_HHmmss>.log under the current directory unless
-    -LogPath is given. An existing log file is appended to, and renamed aside first when it is
-    larger than MaxLogFileSizeMB (default 10). Every line carries the run's correlation ID, so
-    one run can be pulled out of a shared log with Select-String. Pass -CorrelationId to tie a
-    run to a change record. -LogLevel sets the lowest level written to the file; security
+    Logs go to -LogPath when it is given, otherwise to the LogFilePath of the -ConfigPath file,
+    otherwise to .\Logs\<Command>_<yyyyMMdd_HHmmss>.log under the current directory. The whole
+    run goes to that one file. An existing log file is appended to, and renamed aside first
+    when it is larger than MaxLogFileSizeMB (default 10). Every line carries the run's
+    correlation ID, so one run can be pulled out of a shared log with Select-String. Pass
+    -CorrelationId to tie a run to a change record. -LogLevel sets the lowest level written to the file; security
     events are written at every level. Without -LogLevel the level is Verbose under -Verbose,
     Debug under -Debug, and otherwise the LogLevel of the -ConfigPath file, or Information.
 

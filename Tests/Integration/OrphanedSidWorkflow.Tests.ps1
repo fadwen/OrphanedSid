@@ -338,6 +338,43 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
         }
     }
 
+    Context 'Log file chosen by a configuration file (#90)' {
+        BeforeEach {
+            $script:priorLocation = Get-Location
+            $script:runDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+            New-Item -Path $script:runDir -ItemType Directory | Out-Null
+            Set-Location $script:runDir
+            $script:configuredLog = Join-Path $script:runDir 'configured.log'
+            $script:cfg = Join-Path $script:runDir 'cfg.json'
+            @{ LogFilePath = $script:configuredLog } | ConvertTo-Json | Set-Content $script:cfg
+        }
+
+        AfterEach {
+            Set-Location $script:priorLocation
+        }
+
+        It 'Writes the whole run, header first, to the LogFilePath when -LogPath is not given' {
+            $null = Find-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -ConfigPath $script:cfg -SuppressConsoleOutput -CorrelationId 'cfg-log-1'
+
+            $lines = @(Get-Content $script:configuredLog)
+            ($lines | Select-String -Pattern 'Module Version:' -SimpleMatch).Count | Should -Be 1
+            ($lines | Select-String -Pattern 'Find-OrphanedSid starting' -SimpleMatch).Count | Should -Be 1
+            ($lines | Select-String -Pattern 'Discovery completed' -SimpleMatch).Count | Should -Be 1
+            # Before #90 the header and the first lines went to the default file
+            Test-Path (Join-Path $script:runDir 'Logs') | Should -BeFalse
+        }
+
+        It 'Keeps -LogPath over the configured LogFilePath, and writes the whole run there' {
+            $mine = Join-Path $script:runDir 'mine.log'
+
+            $null = Find-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -ConfigPath $script:cfg -LogPath $mine -SuppressConsoleOutput
+
+            Test-Path $script:configuredLog | Should -BeFalse
+            @(Select-String -Path $mine -Pattern 'Module Version:' -SimpleMatch).Count | Should -Be 1
+            @(Select-String -Path $mine -Pattern 'Discovery completed' -SimpleMatch).Count | Should -Be 1
+        }
+    }
+
     Context '-MaxRetries reaches the directory lookups (#89)' {
         BeforeEach {
             # The retry back-off is not what is under test

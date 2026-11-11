@@ -206,8 +206,8 @@ HelpMessage: ''
 ### -LogPath
 
 Log file.
-Defaults to .\Logs\Find-OrphanedSid_<yyyyMMdd_HHmmss>.log under the current
-directory.
+When omitted, the LogFilePath of the -ConfigPath file is used if it sets one, and otherwise
+.\Logs\Find-OrphanedSid_<yyyyMMdd_HHmmss>.log under the current directory.
 An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
 to <name>_<yyyyMMdd_HHmmss>.log.
 

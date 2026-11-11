@@ -192,8 +192,8 @@ is not created.
 | `BatchSize` | int | 50 | 1 to 1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1 to 1000; objects processed between memory checks |
 | `LogLevel` | string | `Information` | One of the `-LogLevel` values. Sets the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent; entries written before the file is loaded use `Information` |
-| `LogFilePath` | string | none | When set, entries written after configuration load go to this file instead of `-LogPath`; its folder must exist. Startup entries are already in `-LogPath`. Runs append to this file |
-| `EnableLogFileRotation` | bool | true | At startup, rename the existing log file to `<name>_<yyyyMMdd_HHmmss>.log` when it is larger than `MaxLogFileSizeMB`, so the run starts a new one. Applies to the `-LogPath` file before the run writes to it, and to the `LogFilePath` file once the configuration is loaded. The default timestamped log name is new each run, so rotation matters for a fixed path |
+| `LogFilePath` | string | none | The run's log file when `-LogPath` is not given; `-LogPath` wins over it. Resolved, checked and created like `-LogPath`, and the whole run goes to it. Runs append to this file |
+| `EnableLogFileRotation` | bool | true | At startup, rename the existing log file to `<name>_<yyyyMMdd_HHmmss>.log` when it is larger than `MaxLogFileSizeMB`, so the run starts a new one. Applies to the run's log file, from `-LogPath` or `LogFilePath`, before the run writes to it. The default timestamped log name is new each run, so rotation matters for a fixed path |
 | `MaxLogFileSizeMB` | int | 10 | |
 
 `CriticalObjectPatterns` is part of the default configuration but cannot be set from the file.

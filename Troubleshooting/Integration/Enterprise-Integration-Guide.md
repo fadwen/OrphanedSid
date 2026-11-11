@@ -307,9 +307,9 @@ check does not cover some of those, such as the integrity-level (`^S-1-16-`) and
 [Automation](../../Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows.
 
 `LogLevel` in the file sets the file log level when the command is run without `-LogLevel`,
-`-Verbose` or `-Debug`. `LogFilePath` in the file overrides `-LogPath`; unlike `-LogPath`, its folder is not created
-automatically, so it must already exist or every entry fails with the warning
-`Failed to write log entry to file: Could not find a part of the path '<path>'.`. Search base,
+`-Verbose` or `-Debug`. `LogFilePath` in the file names the log file when the command is run
+without `-LogPath`; `-LogPath` wins over it. It is resolved, created and rotated the same way as
+`-LogPath`, and a refused path falls back the same way. Search base,
 memory limit, retries, and output path
 are parameters only and cannot be set in the file. Validate a file before deploying it:
 

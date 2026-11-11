@@ -138,8 +138,12 @@ function Start-OrphanedSidSession {
     }
     $script:LogLevel = $LogLevel
 
-    # A path of only spaces is no path: it gets the same default under the current directory
+    # Precedence: -LogPath, then the -ConfigPath file's LogFilePath, then the default name below. The
+    # file is read later, so only the decision is made here. A path of only spaces is no path: it
+    # gets the same default under the current directory.
+    $useConfigLogPath = $false
     if ([string]::IsNullOrWhiteSpace($LogPath)) {
+        $useConfigLogPath = $true
         $logDirectory = Join-Path -Path (Get-Location).Path -ChildPath 'Logs'
         $LogPath = Join-Path -Path $logDirectory -ChildPath "${CommandName}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     }
@@ -152,6 +156,7 @@ function Start-OrphanedSidSession {
     $initParams = @{
         ConfigPath            = $ConfigPath
         LogPath               = $LogPath
+        UseConfigLogPath      = $useConfigLogPath
         MaxMemoryUsageMB      = $MaxMemoryUsageMB
         CorrelationId         = $CorrelationId
         LogLevel              = $LogLevel

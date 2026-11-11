@@ -15,7 +15,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Core\Start-OrphanedSidSession.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
-    function Initialize-ScriptExecution { param($ConfigPath, $LogPath, $MaxMemoryUsageMB, $CorrelationId, $LogLevel, [switch]$UseConfigLogLevel, [switch]$SuppressConsoleOutput) }
+    function Initialize-ScriptExecution { param($ConfigPath, $LogPath, $MaxMemoryUsageMB, $CorrelationId, $LogLevel, [switch]$UseConfigLogLevel, [switch]$UseConfigLogPath, [switch]$SuppressConsoleOutput) }
 }
 
 Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
@@ -151,6 +151,19 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -LogLevelBound $Bound | Out-Null
 
             Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly -ParameterFilter { [bool]$UseConfigLogLevel -eq $Expected }
+        }
+
+        It "Lets the configuration file's LogFilePath apply only when the command line gave no -LogPath (#90): <Case>" -ForEach @(
+            @{ Case = '-LogPath given'; Given = 'C:\Logs\mine.log'; Expected = $false }
+            @{ Case = 'no -LogPath'; Given = $null; Expected = $true }
+            @{ Case = '-LogPath of only spaces'; Given = '   '; Expected = $true }
+        ) {
+            $parameters = @{ CommandName = 'Find-OrphanedSid' }
+            if ($null -ne $Given) { $parameters.LogPath = $Given }
+
+            Start-OrphanedSidSession @parameters | Out-Null
+
+            Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly -ParameterFilter { [bool]$UseConfigLogPath -eq $Expected }
         }
     }
 

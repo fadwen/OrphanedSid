@@ -177,13 +177,36 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Script initialization failed:*' }
         }
 
-        It 'Uses the log file path from the configuration over the parameter' {
+        It "Sets up the file's LogFilePath, once and before writing, when asked to (#90)" {
             $cfg = Join-Path $script:workDir 'logpath.json'
+            @{ LogFilePath = 'C:\Logs\from-config.log' } | ConvertTo-Json | Set-Content $cfg
+
+            $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\default.log" -UseConfigLogPath
+
+            # The run's one log file: no second path is swapped in after setup
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq 'C:\Logs\from-config.log' -and $RotateAboveMB -eq 10 }
+            $result.LogPath | Should -Be 'C:\Logs\from-config.log'
+        }
+
+        It "Keeps -LogPath over the file's LogFilePath without -UseConfigLogPath (#90)" {
+            $cfg = Join-Path $script:workDir 'logpath2.json'
             @{ LogFilePath = 'C:\Logs\from-config.log' } | ConvertTo-Json | Set-Content $cfg
 
             $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\param.log"
 
-            $result.LogPath | Should -Be 'C:\Logs\from-config.log'
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq "$($script:workDir)\param.log" }
+            $result.LogPath | Should -Be "$($script:workDir)\param.log"
+            $script:LogPath | Should -Be "$($script:workDir)\param.log"
+        }
+
+        It 'Keeps -LogPath with -UseConfigLogPath when the file sets no LogFilePath' {
+            $cfg = Join-Path $script:workDir 'nologpath.json'
+            @{ BatchSize = 20 } | ConvertTo-Json | Set-Content $cfg
+
+            $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\default.log" -UseConfigLogPath
+
+            $result.LogPath | Should -Be "$($script:workDir)\default.log"
         }
     }
 
@@ -244,28 +267,14 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq "$($script:workDir)\run.log" -and $RotateAboveMB -eq 10 }
         }
 
-        It 'Moves a LogFilePath file that exceeds the configured size aside' {
+        It "Rotates the file's LogFilePath through Initialize-LogDirectory like any other path (#90)" {
             $log = Join-Path $script:workDir 'big.log'
-            $stream = [IO.File]::Create($log); $stream.SetLength(2MB); $stream.Dispose()
             $cfg = Join-Path $script:workDir 'rotate.json'
             @{ MaxLogFileSizeMB = 1; LogFilePath = $log } | ConvertTo-Json | Set-Content $cfg
 
-            Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\run.log" | Out-Null
+            Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\run.log" -UseConfigLogPath | Out-Null
 
-            Test-Path $log | Should -BeFalse
-            @(Get-ChildItem $script:workDir -Filter 'big_*.log').Count | Should -Be 1
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like 'Rotated log file to:*' }
-        }
-
-        It 'Leaves an oversized LogFilePath file alone when rotation is disabled' {
-            $log = Join-Path $script:workDir 'big2.log'
-            $stream = [IO.File]::Create($log); $stream.SetLength(2MB); $stream.Dispose()
-            $cfg = Join-Path $script:workDir 'norotate.json'
-            @{ MaxLogFileSizeMB = 1; EnableLogFileRotation = $false; LogFilePath = $log } | ConvertTo-Json | Set-Content $cfg
-
-            Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\run.log" | Out-Null
-
-            Test-Path $log | Should -BeTrue
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq $log -and $RotateAboveMB -eq 1 }
         }
 
         It 'Leaves the -LogPath file to Initialize-LogDirectory when no LogFilePath is set' {
@@ -281,21 +290,6 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Rotated log file to:*' }
         }
 
-        It 'Warns and carries on when rotating a LogFilePath file fails' {
-            $log = Join-Path $script:workDir 'locked.log'
-            $cfg = Join-Path $script:workDir 'rotatefail.json'
-            @{ MaxLogFileSizeMB = 1; LogFilePath = $log } | ConvertTo-Json | Set-Content $cfg
-            $stream = [IO.File]::Create($log); $stream.SetLength(2MB)
-            try {
-                $result = Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\run.log"
-
-                $result.Config | Should -Not -BeNullOrEmpty
-                Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like 'Log file rotation check failed:*' }
-            }
-            finally {
-                $stream.Dispose()
-            }
-        }
     }
     Context 'Failures' {
         It 'Logs at Error level and rethrows when logging cannot start' {

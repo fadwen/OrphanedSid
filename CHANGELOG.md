@@ -85,6 +85,13 @@ All notable changes to this module are recorded here. Format follows
   path against the process directory rather than the current location. It now resolves it against
   the current location, as `Remove-OrphanedSid -BackupPath` and `-LogPath` already do.
   ([#80](https://github.com/fadwen/OrphanedSid/issues/80))
+- A `-ConfigPath` file that set `LogFilePath` split each run's log across two files: the header and
+  the first lines went to `-LogPath` or the default `.\Logs\<Command>_<timestamp>.log`, the rest
+  to `LogFilePath`. It also overrode a `-LogPath` given on the command line, and its folder was not
+  created. The log file is now chosen once, before anything is written: `-LogPath` when given,
+  otherwise the file's `LogFilePath`, otherwise the default name. A `LogFilePath` is resolved,
+  created, checked and rotated the same way as `-LogPath`.
+  ([#90](https://github.com/fadwen/OrphanedSid/issues/90))
 - A fixed `-LogPath` reused across runs was emptied at the start of each run, so the previous run's
   log was lost, and log rotation never applied to it. A run now appends to an existing log file.
   When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it

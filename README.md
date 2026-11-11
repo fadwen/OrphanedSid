@@ -172,7 +172,8 @@ skipped because the directory server could not be contacted; re-run once the cau
 | `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
 | `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
 | `LogLevel` | Critical to Verbose | File log level when the command line sets none; `-LogLevel`, `-Verbose` and `-Debug` win |
-| `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+| `LogFilePath` | path | Log file when `-LogPath` is not given; `-LogPath` wins |
+| `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Rotate the log file aside when it is larger than the limit (default 10 MB) |
 
 A file that sets either SID list uses exactly that list; to add to the defaults, repeat them in the
 file. [Automation](Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows how

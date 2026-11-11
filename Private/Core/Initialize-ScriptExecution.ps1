@@ -135,6 +135,13 @@ function Initialize-ScriptExecution {
         (-LogLevel, -Verbose or -Debug), so the command line always wins over the file. A file
         without LogLevel leaves the level at Information. Without -ConfigPath it has no effect.
 
+    .PARAMETER UseConfigLogPath
+        [Switch] (Optional) Use the LogFilePath of the -ConfigPath file, when it sets one, in place
+        of -LogPath. Start-OrphanedSidSession sets it only when the command line gave no -LogPath,
+        and passes the default name as -LogPath, so -LogPath wins over the file and the file over
+        the default. The chosen path is set up before anything is written to it, so one run writes
+        one log file.
+
     .OUTPUTS
         [Hashtable] Initialization results containing:
         - Config: Loaded and validated configuration object
@@ -218,6 +225,9 @@ function Initialize-ScriptExecution {
         [switch]$UseConfigLogLevel,
 
         [Parameter()]
+        [switch]$UseConfigLogPath,
+
+        [Parameter()]
         [switch]$SuppressConsoleOutput
     )
 
@@ -274,6 +284,12 @@ function Initialize-ScriptExecution {
                 $rotateAboveMB = $script:Config.MaxLogFileSizeMB
             }
             $targetLogPath = if ($LogPath) { $LogPath } else { ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log" }
+            # The file's LogFilePath is chosen here, before anything is written, and goes through the
+            # same resolution, refusal and rotation as -LogPath. Swapping it in after setup once split
+            # a run across two files and overrode -LogPath given on the command line.
+            if ($UseConfigLogPath -and -not [string]::IsNullOrWhiteSpace($script:Config.LogFilePath)) {
+                $targetLogPath = $script:Config.LogFilePath
+            }
             $null = Initialize-LogDirectory -LogPath $targetLogPath -RotateAboveMB $rotateAboveMB
 
             if ($script:LogRotation) {
@@ -317,30 +333,8 @@ function Initialize-ScriptExecution {
             Write-StructuredLog "Initializing performance statistics..." -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
             $script:Statistics = [ProcessingStatistics]::new()
 
-            # Initialize log file path from configuration if provided. Otherwise Initialize-LogDirectory
-            # has already set $script:LogPath to the resolved path, the default name for a blank one, or
-            # the fallback for a refused one; copying the raw -LogPath back would undo all three.
-            if ($script:Config.LogFilePath) {
-                $script:LogPath = $script:Config.LogFilePath
-            }
-
-            # A LogFilePath from the file receives entries only from here on, so it is rotated here;
-            # the -LogPath file was rotated by Initialize-LogDirectory before the run wrote to it
-            if ($script:Config.LogFilePath -and (Test-Path $script:LogPath)) {
-                try {
-                    $logFileInfo = Get-Item $script:LogPath
-                    $fileSizeMB = [Math]::Round($logFileInfo.Length / 1MB, 2)
-
-                    if ($script:Config.EnableLogFileRotation -and $fileSizeMB -gt $script:Config.MaxLogFileSizeMB) {
-                        $rotatedPath = $script:LogPath -replace '\.log$', "_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-                        # -ErrorAction Stop: a non-terminating failure here was logged as a successful rotation
-                        Move-Item $script:LogPath $rotatedPath -ErrorAction Stop
-                        Write-StructuredLog "Rotated log file to: $rotatedPath (Size: $fileSizeMB MB)" -Level Information -Component 'Initialization' -CorrelationId $CorrelationId
-                    }
-                } catch {
-                    Write-StructuredLog "Log file rotation check failed: $($_.Exception.Message)" -Level Warning -Component 'Initialization' -CorrelationId $CorrelationId
-                }
-            }
+            # $script:LogPath is the one Initialize-LogDirectory settled on: the resolved path, the
+            # default name for a blank one, or the fallback for a refused one.
 
             # Return initialization results
             $initResults = @{

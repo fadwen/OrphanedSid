@@ -194,8 +194,8 @@ the -ConfigPath file applies, and Information when there is none.</maml:para>
         <maml:name>LogPath</maml:name>
         <maml:description>
           <maml:para>Log file.
-Defaults to .\Logs\Find-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log under the current
-directory.
+When omitted, the LogFilePath of the -ConfigPath file is used if it sets one, and otherwise
+.\Logs\Find-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log under the current directory.
 An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
 to &lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
@@ -650,7 +650,8 @@ the -ConfigPath file applies, and Information when there is none.</maml:para>
         <maml:name>LogPath</maml:name>
         <maml:description>
           <maml:para>Log file.
-Defaults to .\Logs\Remove-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log.
+When omitted, the LogFilePath of the -ConfigPath file is used if it sets one, and otherwise
+.\Logs\Remove-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log under the current directory.
 An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
 to &lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
