@@ -142,6 +142,11 @@ function Get-ObjectAccessRule {
 
             # Strategy 1: Try Get-Acl method (preferred for reliability)
             $accessRules = Get-SecurityDescriptorFromGetAcl -ADObject $ADObject -IncludeInherited:$IncludeInherited -CorrelationId $CorrelationId
+            if ($null -ne $accessRules -and @($accessRules).Count -eq 0) {
+                # Read successfully, but every entry is inherited and -IncludeInherited is off: nothing
+                # failed, so no other strategy is tried and nothing is logged above Debug
+                return $null
+            }
             if ($accessRules) {
                 Write-StructuredLog "Successfully retrieved access rules using Get-Acl method for $objectDN" -Level Debug -CorrelationId $CorrelationId
                 return $accessRules
@@ -227,10 +232,17 @@ function Get-SecurityDescriptorFromGetAcl {
             return $null
         }
 
-        $accessRules = if ($IncludeInherited) {
+        $accessRules = @(if ($IncludeInherited) {
             $acl.Access
         } else {
             $acl.Access | Where-Object { -not $_.IsInherited }
+        })
+
+        if ($accessRules.Count -eq 0) {
+            # The descriptor was read; every entry is inherited. An empty array, not $null, tells
+            # Get-ObjectAccessRule that retrieval succeeded and nothing is left to examine.
+            Write-StructuredLog "No explicit access rules on $objectDN (all $(@($acl.Access).Count) are inherited)" -Level Debug -CorrelationId $CorrelationId
+            return , @()
         }
 
         Write-StructuredLog "Get-Acl successfully retrieved $($accessRules.Count) access rules for $objectDN" -Level Debug -CorrelationId $CorrelationId
