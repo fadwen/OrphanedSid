@@ -113,7 +113,6 @@ All notable changes to this module are recorded here. Format follows
   and the log header line is `Module Version: <version>`. The `WellKnownSIDsSkipped` counter in a
   result's `ProcessingStatistics`, which was never incremented, is removed.
   ([#52](https://github.com/fadwen/OrphanedSid/issues/52))
-
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the
   retries). The next lookup, which searches deleted objects, also returns live objects, and any match
@@ -211,10 +210,13 @@ All notable changes to this module are recorded here. Format follows
   (`Target object validation failed: `). It now names each problem found.
   ([#16](https://github.com/fadwen/OrphanedSid/issues/16))
 - A missing backup folder was logged twice. ([#20](https://github.com/fadwen/OrphanedSid/issues/20))
-- Restoring from a specific backup file restored whichever object the file recorded, even when it
-  was not the object asked for. A backup file recorded for a different object is now refused.
-  Several distinguished names piped into one restore from a backup folder are each restored from
-  their own backup. ([#17](https://github.com/fadwen/OrphanedSid/issues/17))
+- The internal restore workflow could restore the wrong object in two ways: given one backup file,
+  it restored whichever object the file recorded rather than the target; given several targets in
+  one call, it restored every target after the first from the first one's backup. It now refuses a
+  file recorded for a different object, and restores each target from its own backup. Neither
+  path is reachable from `Restore-OrphanedSidBackup`, which calls the workflow once per target with
+  a backup folder, so no restore was affected.
+  ([#17](https://github.com/fadwen/OrphanedSid/issues/17))
 - When reading an object failed, the retry never re-read it: it passed the error instead of the
   object, so every attempt failed, and each failing object still waited through the back-off (12
   seconds with the default `-MaxRetries 3`). The error and retry log lines also named no object. The
@@ -288,7 +290,6 @@ its history is carried over in this repository.
   rehearsal wrote no log file and printed `What if:` lines for appending log entries, creating the
   memory manager and disposing resources. Those steps are pinned; only the ACL changes and the
   backup folder honour `-WhatIf`.
-
 - Every restore failed with `A parameter cannot be found that matches parameter name
   'BackupData'`. Two files defined `Test-BackupIntegrity`: the one in
   `Private/Backup/Test-BackupValidation.ps1` validates backup data and is what the restore path
