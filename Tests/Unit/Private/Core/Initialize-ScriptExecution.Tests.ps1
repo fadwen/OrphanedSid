@@ -29,7 +29,8 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
     BeforeEach {
         Mock Write-StructuredLog { }
         Mock Initialize-LoggingSystem { }
-        Mock Initialize-LogDirectory { }
+        # Like the real function: records the path it settled on in module scope and emits it
+        Mock Initialize-LogDirectory { $script:LogPath = $LogPath; $LogPath }
         Mock Initialize-MemoryManager { [PSCustomObject]@{ MaxMemoryMB = $MaxMemoryMB; CheckInterval = $CheckInterval } }
         $script:Config = $null
         $script:MemoryManager = $null
@@ -80,6 +81,24 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq "$($script:workDir)\run.log" }
         }
 
+        It 'Keeps the path Initialize-LogDirectory settled on, not the raw -LogPath: <Case>' -ForEach @(
+            @{ Case = 'a path of only spaces gets the default name'; Given = '   '; Settled = 'C:\Scripts\Logs\OrphanedSid_20260101_120000.log' }
+            @{ Case = 'a refused path falls back'; Given = 'C:\Windows\run.log'; Settled = 'C:\Users\op\AppData\Local\Temp\OrphanedSid_fallback.log' }
+        ) {
+            Mock Initialize-LogDirectory { $script:LogPath = $Settled; $Settled }
+
+            $result = Initialize-ScriptExecution -LogPath $Given
+
+            $result.LogPath | Should -Be $Settled
+            $script:LogPath | Should -Be $Settled
+        }
+
+        It 'Returns only the initialization table, not the path Initialize-LogDirectory emits' {
+            $result = @(Initialize-ScriptExecution -LogPath "$($script:workDir)\run.log")
+
+            $result.Count | Should -Be 1
+            $result[0] | Should -BeOfType [hashtable]
+        }
         It 'Defaults the log to .\Logs\OrphanedSid_<timestamp>.log when no path is given' {
             Initialize-ScriptExecution | Out-Null
 

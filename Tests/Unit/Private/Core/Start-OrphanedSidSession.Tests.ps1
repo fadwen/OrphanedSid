@@ -94,8 +94,13 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
     }
 
     Context 'Log path and level' {
-        It 'Defaults the log to .\Logs\<Command>_<timestamp>.log under the current directory' {
-            Start-OrphanedSidSession -CommandName 'Remove-OrphanedSid' | Out-Null
+        It 'Defaults the log to .\Logs\<Command>_<timestamp>.log under the current directory: <Case>' -ForEach @(
+            @{ Case = 'no -LogPath'; Given = $null }
+            @{ Case = 'a -LogPath of only spaces'; Given = '   ' }
+        ) {
+            $parameters = @{ CommandName = 'Remove-OrphanedSid' }
+            if ($null -ne $Given) { $parameters.LogPath = $Given }
+            Start-OrphanedSidSession @parameters | Out-Null
 
             $expectedFolder = Join-Path (Get-Location).Path 'Logs'
             Should -Invoke Initialize-ScriptExecution -Times 1 -Exactly -ParameterFilter {
