@@ -457,7 +457,7 @@ function Initialize-LogFile {
         # Create comprehensive log header
         $logHeader = @"
 === OrphanedSid Log ===
-Script Version: 2.0.0
+Module Version: $(Get-OrphanedSidModuleVersion)
 Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Correlation ID: $($loggingState.CorrelationId)
 PowerShell Version: $($PSVersionTable.PSVersion)

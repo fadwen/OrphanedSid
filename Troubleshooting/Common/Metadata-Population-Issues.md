@@ -34,8 +34,9 @@ Import-Csv -Path .\Reports\orphaned-sids.csv | ForEach-Object {
 } | Export-Csv -Path .\Reports\orphaned-sids-utc.csv -NoTypeInformation
 ```
 
-Backup files use a different field: `BackupDate` is written as `yyyy-MM-ddTHH:mm:ss.fffZ` text
-(local time with a literal `Z`). Treat it as local when comparing with `Timestamp`.
+Backup files use a different field: `BackupDate` is written as `yyyy-MM-ddTHH:mm:ss.fffZ` text in
+UTC. Convert one of the two before comparing it with `Timestamp`. Backups written by 1.0.1 and
+earlier hold local time with a literal `Z`, so treat theirs as local.
 
 #### Issue: Timestamps appear out of order or far apart in one run
 
@@ -59,7 +60,6 @@ property that `Find-OrphanedSIDsInObject` attaches to every result from one obje
 | `AccessRulesRetrieved` | Rules returned by `Get-ObjectAccessRule` |
 | `ProcessedSIDs` | Rules evaluated, including well-known and resolved ones |
 | `SkippedSIDs` | Rules whose evaluation threw an error |
-| `WellKnownSIDsSkipped` | Never incremented; always `0` |
 | `OrphanedSIDsFound` | Orphaned results created |
 | `UnverifiedSIDsFound` | Unverified results created |
 | `ErrorsEncountered` | Exceptions caught for that object |
@@ -122,7 +122,8 @@ Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -CorrelationId $id
 ### 4. Processing Context
 
 Each result also carries a `ProcessingContext` note property (hashtable) with `MachineName`,
-`UserName`, `ProcessId`, `PowerShellVersion` and `ModuleVersion` (always `1.0.0`). Like
+`UserName`, `ProcessId`, `PowerShellVersion` and `ModuleVersion`, the version of the loaded
+OrphanedSid module. Like
 `ProcessingStatistics` it is not a class member; the CSV holds it only as text.
 
 ### 5. ACL Metadata Defaults

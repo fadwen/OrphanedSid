@@ -374,6 +374,20 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @($results | Where-Object ObjectDN -eq $dn).Count | Should -Be 0
         }
 
+        It 'Stamps the backup and the log with the module version and the backup with UTC time (#52)' {
+            $manifestVersion = (Import-PowerShellDataFile -Path (Join-Path $PSScriptRoot '..\..\OrphanedSid.psd1')).ModuleVersion
+            $log = Join-Path $TestDrive 'version.log'
+
+            $results = @(Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput)
+
+            $backup = Import-Clixml -Path $results[0].BackupFile
+            $backup.ScriptVersion | Should -Be $manifestVersion
+            $stamp = [DateTimeOffset]::ParseExact($backup.BackupDate, "yyyy-MM-dd'T'HH:mm:ss.fffK", [System.Globalization.CultureInfo]::InvariantCulture)
+            ([DateTime]::UtcNow - $stamp.UtcDateTime).TotalMinutes | Should -BeLessThan 5
+            ([DateTime]::UtcNow - $stamp.UtcDateTime).TotalMinutes | Should -BeGreaterThan -1
+            Select-String -Path $log -Pattern "Module Version: $manifestVersion" -SimpleMatch | Should -Not -BeNullOrEmpty
+        }
+
         It 'Writes no CSV under -WhatIf, and its log says no file was written (#50)' {
             $log = Join-Path $TestDrive 'whatif-export.log'
             $csv = Join-Path $TestDrive 'whatif-export.csv'
