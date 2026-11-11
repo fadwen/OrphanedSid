@@ -45,7 +45,7 @@ data to CSV in addition.
 | `-ConfigPath <path>` | Find, Remove | JSON configuration file. See [Configuration File](#configuration-file). |
 | `-MaxMemoryUsageMB <int>` | Find, Remove | Memory threshold in MB, 100 to 16384, default 1024. |
 | `-MaxRetries <int>` | Find, Remove | Retries of an object's ACL and SID detection after an error, 1 to 10, default 3. A removal is not retried. |
-| `-IncludeInherited` | Find, Remove | Also report inherited access control entries. |
+| `-IncludeInherited` | Find, Remove | Also report inherited access control entries. `Remove-OrphanedSid` logs a warning for an inherited orphaned entry and leaves it; it is removed where it is set, on the parent. |
 | `-PreserveTempFiles` | Find, Remove | Keep the per-run streaming results folder after the run. |
 
 There is no `-Credential` parameter; every command runs as the calling account.

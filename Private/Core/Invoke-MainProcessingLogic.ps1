@@ -374,7 +374,14 @@ function Invoke-MainProcessingLogic {
                                 # object is backed up once, before any entry is removed. Removing them one
                                 # call at a time backed it up again after each removal, and a restore from
                                 # the newest backup could not bring back the SIDs removed first.
-                                $sidsToRemove = @($verifiedResults | ForEach-Object { $_.OrphanedSID } | Select-Object -Unique)
+                                # An inherited entry is set on a parent object and can only be removed
+                                # there; on this object it is reported, not removed or backed up.
+                                $inheritedOnly = @($verifiedResults | Where-Object { $_.IsInherited } | ForEach-Object { $_.OrphanedSID } | Select-Object -Unique |
+                                        Where-Object { $_ -notin @($verifiedResults | Where-Object { -not $_.IsInherited } | ForEach-Object { $_.OrphanedSID }) })
+                                foreach ($inheritedSid in $inheritedOnly) {
+                                    Write-StructuredLog "Not removing inherited entry for orphaned SID $inheritedSid on $($currentObject.DistinguishedName): it is inherited from a parent object, so remove it there" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
+                                }
+                                $sidsToRemove = @($verifiedResults | Where-Object { -not $_.IsInherited } | ForEach-Object { $_.OrphanedSID } | Select-Object -Unique)
                                 if ($sidsToRemove.Count -gt 0) {
                                     $objectDN = $currentObject.DistinguishedName
                                     $sidList = $sidsToRemove -join ', '

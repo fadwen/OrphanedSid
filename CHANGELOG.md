@@ -55,6 +55,11 @@ All notable changes to this module are recorded here. Format follows
   SIDs are now removed together after one backup, and a backup never overwrites an earlier one: a
   second backup of the same object in the same second gets a `_2` suffix.
   ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
+- With `-IncludeInherited`, `Remove-OrphanedSid` tried to remove an inherited orphaned entry from the
+  child object that inherits it, which cannot work: it backed the child up, changed nothing, and
+  reported `ActualRemovals = 1` with `Success = False`. An inherited entry is now left alone with a
+  warning naming it, and the child is not backed up for it; the entry is removed on the parent that
+  sets it. ([#46](https://github.com/fadwen/OrphanedSid/issues/46))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

@@ -169,9 +169,11 @@ function Invoke-SIDRemoval {
         # Store original ACL access count for reporting (after ensuring Access property exists)
         $originalAccessCount = $workingACL.Access.Count
 
-        # Find SIDs in ACL that ARE in the allowed list (these are orphaned SIDs to be removed)
+        # Find SIDs in ACL that ARE in the allowed list (these are orphaned SIDs to be removed).
+        # Only explicit entries: an inherited entry comes from a parent object and cannot be removed
+        # from this one, so it is neither removed nor counted.
         $acesToRemove = $workingACL.Access | Where-Object {
-            $AllowedSIDs -contains $_.IdentityReference.Value
+            -not $_.IsInherited -and $AllowedSIDs -contains $_.IdentityReference.Value
         }
 
         # Track which allowed SIDs were actually found in the ACL  

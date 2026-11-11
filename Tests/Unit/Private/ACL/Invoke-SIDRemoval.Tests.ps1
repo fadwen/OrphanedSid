@@ -17,10 +17,11 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
     function New-TestAce {
-        param([string]$Sid, [string]$Rights = 'GenericRead')
+        param([string]$Sid, [string]$Rights = 'GenericRead', [switch]$Inherited)
         [PSCustomObject]@{
             IdentityReference     = [PSCustomObject]@{ Value = $Sid }
             ActiveDirectoryRights = $Rights
+            IsInherited           = [bool]$Inherited
         }
     }
 
@@ -151,6 +152,21 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
                 $Level -eq 'Verbose' -and $Message -like "REMOVED ACE: $($script:orphan2) - WriteProperty" -and $CorrelationId -eq 'rm-2'
             }
+        }
+    }
+
+    Context 'Inherited entries' {
+        It 'Neither removes nor counts an inherited entry, which belongs to a parent object (#46)' {
+            $acl = New-TestAcl -Aces @(
+                (New-TestAce -Sid $script:orphan1 -Inherited)
+                (New-TestAce -Sid $script:orphan2)
+            )
+
+            $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1, $script:orphan2 -ObjectDN $script:dn
+
+            @($result.RemovedSIDs) | Should -Be @($script:orphan2)
+            @($acl.Removed) | Should -Be @($script:orphan2)
+            @($acl.Access | Where-Object { $_.IdentityReference.Value -eq $script:orphan1 }).Count | Should -Be 1
         }
     }
 
