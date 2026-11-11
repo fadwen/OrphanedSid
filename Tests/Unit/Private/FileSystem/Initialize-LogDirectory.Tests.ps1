@@ -78,15 +78,67 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             $content | Should -Match 'Console Output Suppressed: True'
         }
 
-        It "Should replace the content of an existing log file with the header" {
+        It "Should append the header to an existing log file, keeping the earlier runs (#44)" {
             New-Item -Path $script:TestRoot -ItemType Directory | Out-Null
             "Existing content" | Set-Content $script:TestLogPath
 
             Initialize-LogDirectory -LogPath $script:TestLogPath
 
-            $content = Get-Content $script:TestLogPath -Raw
-            $content | Should -Match "=== OrphanedSid Log ==="
-            $content | Should -Not -Match "Existing content"
+            $lines = @(Get-Content $script:TestLogPath)
+            $lines[0] | Should -Be 'Existing content'
+            $lines[1] | Should -Be ''
+            $lines[2] | Should -Be '=== OrphanedSid Log ==='
+            $script:LogRotation | Should -BeNullOrEmpty
+        }
+    }
+
+    Context "Rotation (#44)" {
+        BeforeEach {
+            New-Item -Path $script:TestRoot -ItemType Directory | Out-Null
+            $stream = [IO.File]::Create($script:TestLogPath); $stream.SetLength(2MB); $stream.Dispose()
+        }
+
+        It "Should rename a file over -RotateAboveMB aside before writing this run's header" {
+            Initialize-LogDirectory -LogPath $script:TestLogPath -RotateAboveMB 1 | Should -Be $script:TestLogPath
+
+            $rotated = @(Get-ChildItem $script:TestRoot -Filter 'run_????????_??????.log')
+            $rotated.Count | Should -Be 1
+            $rotated[0].Length | Should -Be 2MB
+            (Get-Content $script:TestLogPath -TotalCount 1) | Should -Be '=== OrphanedSid Log ==='
+            $script:LogRotation.From | Should -Be $script:TestLogPath
+            $script:LogRotation.To | Should -Be $rotated[0].FullName
+            $script:LogRotation.SizeMB | Should -Be 2
+        }
+
+        It "Should rotate even under -WhatIf, since a preview run still logs" {
+            $WhatIfPreference = $true
+
+            Initialize-LogDirectory -LogPath $script:TestLogPath -RotateAboveMB 1
+
+            @(Get-ChildItem $script:TestRoot -Filter 'run_*.log').Count | Should -Be 1
+        }
+
+        It "Should append without rotating when <Case>" -ForEach @(
+            @{ Case = 'the file is within the limit'; Limit = 5 }
+            @{ Case = 'rotation is off'; Limit = 0 }
+        ) {
+            Initialize-LogDirectory -LogPath $script:TestLogPath -RotateAboveMB $Limit
+
+            @(Get-ChildItem $script:TestRoot -Filter 'run_*.log').Count | Should -Be 0
+            (Get-Item $script:TestLogPath).Length | Should -BeGreaterThan 2MB
+            $script:LogRotation | Should -BeNullOrEmpty
+        }
+
+        It "Should record a failed rotation and append to the file instead" {
+            # A held file handle cannot stand in: on Windows PowerShell 5.1 it blocks the append too
+            Mock Move-Item { throw 'The process cannot access the file because it is being used by another process.' }
+
+            Initialize-LogDirectory -LogPath $script:TestLogPath -RotateAboveMB 1 | Should -Be $script:TestLogPath
+
+            $script:LogRotation.Error | Should -Be 'The process cannot access the file because it is being used by another process.'
+            $script:LogRotation.To | Should -BeNullOrEmpty
+            (Get-Item $script:TestLogPath).Length | Should -BeGreaterThan 2MB
+            $script:LogFileInitialized | Should -BeTrue
         }
 
         It "Should create the directory and file even under -WhatIf" {

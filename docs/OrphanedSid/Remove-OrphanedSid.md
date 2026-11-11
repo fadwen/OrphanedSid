@@ -251,6 +251,8 @@ HelpMessage: ''
 
 Log file.
 Defaults to .\Logs\Remove-OrphanedSid_<yyyyMMdd_HHmmss>.log.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to <name>_<yyyyMMdd_HHmmss>.log.
 
 ```yaml
 Type: System.String

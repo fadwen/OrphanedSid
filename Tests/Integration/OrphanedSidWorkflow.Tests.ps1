@@ -283,6 +283,28 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Select-String -Path $fromCommand -Pattern 'Total objects processed' -SimpleMatch | Should -Not -BeNullOrEmpty
         }
 
+        It 'Keeps the earlier run in a reused -LogPath, and rotates it once it outgrows the limit (#44)' {
+            $log = Join-Path $TestDrive 'reused.log'
+            $search = "OU=Finance,$script:DomainDN"
+
+            $null = Find-OrphanedSid -SearchBase $search -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-44A'
+            $null = Find-OrphanedSid -SearchBase $search -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-44B'
+
+            @(Get-LogCorrelationId -Path $log | Select-Object -Unique) | Should -Be @('RUN-44A', 'RUN-44B')
+
+            # Grow the file past a 1 MB limit; the next run renames it aside before writing
+            Add-Content -Path $log -Value ('x' * 1.5MB)
+            $config = Join-Path $TestDrive 'rotate-1mb.json'
+            @{ MaxLogFileSizeMB = 1 } | ConvertTo-Json | Set-Content -Path $config
+            $null = Find-OrphanedSid -SearchBase $search -ConfigPath $config -LogPath $log -SuppressConsoleOutput -CorrelationId 'RUN-44C'
+
+            $rotated = @(Get-ChildItem -Path $TestDrive -Filter 'reused_????????_??????.log')
+            $rotated.Count | Should -Be 1
+            @(Get-LogCorrelationId -Path $rotated[0].FullName | Select-Object -Unique) | Should -Be @('RUN-44A', 'RUN-44B')
+            @(Get-LogCorrelationId -Path $log | Select-Object -Unique) | Should -Be @('RUN-44C')
+            Select-String -Path $log -Pattern "Rotated log file to: $([regex]::Escape($rotated[0].FullName))" | Should -Not -BeNullOrEmpty
+        }
+
         It 'Returns typed results with enum names, in the pipeline and the CSV (#41)' {
             $csvPath = Join-Path $TestDrive 'typed.csv'
 

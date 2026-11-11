@@ -193,6 +193,8 @@ HelpMessage: ''
 
 Log file.
 Defaults to .\Logs\Restore-OrphanedSidBackup_<yyyyMMdd_HHmmss>.log.
+An existing file is appended to; one larger than 10 MB is first renamed to
+<name>_<yyyyMMdd_HHmmss>.log.
 
 ```yaml
 Type: System.String

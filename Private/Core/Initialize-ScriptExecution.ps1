@@ -250,26 +250,48 @@ function Initialize-ScriptExecution {
 
             Write-Verbose "All required classes are available: $($requiredTypes -join ', ')"
 
-            # Initialize logging system first with new modular approach
-            if ($LogPath) {
-                Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
-                $null = Initialize-LogDirectory -LogPath $LogPath
+            Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
+
+            # The configuration is read before the log file is set up, because its rotation settings
+            # decide whether the existing file is renamed aside before this run writes to it. A file
+            # that fails to load is reported once the log exists, so the failure reaches the file.
+            $configFromFile = [bool]($ConfigPath -and (Test-Path $ConfigPath))
+            $configLoadError = $null
+            $script:Config = if ($configFromFile) {
+                try {
+                    [ScriptConfiguration]::LoadFromFile($ConfigPath)
+                }
+                catch {
+                    $configLoadError = $_
+                    [ScriptConfiguration]::new()
+                }
             } else {
-                $defaultLogPath = ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-                Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
-                $null = Initialize-LogDirectory -LogPath $defaultLogPath
+                [ScriptConfiguration]::new()
             }
 
-            # Initialize configuration
-            Write-StructuredLog "Loading configuration..." -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
+            $rotateAboveMB = 0
+            if ($script:Config.EnableLogFileRotation -and $script:Config.MaxLogFileSizeMB -gt 0) {
+                $rotateAboveMB = $script:Config.MaxLogFileSizeMB
+            }
+            $targetLogPath = if ($LogPath) { $LogPath } else { ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log" }
+            $null = Initialize-LogDirectory -LogPath $targetLogPath -RotateAboveMB $rotateAboveMB
 
-            $configFromFile = [bool]($ConfigPath -and (Test-Path $ConfigPath))
-            $script:Config = if ($configFromFile) {
-                Write-StructuredLog "Loading configuration from file: $ConfigPath" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
-                [ScriptConfiguration]::LoadFromFile($ConfigPath)
+            if ($script:LogRotation) {
+                if ($script:LogRotation.Error) {
+                    Write-StructuredLog "Log file rotation failed for $($script:LogRotation.From) ($($script:LogRotation.SizeMB) MB); appending to it: $($script:LogRotation.Error)" -Level Warning -Component 'Initialization' -CorrelationId $CorrelationId
+                }
+                else {
+                    Write-StructuredLog "Rotated log file to: $($script:LogRotation.To) (Size: $($script:LogRotation.SizeMB) MB)" -Level Information -Component 'Initialization' -CorrelationId $CorrelationId
+                }
+            }
+
+            if ($configLoadError) {
+                throw $configLoadError
+            }
+            if ($configFromFile) {
+                Write-StructuredLog "Loaded configuration from file: $ConfigPath" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
             } else {
                 Write-StructuredLog "Using default configuration" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
-                [ScriptConfiguration]::new()
             }
 
             # Validate configuration
@@ -302,8 +324,9 @@ function Initialize-ScriptExecution {
                 $script:LogPath = $script:Config.LogFilePath
             }
 
-            # Perform log file rotation check
-            if ($script:LogPath -and (Test-Path $script:LogPath)) {
+            # A LogFilePath from the file receives entries only from here on, so it is rotated here;
+            # the -LogPath file was rotated by Initialize-LogDirectory before the run wrote to it
+            if ($script:Config.LogFilePath -and (Test-Path $script:LogPath)) {
                 try {
                     $logFileInfo = Get-Item $script:LogPath
                     $fileSizeMB = [Math]::Round($logFileInfo.Length / 1MB, 2)
