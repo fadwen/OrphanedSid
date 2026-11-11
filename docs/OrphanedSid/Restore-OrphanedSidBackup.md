@@ -45,8 +45,8 @@ The command has ConfirmImpact High: it asks once before writing anything.
 the restore.
 An unattended run must pass -Force or -Confirm:$false.
 
-One result object per restored object is written to the pipeline; -OutputPath writes the
-same rows as CSV.
+One result object per target is written to the pipeline; -OutputPath writes the same rows
+as CSV.
 
 ## EXAMPLES
 
@@ -54,8 +54,8 @@ same rows as CSV.
 
 Restore-OrphanedSidBackup -TargetObjectDN 'CN=SRV01,OU=Servers,DC=contoso,DC=com' -BackupPath '.\Backup\20260703_104232' -WhatIf
 
-DESCRIPTION: Shows which backup file would be applied to SRV01
-OUTPUT: A WhatIf line naming the backup and the object
+DESCRIPTION: Previews restoring SRV01 from one run folder without changing it
+OUTPUT: WhatIf lines naming the backup folder and the object
 USE CASE: Confirming the right run folder before a rollback
 
 ### EXAMPLE 2
@@ -63,7 +63,7 @@ USE CASE: Confirming the right run folder before a rollback
 Restore-OrphanedSidBackup -TargetObjectDN 'OU=Servers,DC=contoso,DC=com' -BackupPath 'D:\ADBackups\20260703_104232' -Force
 
 DESCRIPTION: Rolls back every object under the Servers OU from one run's backups, unattended
-OUTPUT: One result per object with Success, EntriesRestored and any error
+OUTPUT: One summary result for the OU, with each object's result in IndividualResults
 USE CASE: Undoing a cleanup that removed an entry still in use
 
 ### EXAMPLE 3

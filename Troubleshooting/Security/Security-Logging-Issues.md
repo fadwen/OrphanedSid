@@ -13,16 +13,17 @@
 A security entry looks like:
 
 ```json
-{"Timestamp":"2025-07-02T14:30:52.118+02:00","Level":"Information","Component":"SecurityAudit","CorrelationId":"<guid>","Message":"[ObjectAccess] [Success] Successfully completed Active Directory operation: AD-ObjectDiscovery","SecurityEventType":"ObjectAccess","Outcome":"Success","UserContext":"user@HOST", ...}
+{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.1181234+02:00", ...}
 ```
 
-The `Message` is `[<SecurityEventType>] [<Outcome>] <text>`. `Outcome` `Attempt` and `Success`
-are written at `Information`, `Failure` at `Warning`. On the console only `Warning`, `Error` and
+Property order varies. `Message` is the event text alone; `SecurityEventType` and `Outcome` are
+separate properties. `Outcome` `Attempt` and `Success` are written at `Information`, `Failure` at
+`Warning`. On the console only `Warning`, `Error` and
 `Critical` security entries appear, prefixed `[SECURITY]`; `Information` security entries go to the
 file only.
 
-The logging functions live in `Private\Logging\` and are the first folder `OrphanedSid.psm1`
-loads.
+The logging functions live in `Private\Logging\`, the first folder `OrphanedSid.psm1` loads after
+`Classes\`. They are private: the samples below run them through the module scope.
 
 ## Reading Security Entries
 
@@ -64,9 +65,10 @@ $regular | Where-Object { $_ -match '^\[[^\]]+\] \[Information\]' } | Measure-Ob
 
 ```powershell
 # In a session where OrphanedSid is imported
-Get-Command Write-SecurityStructuredLogEntry -ErrorAction SilentlyContinue
+$osid = Get-Module OrphanedSid
+& $osid { Get-Command Write-SecurityStructuredLogEntry -ErrorAction SilentlyContinue }
 
-$state = Get-LoggingSystemState
+$state = & $osid { Get-LoggingSystemState }
 "Log path: $($state.LogPath)"
 "Initialized: $($state.LogFileInitialized)"
 ```
@@ -80,9 +82,11 @@ otherwise it falls back to `Write-SecurityFileEntryDirect`.
 
    ```powershell
    Import-Module OrphanedSid
-   # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-   Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Information
-   Initialize-LogDirectory -LogPath .\Logs\manual-test.log
+   & (Get-Module OrphanedSid) {
+       Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Information
+       # A relative -LogPath resolves against the module folder, not the current directory
+       $null = Initialize-LogDirectory -LogPath (Join-Path $PWD 'Logs\manual-test.log')
+   }
    ```
 
 2. Check that the log directory is writable:
@@ -113,14 +117,15 @@ filtered.
 
 ```powershell
 Import-Module OrphanedSid
-# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Error
-Initialize-LogDirectory -LogPath .\Logs\filter-test.log
+$logPath = & (Get-Module OrphanedSid) {
+    Initialize-LoggingSystem -CorrelationId ([guid]::NewGuid().ToString()) -LogLevel Error
+    $null = Initialize-LogDirectory -LogPath (Join-Path $PWD 'Logs\filter-test.log')
 
-Write-SecurityLog -SecurityEventType 'ObjectAccess' -Message 'Compliance test entry' -Outcome 'Success'
-Write-StructuredLogEntry -Message 'Regular test entry' -Level Information -Component 'Test'
+    Write-SecurityLog -SecurityEventType 'ObjectAccess' -Message 'Compliance test entry' -Outcome 'Success'
+    Write-StructuredLogEntry -Message 'Regular test entry' -Level Information -Component 'Test'
 
-$logPath = (Get-LoggingSystemState).LogPath
+    (Get-LoggingSystemState).LogPath
+}
 $lines = Get-Content $logPath
 "Security entries (expect 1): " + @($lines | Where-Object { $_.StartsWith('{') -and $_ -match '"Component":"SecurityAudit"' }).Count
 "Regular Information entries (expect 0): " + @($lines | Where-Object { $_ -match '\[Information\] \[Test\]' }).Count
@@ -135,7 +140,7 @@ $lines = Get-Content $logPath
 **Diagnosis**
 
 ```powershell
-$metrics = $script:SecurityLoggingMetrics
+$metrics = & (Get-Module OrphanedSid) { $script:SecurityLoggingMetrics }
 "Total security entries: $($metrics.TotalSecurityEntries)"
 "By level: $($metrics.SecurityEntriesByLevel | ConvertTo-Json -Compress)"
 "Last entry: $($metrics.LastSecurityLogTime)"
@@ -145,9 +150,12 @@ $metrics = $script:SecurityLoggingMetrics
 
 `Invoke-MainProcessingLogic` writes an `AD-ObjectDiscovery` attempt/success pair per search base,
 an `OrphanedSID-Detection` entry per object with findings, and an `OrphanedSID-Removal`
-attempt/success (or failure) pair per SID removed. `Test-SIDSecurity` writes a `DataValidation`
-entry per SID validated. These counts are proportional to findings, not to objects scanned; on a
-clean domain the security log is small. The entries cannot be suppressed; they are the audit trail.
+attempt/success (or failure) pair per SID removed. `Invoke-ADOperationWithRetry` writes an
+`ObjectAccess` attempt and success (or failure) for every directory call it makes, which includes
+each lookup `Test-OrphanedSID` performs for a SID not yet in the cache. During removal
+`Test-SIDSecurity` writes `DataValidation` entries for each SID it validates. The volume therefore
+grows with the number of distinct SIDs looked up, not only with findings. The entries cannot be
+suppressed; they are the audit trail.
 
 ### Issue 4: Emergency security logs in the temp directory
 
@@ -167,7 +175,7 @@ system not initialised when the security function ran.
 **Diagnosis**
 
 ```powershell
-$state = Get-LoggingSystemState
+$state = & (Get-Module OrphanedSid) { Get-LoggingSystemState }
 "Main log path: $($state.LogPath)"
 "File exists: $(Test-Path $state.LogPath)"
 Get-ChildItem "$env:TEMP\OrphanedSid-Security-*.log" -ErrorAction SilentlyContinue | Select-Object Name, Length, LastWriteTime
@@ -187,9 +195,11 @@ Get-ChildItem "$env:TEMP\OrphanedSid-Security-*.log" -ErrorAction SilentlyContin
 }
 ```
 
-Emergency entries use a plain-text form
-(`<timestamp> [SECURITY-EMERGENCY] [<Level>] <message> (CorrelationId: <id>)`), so after merging
-they will not parse as JSON; keep that in mind when reporting.
+Entries in `OrphanedSid-Security-Emergency.log`
+(`<timestamp> [SECURITY-EMERGENCY] [<Level>] <message> (CorrelationId: <id>)`) and
+`OrphanedSid-Security-Fallback.log` (`<timestamp> [SecurityAudit] [<Level>] <message> ...`) are
+plain text, so after merging they will not parse as JSON; the dated file usually holds the normal
+JSON lines.
 
 ### Issue 5: Entries without a correlation ID or context
 
@@ -208,9 +218,11 @@ Always pass the ID and a context hashtable:
 
 ```powershell
 $correlationId = [guid]::NewGuid().ToString()
-Write-SecurityLog -SecurityEventType 'ObjectAccess' -Message 'Manual check' -Outcome 'Success' -CorrelationId $correlationId -SecurityContext @{
-    OperationType = 'ManualReview'
-    SearchBase    = 'OU=Users,DC=contoso,DC=com'
+& (Get-Module OrphanedSid) {
+    Write-SecurityLog -SecurityEventType 'ObjectAccess' -Message 'Manual check' -Outcome 'Success' -CorrelationId $correlationId -SecurityContext @{
+        OperationType = 'ManualReview'
+        SearchBase    = 'OU=Users,DC=contoso,DC=com'
+    }
 }
 ```
 
@@ -221,7 +233,7 @@ Context keys are stored in the JSON object prefixed `Security_`.
 ### Confirm security entries survive a restrictive log level
 
 ```powershell
-Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -LogLevel Error -WhatIf
+Find-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com" -LogLevel Error
 
 $log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1
 $security = Get-Content $log.FullName | Where-Object { $_.StartsWith('{') -and $_ -match '"Component":"SecurityAudit"' }

@@ -16,7 +16,8 @@ Each backup is one `Export-Clixml` file written by `New-ACLBackup`
   When `-BackupPath` is omitted it is `.\Backup` under the current directory. The parent of
   `-BackupPath` must already exist. Under `-WhatIf` no folder is created.
 - **File name**: `<sanitized DN>_<yyyyMMdd_HHmmss>.xml`, where the DN has `\ / : * ? " < > | , =`
-  and whitespace replaced by `_` and is cut at 200 characters (`_truncated` appended).
+  and whitespace replaced by `_`. A name longer than 200 characters, or than the full path's
+  259-character budget allows, is cut and ends `_<8 hex digits of a DN hash>_truncated`.
 - **Content**: a single object with these properties.
 
 | Property | Meaning |
@@ -51,8 +52,8 @@ Immediately after writing, `New-ACLBackup` re-imports the file and compares `SDD
 2. `Invoke-SecurityValidation` checks the SIDs to be removed.
 3. `New-ACLBackup` writes and verifies the backup file
    (`Successfully backed up ACL to: <file> (Size: N bytes, Entries: N, Hash: xxxxxxxx...)`).
-4. If the backup failed: `Failed to create ACL backup - aborting removal operation`; that object is
-   left untouched and the run continues with the next one.
+4. If the backup failed: `SID removal workflow failed for <DN> : <message>`; that object is left
+   untouched and the run continues with the next one.
 5. `Invoke-SIDRemoval` and `Set-ModifiedACL` apply the change, then `Invoke-RemovalVerification`
    confirms the SIDs are gone.
 
@@ -61,7 +62,8 @@ Orphaned SID" on target "<DN> - SID: <sid>"` per orphaned entry, logs
 `WhatIf: Would remove orphaned SID: <sid> from <DN>` at Verbose level, and never calls the removal
 workflow, so no backup folder or file is written. `Backup creation was cancelled by
 user` (Warning) appears only when `New-ACLBackup`'s own confirmation is declined, for example with
-`-Confirm` answered No.
+`-Confirm` answered No; the workflow then fails with `Failed to create ACL backup - aborting
+removal operation`.
 
 ## Restore Process Flow (`Restore-OrphanedSidBackup`)
 
@@ -87,8 +89,8 @@ else before the command starts. Each `-TargetObjectDN` value (aliases `Distingui
      the latest `LastWriteTime`.
 3. **Validates each backup** with `Test-BackupIntegrity -BackupData` at `Standard` level
    (`Backup validation failed: <issues>` on failure).
-4. **Validates the target** with `Get-RestorationTarget -CheckPermissions`
-   (`Target validation failed: <issues>`).
+4. **Validates the target** with `Get-RestorationTarget`: the object exists and its ACL can be
+   read; write access is not probed (`Target validation failed: <issues>`).
 5. **Applies the SDDL** with `Set-ObjectACL`, which calls `Set-Acl -Path "AD:<DN>"`
    (`ACL application failed: <message>`).
 6. **Verifies** with `Confirm-RestorationSuccess`. Its findings are written to the Verbose stream
@@ -107,7 +109,8 @@ Backup source: D:\ACLBackups\20250702_103631
 
 The summary has no per-object lines. Each target's outcome is the result object the command writes
 to the pipeline (`Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`, and for a container
-`IndividualResults`); the CSV written by `-OutputPath` has the first five columns:
+`IndividualResults`); the CSV written by `-OutputPath` has the first four columns and
+`CorrelationId`:
 
 ```powershell
 $results = @(Restore-OrphanedSidBackup -TargetObjectDN 'OU=Test,DC=contoso,DC=com' -BackupPath 'D:\ACLBackups\20250702_103631' -Force)
@@ -134,16 +137,17 @@ recurse.
 **Symptoms:**
 
 - The message above at Error level, followed by
-  `Failed to create ACL backup - aborting removal operation` and the object listed under
+  `SID removal workflow failed for <DN> : <message>` and the object counted under
   `Failed removals` in the summary.
 - `Cleaned up partial backup file: <file>` at Debug level when a half-written file was removed.
 
 **Root Cause:**
 
 - The backup folder is not writable, or its parent does not exist
-  (`Parent directory does not exist for backup path: <dir>` fails parameter validation up front).
-- Path length: the sanitized DN plus timestamp is capped at about 220 characters, but a deep
-  `-BackupPath` can still exceed the 260-character limit on systems without long-path support.
+  (`The parent folder for -BackupPath does not exist: <dir>` fails parameter validation up front).
+- Path length: the file name is shortened to keep the full path within 260 characters; a
+  `-BackupPath` too deep to leave room fails with `Backup folder path is too long to hold a backup
+  file within the 260-character limit: <path>`.
 - Disk full, or antivirus holding the new file during the immediate re-import check.
 
 **Resolution:**
@@ -169,8 +173,8 @@ Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -BackupPath $backupRo
 #### Issue: `ACL object contains no access entries to backup for <DN>`
 
 A Warning, not an error. The ACL read back had zero access rules; the backup is still written so
-the empty state can be restored. Usually seen with `-IncludeInherited` absent on objects whose ACL
-is entirely inherited.
+the empty state can be restored. `Get-Acl` returns inherited rules too, so `-IncludeInherited` has
+no bearing on it.
 
 ### 2. Backup File Corruption
 
@@ -219,9 +223,10 @@ Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Obje
 For an inventory of a backup folder with filtering:
 
 ```powershell
-& (Get-Module OrphanedSid) {
+# Find-BackupFile returns its results as one array; the parentheses unroll it
+(& (Get-Module OrphanedSid) {
     Find-BackupFile -BackupPath 'D:\ACLBackups\20250702_103631' -ObjectDN '*OU=Test,DC=contoso,DC=com'
-} | Select-Object FileName, ObjectDN, BackupDate, ACLEntryCount, BackupVersion
+}) | Select-Object FileName, ObjectDN, BackupDate, ACLEntryCount, BackupVersion
 ```
 
 `Find-BackupFile` is private and no command calls it; it recurses, so it can be pointed at the backup root. A corrupt file cannot be
@@ -267,10 +272,10 @@ $sd.SetSecurityDescriptorSddlForm($backup.SDDL)
 Set-Acl -Path "AD:$newDn" -AclObject $sd -WhatIf
 ```
 
-#### Issue: "Target validation failed: Insufficient permissions to modify ACL: ..." or "ACL application failed: ..."
+#### Issue: "Target validation failed: Cannot read current ACL: ..." or "ACL application failed: ..."
 
-**Symptoms:** a result with `Success = False` and one of those errors; `Cannot read current ACL: <message>` may also
-appear in the issues list.
+**Symptoms:** a result with `Success = False` and one of those errors. Write access is not checked
+before the restore, so a missing permission shows up as `ACL application failed:` from `Set-Acl`.
 
 **Root Cause:** the running account lacks Modify Permissions on the object, or the object is
 protected (AdminSDHolder-governed objects reset their ACL within an hour; system containers).
@@ -300,7 +305,7 @@ current SDDL into ACE strings and counts exact matches. At the `Standard` tolera
 workflow uses, 80 percent of the backed-up ACEs must be present for `IsVerified` to be true. A difference of
 one or two entries is normal: inherited entries re-evaluated against the parent, entries added by
 SDProp, or permissions granted after the backup. `Significant entry count difference detected` is
-added when the backup has more than three ACEs that the current ACL lacks.
+added when the backup has more than three ACEs more than the current ACL.
 
 These lines are informational. They go to the Verbose stream only, do not appear in the log file,
 and never change a result's `Success` to `False`. The `EntriesRestored` count in the summary
@@ -332,8 +337,8 @@ objects or the CSV.
 
 Backups cost one `Get-Acl`, one SDDL hash, one `Export-Clixml` and one `Import-Clixml` per object
 and are rarely the bottleneck; SID resolution during discovery is (see
-`.\Troubleshooting\Performance\Performance-Tuning.md`). Restores cost one `Import-Clixml`, one
-`Get-ADObject`, one `Get-Acl` and one `Set-Acl` per object.
+`.\Troubleshooting\Performance\Performance-Tuning.md`). Restores cost two `Import-Clixml`, two
+`Get-ADObject`, three `Get-Acl` and one `Set-Acl` per object.
 
 To keep runs bounded, split large OUs across several `Remove-OrphanedSid` runs, each producing its own
 timestamped backup subfolder, and restore each subfolder separately:

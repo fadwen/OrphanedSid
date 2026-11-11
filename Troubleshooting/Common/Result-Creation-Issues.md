@@ -19,6 +19,8 @@ New-OrphanedSIDResult
     [-Confidence High|Medium|Low] # default 'Medium'
     [-Notes <string>]
     [-ProcessingMethod <string>]  # default 'Standard'; the pipeline passes 'Identity-Resolution'
+    [-VerificationStatus Orphaned|Unverified] # default 'Orphaned'
+    [-VerificationError <string>]
     [-CorrelationId <string>]
 ```
 
@@ -28,6 +30,7 @@ The returned object has these members:
 | --- | --- | --- |
 | `ObjectDN`, `ObjectClass`, `OrphanedSID` | string | parameters |
 | `LikelySource`, `Confidence`, `AnalysisNotes` | string | parameters (`-Notes` -> `AnalysisNotes`) |
+| `VerificationStatus`, `VerificationError` | string | parameters |
 | `AccessControlType` | `AccessControlType` | `Set-ACLMetadata` |
 | `ActiveDirectoryRights` | `ActiveDirectoryRights` | `Set-ACLMetadata` |
 | `InheritanceType` | `InheritanceFlags` | `Set-ACLMetadata` |
@@ -37,12 +40,13 @@ The returned object has these members:
 | `CorrelationId` | string | `Add-ProcessingMetadata` |
 | `Timestamp` | DateTime (local) | `Add-ProcessingMetadata` |
 
-There is no `SID`, `ObjectPath`, `ProcessingTime` or `PSTypeName` member. The type is the class
-itself:
+`Add-ProcessingMetadata` also attaches a `ProcessingContext` note property. There is no `SID`,
+`ObjectPath`, `ProcessingTime` or `PSTypeName` member. The type is the class itself, visible only
+in the module's scope:
 
 ```powershell
-$result -is [OrphanedSIDResult]        # $true
-$result.PSObject.TypeNames[0]          # 'OrphanedSIDResult'
+& (Get-Module OrphanedSid) { param($r) $r -is [OrphanedSIDResult] } $result   # $true
+$result.PSObject.TypeNames[0]                                                 # 'OrphanedSIDResult'
 ```
 
 ## Common Issues
@@ -64,8 +68,10 @@ function by hand with an account name or an `ORPHANED_ACCOUNT:<name>` marker ins
 ```powershell
 Import-Module OrphanedSid
 # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-Test-SIDFormat -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001'   # $true
-Test-SIDFormat -SID 'CONTOSO\OldGroup'                                  # $false
+& (Get-Module OrphanedSid) {
+    Test-SIDFormat -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001'   # $true
+    Test-SIDFormat -SID 'CONTOSO\OldGroup'                                  # $false
+}
 ```
 
 #### Issue: "Cannot bind argument to parameter 'AccessRule' because it is null"
@@ -79,14 +85,12 @@ with those properties will do.
 
 **Root Cause:** the class is defined inside the module, so it is visible in the module's scope and
 not in the caller's. `OrphanedSid.psm1` dot-sources every file in `Classes\` at import; a
-diagnostic session reaches the type through `& (Get-Module OrphanedSid) { [OrphanedSIDResult]::new() }`
-or dot-sources the class file itself.
+diagnostic session reaches the type through
+`& (Get-Module OrphanedSid) { [OrphanedSIDResult]::new() }`.
 
 **Resolution:**
 
 ```powershell
-Import-Module OrphanedSid
-Get-ChildItem .\Classes\*.ps1 | ForEach-Object { . $_.FullName }
 Import-Module OrphanedSid
 # Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
 
@@ -97,8 +101,11 @@ $rule = [PSCustomObject]@{
     InheritanceFlags      = 'None'
     IsInherited           = $false
 }
-$result = New-OrphanedSIDResult -ObjectDN 'CN=User1,OU=Test,DC=contoso,DC=com' -ObjectClass 'user' `
-    -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $rule
+$result = & (Get-Module OrphanedSid) {
+    param($Rule)
+    New-OrphanedSIDResult -ObjectDN 'CN=User1,OU=Test,DC=contoso,DC=com' -ObjectClass 'user' `
+        -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $Rule
+} $rule
 $result | Format-List
 ```
 
@@ -114,13 +121,14 @@ deserialized access rules whose property names differ.
 `ActiveDirectoryRights property missing, set to GenericRead`. Then check how the object reached the
 module; `Get-ObjectAccessRule` prefers a live `Get-Acl`, which returns fully typed rules.
 
-#### Issue: `LikelySource` is `Unknown` and `Confidence` is `Medium`
+#### Issue: `LikelySource` is `Unknown Domain` and `Confidence` is `Low`
 
 **Root Cause:** these come from `Get-SIDAnalysis -SIDString <sid> [-CurrentDomainSID <sid>]`
-(`Private\SID\Get-SIDAnalysis.ps1`), called by `Test-AccessRuleForOrphanedSID`. Without a domain
-SID to compare against, foreign-domain classification falls back to `Unknown`. The main processing
-logic does not pass `-CurrentDomainSID`, so `Unknown` is common for SIDs outside the well-known
-ranges. See `.\Troubleshooting\Security\SID-Analysis-Issues.md`.
+(`Private\SID\Get-SIDAnalysis.ps1`), called by `Test-AccessRuleForOrphanedSID` with the domain SID
+`Invoke-MainProcessingLogic` reads once per run. When that read fails (`Could not determine the
+current domain SID: <message>` in the log), every SID is rated `Unknown Domain`. `Unknown` and
+`Medium` are `New-OrphanedSIDResult`'s own defaults and appear only when it is called by hand. See
+`.\Troubleshooting\Security\SID-Analysis-Issues.md`.
 
 #### Issue: `Timestamp` is not UTC
 
@@ -149,10 +157,13 @@ result dominate the cost; use `Information` for large runs.
 
 ```powershell
 # In a diagnostic session prepared as above
-$result = New-OrphanedSIDResult -ObjectDN 'CN=User1,OU=Test,DC=contoso,DC=com' `
-    -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $rule
+$result = & (Get-Module OrphanedSid) {
+    param($Rule)
+    New-OrphanedSIDResult -ObjectDN 'CN=User1,OU=Test,DC=contoso,DC=com' `
+        -OrphanedSID 'S-1-5-21-1234567890-1234567890-1234567890-1001' -AccessRule $Rule
+} $rule
 
-$result -is [OrphanedSIDResult]
+& (Get-Module OrphanedSid) { param($r) $r -is [OrphanedSIDResult] } $result
 $result.ObjectDN -eq 'CN=User1,OU=Test,DC=contoso,DC=com'
 $result.OrphanedSID -match '^S-1-'
 $result.ActionTaken -eq 'Detected'

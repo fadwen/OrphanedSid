@@ -4,6 +4,11 @@
 
 This guide provides troubleshooting information for the `Test-SIDFormat.ps1` module, which handles SID format validation and well-known SID identification.
 
+The functions are private, and `$script:Config` is the module's own variable, set only while a
+command runs; run the samples in the module's scope as shown in
+[Identity-Resolution-Issues.md](./Identity-Resolution-Issues.md#loading-the-functions-in-a-session).
+Outside a command `$script:Config` is empty and `Test-WellKnownSID` uses only its built-in list.
+
 ## Common Issues
 
 ### 1. SID Format Validation Failures
@@ -177,7 +182,7 @@ if ($testSID -match $testPattern) {
 2. Check for invalid characters
 3. Verify SID length constraints
 
-### "Error validating SID format - [Exception details]"
+### "Error validating SID format <SID> : [Exception details]"
 
 **Meaning:** Unexpected error during validation process
 

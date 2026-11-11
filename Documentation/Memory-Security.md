@@ -31,7 +31,8 @@ The peak working set is written to the log in the processing summary as `Peak me
 
 **Symptoms**
 
-- The threshold warning above appears repeatedly in the log
+- The threshold warning above appears repeatedly on the console (it is a `Write-Warning`, not a log
+  entry)
 - The process working set grows well past `-MaxMemoryUsageMB`
 
 **Solutions**
@@ -74,20 +75,21 @@ each SID. A SID is blocked when any of these applies:
 | Check | Source of the rule | Issue text in the log |
 |-------|--------------------|-----------------------|
 | Listed as protected | `ProtectedSIDs` configuration key | `SID is in protected SIDs list - removal blocked by security policy` |
-| Matches a well-known pattern | `WellKnownSIDPatterns` configuration key | `Well-known SID detected - removal may impact system security` |
+| Matches a well-known pattern | `WellKnownSIDPatterns` configuration key and a built-in list | `Well-known SID detected - removal may impact system security` |
 | Malformed or malicious-looking input | Built-in pattern checks | `Critical security risk detected - potentially malicious input pattern: <pattern>` |
 | Rated Critical risk by SID analysis | `Get-SIDAnalysis` risk level | `Critical security risk detected - potentially malicious input` |
 
 Two further findings are recorded but do not block at the `Standard` level: a SID rated High risk
-by `Get-SIDAnalysis` (`High-risk SID requires elevated confirmation for removal`, reported by
-`Invoke-SecurityValidation` as `High-risk SID detected: <sid>`), and an object whose DN matches a
-`CriticalObjectPatterns` entry (defaults: Domain Admins, Enterprise Admins, Schema Admins, BUILTIN,
-`CN=Users,DC=*`, `CN=Computers,DC=*`; issue text `SID is on critical object: <DN>`). Both set the
-validation's `RiskLevel` to `High` and appear in the `SecurityValidation` property of the
+by `Get-SIDAnalysis`, and an object whose DN matches a `CriticalObjectPatterns` entry (defaults:
+Domain Admins, Enterprise Admins, Schema Admins, BUILTIN, `CN=Users,DC=*`, `CN=Computers,DC=*`).
+Both set the validation's `RiskLevel` to `High` and are reported by `Invoke-SecurityValidation` as
+`High-risk SID detected: <sid>` in the `SecurityValidation` property of the
 `RemovalOperationResult`; the entry is still removed.
 
-If any SID on an object is blocked, the removal workflow skips that object entirely and logs
-`SECURITY BLOCK: Security validation failed: <issues>` at `Error` level. The blocked SIDs are also
+If a SID is blocked, its removal is skipped, the object's ACL is left unchanged for that SID, and
+the workflow logs `SECURITY BLOCK: Security validation failed: <issues>` at `Error` level. Each
+orphaned SID is validated and removed in its own call, so other SIDs on the same object are
+unaffected. The blocked SIDs are also
 written as security audit entries (`"Component":"SecurityAudit"`, `DataValidation` events with
 outcome `Failure`), which are always logged regardless of `-LogLevel`.
 
@@ -119,8 +121,8 @@ entries that would be removed but does not evaluate these checks.
 
 **Symptoms**
 
-- `SID is on critical object: <DN>` in the `SecurityValidation.Issues` of a result, or
-  `High-risk SID detected: <sid>` for objects under `CN=Users` or `CN=Computers`, or admin groups
+- `High-risk SID detected: <sid>` in the `SecurityValidation.Issues` of a result, for objects under
+  `CN=Users` or `CN=Computers`, admin groups, or a SID rated High risk
 - The result's `SecurityValidation.RiskLevel` is `High`
 
 **Solutions**
@@ -165,5 +167,6 @@ See [Security-Validation-Guide.md](../Troubleshooting/Security/Security-Validati
 
 ### Error Recovery
 
-- Record the run's correlation ID; it is on every log line and inside every backup file.
+- Record the run's correlation ID; it is on the run's log lines (other than object-discovery and
+  per-object detection lines) and inside every backup file.
 - Rehearse `Restore-OrphanedSidBackup -WhatIf` against a real backup folder before relying on it.

@@ -4,6 +4,9 @@
 
 This guide provides troubleshooting information for the `Get-SIDAnalysis.ps1` module, which handles comprehensive SID analysis and categorization.
 
+The functions are private; run the samples in the module's scope as shown in
+[Identity-Resolution-Issues.md](./Identity-Resolution-Issues.md#loading-the-functions-in-a-session).
+
 ## Common Issues
 
 ### 1. Analysis Result Accuracy Issues
@@ -76,19 +79,7 @@ foreach ($rid in $testRIDs) {
 }
 ```
 
-**Custom RID Range Handling:**
-```powershell
-# For environments with custom RID ranges, consider configuration extensions
-# Add custom analysis logic for specific RID patterns
-if ($script:Config -and $script:Config.CustomRIDRanges) {
-    foreach ($range in $script:Config.CustomRIDRanges) {
-        if ($rid -ge $range.Start -and $rid -le $range.End) {
-            # Apply custom categorization
-            Write-Output "Custom RID range detected: $($range.Description)"
-        }
-    }
-}
-```
+The RID bands are fixed in `Get-SIDAnalysis`; no configuration key changes them.
 
 ### 3. Foreign Domain Analysis Issues
 
@@ -121,19 +112,8 @@ Write-Output "  Source: $($analysis.LikelySource)"
 Write-Output "  Notes: $($analysis.Notes)"
 ```
 
-**Enhanced Foreign Domain Handling:**
-```powershell
-# Consider implementing trust-aware analysis
-if ($script:Config -and $script:Config.TrustedDomains) {
-    $sidDomainPart = ($SIDString.Split('-')[0..($SIDString.Split('-').Length-2)] -join '-')
-
-    if ($sidDomainPart -in $script:Config.TrustedDomains) {
-        # Reduce risk level for trusted domains
-        $analysis.RiskLevel = "Medium"
-        $analysis.Notes += " (From trusted domain)"
-    }
-}
-```
+Every SID from a domain other than `CurrentDomainSID` is rated `High`; the analysis has no list
+of trusted domains.
 
 ### 4. Performance Issues
 
@@ -249,12 +229,12 @@ if ($formatValid) {
 
 ### "Invalid RID format - must be numeric"
 
-**Meaning:** The last component of the SID is not a valid number
+**Meaning:** The last component of the SID does not parse as an `[int]`. `Test-SIDFormat` has
+already accepted the SID, so in practice this is a RID above 2147483647
 
 **Resolution:**
-1. Check for non-numeric characters in RID
+1. Check the RID value in the SID
 2. Verify SID data integrity
-3. Investigate data parsing issues
 
 ### "Error during analysis: [Exception details]"
 

@@ -2,6 +2,13 @@
 
 This archive contains historical development documentation from the Find-UnknownSID project's evolution through multiple refactoring cycles and feature implementations.
 
+**These documents describe earlier states of the code, not the current module.** They were written
+while this code was the `Find-UnknownSID.ps1` script, before it became the OrphanedSid module, and
+they are kept as a record of how it developed. Function names, file paths, folder layouts, test
+counts and behaviour described here may no longer exist or may have changed. For the module as it
+is now, read the [README](../../README.md), the command help under [docs/](../../docs/OrphanedSid/)
+and the current documents listed below.
+
 ## 📁 Archive Organization
 
 ### `/Development-History/`
@@ -32,26 +39,26 @@ Contains documentation from the testing framework development:
 
 ## 🎯 Current Documentation (Main Folder)
 
-The main Documentation folder now contains only **current, relevant documentation**:
+The main Documentation folder holds the documents kept up to date with the module:
 
-- **`Backup-and-Restore-Guide.md`**: Current backup/restore procedures
-- **`Find-UnknownSID-Automation.md`**: Current automation guide
-- **`Find-UnknownSID-Memory-Security.md`**: Current memory security guidance
-- **`Class-Loading-Security-Analysis.md`**: Current security analysis
-- **`Security-Logging-Compliance.md`**: Current compliance documentation
-- **`Quick-Test-Reference.md`**: Current test status and commands
+- **`Automation.md`**: Automation guide
+- **`Backup-and-Restore-Guide.md`**: Backup and restore procedures
+- **`Memory-Security.md`**: Memory security guidance
+- **`Quick-Test-Reference.md`**: How to run the tests and the other checks
+- **`Security-Logging-Compliance.md`**: Security logging and compliance documentation
 
 ## 📊 Archive Statistics
 
-**Total Archived Documents**: 67+ files
+**Total Archived Documents**: 74 files
 **Archive Categories**:
-- Development History: 45+ documents
-- Refactoring Reports: 18+ documents  
-- Testing Evolution: 12+ documents
+- Development History: 45 documents
+- Refactoring Reports: 18 documents
+- Testing Evolution: 11 documents
 
 ## 🔍 Finding Archived Information
 
-**Historical Reference**: All archived documentation remains available for historical reference and contains valuable implementation details from the project's evolution.
+**Historical Reference**: Archived documents are not updated. Use them to learn why something was
+done, not how the module works today.
 
 **Search Strategy**: Use file names and folder organization to locate specific historical information about modules, features, or implementation phases.
 

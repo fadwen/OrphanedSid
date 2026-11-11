@@ -17,14 +17,14 @@ default 3), `-ConfigPath`, `-MaxMemoryUsageMB` (100-16384, default 1024), `-Pres
 `-Confirm`. There is no `-Credential`; every command runs as the current user.
 
 Each command writes its results to the pipeline as objects: one `OrphanedSIDResult` per orphaned
-entry, one `RemovalOperationResult` per modified object, one restore result per target.
+entry, one `RemovalOperationResult` per orphaned entry removed, one restore result per target.
 `-OutputPath` also writes them as CSV, and every run writes a log file.
 
 ## Critical Issues (Immediate Resolution Required)
 
 ### 1. A Command Fails to Start
 
-#### Issue: "Active Directory PowerShell module is not available"
+#### Issue: "ActiveDirectory PowerShell module is not available"
 
 **Symptoms:**
 
@@ -38,11 +38,11 @@ edition in use.
 **Resolution:**
 
 ```powershell
-# Windows 10/11 and Server with Desktop Experience
-Enable-WindowsOptionalFeature -Online -FeatureName RSATClient-Roles-AD-Powershell
+# Windows 10 (1809 and later) and 11
+Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
 
-# Windows Server Core
-Add-WindowsFeature RSAT-AD-PowerShell
+# Windows Server
+Install-WindowsFeature RSAT-AD-PowerShell
 
 # Verify from the same PowerShell edition that will run the command
 Get-Module -ListAvailable -Name ActiveDirectory
@@ -57,7 +57,7 @@ Get-Module -ListAvailable -Name ActiveDirectory
 
 **Root Cause:** an incomplete or edited copy of the module. `OrphanedSid.psm1` dot-sources every
 file under `Classes\` and `Private\<Area>\` in a fixed order; a missing or broken file either fails
-the import or leaves a dependent function undefined until it is first called.
+the import or leaves a dependent function undefined, which surfaces when it is first called.
 
 **Resolution:** reinstall from the Gallery, or redeploy the whole module folder from source
 control. Verify with:
@@ -74,7 +74,8 @@ Get-ChildItem -Path .\Private -Recurse -Filter *.ps1 | Measure-Object
 
 - `WARNING: Failed to retrieve objects from search base '<DN>': Insufficient access rights ...`
   during discovery.
-- Repeated `All security descriptor retrieval methods failed for <DN>` warnings (see
+- Objects quietly missing from the results: an object whose security descriptor the account cannot
+  read is skipped with the Debug-level `No security descriptor found for <DN>` (see
   `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`).
 - From `Remove-OrphanedSid`: `Failed to retrieve ACL for <DN>` or Set-Acl access-denied errors.
 
@@ -111,16 +112,18 @@ $dc = (Get-ADDomainController).HostName
 Test-NetConnection -ComputerName $dc -Port 389 -InformationLevel Detailed
 Resolve-DnsName -Name $dc -Type A
 
-# Raise the retry count for SID lookups and object discovery (default 3, maximum 10)
+# Raise the per-object detection retry count (default 3, maximum 10)
 Find-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -MaxRetries 5
 ```
 
-`-MaxRetries` governs the per-object retry loop in `Invoke-MainProcessingLogic`: when processing an
-object throws, the object is retried up to that many times with a 2, 4, 6... second back-off
-(`Retry attempt N of M for object <DN>`). SID lookups and the ACL steps of `Remove-OrphanedSid` go through
+`-MaxRetries` governs the per-object retry loop in `Invoke-MainProcessingLogic`: when detection
+on an object throws, detection is retried up to that many times with a 2, 4, 6... second back-off
+(`Retry attempt N of M for object <DN>`); removal is never retried. SID lookups and the ACL steps
+of `Remove-OrphanedSid` go through
 `Invoke-ADOperationWithRetry`, which has its own fixed default of 3 attempts and retries only
 errors matching `timeout|network|connection|busy|unavailable|server not operational|replication|domain controller`.
-Object discovery (`Get-ADObject -SearchBase`) and `Get-Acl` are not retried.
+Object discovery (`Get-ADObject -SearchBase`) and the security-descriptor read during detection are
+not retried.
 
 ### 3. Remove or Restore Stops at the Confirmation Prompt
 
@@ -180,8 +183,8 @@ foreach ($ou in $ous) {
 ```
 
 Objects are processed one at a time; there is no parallel mode and no throttle parameter. Results
-are streamed to batch files under `$env:TEMP\OrphanedSid-<CorrelationId>\` so result count does
-not drive memory use. See `.\Troubleshooting\Performance\Memory-Management-Issues.md` and
+are streamed to batch files under `OrphanedSid-<CorrelationId>\` in `[IO.Path]::GetTempPath()`,
+so result count does not drive memory use. See `.\Troubleshooting\Performance\Memory-Management-Issues.md` and
 `.\Troubleshooting\Performance\Performance-Tuning.md`.
 
 #### Issue: A run appears to hang
@@ -209,7 +212,8 @@ if (-not (Wait-Job -Job $job -Timeout 1800)) {
 Receive-Job -Job $job
 ```
 
-Lookup results are cached per SID for the run, so repeated SIDs cost one lookup set.
+Lookup results are cached per SID for the PowerShell session, so repeated SIDs cost one lookup set;
+an `Unverified` result (a lookup failed) is not cached.
 
 ### 5. Configuration and Parameter Issues
 
@@ -230,9 +234,9 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 | `ProtectedSIDs` | string[] | built-in list | `^S-1-\d+(-\d+)*$` |
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
-| `EnableDetailedLogging` | bool | false | |
-| `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose |
-| `LogFilePath` | string | null | overrides `-LogPath` when set |
+| `EnableDetailedLogging` | bool | false | read but has no effect |
+| `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; validated but has no effect, use `-LogLevel` |
+| `LogFilePath` | string | null | overrides `-LogPath` for entries after the configuration loads; its folder must exist |
 | `EnableLogFileRotation` | bool | true | |
 | `MaxLogFileSizeMB` | int | 10 | |
 
@@ -279,8 +283,9 @@ if (Test-Path $configPath) {
   file is written.
 - `Failed to export results to CSV: <message>` in the summary section.
 
-**Root Cause:** the export runs only when at least one orphaned SID was found. The file is always
-CSV (`StreamingResultsManager.ExportToCsv`), whatever extension `-OutputPath` carries. The folder
+**Root Cause:** the export runs only when at least one orphaned SID was found, and under
+`Remove-OrphanedSid -WhatIf` no file is written although `Results exported to:` is still logged.
+The file is always CSV (`StreamingResultsManager.ExportToCsv`), whatever extension `-OutputPath` carries. The folder
 must already exist. The same results are written to the pipeline whether or not `-OutputPath` is
 given.
 
@@ -297,7 +302,8 @@ Select-String -Path (Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWrit
 Columns follow the `OrphanedSIDResult` class: `ObjectDN`, `ObjectClass`, `OrphanedSID`,
 `LikelySource`, `Confidence`, `AnalysisNotes`, `AccessControlType`, `ActiveDirectoryRights`,
 `InheritanceType`, `ObjectType`, `InheritedObjectType`, `IsInherited`, `ProcessingMethod`,
-`ActionTaken`, `CorrelationId`, `Timestamp`.
+`ActionTaken`, `VerificationStatus`, `VerificationError`, `CorrelationId`, `Timestamp`, then the
+note properties `ProcessingContext` and `ProcessingStatistics` as text. Enum columns hold numbers.
 
 #### Issue: Correlation ID cannot be found in the logs
 
@@ -326,7 +332,7 @@ can be used directly.
 **Symptoms:**
 
 - `Failed to create ACL backup for <DN> : <message>` followed by
-  `Failed to create ACL backup - aborting removal operation` for that object.
+  `SID removal workflow failed for <DN> : <message>` for that object.
 
 **Root Cause:** every removal first writes `<sanitized DN>_<yyyyMMdd_HHmmss>.xml` (Export-Clixml)
 to `<BackupPath>\<yyyyMMdd_HHmmss>\`. When `-BackupPath` is omitted it is `.\Backup` under the
@@ -365,9 +371,10 @@ Get-ChildItem -Path .\Logs -Filter '<Command>_*.log' |
     Remove-Item -Force
 ```
 
-At start-up an existing log file larger than `MaxLogFileSizeMB` (config, default 10) is renamed to
-`<name>_<yyyyMMdd_HHmmss>.log` when `EnableLogFileRotation` is true. Security events bypass the
-`-LogLevel` filter and are always written.
+Each run starts its log file afresh: a file already at `-LogPath` is overwritten, not appended to
+or rotated. Rotation to `<name>_<yyyyMMdd_HHmmss>.log` (`EnableLogFileRotation`, over
+`MaxLogFileSizeMB`) applies only to an existing file named by the config key `LogFilePath`.
+Security events bypass the `-LogLevel` filter and are always written.
 
 #### Issue: `-Verbose` or `-Debug` changes the log level unexpectedly
 

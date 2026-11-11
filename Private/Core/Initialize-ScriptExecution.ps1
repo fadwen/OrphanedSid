@@ -244,11 +244,11 @@ function Initialize-ScriptExecution {
             # Initialize logging system first with new modular approach
             if ($LogPath) {
                 Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
-                Initialize-LogDirectory -LogPath $LogPath
+                $null = Initialize-LogDirectory -LogPath $LogPath
             } else {
                 $defaultLogPath = ".\Logs\OrphanedSid_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
                 Initialize-LoggingSystem -CorrelationId $CorrelationId -LogLevel $LogLevel -SuppressConsoleOutput:$SuppressConsoleOutput
-                Initialize-LogDirectory -LogPath $defaultLogPath
+                $null = Initialize-LogDirectory -LogPath $defaultLogPath
             }
 
             # Initialize configuration
@@ -278,11 +278,11 @@ function Initialize-ScriptExecution {
             Write-StructuredLog "Initializing performance statistics..." -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
             $script:Statistics = [ProcessingStatistics]::new()
 
-            # Initialize log file path from configuration if provided
+            # Initialize log file path from configuration if provided. Otherwise Initialize-LogDirectory
+            # has already set $script:LogPath to the resolved path, the default name for a blank one, or
+            # the fallback for a refused one; copying the raw -LogPath back would undo all three.
             if ($script:Config.LogFilePath) {
                 $script:LogPath = $script:Config.LogFilePath
-            } elseif ($LogPath) {
-                $script:LogPath = $LogPath
             }
 
             # Perform log file rotation check

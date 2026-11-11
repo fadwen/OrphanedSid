@@ -33,14 +33,15 @@ It works through these steps and stops at the first that decides:
 
 Directory calls go through `Invoke-ADOperationWithRetry`, so transient failures are retried before
 a step is considered to have failed. An unexpected exception anywhere in the function also gives
-`Unverified` (Error `Error testing SID for orphaned status <SID> : ...`). Before 1.1.0 every one of
-these failures reported the SID as orphaned, and `Remove-OrphanedSid` removed it.
+`Unverified` (Error `Error testing SID for orphaned status <SID> : ...`). In 1.0.1 and earlier every
+one of these failures reported the SID as orphaned, and `Remove-OrphanedSid` removed it.
 
 Only `Exists` and `Orphaned` are cached. An `Unverified` result is not, so the next object that
 carries the same SID performs the lookups again, and a transient failure does not decide the answer
 for the rest of the run.
 
-The functions are private; load them as shown in
+The functions and the cache are private; the samples below run them through the module scope
+(`$osid = Get-Module OrphanedSid`), as shown in
 [Identity-Resolution-Issues.md](./Identity-Resolution-Issues.md#loading-the-functions-in-a-session).
 
 ## Common Issues
@@ -67,9 +68,8 @@ reported `Unverified` instead (see [Unverified SIDs](#5-unverified-sids)).
 
 ```powershell
 # Clear the cache and retry one SID
-Clear-SIDValidationCache
 $testSID = "S-1-5-21-1234567890-1234567890-1234567890-1001"
-Test-OrphanedSID -SID $testSID -Verbose
+& $osid { Clear-SIDValidationCache; Test-OrphanedSID -SID $testSID -Verbose }
 
 # Test 1: direct AD lookup
 try {
@@ -127,7 +127,7 @@ orphaned.
 **Solutions**
 
 ```powershell
-Clear-SIDValidationCache
+& $osid { Clear-SIDValidationCache }
 
 $testSID = "S-1-5-21-1234567890-1234567890-1234567890-1001"
 try {
@@ -165,14 +165,14 @@ Disabled accounts are not orphaned; only SIDs with no object are reported.
 
 ```powershell
 # Cache effectiveness for the current session
-$stats = Get-SIDValidationCacheStat
+$stats = & $osid { Get-SIDValidationCacheStat }
 "Entries: $($stats.TotalEntries)  Orphaned: $($stats.OrphanedSIDs)  Valid: $($stats.ValidSIDs)  Hit ratio: $($stats.CacheHitRatio)%"
 
 # Time cached versus uncached lookups
 $testSIDs = 1000..1099 | ForEach-Object { "S-1-5-21-1234567890-1234567890-1234567890-$_" }
-Clear-SIDValidationCache
-(Measure-Command { $testSIDs | Test-OrphanedSID }).TotalSeconds   # uncached
-(Measure-Command { $testSIDs | Test-OrphanedSID }).TotalSeconds   # cached
+& $osid { Clear-SIDValidationCache }
+(Measure-Command { & $osid { $testSIDs | Test-OrphanedSID } }).TotalSeconds   # uncached
+(Measure-Command { & $osid { $testSIDs | Test-OrphanedSID } }).TotalSeconds   # cached
 ```
 
 `CacheHitRatio` is cache hits divided by lookups, as a percentage, since the cache was last
@@ -244,10 +244,12 @@ the new run looks every such SID up afresh.
 
 ### 6. SIDs from a trusted domain
 
-A SID from another domain is never found by the local `Get-ADObject` and typed lookups, which search
-the local domain only. The answer comes from `SecurityIdentifier.Translate`, which Windows routes
-through the trust to the domain that issued the SID. What is reported depends on what that domain
-says:
+The local `Get-ADObject` and typed lookups search the local domain only. They find a SID from
+another domain only when it has a foreign security principal object here, which Active Directory
+creates when that principal is made a member of a local group; the SID is then reported as existing,
+even after its own domain has deleted it. Otherwise the answer comes from
+`SecurityIdentifier.Translate`, which Windows routes through the trust to the domain that issued the
+SID. What is reported depends on what that domain says:
 
 | Trusted domain | Reported as | `VerificationError` / `LikelySource` |
 |---|---|---|
@@ -288,15 +290,17 @@ entry per distinct SID resolved, and is cleared only by `Clear-SIDValidationCach
 resets the hit and lookup counters.
 
 ```powershell
-$stats = Get-SIDValidationCacheStat
-if ($stats.TotalEntries -gt 10000) {
-    Clear-SIDValidationCache
-}
+& $osid {
+    $stats = Get-SIDValidationCacheStat
+    if ($stats.TotalEntries -gt 10000) {
+        Clear-SIDValidationCache
+    }
 
-# Direct inspection
-$script:SIDValidationCache.Count
-@($script:SIDValidationCache.Values | Where-Object Status -eq 'Orphaned').Count   # orphaned
-@($script:SIDValidationCache.Values | Where-Object Status -eq 'Exists').Count     # valid
+    # Direct inspection
+    $script:SIDValidationCache.Count
+    @($script:SIDValidationCache.Values | Where-Object Status -eq 'Orphaned').Count   # orphaned
+    @($script:SIDValidationCache.Values | Where-Object Status -eq 'Exists').Count     # valid
+}
 ```
 
 Entries have no timestamp; clear the cache if the directory changed during a long interactive
@@ -312,7 +316,7 @@ session. The cache lives in the module's scope, so it lasts as long as the modul
 | `SID found in AD via Get-ADObject: <DN>` | Debug | `Exists` |
 | `SID found in deleted objects: <DN> - treating as orphaned` | Debug | Tombstoned object; `Orphaned` |
 | `SID could not be translated - likely orphaned: <SID>` | Debug | Translation reported not-found; later steps still run |
-| `<step> lookup failed for SID <SID> : <error>` | Warning | A step threw something other than not-found; later steps still run |
+| `Get-ADObject lookup failed for SID <SID> : <error>`, `Deleted objects lookup failed for SID <SID> : <error>`, `SecurityIdentifier translation failed for <SID> : <error>`, `<cmdlet> lookup failed for <SID> : <error>` | Warning | A step threw something other than not-found; later steps still run |
 | `SID could not be verified - N lookup(s) failed: <SID> (<errors>)` | Warning | Nothing found the SID and a step failed; `Unverified` |
 | `SID could not be resolved - marking as orphaned: <SID>` | Debug | Every step completed and none found it; `Orphaned` |
 | `Error testing SID for orphaned status <SID> : <error>` | Error | Unexpected exception; `Unverified` |
@@ -320,14 +324,14 @@ session. The cache lives in the module's scope, so it lasts as long as the modul
 | `Not removing unverified SID <SID> from <DN>: ...` | Warning | `Remove-OrphanedSid` skipped it |
 | `Cleared SID validation cache (N entries)` | Information | `Clear-SIDValidationCache` ran |
 
-Debug lines appear in the log file only with `-LogLevel Debug`.
+Debug lines appear in the log file only with `-LogLevel Debug` or `Verbose`.
 
 ## Diagnostics
 
 ```powershell
 # Trace one SID with its own correlation ID
 $correlationId = [guid]::NewGuid().ToString()
-Test-OrphanedSID -SID "S-1-5-21-1234567890-1234567890-1234567890-1001" -CorrelationId $correlationId -Verbose
+& $osid { Test-OrphanedSID -SID "S-1-5-21-1234567890-1234567890-1234567890-1001" -CorrelationId $correlationId -Verbose }
 
 # Then search the log for that ID
 $log = Get-ChildItem .\Logs\<Command>_*.log | Sort-Object LastWriteTime | Select-Object -Last 1

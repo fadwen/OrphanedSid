@@ -16,7 +16,7 @@ how to read their output. The architecture itself is described in
 | `MemoryManager` class | `Classes\MemoryManager.ps1` | Counts operations; every `CheckInterval` operations it reads the process working set, tracks the peak, and if the value exceeds `MaxMemoryMB` runs `GC.Collect()` twice around `WaitForPendingFinalizers()`, adds and removes 50 MB of GC pressure, and re-measures. It never throws; it warns. |
 | `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic` with `-WhatIf:$false`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object (`Normal` under 75 % of the threshold, `High` to 90 %, `Critical` above). |
 | `Invoke-Cleanup` | `Private\System\Invoke-GarbageCollection.ps1` | Called every 100 processed objects, with `-WhatIf:$false`. Adds 50 MB of GC pressure, runs three collect/finalize cycles 100 ms apart, removes the pressure, and returns `MemoryBeforeMB`, `MemoryAfterMB`, `MemoryFreedMB`. `-IncludeLOHCompaction` sets `GCLargeObjectHeapCompactionMode.CompactOnce` for that cleanup. |
-| `StreamingResultsManager` | `Classes\StreamingResultsManager.ps1` | Holds at most 50 results in memory before flushing them to a JSON batch file and calling `GC.Collect()`. |
+| `StreamingResultsManager` | `Classes\StreamingResultsManager.ps1` | Holds at most `BatchSize` results (default 50) in memory before flushing them to a JSON batch file and calling `GC.Collect()`. |
 | `Invoke-ResourceCleanup` | `Private\System\Invoke-ResourceDisposal.ps1` | Runs from `Stop-OrphanedSidSession` in each command's `finally` block, with `-WhatIf:$false`; disposes the streaming manager and the memory manager, then performs a final collection. |
 
 The threshold is `-MaxMemoryUsageMB` (100-16384, default 1024). The check interval is the
@@ -28,7 +28,7 @@ The threshold is `-MaxMemoryUsageMB` (100-16384, default 1024). The check interv
 
 **Symptoms**
 
-Warnings of this form on the console and in the log:
+Warnings of this form on the console (they are not written to the log file):
 
 ```text
 Memory usage threshold exceeded: 1310.52 MB (Limit: 1024 MB) - CorrelationId: <guid>
@@ -81,11 +81,11 @@ when the command itself is behaving.
 **Where to look**
 
 - The SID validation cache (`$script:SIDValidationCache` in `Private\SID\Test-OrphanedSID.ps1`)
-  holds one boolean per distinct SID tested. It grows with the number of distinct SIDs, not with
-  the number of objects, and is cleared only by `Clear-SIDValidationCache`. In a domain with tens
-  of thousands of distinct SIDs it is still small (tens of kilobytes); it is rarely the cause.
+  holds one small lookup result per distinct SID found orphaned or existing. It grows with the
+  number of distinct SIDs, not with the number of objects, and lasts for the PowerShell session
+  until the module is removed or re-imported. It is rarely the cause.
 - Results are not held in memory. Each `OrphanedSIDResult` is handed to
-  `StreamingResultsManager.AddResult()` and flushed to disk after 50 results.
+  `StreamingResultsManager.AddResult()` and flushed to disk after `BatchSize` results (default 50).
 - Access rules returned by `Get-ObjectAccessRule` are released after each object
   (`$accessRules = $null` in `Private\SID\Invoke-SIDProcessing.ps1`), and the orchestrator runs a
   collection every 100 SIDs it inspects.
@@ -129,32 +129,32 @@ The run terminates with `OutOfMemoryException`, typically while reading a very l
 
 ## Validation Commands
 
-The memory helpers are private functions of the module. To call them in an
-interactive session, load the files in this order. `Invoke-GarbageCollection.ps1` carries its own
-minimal `Write-StructuredLog` and `Get-CurrentMemoryUsage` definitions for test mocking; loading
-it first lets the full versions from the logging system and `Get-MemoryStatistics.ps1` take
-precedence.
+The memory helpers are private functions of the module, so each snippet runs inside the module
+scope. Dot-sourcing the script block (`. (Get-Module OrphanedSid) { ... }`) keeps variables such as
+`$manager` between snippets.
 
 ```powershell
 Import-Module OrphanedSid
-# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-. .\Classes\MemoryManager.ps1
-Initialize-LoggingSystem -LogLevel Information
+. (Get-Module OrphanedSid) { Initialize-LoggingSystem -LogLevel Information }
 ```
 
 ### Check current usage against a threshold
 
 ```powershell
-Get-CurrentMemoryUsage                      # WorkingSetMB, PrivateMemoryMB, GC generation counts
-Test-MemoryThreshold -ThresholdMB 1024      # ThresholdExceeded, UtilizationPercent, RecommendedAction
+. (Get-Module OrphanedSid) {
+    Get-CurrentMemoryUsage                  # WorkingSetMB, PrivateMemoryMB, GC generation counts
+    Test-MemoryThreshold -ThresholdMB 1024  # ThresholdExceeded, UtilizationPercent, RecommendedAction
+}
 ```
 
 ### Exercise the memory manager
 
 ```powershell
-$manager = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 5
-1..5 | ForEach-Object { Invoke-MemoryCheck -MemoryManager $manager | Out-Null }   # 5th call triggers a check
-Get-MemoryUsageReport -MemoryManager $manager -IncludeRecommendations
+. (Get-Module OrphanedSid) {
+    $manager = Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 5
+    1..5 | ForEach-Object { Invoke-MemoryCheck -MemoryManager $manager | Out-Null }   # 5th call checks
+    Get-MemoryUsageReport -MemoryManager $manager -IncludeRecommendations
+}
 ```
 
 `PerformanceStatus` in the report is `Excellent` below 80 % of the threshold, `Good` below 90 %,
@@ -163,8 +163,10 @@ Get-MemoryUsageReport -MemoryManager $manager -IncludeRecommendations
 ### Measure what a cleanup recovers
 
 ```powershell
-$result = Invoke-Cleanup -CorrelationId ([guid]::NewGuid().ToString()) -IncludeLOHCompaction
-"Before: $($result.MemoryBeforeMB) MB  After: $($result.MemoryAfterMB) MB  Freed: $($result.MemoryFreedMB) MB"
+. (Get-Module OrphanedSid) {
+    $result = Invoke-Cleanup -CorrelationId ([guid]::NewGuid().ToString()) -IncludeLOHCompaction
+    "Before: $($result.MemoryBeforeMB) MB  After: $($result.MemoryAfterMB) MB  Freed: $($result.MemoryFreedMB) MB"
+}
 ```
 
 A `MemoryFreedMB` of zero on an idle session is normal; the figure is meaningful only after a run
@@ -173,8 +175,10 @@ has allocated something.
 ### Dispose cleanly
 
 ```powershell
-Invoke-ResourceCleanup -MemoryManager $manager
-$manager.Disposed   # True
+. (Get-Module OrphanedSid) {
+    Invoke-ResourceCleanup -MemoryManager $manager
+    $manager.Disposed   # True
+}
 ```
 
 ## Related Documentation

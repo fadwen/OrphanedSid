@@ -21,8 +21,8 @@ in the log and in the per-object results. Wrap the call in `try`/`catch`, or pas
 
 | Command | Writes to the pipeline |
 |---------|------------------------|
-| `Find-OrphanedSid` | One `OrphanedSIDResult` per orphaned access control entry |
-| `Remove-OrphanedSid` | One `RemovalOperationResult` per removal attempted, one for each orphaned entry found; under `-WhatIf`, one preview object per entry that would be removed |
+| `Find-OrphanedSid` | One result per orphaned or unverified access control entry, with the `OrphanedSIDResult` properties; `VerificationStatus` is `Orphaned` or `Unverified` |
+| `Remove-OrphanedSid` | One `RemovalOperationResult` per removal attempted, one for each verified orphaned entry found; under `-WhatIf`, one preview object per entry that would be removed |
 | `Restore-OrphanedSidBackup` | One `RestoreWorkflowResult` per `-TargetObjectDN` value, with `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage` and `CorrelationId` |
 
 `$found = @(Find-OrphanedSid ...)` captures the findings directly. `-OutputPath` writes the same
@@ -39,12 +39,12 @@ data to CSV in addition.
 | `-LogPath <path>` | all | Log file. Default `.\Logs\<Command>_<yyyyMMdd_HHmmss>.log` under the current directory. Pass an absolute path: a relative value is resolved against the module folder. An existing file is overwritten at the start of the run. |
 | `-LogLevel <level>` | all | Minimum level written to the log file: `Critical`, `Error`, `Warning`, `Information` (default), `Debug`, `Verbose`. Security audit entries are written regardless. |
 | `-SuppressConsoleOutput` | all | Suppresses console log output. File logging is unaffected. |
-| `-CorrelationId <string>` | all | Identifier stamped on every log line, every result and every backup. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
+| `-CorrelationId <string>` | all | Identifier stamped on the run's log lines (except object-discovery and per-object detection lines), on removal and restore results and on every backup. `Find-OrphanedSid` results carry a per-object ID instead. Supply one from the orchestrator to correlate across systems; default is a new GUID. |
 | `-Force` | Remove, Restore | Required for an unattended run. Sets `$ConfirmPreference` to `None` for the command; `-Confirm:$false` has the same effect. See [Confirmation](#confirmation-in-non-interactive-sessions). |
 | `-WhatIf` | Remove, Restore | Previews without changing anything and never prompts. |
 | `-ConfigPath <path>` | Find, Remove | JSON configuration file. See [Configuration File](#configuration-file). |
 | `-MaxMemoryUsageMB <int>` | Find, Remove | Memory threshold in MB, 100 to 16384, default 1024. |
-| `-MaxRetries <int>` | Find, Remove | Retries per Active Directory operation, 1 to 10, default 3. |
+| `-MaxRetries <int>` | Find, Remove | Retries of an object's ACL and SID detection after an error, 1 to 10, default 3. A removal is not retried. |
 | `-IncludeInherited` | Find, Remove | Also report inherited access control entries. |
 | `-PreserveTempFiles` | Find, Remove | Keep the per-run streaming results folder after the run. |
 
@@ -129,13 +129,17 @@ confirmation prompt, which a non-interactive session cannot answer.
 ### CSV Output
 
 With `-OutputPath`, `Find-OrphanedSid` and `Remove-OrphanedSid` export the orphaned entries found
-with `Export-Csv -NoTypeInformation` (UTF-8). One row per orphaned access control entry, with these
-columns:
+with `Export-Csv -NoTypeInformation` (UTF-8). One row per orphaned or unverified access control
+entry, with these columns:
 
 `ObjectDN`, `ObjectClass`, `OrphanedSID`, `LikelySource`, `Confidence`, `AnalysisNotes`,
 `AccessControlType`, `ActiveDirectoryRights`, `InheritanceType`, `ObjectType`,
-`InheritedObjectType`, `IsInherited`, `ProcessingMethod`, `ActionTaken`, `CorrelationId`,
-`Timestamp`.
+`InheritedObjectType`, `IsInherited`, `ProcessingMethod`, `ActionTaken`, `VerificationStatus`,
+`VerificationError`, `CorrelationId`, `Timestamp`, `ProcessingContext`, `ProcessingStatistics`.
+
+The results pass through the JSON batch files first, so `AccessControlType`,
+`ActiveDirectoryRights` and `InheritanceType` hold the numeric enum values, and the last two
+columns hold flattened hashtables.
 
 No CSV is written when nothing was found, or under `-WhatIf`.
 
@@ -158,8 +162,9 @@ Each operational log line has the form:
 Entries with structured details append ` | Details: {...}` as compact JSON. Security audit
 entries are written as one compact JSON object per line, with `"Component":"SecurityAudit"`,
 `"SecurityEventType"`, `"Outcome"`, `"Message"` and `"CorrelationId"` keys; they are written at
-every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run when several
-append to the same file through the `LogFilePath` configuration key:
+every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run's lines (other
+than the object-discovery and per-object detection lines, which carry their own IDs) when several runs append to the
+same file through the `LogFilePath` configuration key:
 
 ```powershell
 Select-String -Path "C:\Logs\OrphanedSid.log" -Pattern "12345678-1234-1234-1234-123456789012" |
@@ -186,8 +191,8 @@ is not created.
 | `ProtectedSIDs` | string[] | `S-1-5-32-544`, `S-1-5-32-545`, `S-1-5-32-546`, `S-1-5-18`, `S-1-5-19`, `S-1-5-20` | Each value must match `^S-1-\d+(-\d+)*$` |
 | `BatchSize` | int | 50 | 1 to 1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1 to 1000; objects processed between memory checks |
-| `EnableDetailedLogging` | bool | false | Read and validated; no command acts on it |
-| `LogLevel` | string | `Information` | Same values as `-LogLevel` |
+| `EnableDetailedLogging` | bool | false | Read; no command acts on it |
+| `LogLevel` | string | `Information` | Must be one of the `-LogLevel` values; no command acts on it, so use `-LogLevel` |
 | `LogFilePath` | string | none | When set, entries written after configuration load go to this file instead of `-LogPath`; its folder must exist. Startup entries are already in `-LogPath`. Runs append to this file |
 | `EnableLogFileRotation` | bool | true | At startup, rename the `LogFilePath` file with a timestamp suffix when it is larger than `MaxLogFileSizeMB`. A `-LogPath` file is recreated each run, so rotation only matters for `LogFilePath` |
 | `MaxLogFileSizeMB` | int | 10 | |
@@ -207,8 +212,8 @@ is not created.
 
 1. Run `Remove-OrphanedSid -WhatIf` in a new environment before the first removal.
 2. Always pass `-OutputPath` and `-LogPath` to known locations and collect both as job artifacts.
-3. Pass the job identifier as `-CorrelationId`; it is stamped on every log line, every result and
-   every backup file.
+3. Pass the job identifier as `-CorrelationId`; it is stamped on the run's log lines, removal and
+   restore results and every backup file.
 4. Treat a command that returned as "the run finished", not as "nothing failed"; inspect the
    result objects and the `[Error]` and `[Warning]` lines before acting on the output.
 5. Keep `-Force` out of discovery runs; only `Remove-OrphanedSid` and `Restore-OrphanedSidBackup`

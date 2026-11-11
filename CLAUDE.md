@@ -41,10 +41,11 @@ runs the suite under 5.1 for this reason.
 
 ### Classes load before any Private file, and Logging before the rest
 
-Seven private functions constrain a parameter to a class from `Classes/` (`[MemoryManager]`,
+Five private functions constrain a parameter to a class from `Classes/` (`[MemoryManager]`,
 `[OrphanedSIDResult]`). A type literal in a param block must exist when the file is parsed, so
 `OrphanedSid.psm1` dot-sources `Classes/` first and then the `Private/` folders in a fixed order
-with `Logging` first. Nothing in `Private/` may run code at load time: a top-level
+with `Logging` first. Top-level code in `Private/` only sets `$script:` state or defines a guarded
+stub; nothing may call a module function at load time: a top-level
 `Write-StructuredLog "module loaded"` line once existed in twenty files and broke the import.
 
 ### A fallback stub must be guarded
@@ -56,10 +57,11 @@ every log line after startup went to the verbose stream only. Any such stub is w
 
 ### Module state is per run and reset by the session helpers
 
-`$script:Config`, `$script:MemoryManager`, `$script:Statistics`, `$script:StreamingResults`,
-`$script:RemovalResults` and `$script:CurrentDomainSID` are set by `Start-OrphanedSidSession` and
-cleared by `Stop-OrphanedSidSession`, which every public command calls from `begin` and `finally`.
-A private function reads them; it never creates them. The SID validation cache is the exception:
+`Start-OrphanedSidSession` sets `$script:Config`, `$script:MemoryManager` and `$script:Statistics`
+and resets `$script:StreamingResults`, `$script:RemovalResults` and `$script:CurrentDomainSID`,
+which `Invoke-MainProcessingLogic` then fills for the run. `Stop-OrphanedSidSession` clears all of
+them except `$script:Config` and `$script:CurrentDomainSID`. Every public command calls the first
+from `begin` and the second from `finally`. The SID validation cache is the exception:
 it lives for the PowerShell session so the second run against the same domain is cheaper.
 
 ### Results are emitted before cleanup
@@ -80,7 +82,8 @@ prompt a second time.
 
 `ScriptConfiguration.ProtectedSIDs` and `WellKnownSIDPatterns` short-circuit both discovery and
 removal. The domain SID is read once per run in `Invoke-MainProcessingLogic` and passed to
-`Get-SIDAnalysis` through `Test-SIDSecurity`; without it every domain SID is rated
+`Get-SIDAnalysis` through `Test-AccessRuleForOrphanedSID` on discovery and `Test-SIDSecurity` on
+removal; without it every domain SID is rated
 `Unknown Domain` and the run logs `Could not determine the current domain SID`.
 
 ### Backups are Clixml with a hash, and nothing else reads them
@@ -90,10 +93,11 @@ object DN, the correlation ID and the writer's identity. `Restore-OrphanedSidBac
 consumer and validates the hash before applying. Changing the file shape means changing
 `Test-BackupValidation` and `Test-BackupIntegrity` in the same change.
 
-### Tests dot-source files; they do not import the module
+### Unit tests of private code dot-source files; they do not import the module
 
-Each unit test file loads the class and private files it needs inside `BeforeAll` and stubs
-`Write-StructuredLog`. Pester 6 runs nothing a file defines at its top level, so setup outside
+Each class and private-function test file loads the files it needs inside `BeforeAll` and stubs or
+loads what they log through. The public-command, contract and integration tests import
+`OrphanedSid.psd1` instead. Pester 6 runs nothing a file defines at its top level, so setup outside
 `BeforeAll` is invisible to the tests. Tests that mock an Active Directory cmdlet first dot-source
 `Tests/TestHelpers/ADCmdletStubs.ps1`, which defines global placeholders when RSAT is absent;
 Pester can only mock a command that exists. Add to that list when a new test mocks a new cmdlet.
@@ -110,7 +114,7 @@ than a second definition.
 
 ### The coverage gate is 90% and only goes up, and every test must be able to fail
 
-`quality-gates.yml` fails below 90% line coverage over `Public/` and `Private/`; the suite measures
+`quality-gates.yml` fails below 90% command coverage over `Public/` and `Private/`; the suite measures
 about 93%. The module arrived with test files that defined a stub of their subject and tested the
 stub (`Set-ModifiedACL.Tests.ps1` defined its own `Set-ModifiedACL`), which is why coverage was 62%
 with 2,400 passing tests, and with Integration and Performance folders that ran only in-file
@@ -127,7 +131,7 @@ test and turns a per-item `Write-Error` into a termination the tests do not expe
 ### The analyzer gate is strict on shipping code and relaxed on tests
 
 `quality-gates.yml` runs PSScriptAnalyzer with every Error and Warning rule over `Classes`,
-`Private`, `Public`, `Build` and the root module, and with `Tests/PSScriptAnalyzerSettings.psd1`
+`Private`, `Public`, `Build`, the root module and the manifest, and with `Tests/PSScriptAnalyzerSettings.psd1`
 over `Tests` and `Tools`. The relaxed set drops the rules that fire on every stub and mock. A
 suppression in shipping code carries a `Justification`.
 

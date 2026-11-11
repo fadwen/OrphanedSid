@@ -37,16 +37,17 @@ Tests/
 | `Unit/Private/System` | `Get-MemoryStatistics`, `Initialize-MemoryManager`, `Invoke-MemoryMonitoring`, `Invoke-GarbageCollection`, `Invoke-Cleanup`, `Invoke-ResourceDisposal` |
 | `Unit/Private/Utilities` | `Get-StringHash` |
 
-Every unit file dot-sources the class and private files it needs inside `BeforeAll` and stubs
-`Write-StructuredLog`; none imports the module except `Unit/Public` and `Unit/OrphanedSid.Contract.Tests.ps1`,
-which imports it with `-Force` and checks that no function is defined twice and that every call
+Every unit file dot-sources the class and private files it needs inside `BeforeAll`; none imports
+the module except `Unit/Public` and `Unit/OrphanedSid.Contract.Tests.ps1`, which imports it with
+`-Force` and checks that no function is defined twice and that every call
 between module functions names only parameters the callee declares.
 
 ## Integration
 
 `Integration/OrphanedSidWorkflow.Tests.ps1` imports the module and runs `Find-OrphanedSid`,
 `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` as an operator would. Nothing inside the
-module is mocked. Only the boundary is, in module scope: the Active Directory cmdlets and
+module is mocked. Only the boundary is, in module scope: the ActiveDirectory module check, its
+cmdlets and
 `Get-Acl`/`Set-Acl` on `AD:\` paths read and write a hashtable of objects whose security
 descriptors are real `ActiveDirectorySecurity` instances. The directory holds a built-in principal, a live user, an orphaned SID and a SID whose
 lookups fail with access denied, and the tests assert on what each command returns, the SDDL it

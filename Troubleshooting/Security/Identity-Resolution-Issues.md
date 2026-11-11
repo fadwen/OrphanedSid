@@ -106,7 +106,7 @@ $acl = Get-Acl -Path "AD:\CN=Example,OU=Users,DC=contoso,DC=com"
 $acl.Access | Where-Object { [string]::IsNullOrWhiteSpace($_.IdentityReference.Value) }
 ```
 
-If an entry has no identity, repair the ACL outside this module; `Find-OrphanedSid` never
+If an entry has no identity, repair the ACL outside this module; `Remove-OrphanedSid` never
 removes an ACE it could not resolve.
 
 ### 3. Identity references of other types
@@ -152,9 +152,11 @@ and 519. Domain SIDs with other RIDs are not well-known and go on to `Test-Orpha
 #### Resolution
 
 ```powershell
-Test-SIDFormat -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001'   # True
-Test-WellKnownSID -SID 'S-1-5-21-1234567890-1234567890-1234567890-512' # True (Domain Admins)
-Test-WellKnownSID -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001' # False
+& $osid {
+    Test-SIDFormat -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001'    # True
+    Test-WellKnownSID -SID 'S-1-5-21-1234567890-1234567890-1234567890-512'  # True (Domain Admins)
+    Test-WellKnownSID -SID 'S-1-5-21-1234567890-1234567890-1234567890-1001' # False
+}
 ```
 
 To exclude additional SIDs, add patterns or exact SIDs through `-ConfigPath`; see
@@ -164,14 +166,14 @@ To exclude additional SIDs, add patterns or exact SIDs through `-ConfigPath`; se
 
 ### Loading the functions in a session
 
-The module depends on the logging system, the result class and the sibling SID modules:
+Private functions, the classes and `$script:` variables resolve only in the module's scope, so run
+them through the module at the prompt:
 
 ```powershell
 Import-Module OrphanedSid
-# Private functions are reached through the module scope: & (Get-Module OrphanedSid) { <command> }
-. .\Classes\OrphanedSIDResult.ps1
-. .\Classes\SIDAnalysisResult.ps1
-Initialize-LoggingSystem -LogLevel Debug
+$osid = Get-Module OrphanedSid
+& $osid { Initialize-LoggingSystem -LogLevel Debug }
+& $osid { Test-WellKnownSID -SID 'S-1-5-32-544' }   # any private call, the same way
 ```
 
 ### Trace one access rule
@@ -182,7 +184,7 @@ $acl = Get-Acl -Path "AD:\$dn"
 $rule = $acl.Access | Select-Object -First 1
 $correlationId = [guid]::NewGuid().ToString()
 
-Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN $dn -ObjectClass 'user' -CorrelationId $correlationId -Verbose
+& $osid { Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN $dn -ObjectClass 'user' -CorrelationId $correlationId -Verbose }
 ```
 
 ### Test the components separately
@@ -190,17 +192,19 @@ Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN $dn -ObjectClass 'user
 ```powershell
 $identity = $rule.IdentityReference
 $identity.GetType().Name                                           # SecurityIdentifier or NTAccount
-$sid = Resolve-IdentityReference -IdentityReference $identity -ObjectDN $dn
+$sid = & $osid { Resolve-IdentityReference -IdentityReference $identity -ObjectDN $dn }
 $sid
-Test-SIDFormat -SID $sid
-Test-WellKnownSID -SID $sid
-Test-OrphanedSID -SID $sid -CorrelationId $correlationId
+& $osid {
+    Test-SIDFormat -SID $sid
+    Test-WellKnownSID -SID $sid
+    Test-OrphanedSID -SID $sid -CorrelationId $correlationId
+}
 ```
 
 ## Log Messages
 
 All messages are written by `Write-StructuredLog`; Debug lines reach the file only with
-`-LogLevel Debug`.
+`-LogLevel Debug` or `Verbose`.
 
 | Message | Level | Meaning |
 |---|---|---|
