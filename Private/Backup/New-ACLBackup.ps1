@@ -316,7 +316,10 @@ function New-ACLBackup {
             # Create comprehensive backup data with enterprise metadata
             $backupData = [PSCustomObject]@{
                 ObjectDN = $ObjectDN.Trim()
-                BackupDate = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fffZ'  # ISO 8601 format
+                # UTC in ISO 8601. Local time with a literal Z claimed UTC, so any parser shifted it
+                # by the machine's offset. Invariant culture, because ':' in a custom format is the
+                # culture's time separator.
+                BackupDate = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ', [System.Globalization.CultureInfo]::InvariantCulture)
                 CorrelationId = $CorrelationId
                 SDDL = $sddl
                 SDDLHash = [System.Convert]::ToBase64String($sddlHash)
@@ -325,7 +328,8 @@ function New-ACLBackup {
                 UserContext = $env:USERNAME
                 ComputerName = $env:COMPUTERNAME
                 DomainContext = $env:USERDOMAIN
-                ScriptVersion = "2.1.0"
+                # The module version that wrote the file; BackupVersion is the file format's
+                ScriptVersion = Get-OrphanedSidModuleVersion
                 ValidationSignature = "PSSecurityBackup_v2.1"
                 BackupMethod = "New-ACLBackup"
                 ACLEntryCount = $ACL.Access.Count

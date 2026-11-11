@@ -15,6 +15,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\New-ACLBackup.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\Get-OrphanedSidModuleVersion.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
@@ -97,6 +98,19 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             $data.BackupMethod | Should -Be 'New-ACLBackup'
             $data.UserContext | Should -Be $env:USERNAME
             $data.BackupDate | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+        }
+
+        It 'Records BackupDate as the current UTC time, with a Z that means it (#52)' {
+            $before = [DateTime]::UtcNow.AddSeconds(-1)
+
+            New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+
+            $after = [DateTime]::UtcNow.AddSeconds(1)
+            $stored = (Import-Clixml (Get-ChildItem $script:backupDir -File | Select-Object -First 1).FullName).BackupDate
+            $parsed = [DateTimeOffset]::ParseExact($stored, "yyyy-MM-dd'T'HH:mm:ss.fffK", [System.Globalization.CultureInfo]::InvariantCulture)
+            $parsed.Offset | Should -Be ([TimeSpan]::Zero)
+            $parsed.UtcDateTime | Should -BeGreaterOrEqual $before
+            $parsed.UtcDateTime | Should -BeLessOrEqual $after
         }
 
         It 'Trims the DN before using it' {

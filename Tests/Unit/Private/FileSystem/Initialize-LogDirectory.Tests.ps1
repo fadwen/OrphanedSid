@@ -7,6 +7,7 @@ BeforeAll {
     . $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1
 
     . $PSScriptRoot\..\..\..\..\Private\FileSystem\Initialize-LogDirectory.ps1
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\Get-OrphanedSidModuleVersion.ps1"
 
     $script:RepositoryRoot = (Resolve-Path "$PSScriptRoot\..\..\..\..").Path
 }

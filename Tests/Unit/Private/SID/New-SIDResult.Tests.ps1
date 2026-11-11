@@ -19,6 +19,8 @@ BeforeAll {
         Get-ChildItem -Path $SIDPath -Filter '*.ps1' | ForEach-Object { . $_.FullName }
     }
 
+    . (Join-Path $PSScriptRoot '..\..\..\..\Private\Utilities\Get-OrphanedSidModuleVersion.ps1')
+
     Mock Write-StructuredLog { }
 }
 
@@ -340,7 +342,8 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $result.ProcessingContext.UserName | Should -Be $env:USERNAME
             $result.ProcessingContext.ProcessId | Should -Be $PID
             $result.ProcessingContext.PowerShellVersion | Should -Not -BeNullOrEmpty
-            $result.ProcessingContext.ModuleVersion | Should -Be '1.0.0'
+            # Dot-sourced outside the module there is no version to read; it was a hard-coded 1.0.0 (#52)
+            $result.ProcessingContext.ModuleVersion | Should -Be 'unknown'
         }
         
         It "Should trim ObjectDN input" {

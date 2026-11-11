@@ -305,7 +305,7 @@ function Add-ProcessingMetadata {
                 UserName = $env:USERNAME
                 ProcessId = $PID
                 PowerShellVersion = $PSVersionTable.PSVersion.ToString()
-                ModuleVersion = "1.0.0"
+                ModuleVersion = Get-OrphanedSidModuleVersion
             }
         }
 

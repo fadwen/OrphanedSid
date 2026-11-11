@@ -21,6 +21,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Security\Invoke-RemovalVerification.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Security\Invoke-SecurityValidation.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\New-ACLBackup.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\Get-OrphanedSidModuleVersion.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Operations\Invoke-RemovalWorkflow.ps1"
 
     $script:dn = 'CN=Test,DC=domain,DC=com'

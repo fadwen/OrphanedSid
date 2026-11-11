@@ -66,6 +66,15 @@ All notable changes to this module are recorded here. Format follows
   <message>`; the prefix now appears once. Each restored object was also checked twice, at the cost
   of an extra `Get-ADObject` and `Get-Acl` against the domain controller per object; it is checked
   once. ([#51](https://github.com/fadwen/OrphanedSid/issues/51))
+- A backup's `BackupDate` held local time followed by a `Z`, which marks UTC, so anything that
+  parsed it was off by the machine's UTC offset. It is now written in UTC. Backups made earlier
+  keep their local time.
+  ([#52](https://github.com/fadwen/OrphanedSid/issues/52))
+- The module version recorded in a backup's `ScriptVersion`, a result's `ProcessingContext` and the
+  log header was hard-coded (`2.1.0`, `1.0.0` and `2.0.0`). It is now read from the loaded module,
+  and the log header line is `Module Version: <version>`. The `WellKnownSIDsSkipped` counter in a
+  result's `ProcessingStatistics`, which was never incremented, is removed.
+  ([#52](https://github.com/fadwen/OrphanedSid/issues/52))
 
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the

@@ -62,7 +62,7 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
 | Property | Value |
 |----------|-------|
 | `ObjectDN` | Distinguished name of the backed-up object |
-| `BackupDate` | Local time in `yyyy-MM-ddTHH:mm:ss.fffZ` format (the `Z` is a literal, not UTC) |
+| `BackupDate` | UTC time in `yyyy-MM-ddTHH:mm:ss.fffZ` format. Backups written by 1.0.1 and earlier hold local time with a literal `Z` |
 | `CorrelationId` | Correlation ID of the run that created the backup |
 | `SDDL` | Full security descriptor in SDDL form (all sections) |
 | `SDDLHash` | Base64 SHA256 of the SDDL string |
@@ -71,7 +71,7 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
 | `UserContext` | `$env:USERNAME` |
 | `ComputerName` | `$env:COMPUTERNAME` |
 | `DomainContext` | `$env:USERDOMAIN` |
-| `ScriptVersion` | `2.1.0` |
+| `ScriptVersion` | Version of the OrphanedSid module that wrote the file. Backups written by 1.0.1 and earlier hold `2.1.0` |
 | `ValidationSignature` | `PSSecurityBackup_v2.1` |
 | `BackupMethod` | `New-ACLBackup` |
 | `ACLEntryCount` | Number of access rules in the backed-up ACL |
