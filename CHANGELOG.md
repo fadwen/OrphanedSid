@@ -51,6 +51,13 @@ All notable changes to this module are recorded here. Format follows
   When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it
   is first renamed to `<name>_<yyyyMMdd_HHmmss>.log`, so a run is never split across two files.
   ([#44](https://github.com/fadwen/OrphanedSid/issues/44))
+- The `OrphanedSID-Removal` audit entry that follows a removal recorded `BackupCreated`,
+  `BackupPath` and `RemovedCount`, none of which the removal result has, so all three were always
+  empty. It was also recorded as `Success` when the removal had failed. It now records
+  `ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`, and is a `Failure`, with
+  the error, when the removal did not succeed. `RemovalOperationResult` gains `BackupFile`, the full
+  path of the backup written before the change.
+  ([#49](https://github.com/fadwen/OrphanedSid/issues/49))
 
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the

@@ -22,7 +22,7 @@ in the log and in the per-object results. Wrap the call in `try`/`catch`, or pas
 | Command | Writes to the pipeline |
 |---------|------------------------|
 | `Find-OrphanedSid` | One result per orphaned or unverified access control entry, with the `OrphanedSIDResult` properties; `VerificationStatus` is `Orphaned` or `Unverified` |
-| `Remove-OrphanedSid` | One `RemovalOperationResult` per object with verified orphaned entries, covering all of them; under `-WhatIf`, one `RemovalOperationResult` per such object with `ActualRemovals = 0`, the SIDs that would be removed in `RemovedSIDs`, and `SecurityValidation = 'WhatIf - Would Remove'` |
+| `Remove-OrphanedSid` | One `RemovalOperationResult` per object with verified orphaned entries, covering all of them, with the backup it wrote in `BackupFile`; under `-WhatIf`, one `RemovalOperationResult` per such object with `ActualRemovals = 0`, the SIDs that would be removed in `RemovedSIDs`, and `SecurityValidation = 'WhatIf - Would Remove'` |
 | `Restore-OrphanedSidBackup` | One `RestoreWorkflowResult` per `-TargetObjectDN` value, with `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage` and `CorrelationId` |
 
 `$found = @(Find-OrphanedSid ...)` captures the findings directly. `-OutputPath` writes the same

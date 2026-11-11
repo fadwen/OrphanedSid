@@ -420,14 +420,22 @@ function Invoke-MainProcessingLogic {
                                             $removalResult = Remove-OrphanedSidEntry @removalParams
                                             $script:RemovalResults += $removalResult
 
-                                            # Log successful SID removal
-                                            Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Success' -SecurityContext @{
+                                            # A failed removal comes back as a result, not an exception,
+                                            # so the outcome is read from it
+                                            $auditContext = @{
                                                 ObjectDN = $objectDN
                                                 OrphanedSIDs = $sidList
-                                                BackupCreated = $removalResult.BackupCreated
-                                                BackupPath = $removalResult.BackupPath
-                                                RemovedCount = $removalResult.RemovedCount
-                                            } -CorrelationId $CorrelationId
+                                                ActualRemovals = $removalResult.ActualRemovals
+                                                FailedRemovals = $removalResult.FailedRemovals
+                                                BackupCreated = [bool]$removalResult.BackupFile
+                                                BackupFile = $removalResult.BackupFile
+                                            }
+                                            $auditOutcome = 'Success'
+                                            if (-not $removalResult.Success) {
+                                                $auditOutcome = 'Failure'
+                                                $auditContext.ErrorMessage = $removalResult.ErrorMessage
+                                            }
+                                            Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome $auditOutcome -SecurityContext $auditContext -CorrelationId $CorrelationId
                                         } catch {
                                             # Log failed SID removal
                                             Write-ADOperationSecurityLog -OperationName 'OrphanedSID-Removal' -Outcome 'Failure' -SecurityContext @{

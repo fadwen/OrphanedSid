@@ -74,10 +74,12 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         It 'Creates the folder and one Clixml file named from the sanitized DN and a timestamp' {
             $result = New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir
 
-            $result | Should -BeTrue
             $files = @(Get-ChildItem $script:backupDir -File)
             $files.Count | Should -Be 1
             $files[0].Name | Should -Match '^CN_Finance_Share_OU_Groups_DC_contoso_DC_com_\d{8}_\d{6}\.xml$'
+            # The full path of the file written, which the removal result reports (#49)
+            $result | Should -BeOfType [string]
+            $result | Should -Be $files[0].FullName
         }
 
         It 'Stores the SDDL, its SHA256, the DN and the signature the restore path validates' {
@@ -105,9 +107,10 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         }
 
         It 'Accepts the DN from the pipeline' {
-            $script:dn | New-ACLBackup -ACL $script:acl -BackupPath $script:backupDir | Should -BeTrue
+            $result = $script:dn | New-ACLBackup -ACL $script:acl -BackupPath $script:backupDir
 
-            @(Get-ChildItem $script:backupDir -File).Count | Should -Be 1
+            $result | Should -Be (Get-ChildItem $script:backupDir -File).FullName
+
         }
 
         It 'Truncates a very long DN so the whole path stays under 260 characters' {
@@ -143,9 +146,12 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             $script:fixedTime = [datetime]::new(2026, 1, 1, 12, 0, 0)
             Mock Get-Date { if ($Format) { $script:fixedTime.ToString($Format) } else { $script:fixedTime } }
 
-            New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
-            New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+            $firstFile = New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir
+            $secondFile = New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir
 
+            # Each call reports the file it wrote, not the other one
+            $firstFile | Should -BeLike '*_20260101_120000.xml'
+            $secondFile | Should -BeLike '*_20260101_120000_2.xml'
             $names = @(Get-ChildItem $script:backupDir -File | ForEach-Object Name)
             $names.Count | Should -Be 2
             @($names | Where-Object { $_ -match '_20260101_120000\.xml$' }).Count | Should -Be 1
@@ -177,7 +183,7 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         It 'Backs up an ACL with no entries and warns' {
             $empty = [System.DirectoryServices.ActiveDirectorySecurity]::new()
 
-            New-ACLBackup -ObjectDN $script:dn -ACL $empty -BackupPath $script:backupDir | Should -BeTrue
+            New-ACLBackup -ObjectDN $script:dn -ACL $empty -BackupPath $script:backupDir | Should -Exist
 
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*no access entries*' }
         }
@@ -192,10 +198,10 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
     }
 
     Context 'Under -WhatIf' {
-        It 'Writes nothing and returns false' {
+        It 'Writes nothing and returns nothing' {
             $result = New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir -WhatIf
 
-            $result | Should -BeFalse
+            $result | Should -BeNullOrEmpty
             @(Get-ChildItem $script:backupDir -File -ErrorAction SilentlyContinue).Count | Should -Be 0
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like '*cancelled*' }
         }

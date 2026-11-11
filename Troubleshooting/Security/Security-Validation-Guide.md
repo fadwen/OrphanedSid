@@ -200,7 +200,7 @@ with `Component = SecurityAudit`. Events written during a run:
 |---|---|---|
 | ObjectAccess | `AD-ObjectDiscovery` | Attempt/Success/Failure per search base |
 | ObjectAccess | `OrphanedSID-Detection` | Success per object with findings, listing the SIDs |
-| ObjectAccess | `OrphanedSID-Removal` | Attempt/Success/Failure per SID; WhatIf attempts carry `WhatIfMode = true` |
+| ObjectAccess | `OrphanedSID-Removal` | Attempt, then Success or Failure, per object; the second carries `ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`. WhatIf attempts carry `WhatIfMode = true` |
 | ObjectAccess | `Invoke-ADOperationWithRetry` (`Get-ADObject-BySID`, `Get-ADUser`, ...) | Attempt, then Success or Failure, per directory call |
 | DataValidation | `Test-SIDSecurity` | Attempt, then Success, Failure (blocked) or a second Attempt (high risk) per SID |
 | SecurityViolation | `Test-SIDSecurity` | Malicious pattern detected |

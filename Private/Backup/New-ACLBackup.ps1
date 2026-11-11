@@ -161,7 +161,8 @@ function New-ACLBackup {
         [System.DirectoryServices.ActiveDirectorySecurity] ACL object for backup
 
     .OUTPUTS
-        [bool] True if backup was successful, False otherwise
+        [string] Full path of the backup file written. Nothing when the backup was declined
+        through ShouldProcess; a failure throws.
 
         BACKUP FILE STRUCTURE:
         - ObjectDN: Distinguished name of backed up object
@@ -216,7 +217,7 @@ function New-ACLBackup {
     #>
 
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([bool])]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
@@ -350,14 +351,15 @@ function New-ACLBackup {
             }
             else {
                 Write-StructuredLog "Backup creation was cancelled by user" -Level Warning -CorrelationId $CorrelationId
-                return $false
+                return
             }
 
             # Success logging with comprehensive details
-            $fileSize = (Get-Item $backupFile).Length
-            Write-StructuredLog "Successfully backed up ACL to: $backupFile (Size: $fileSize bytes, Entries: $($ACL.Access.Count), Hash: $($verifyData.SDDLHash.Substring(0,8))...)" -Level Information -CorrelationId $CorrelationId
+            $writtenFile = Get-Item -LiteralPath $backupFile
+            Write-StructuredLog "Successfully backed up ACL to: $backupFile (Size: $($writtenFile.Length) bytes, Entries: $($ACL.Access.Count), Hash: $($verifyData.SDDLHash.Substring(0,8))...)" -Level Information -CorrelationId $CorrelationId
 
-            return $true
+            # The full path, so the removal result and its audit entry can name the file to restore from
+            return $writtenFile.FullName
         }
         catch {
             $errorDetails = @{
