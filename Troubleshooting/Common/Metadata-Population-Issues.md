@@ -83,10 +83,9 @@ $results = Find-OrphanedSIDsInObject -ADObject $object -IncludeInherited
 $results | Select-Object -First 1 -ExpandProperty ProcessingStatistics
 ```
 
-`Get-SIDProcessingStatistics` (same file) aggregates these across results:
-`TotalObjectsProcessed`, `TotalSIDsProcessed`, `AverageProcessingTimeMS`, `ProcessingThroughput`
-and so on. It returns `$null` with the warning `No processing statistics found in results` when the
-results carry no `ProcessingStatistics` property, which happens after a round trip through CSV.
+Every result from one object shares the same `ProcessingStatistics` table, so read it from one
+result per object. The CSV holds only its text form, so read it from live results, not from a
+result read back with `Import-Csv`.
 
 #### Issue: Memory figures missing from the summary
 
@@ -174,5 +173,5 @@ $rows | Where-Object { $_.OrphanedSID -notmatch '^S-1-\d+(-\d+)+$' }
 
 - **Module**: `Private\SID\New-SIDResult.ps1`
 - **Functions**: `New-OrphanedSIDResult`, `Add-ProcessingMetadata`, `Set-ACLMetadata`,
-  `Get-SafeGuidProperty`, `ConvertTo-ResultSummary`
+  `Get-SafeGuidProperty`
 - **Correlation ID**: include the run's `-CorrelationId` in support requests

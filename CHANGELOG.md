@@ -21,6 +21,19 @@ All notable changes to this module are recorded here. Format follows
   count for discovery and removal runs. It read those values only from an object's properties, and
   the processing results are a hashtable.
 
+### Removed
+
+- Eight internal functions that no command called, each with defects of its own:
+  `Test-BackupSignature`, `Test-BackupFileIntegrity`, `Start-RestoreOperation`,
+  `Complete-RestoreOperation`, `Test-PathTraversal`, `Get-SIDProcessingStatistics`,
+  `ConvertTo-ResultSummary`, and the log sanitiser `Protect-LogMessage` with its only caller
+  `Write-SecurityLogEvent`. The troubleshooting guides that called three of them now check backups
+  with `Test-BackupIntegrity`, the check every restore runs, and summarise results with
+  `Group-Object`. ([#18](https://github.com/fadwen/OrphanedSid/issues/18),
+  [#24](https://github.com/fadwen/OrphanedSid/issues/24),
+  [#25](https://github.com/fadwen/OrphanedSid/issues/25),
+  [#30](https://github.com/fadwen/OrphanedSid/issues/30))
+
 ### Changed
 
 - `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`

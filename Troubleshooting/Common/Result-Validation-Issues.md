@@ -66,11 +66,16 @@ $results | Where-Object { $_ -isnot [OrphanedSIDResult] }
 $results | Where-Object { -not $_.PSObject.Properties['ProcessingStatistics'] }   # attached by Find-OrphanedSIDsInObject
 ```
 
-`ConvertTo-ResultSummary` in `Private\SID\New-SIDResult.ps1` produces per-source, per-confidence
-and per-class counts from live results and is the quickest way to spot skew:
+Counts by source, confidence, verification status and object class are the quickest way to spot
+skew:
 
 ```powershell
-$results | ConvertTo-ResultSummary | Select-Object TotalOrphanedSIDs, UniqueObjects, UniqueOrphanedSIDs, SourceCategories
+"Results: $(@($results).Count); objects: $(@($results.ObjectDN | Sort-Object -Unique).Count); " +
+    "SIDs: $(@($results.OrphanedSID | Sort-Object -Unique).Count)"
+foreach ($property in 'LikelySource', 'Confidence', 'VerificationStatus', 'ObjectClass') {
+    $results | Group-Object -Property $property -NoElement | Sort-Object Count -Descending |
+        Select-Object @{ Name = $property; Expression = { $_.Name } }, Count
+}
 ```
 
 ## Related Documentation

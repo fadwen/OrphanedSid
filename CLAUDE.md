@@ -105,7 +105,7 @@ with no warning. The unit tests cannot see this: each dot-sources one file, and 
 loose parameters accepts any `-Name`. `Tests/Unit/OrphanedSid.Contract.Tests.ps1` parses
 `Classes`, `Private` and `Public` and fails on a function defined twice or a call that names a
 parameter its callee lacks. When a helper needs a sibling that works on a file path instead of the
-loaded data, give it a distinct name (`Test-BackupFileIntegrity`, `Get-BackupFileMetadata`) rather
+loaded data, give it a distinct name (`Get-BackupFileMetadata` beside `Get-BackupMetadata`) rather
 than a second definition.
 
 ### The coverage gate is 90% and only goes up, and every test must be able to fail
