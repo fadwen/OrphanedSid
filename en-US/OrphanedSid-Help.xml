@@ -142,7 +142,9 @@ are removed when the command finishes unless -PreserveTempFiles is set.</maml:pa
 Only WellKnownSIDPatterns, ProtectedSIDs, BatchSize,
 MemoryCheckInterval, LogLevel, LogFilePath, EnableLogFileRotation
 and MaxLogFileSizeMB are read.
-The file's LogLevel applies when -LogLevel, -Verbose and -Debug are all absent.</maml:para>
+The file's LogLevel applies when -LogLevel, -Verbose and -Debug are all absent.
+ProtectedSIDs and WellKnownSIDPatterns replace the default lists in full; repeat the defaults to
+keep them. See about_OrphanedSid.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -568,7 +570,8 @@ The parent folder must exist; the backup folder itself is created.</maml:para>
         <maml:description>
           <maml:para>JSON configuration file; see Find-OrphanedSid for the keys read.
 ProtectedSIDs and
-WellKnownSIDPatterns are the ones that matter here.</maml:para>
+WellKnownSIDPatterns are the ones that matter here. Each replaces its default list in full, so a
+file that adds a SID must repeat the defaults it keeps. See about_OrphanedSid.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>

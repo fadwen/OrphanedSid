@@ -8,6 +8,12 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- The documentation now states that `ProtectedSIDs` and `WellKnownSIDPatterns` in a `-ConfigPath`
+  file replace the default lists in full, with nothing merged, and that this is intended: the file
+  is the list. It also says what the built-in well-known check protects whatever the file says,
+  and shows how to start a file from the defaults. The behaviour is unchanged. Two examples that
+  listed only part of the defaults no longer do.
+  ([#54](https://github.com/fadwen/OrphanedSid/issues/54))
 - `Remove-OrphanedSid` returns one `RemovalOperationResult` per object changed, covering all of its
   removed entries, instead of one per entry, and confirms once per object. Under `-WhatIf` it
   previews one object per object. When any of an object's orphaned SIDs is blocked by the security

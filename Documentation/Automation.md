@@ -186,8 +186,8 @@ is not created.
 
 | Key | Type | Default | Notes |
 |-----|------|---------|-------|
-| `WellKnownSIDPatterns` | string[] | Built-in list of regexes for well-known SIDs | Each value must compile as a .NET regex |
-| `ProtectedSIDs` | string[] | `S-1-5-32-544`, `S-1-5-32-545`, `S-1-5-32-546`, `S-1-5-18`, `S-1-5-19`, `S-1-5-20` | Each value must match `^S-1-\d+(-\d+)*$` |
+| `WellKnownSIDPatterns` | string[] | Built-in list of regexes for well-known SIDs | Each value must compile as a .NET regex. **Replaces the default list in full** |
+| `ProtectedSIDs` | string[] | `S-1-5-32-544`, `S-1-5-32-545`, `S-1-5-32-546`, `S-1-5-18`, `S-1-5-19`, `S-1-5-20` | Each value must match `^S-1-\d+(-\d+)*$`. **Replaces the default list in full** |
 | `BatchSize` | int | 50 | 1 to 1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1 to 1000; objects processed between memory checks |
 | `LogLevel` | string | `Information` | One of the `-LogLevel` values. Sets the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent; entries written before the file is loaded use `Information` |
@@ -201,9 +201,34 @@ is not created.
 {
   "BatchSize": 200,
   "MemoryCheckInterval": 25,
-  "LogLevel": "Warning",
-  "ProtectedSIDs": ["S-1-5-32-544", "S-1-5-32-548"]
+  "LogLevel": "Warning"
 }
+```
+
+### The two SID lists replace the defaults
+
+A file that sets `ProtectedSIDs` or `WellKnownSIDPatterns` replaces that default list with exactly
+the entries it holds; nothing is merged. Supplying a list is a decision to use that list, and the
+module does not second-guess it. A file written to protect one more SID must therefore repeat the
+defaults it wants to keep. A key the file leaves out keeps its default.
+
+What a file cannot remove is the built-in well-known check, `Test-WellKnownSID`. It always
+recognises every `S-1-5-32-*` built-in group, a fixed list of universal and NT Authority SIDs (the
+six default protected SIDs among them), the `S-1-5-80/90/96` service prefixes, and the Domain
+Admins, Schema Admins and Enterprise Admins groups of any domain (RIDs 512, 518 and 519). Such a SID is never
+reported as orphaned, so it is never removed, and dropping one of the six from `ProtectedSIDs`
+does not make it removable. `ProtectedSIDs` matters for any other SID it names, such as a
+domain account's, which nothing else protects.
+
+To extend a list rather than replace it, start the file from the defaults:
+
+```powershell
+Import-Module OrphanedSid
+$defaults = & (Get-Module OrphanedSid) { [ScriptConfiguration]::new() }
+@{
+    ProtectedSIDs        = @($defaults.ProtectedSIDs) + 'S-1-5-21-1234567890-1234567890-1234567890-1105'
+    WellKnownSIDPatterns = @($defaults.WellKnownSIDPatterns)
+} | ConvertTo-Json | Set-Content -Path .\orphanedsid.json
 ```
 
 ## Best Practices
