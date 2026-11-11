@@ -374,6 +374,17 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @($results | Where-Object ObjectDN -eq $dn).Count | Should -Be 0
         }
 
+        It 'Writes no CSV under -WhatIf, and its log says no file was written (#50)' {
+            $log = Join-Path $TestDrive 'whatif-export.log'
+            $csv = Join-Path $TestDrive 'whatif-export.csv'
+
+            $null = Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -OutputPath $csv -LogPath $log -SuppressConsoleOutput -WhatIf
+
+            Test-Path $csv | Should -BeFalse
+            Select-String -Path $log -Pattern 'Results exported to:' -SimpleMatch | Should -BeNullOrEmpty
+            Select-String -Path $log -Pattern "WhatIf: results would be exported to $csv; no file was written" -SimpleMatch | Should -Not -BeNullOrEmpty
+        }
+
         It 'Names the backup file in each removal result and in its audit entry (#49)' {
             $log = Join-Path $TestDrive 'audit-remove.log'
 

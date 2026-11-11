@@ -58,6 +58,10 @@ All notable changes to this module are recorded here. Format follows
   the error, when the removal did not succeed. `RemovalOperationResult` gains `BackupFile`, the full
   path of the backup written before the change.
   ([#49](https://github.com/fadwen/OrphanedSid/issues/49))
+- `Remove-OrphanedSid -WhatIf -OutputPath` and `Restore-OrphanedSidBackup -WhatIf -OutputPath`
+  logged `Results exported to: <path>` although `-WhatIf` writes no CSV. They now log
+  `WhatIf: results would be exported to <path>; no file was written`.
+  ([#50](https://github.com/fadwen/OrphanedSid/issues/50))
 
 - A live principal could be reported orphaned, and its access removed by `Remove-OrphanedSid`, when
   the ordinary directory lookup of its SID failed (for example with a timeout that outlasted the

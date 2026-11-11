@@ -270,7 +270,7 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             1..3 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
             $csv = Join-Path $TestDrive "export_$([guid]::NewGuid().ToString('N')).csv"
 
-            $manager.ExportToCsv($csv)
+            $manager.ExportToCsv($csv) | Should -Be $true
 
             $rows = @(Import-Csv -Path $csv)
             $rows.Count | Should -Be 3
@@ -282,7 +282,18 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
             $csv = Join-Path $TestDrive "empty_$([guid]::NewGuid().ToString('N')).csv"
 
-            $manager.ExportToCsv($csv)
+            $manager.ExportToCsv($csv) | Should -Be $false
+
+            Test-Path $csv | Should -Be $false
+            $manager.Dispose()
+        }
+
+        It "Should write nothing in WhatIf mode and say so (#50)" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $true)
+            1..2 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
+            $csv = Join-Path $TestDrive "whatif_$([guid]::NewGuid().ToString('N')).csv"
+
+            $manager.ExportToCsv($csv) | Should -Be $false
 
             Test-Path $csv | Should -Be $false
             $manager.Dispose()

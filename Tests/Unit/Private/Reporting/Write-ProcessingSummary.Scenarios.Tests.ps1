@@ -20,7 +20,7 @@ BeforeAll {
     function New-DiscoveryResults {
         param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [int]$Unexamined = -1, [switch]$AsHashtable)
         $manager = [PSCustomObject]@{ Summary = [PSCustomObject]@{ TotalResults = $TotalResults }; Exported = $null }
-        $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path }
+        $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path; $true }
         $results = [ordered]@{
             TotalObjectsProcessed = 37
             ProcessingDuration    = [TimeSpan]::FromSeconds(17.8)
@@ -133,6 +133,32 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq "Results exported to: $($script:csv)" }
         }
 
+        It 'Says no file was written when the streaming manager is in WhatIf mode (#50)' {
+            $results = New-DiscoveryResults
+            $results.StreamingManager | Add-Member -NotePropertyName WhatIfMode -NotePropertyValue $true
+            $results.StreamingManager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; $false } -Force
+
+            Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
+
+            Test-Path $script:csv | Should -BeFalse
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $Message -eq "WhatIf: results would be exported to $($script:csv); no file was written"
+            }
+        }
+
+        It 'Warns, instead of claiming an export, when the manager wrote nothing outside WhatIf' {
+            $results = New-DiscoveryResults
+            $results.StreamingManager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $false } -Force
+
+            Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
+
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq "No results were read back to export; $($script:csv) was not written"
+            }
+        }
+
         It 'Writes no CSV without an output path' {
             $results = New-DiscoveryResults
 
@@ -218,6 +244,19 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             $rows = @(Import-Csv $script:csv)
             $rows.Count | Should -Be 2
             $rows[1].ErrorMessage | Should -Be 'Access is denied'
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Results exported to: $($script:csv)" }
+        }
+
+        It 'Writes no restore CSV under -WhatIf and says so (#50)' {
+            $WhatIfPreference = $true
+
+            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Failed 1 -Results $script:restores) -OutputPath $script:csv
+
+            Test-Path $script:csv | Should -BeFalse
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "WhatIf: results would be exported to $($script:csv); no file was written"
+            }
         }
 
         It 'Says so when no restore was performed' {

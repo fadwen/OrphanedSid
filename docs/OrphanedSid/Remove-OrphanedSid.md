@@ -319,6 +319,7 @@ HelpMessage: ''
 
 CSV file for the discovered entries.
 The parent folder must exist.
+Not written under -WhatIf; the log says so.
 
 ```yaml
 Type: System.String

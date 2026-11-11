@@ -672,7 +672,8 @@ Default 3.</maml:para>
         <maml:name>OutputPath</maml:name>
         <maml:description>
           <maml:para>CSV file for the discovered entries.
-The parent folder must exist.</maml:para>
+The parent folder must exist.
+Not written under -WhatIf; the log says so.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -1011,7 +1012,8 @@ An existing file is appended to; one larger than 10 MB is first renamed to
         <maml:name>OutputPath</maml:name>
         <maml:description>
           <maml:para>CSV file for the restore results.
-The parent folder must exist.</maml:para>
+The parent folder must exist.
+Not written under -WhatIf; the log says so.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
