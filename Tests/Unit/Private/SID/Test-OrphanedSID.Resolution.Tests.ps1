@@ -251,6 +251,10 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
             $lookup.ErrorMessage | Should -BeLike "Get-ADObject: $($script:downMessage)*"
             $lookup.ErrorMessage | Should -BeLike '*Not attempted because the directory server could not be contacted: Get-ADObject -IncludeDeletedObjects, Get-ADUser, Get-ADGroup, Get-ADComputer'
             $script:SIDValidationCache.ContainsKey($script:orphan) | Should -BeFalse
+            # The count says what happened: one lookup failed, four were not tried
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -like "SID could not be verified - 1 lookup(s) failed, 4 not attempted: $($script:orphan) (*"
+            }
         }
 
         It 'Still asks the local name lookup, which can prove the SID exists' {

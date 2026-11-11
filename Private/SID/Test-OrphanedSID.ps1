@@ -337,12 +337,14 @@ function Test-OrphanedSID {
 
             # Nothing found the SID, but a lookup that failed might have. Unverified is not cached, so
             # a transient failure does not decide the answer for every later object in the run.
-            if ($skippedLookups.Count -gt 0) {
-                $lookupFailures.Add("Not attempted because the directory server could not be contacted: $($skippedLookups -join ', ')")
-            }
             if ($lookupFailures.Count -gt 0) {
+                $countText = "$($lookupFailures.Count) lookup(s) failed"
+                if ($skippedLookups.Count -gt 0) {
+                    $countText += ", $($skippedLookups.Count) not attempted"
+                    $lookupFailures.Add("Not attempted because the directory server could not be contacted: $($skippedLookups -join ', ')")
+                }
                 $failureText = $lookupFailures -join '; '
-                Write-StructuredLog "SID could not be verified - $($lookupFailures.Count) lookup(s) failed: $SID ($failureText)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                Write-StructuredLog "SID could not be verified - $($countText): $SID ($failureText)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
                 return New-SIDLookupResult -SID $SID -Status 'Unverified' -ErrorMessage $failureText
             }
 
