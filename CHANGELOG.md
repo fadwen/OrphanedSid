@@ -60,6 +60,11 @@ All notable changes to this module are recorded here. Format follows
   reported `ActualRemovals = 1` with `Success = False`. An inherited entry is now left alone with a
   warning naming it, and the child is not backed up for it; the entry is removed on the parent that
   sets it. ([#46](https://github.com/fadwen/OrphanedSid/issues/46))
+- An object whose security descriptor the running account may not read was skipped with a
+  Debug-level message only, so at the default log level a run that could not examine part of the
+  search base looked clean. Each such object is now named in a Warning, and the summary reports
+  `Objects not examined (security descriptor not readable): N` and warns when N is above zero.
+  ([#47](https://github.com/fadwen/OrphanedSid/issues/47))
 - A SID whose directory lookup failed was reported as orphaned, and `Remove-OrphanedSid` removed its
   access control entries. A timeout, an access-denied error or an unreachable domain controller was
   treated the same as "this SID does not exist", so live principals could lose their access; the

@@ -74,9 +74,9 @@ Get-ChildItem -Path .\Private -Recurse -Filter *.ps1 | Measure-Object
 
 - `WARNING: Failed to retrieve objects from search base '<DN>': Insufficient access rights ...`
   during discovery.
-- Objects quietly missing from the results: an object whose security descriptor the account cannot
-  read is skipped with the Debug-level `No security descriptor found for <DN>` (see
-  `.\Troubleshooting\Common\Security-Descriptor-Warnings.md`).
+- An object whose security descriptor the account cannot read is skipped with the Warning
+  `Not examined: the security descriptor of <DN> could not be read, usually because the running account lacks permission to read it`, and the summary counts these as
+  `Objects not examined (security descriptor not readable): N`.
 - From `Remove-OrphanedSid`: `Failed to retrieve ACL for <DN>` or Set-Acl access-denied errors.
 
 **Required permissions:**

@@ -6,6 +6,8 @@ class ProcessingStatistics {
     [int]$OrphanedSIDsFound
     # SIDs no lookup found but at least one lookup failed to check; reported, never removed
     [int]$UnverifiedSIDsFound
+    # Objects returned without a security descriptor the account may read, so not examined
+    [int]$UnexaminedObjects
     [int]$ProcessingErrors
     [int]$CriticalErrors
     [DateTime]$StartTime
