@@ -189,7 +189,9 @@ the -ConfigPath file applies, and Information when there is none.</maml:para>
         <maml:description>
           <maml:para>Log file.
 Defaults to .\Logs\Find-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log under the current
-directory.</maml:para>
+directory.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to &lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -635,7 +637,9 @@ the -ConfigPath file applies, and Information when there is none.</maml:para>
         <maml:name>LogPath</maml:name>
         <maml:description>
           <maml:para>Log file.
-Defaults to .\Logs\Remove-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
+Defaults to .\Logs\Remove-OrphanedSid_&lt;yyyyMMdd_HHmmss&gt;.log.
+An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
+to &lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -992,7 +996,9 @@ Information.</maml:para>
         <maml:name>LogPath</maml:name>
         <maml:description>
           <maml:para>Log file.
-Defaults to .\Logs\Restore-OrphanedSidBackup_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
+Defaults to .\Logs\Restore-OrphanedSidBackup_&lt;yyyyMMdd_HHmmss&gt;.log.
+An existing file is appended to; one larger than 10 MB is first renamed to
+&lt;name&gt;_&lt;yyyyMMdd_HHmmss&gt;.log.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
