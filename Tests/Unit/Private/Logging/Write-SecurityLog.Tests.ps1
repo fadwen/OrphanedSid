@@ -1,4 +1,4 @@
-﻿# Unit tests for Write-SecurityLog.ps1
+# Unit tests for Write-SecurityLog.ps1
 BeforeAll {
     $here = $PSScriptRoot
 
@@ -44,7 +44,7 @@ Describe "Write-SecurityLog" -Tag @('Unit', 'Logging', 'Security') {
                 $Message -eq '[ObjectAccess] [Success] AD user access' -and
                 $Data.SecurityEventType -eq 'ObjectAccess' -and
                 $Data.Outcome -eq 'Success' -and
-                $Data.Message -eq 'AD user access' -and
+                -not $Data.ContainsKey('Message') -and
                 $Data.Component -eq 'SecurityAudit'
             }
         }
@@ -128,11 +128,11 @@ Describe "Write-SecurityLog" -Tag @('Unit', 'Logging', 'Security') {
             }
         }
 
-        It "Should send only the eight standard fields for an empty security context" {
+        It "Should send only the seven standard fields for an empty security context" {
             Write-SecurityLog -SecurityEventType "ObjectAccess" -Message "Test" -Outcome "Success" -SecurityContext @{}
 
             Should -Invoke Write-SecurityStructuredLogEntry -Times 1 -Exactly -ParameterFilter {
-                $Data.Count -eq 8
+                $Data.Count -eq 7
             }
         }
 

@@ -421,6 +421,21 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             }
         }
 
+        It 'Writes each security entry with its [type] [outcome] message prefix (#55)' {
+            $log = Join-Path $TestDrive 'audit-message.log'
+
+            $null = Remove-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -BackupPath $script:BackupRoot -Force -LogPath $log -SuppressConsoleOutput
+
+            $entries = @(Get-Content -Path $log | Where-Object { $_.StartsWith('{') } | ForEach-Object { $_ | ConvertFrom-Json } |
+                    Where-Object Component -eq 'SecurityAudit')
+            $entries.Count | Should -BeGreaterThan 0
+            foreach ($entry in $entries) {
+                $entry.Message | Should -BeLike "[[]$($entry.SecurityEventType)] [[]$($entry.Outcome)] *"
+            }
+            @($entries | Where-Object { $_.Message -eq '[ObjectAccess] [Success] Successfully completed Active Directory operation: OrphanedSID-Removal' }).Count |
+                Should -Be 2
+        }
+
         It 'Carries the run correlation ID on every log line of a removal (#42)' {
             $log = Join-Path $TestDrive 'cid-remove.log'
 

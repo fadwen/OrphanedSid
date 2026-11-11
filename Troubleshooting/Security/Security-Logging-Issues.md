@@ -13,11 +13,12 @@
 A security entry looks like:
 
 ```json
-{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.1181234+02:00", ...}
+{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"[ObjectAccess] [Success] Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.1181234+02:00", ...}
 ```
 
-Property order varies. `Message` is the event text alone; `SecurityEventType` and `Outcome` are
-separate properties. `Outcome` `Attempt` and `Success` are written at `Information`, `Failure` at
+Property order varies. `Message` starts with the event type and outcome in brackets, followed by
+the event text; `SecurityEventType` and `Outcome` are also separate properties, which are the
+ones to filter on. `Outcome` `Attempt` and `Success` are written at `Information`, `Failure` at
 `Warning`. On the console only `Warning`, `Error` and
 `Critical` security entries appear, prefixed `[SECURITY]`; `Information` security entries go to the
 file only.
