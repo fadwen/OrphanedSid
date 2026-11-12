@@ -26,16 +26,16 @@ Tests/
 | `Unit/Public` | `Find-OrphanedSid`, `Remove-OrphanedSid`, `Restore-OrphanedSidBackup`: parameter validation, pipeline input, the confirmation gate, result emission, session start and stop. The engine is mocked with `Mock -ModuleName OrphanedSid` |
 | `Unit/Private/ACL` | `Get-ACLForRemoval`, `Invoke-SIDRemoval`, `Set-ModifiedACL` |
 | `Unit/Private/ActiveDirectory` | `Get-ADObjectFromSearchBase`, `Get-ADObjectsSequential`, `Invoke-ADOperationWithRetry`, `Test-ValidDistinguishedName` |
-| `Unit/Private/Backup` | `New-ACLBackup`, `Test-BackupIntegrity` at each level, `Invoke-RestoreWorkflow` and `Invoke-RestoreWorkflow.SingleObject` (single-object restore and container scope), `Restore-IndividualObject`, `Restore-ACLOperation` (`Set-ObjectACL` with its helpers mocked) and `Restore-ACLOperation.Helpers` (`Get-RestorationTarget`, `Confirm-RestorationSuccess`, `ConvertFrom-BackupToACL` for real) |
+| `Unit/Private/Backup` | `New-ACLBackup`, `Test-BackupIntegrity` at each level, `Invoke-RestoreWorkflow` and `Invoke-RestoreWorkflow.SingleObject` (single-object restore and container scope), `Restore-IndividualObject`, `Restore-ACLOperation` (`Set-ObjectACL` with its helpers mocked) and `Restore-ACLOperation.Helpers` (`Get-RestorationTarget` and `Confirm-RestorationSuccess` for real) |
 | `Unit/Private/Core` | `Initialize-ScriptExecution`, `Invoke-MainProcessingLogic`, `Start-OrchestrationWorkflow`, `Remove-OrphanedSidEntry`, `Start-OrphanedSidSession`, `Stop-OrphanedSidSession` |
-| `Unit/Private/FileSystem` | `Get-SafeFileName`, `Initialize-LogDirectory`, `Test-DirectoryAccess` |
-| `Unit/Private/Logging` | `Initialize-LoggingConfiguration` (including `Set-LogLevel`), `Initialize-LoggingSystem` (including `Test-LogLevel`), `Format-LogMessage`, `Write-StructuredLogEntry`, `Write-StructuredLog`, `Write-SecurityStructuredLogEntry`, `Write-SecurityLog`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog` |
+| `Unit/Private/FileSystem` | `Initialize-LogDirectory` |
+| `Unit/Private/Logging` | `Initialize-LoggingConfiguration`, `Initialize-LoggingSystem` (including `Test-LogLevel`), `Format-LogMessage`, `Write-StructuredLogEntry`, `Write-StructuredLog`, `Write-SecurityStructuredLogEntry`, `Write-SecurityLog`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog` |
 | `Unit/Private/Operations` | `Invoke-OperationWithRetry`, `Invoke-RemovalWorkflow` |
-| `Unit/Private/Reporting` | `Export-DiagnosticData`, `Get-LogFileSummary`, `Write-ProcessingSummary` (parameters) and `Write-ProcessingSummary.Scenarios` (discovery, removal and restore results, CSV export, automation output) |
+| `Unit/Private/Reporting` | `Write-ProcessingSummary` (parameters) and `Write-ProcessingSummary.Scenarios` (discovery, removal and restore results, CSV export) |
 | `Unit/Private/Security` | `Get-SecurityDescriptor` (`Get-ObjectAccessRule` and its retrieval strategies), `Invoke-SecurityValidation`, `Invoke-RemovalVerification` |
 | `Unit/Private/SID` | `Test-SIDFormat` (with `Test-WellKnownSID`), `Test-OrphanedSID` end to end and `Test-OrphanedSID.Resolution` (each lookup in the resolution order, the validation cache), `Resolve-SIDIdentity` (availability) and `Test-AccessRuleForOrphanedSID` (the resolution helpers for real), `Find-OrphanedSIDsInObject`, `Get-SIDAnalysis`, `Test-SIDSecurity`, `New-SIDResult` |
-| `Unit/Private/System` | `Get-MemoryStatistics`, `Initialize-MemoryManager`, `Invoke-MemoryMonitoring`, `Invoke-GarbageCollection`, `Invoke-Cleanup`, `Invoke-ResourceDisposal` |
-| `Unit/Private/Utilities` | `ConvertTo-DistinguishedName`, `Get-OrphanedSidModuleVersion`, `Get-StringHash` |
+| `Unit/Private/System` | `Get-MemoryStatistics`, `Initialize-MemoryManager`, `Invoke-MemoryMonitoring`, `Invoke-Cleanup`, `Invoke-ResourceDisposal` (`Invoke-ResourceCleanup`) |
+| `Unit/Private/Utilities` | `ConvertTo-DistinguishedName`, `Get-OrphanedSidModuleVersion` |
 
 Every unit file dot-sources the class and private files it needs inside `BeforeAll`; none imports
 the module except `Unit/Public` and `Unit/OrphanedSid.Contract.Tests.ps1`, which imports it with

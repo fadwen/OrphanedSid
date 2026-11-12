@@ -6,12 +6,13 @@
     Unit tests for Invoke-Cleanup, the memory cleanup the memory manager triggers.
 
 .DESCRIPTION
-    Invoke-GarbageCollection.Tests.ps1 covers the sibling functions in the same file; this one runs
-    Invoke-Cleanup itself with Get-CurrentMemoryUsage mocked so the before and after figures are
-    known. The garbage collector really runs; it is fast and harmless.
+    Runs Invoke-Cleanup, from Invoke-GarbageCollection.ps1, with Get-CurrentMemoryUsage mocked so
+    the before and after figures are known. The garbage collector really runs; it is fast and harmless.
 #>
 
 BeforeAll {
+    # The constants Invoke-Cleanup reads are defined once, in Initialize-MemoryManager.ps1
+    . "$PSScriptRoot\..\..\..\..\Private\System\Initialize-MemoryManager.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }

@@ -37,7 +37,7 @@
 
     TROUBLESHOOTING:
     - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
-    - For performance problems: .\Troubleshooting\Performance\SID-Processing-Performance.md
+    - For performance problems: .\Troubleshooting\Performance\Performance-Tuning.md
     - For memory management: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
     DEPENDENCIES:

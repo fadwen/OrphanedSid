@@ -18,9 +18,11 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
     BeforeEach {
         $script:mockMemoryManager = [MemoryManager]::new(1024, 25, 'test-correlation-id')
 
-        # Pester cannot mock a .NET static method, so the function reads [System.GC] through
-        # these wrappers
-        Mock Get-SystemGCTotalMemory { return 500MB }
+        # Pester cannot mock a .NET static method, so the function reads the process and [System.GC]
+        # through these wrappers. The working set is what the status is rated on; the managed heap is
+        # set apart from it so a test can tell which one a value came from.
+        Mock Get-ProcessWorkingSetByte { return 500MB }
+        Mock Get-SystemGCTotalMemory { return 100MB }
         Mock Get-SystemGCCollectionCount { return 10 + $Generation }
         Mock Write-StructuredLog { }
         Mock Write-Verbose { }
@@ -74,7 +76,7 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
             @{ MB = 5120; Exceeded = $true }
         ) {
             $bytes = $MB * 1MB
-            Mock Get-SystemGCTotalMemory { $bytes }
+            Mock Get-ProcessWorkingSetByte { $bytes }
 
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
@@ -83,7 +85,7 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
         }
 
         It "Should calculate memory usage percentage" {
-            Mock Get-SystemGCTotalMemory { return 512MB }  # 50% of 1024 MB
+            Mock Get-ProcessWorkingSetByte { return 512MB }  # 50% of 1024 MB
 
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
@@ -92,7 +94,7 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
         }
 
         It "Should report usage above 100% when the threshold is far exceeded" {
-            Mock Get-SystemGCTotalMemory { return 5120MB }
+            Mock Get-ProcessWorkingSetByte { return 5120MB }
 
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
@@ -110,11 +112,23 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
             @{ MB = 1500; Status = 'Critical' }
         ) {
             $bytes = $MB * 1MB
-            Mock Get-SystemGCTotalMemory { $bytes }
+            Mock Get-ProcessWorkingSetByte { $bytes }
 
             (Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager).MemoryStatus | Should -Be $Status
         }
 
+        It "Rates the working set, not the managed heap, against the threshold (#97)" {
+            # A small heap inside a working set over 90% of the threshold: the status follows the
+            # working set, the measure MemoryManager compares with the same threshold
+            Mock Get-ProcessWorkingSetByte { return 950MB }
+            Mock Get-SystemGCTotalMemory { return 50MB }
+
+            $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
+
+            $result.MemoryStatus | Should -Be 'Critical'
+            $result.CurrentMemoryMB | Should -Be 950
+            $result.ManagedHeapMB | Should -Be 50
+        }
         It "Should recommend nothing at Normal usage" {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
@@ -122,7 +136,7 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
         }
 
         It "Should recommend garbage collection at High usage" {
-            Mock Get-SystemGCTotalMemory { return 800MB }
+            Mock Get-ProcessWorkingSetByte { return 800MB }
 
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
@@ -130,7 +144,7 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
         }
 
         It "Should recommend stopping, LOH compaction and a threshold review at Critical usage over the threshold" {
-            Mock Get-SystemGCTotalMemory { return 1500MB }
+            Mock Get-ProcessWorkingSetByte { return 1500MB }
 
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
@@ -165,7 +179,8 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
             $result = Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager
 
             $result.MaxMemoryMB | Should -Be 1024
-            $result.SystemMemoryTotal | Should -Be 500MB
+            $result.SystemMemoryTotal | Should -Be 100MB
+            $result.ManagedHeapMB | Should -Be 100
             $result.Gen0Collections | Should -Be 10
             $result.Gen1Collections | Should -Be 11
             $result.Gen2Collections | Should -Be 12
@@ -193,7 +208,7 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
 
     Context "Error Handling" {
         It "Should log a Warning and rethrow when the memory reading fails" {
-            Mock Get-SystemGCTotalMemory { throw "Insufficient memory" }
+            Mock Get-ProcessWorkingSetByte { throw "Insufficient memory" }
 
             { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager -CorrelationId 'err-id' } |
                 Should -Throw -ExpectedMessage 'Insufficient memory'

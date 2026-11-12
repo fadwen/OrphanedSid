@@ -41,8 +41,7 @@ function Get-ADObjectFromSearchBase {
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
         TROUBLESHOOTING:
-        - For search base issues: .\Troubleshooting\Common\SearchBase-Problems.md
-        - For permission issues: .\Troubleshooting\Security\Permission-Errors.md
+        - For search base issues: .\Troubleshooting\Common\Common-Issues.md
     #>
 
     [CmdletBinding()]

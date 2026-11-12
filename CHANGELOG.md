@@ -60,6 +60,19 @@ All notable changes to this module are recorded here. Format follows
 - The `EnableDetailedLogging` configuration key, which was read but never acted on. A `-ConfigPath`
   file that still sets it loads as before; the key is ignored like any other unknown key.
   ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
+- Two pieces of internal code that no command reached: the `Get-SIDRiskAssessment` reporting
+  helper, and the `-AutomationMode` summary of `Write-ProcessingSummary`, which also repeated the
+  `Objects not examined` lines inside its own block.
+  ([#95](https://github.com/fadwen/OrphanedSid/issues/95),
+  [#96](https://github.com/fadwen/OrphanedSid/issues/96))
+- Eighteen internal functions that no command reached: `ConvertFrom-BackupToACL`,
+  `Get-SafeFileName`, `Test-DirectoryAccess`, `Export-DiagnosticData`, `Get-LogFileSummary` with
+  `Get-LogContentAnalysis`, `Get-LogFileHealth` and `Get-LogFileStatistics`, `Get-StringHash`,
+  `Get-LoggingState`, `Update-LoggingMetrics`, `Set-LogLevel`, `Get-LogLevel`,
+  `Invoke-GarbageCollection` with its three collector wrappers, and `Invoke-ResourceDisposal`.
+  The logging metadata, metrics and validation tables that only they read are removed too. A run
+  still collects through `Invoke-Cleanup` and disposes through `Invoke-ResourceCleanup`.
+  ([#107](https://github.com/fadwen/OrphanedSid/issues/107))
 - Five internal backup helpers that no command called: `Test-BackupValidation`,
   `Test-BackupFormat`, `Get-BackupMetadata`, `Find-BackupFile` and `Get-BackupFileMetadata`. A
   restore checks each backup with `Test-BackupIntegrity` and finds backups in
@@ -70,6 +83,32 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- The `Restore-OrphanedSidBackup` help described `No objects were restored` as the result for a
+  container with no backups. That message means the folder holds backups but none under the
+  container; a folder with no backup at all stops earlier with
+  `No backup files found in directory: <path>`. The help now names both.
+  ([#102](https://github.com/fadwen/OrphanedSid/issues/102))
+- The backup checks in the backup troubleshooting guide reported good backups as
+  `Invalid SDDL format` when run on a machine outside the backups' domain, because domain aliases
+  such as `DA` in the SDDL cannot be resolved there. The guide now says to run them on a
+  domain-joined host and names the error. ([#103](https://github.com/fadwen/OrphanedSid/issues/103))
+- The internal help of the private functions pointed to 72 troubleshooting guides that do not
+  exist. Each reference now names the existing guide that covers the area, and a contract test
+  fails on any reference that does not resolve.
+  ([#101](https://github.com/fadwen/OrphanedSid/issues/101))
+- With `-Verbose`, each `Flushed batch N with ... results` line said 0 results, because the count
+  was read after the batch was cleared. It now reports the number written.
+  ([#99](https://github.com/fadwen/OrphanedSid/issues/99))
+- With `-OutputPath`, the results were read back from the batch files twice, once for the
+  pipeline and once for the CSV, and each read built its array one result at a time, which slows
+  down with the size of the result set on Windows PowerShell 5.1. Each batch file is now read
+  once, into a list, and the export reuses that read.
+  ([#100](https://github.com/fadwen/OrphanedSid/issues/100))
+- The internal memory check that the troubleshooting guide runs, `Invoke-MemoryCheck`, rated the
+  .NET managed heap against `-MaxMemoryUsageMB`, a limit the run compares with the process working
+  set. The heap is a fraction of the working set, so the check reported `Normal` while the run's own
+  memory warning fired. It now rates the working set and reports the heap beside it as
+  `ManagedHeapMB`. ([#97](https://github.com/fadwen/OrphanedSid/issues/97))
 - Piping Active Directory objects into `Find-OrphanedSid` or `Remove-OrphanedSid`, as in
   `Get-ADOrganizationalUnit ... | Find-OrphanedSid`, ignored them and processed the whole domain;
   piping them into `Restore-OrphanedSidBackup` failed with `Cannot bind argument to parameter

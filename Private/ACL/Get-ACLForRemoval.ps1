@@ -21,8 +21,8 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For ACL retrieval failures: .\Troubleshooting\Common\ACL-Retrieval-Issues.md
-    - For AD connectivity issues: .\Troubleshooting\Common\AD-Connection-Issues.md
+    - For ACL retrieval failures: .\Troubleshooting\Security\Security-Descriptor-Issues.md
+    - For AD connectivity issues: .\Troubleshooting\Common\Common-Issues.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function

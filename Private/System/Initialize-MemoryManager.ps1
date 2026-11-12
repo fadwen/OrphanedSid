@@ -21,8 +21,7 @@
 
     TROUBLESHOOTING:
     - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
-    - For configuration: .\Troubleshooting\Performance\Memory-Configuration.md
-    - For initialization issues: .\Troubleshooting\Common\Initialization-Problems.md
+    - For configuration: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
 .COMPONENT
     Find-UnknownSID Memory Manager Initialization System
@@ -34,12 +33,10 @@
     - Memory management configuration constants
 #>
 
-# Memory management configuration constants
+# Memory management constants, defined once for the module: Invoke-Cleanup and
+# Invoke-ResourceCleanup read them and must not reassign the table, or a key one of them needs can
+# disappear after the other runs. Only keys something reads belong here.
 $script:MemoryManagementConfig = @{
-    DefaultMemoryThresholdMB = 1024
-    DefaultCheckInterval = 25
-    CleanupThresholdRatio = 0.9
-    EmergencyCleanupThresholdRatio = 0.95
     MemoryPressureAmountMB = 50
     GCRetryAttempts = 3
     GCRetryDelayMilliseconds = 100

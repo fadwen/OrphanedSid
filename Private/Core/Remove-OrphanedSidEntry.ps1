@@ -21,9 +21,8 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For removal failures: .\Troubleshooting\Security\SID-Removal-Issues.md
-    - For backup errors: .\Troubleshooting\Common\Backup-Errors.md
-    - For validation problems: .\Troubleshooting\Security\Security-Validation-Issues.md
+    - For removal failures: .\Troubleshooting\Security\Security-Validation-Guide.md
+    - For backup errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     DEPENDENCIES:
     - Requires Operations\Invoke-RemovalWorkflow.ps1 for workflow orchestration
@@ -205,15 +204,13 @@ function Remove-OrphanedSidEntry {
         - Integration with enterprise governance workflows
 
         TROUBLESHOOTING:
-        - For security validation failures: .\Troubleshooting\Security\Security-Validation-Issues.md
-        - For ACL access errors: .\Troubleshooting\Security\Permission-Issues.md
-        - For backup failures: .\Troubleshooting\Common\Backup-Errors.md
-        - For verification failures: .\Troubleshooting\Common\Verification-Issues.md
-        - For module integration issues: .\Troubleshooting\Common\Module-Integration-Issues.md
+        - For security validation failures: .\Troubleshooting\Security\Security-Validation-Guide.md
+        - For ACL access errors: .\Troubleshooting\Common\Common-Issues.md
+        - For backup failures: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     .LINK
         https://docs.microsoft.com/en-us/powershell/module/activedirectory/
-        .\Troubleshooting\Security\SID-Removal-Issues.md
+        .\Troubleshooting\Security\Security-Validation-Guide.md
         .\Documentation\RemovalOperations-Architecture-Guide.md
     #>
 

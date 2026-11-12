@@ -41,8 +41,6 @@
 
     TROUBLESHOOTING:
     - For orphaned detection issues: .\Troubleshooting\Security\Orphaned-SID-Issues.md
-    - For cache management problems: .\Troubleshooting\Common\Cache-Management.md
-    - For performance optimization: .\Troubleshooting\Performance\SID-Detection-Performance.md
 
     DEPENDENCIES:
     - Requires Test-SIDFormat.ps1 for SID format validation
@@ -177,8 +175,6 @@ function Test-OrphanedSID {
 
         TROUBLESHOOTING:
         - For validation errors: .\Troubleshooting\Security\Orphaned-SID-Issues.md
-        - For performance issues: .\Troubleshooting\Performance\SID-Detection-Performance.md
-        - For cache management: .\Troubleshooting\Common\Cache-Management.md
 
     .LINK
         Test-SIDFormat
@@ -488,13 +484,13 @@ function Clear-SIDValidationCache {
         - No impact on other module functions
 
         TROUBLESHOOTING:
-        - For cache issues: .\Troubleshooting\Common\Cache-Management.md
-        - For memory problems: .\Troubleshooting\Performance\Memory-Usage.md
+        - For cache issues: .\Troubleshooting\Security\Orphaned-SID-Issues.md
+        - For memory problems: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
     .LINK
         Get-SIDValidationCacheStat
         Test-OrphanedSID
-        .\Troubleshooting\Common\Cache-Management.md
+        .\Troubleshooting\Security\Orphaned-SID-Issues.md
     #>
     [CmdletBinding()]
     param(
@@ -571,13 +567,13 @@ function Get-SIDValidationCacheStat {
         - No impact on cache contents or performance
 
         TROUBLESHOOTING:
-        - For cache analysis: .\Troubleshooting\Common\Cache-Management.md
-        - For performance tuning: .\Troubleshooting\Performance\Optimization-Guide.md
+        - For cache analysis: .\Troubleshooting\Security\Orphaned-SID-Issues.md
+        - For performance tuning: .\Troubleshooting\Performance\Performance-Tuning.md
 
     .LINK
         Clear-SIDValidationCache
         Test-OrphanedSID
-        .\Troubleshooting\Common\Cache-Management.md
+        .\Troubleshooting\Security\Orphaned-SID-Issues.md
     #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]

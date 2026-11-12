@@ -14,7 +14,7 @@ how to read their output. The architecture itself is described in
 | Component | File | Behaviour |
 |---|---|---|
 | `MemoryManager` class | `Classes\MemoryManager.ps1` | Counts operations; every `CheckInterval` operations it reads the process working set, tracks the peak, and if the value exceeds `MaxMemoryMB` runs `GC.Collect()` twice around `WaitForPendingFinalizers()`, adds and removes 50 MB of GC pressure, and re-measures. It never throws; it warns. |
-| `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic` with `-WhatIf:$false`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object rating the managed heap (`GC.GetTotalMemory`, not the working set) against the threshold: `Normal` up to 75 %, `High` to 90 %, `Critical` above. |
+| `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic` with `-WhatIf:$false`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object rating the process working set, the measure `CheckMemoryUsage()` compares, against the threshold: `Normal` up to 75 %, `High` to 90 %, `Critical` above. The managed heap (`GC.GetTotalMemory`) is reported beside it as `ManagedHeapMB`. The caller discards the object; the threshold warning a run logs comes from `CheckMemoryUsage()`. |
 | `Invoke-Cleanup` | `Private\System\Invoke-GarbageCollection.ps1` | Called every 100 processed objects, with `-WhatIf:$false`. Adds 50 MB of GC pressure, runs three collect/finalize cycles 100 ms apart, removes the pressure, and returns `MemoryBeforeMB`, `MemoryAfterMB`, `MemoryFreedMB`. `-IncludeLOHCompaction` sets `GCLargeObjectHeapCompactionMode.CompactOnce` for that cleanup. |
 | `StreamingResultsManager` | `Classes\StreamingResultsManager.ps1` | Holds at most `BatchSize` results (default 50) in memory before flushing them to a JSON batch file and calling `GC.Collect()`. |
 | `Invoke-ResourceCleanup` | `Private\System\Invoke-ResourceDisposal.ps1` | Runs from `Stop-OrphanedSidSession` in each command's `finally` block, with `-WhatIf:$false`; disposes the streaming manager and the memory manager, then performs a final collection. |
@@ -86,8 +86,8 @@ when the command itself is behaving.
   until the module is removed or re-imported. It is rarely the cause.
 - Results are not held in memory during processing. Each `OrphanedSIDResult` is handed to
   `StreamingResultsManager.AddResult()` and flushed to disk after `BatchSize` results (default 50).
-  At the end of the run `Find-OrphanedSid` reads every batch back with `GetAllResults()` to emit
-  the results, and the `-OutputPath` export reads them back again.
+  At the end of the run `Find-OrphanedSid` reads every batch back once with `GetAllResults()` to
+  emit the results, and the `-OutputPath` export reuses what that read returned.
 - Access rules returned by `Get-ObjectAccessRule` are released after each object
   (`$accessRules = $null` in `Private\SID\Invoke-SIDProcessing.ps1`), and a collection runs after
   an object whose inspected access rules number a multiple of 100.
@@ -104,14 +104,14 @@ search bases so each process stays short-lived.
 **Symptoms**
 
 The run terminates with `OutOfMemoryException`, typically while reading a very large ACL or while
-`GetAllResults()` concatenates batch files for the CSV export.
+`GetAllResults()` reads the batch files back at the end of the run.
 
 **Root causes**
 
 - A 32-bit PowerShell host (2 GB address space). Check with `[IntPtr]::Size -eq 4`.
 - System-wide memory pressure from other processes.
-- An export of a very large result set: `ExportToCsv()` reads every batch file back into memory
-  before calling `Export-Csv`.
+- A very large result set: at the end of the run every result is read back into memory, to be
+  written to the pipeline and to `Export-Csv`, and held until the session ends.
 
 **Resolution**
 

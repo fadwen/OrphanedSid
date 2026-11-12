@@ -112,12 +112,10 @@ function Set-ObjectACL {
         - Confirms target object existence before modification
 
         TROUBLESHOOTING:
-        - For permission errors: .\Troubleshooting\Security\Permission-Issues.md
-        - For SDDL format issues: .\Troubleshooting\Common\Backup-Restore-Issues.md
-        - For verification failures: .\Troubleshooting\Common\Backup-Restore-Issues.md
+        - For permission errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     .LINK
-        .\Troubleshooting\Security\Permission-Issues.md
+        .\Troubleshooting\Common\Backup-Restore-Issues.md
         .\Troubleshooting\Common\Backup-Restore-Issues.md
     #>
 
@@ -537,112 +535,6 @@ function Confirm-RestorationSuccess {
                 MatchPercentage = 0
                 CorrelationId = $CorrelationId
                 VerifiedAt = Get-Date
-            }
-        }
-    }
-}
-
-
-function ConvertFrom-BackupToACL {
-    <#
-    .SYNOPSIS
-        Converts backup SDDL data to Active Directory security descriptor.
-
-    .DESCRIPTION
-        Converts validated backup SDDL strings into proper Active Directory
-        security descriptor objects suitable for ACL application operations.
-        Handles SDDL parsing and validation during conversion.
-
-    .PARAMETER BackupData
-        Validated backup data containing SDDL string.
-
-    .PARAMETER CorrelationId
-        Unique identifier for tracking this conversion operation.
-
-    .EXAMPLE
-        PS> ConvertFrom-BackupToACL -BackupData $validatedBackup
-
-        Converts backup SDDL to security descriptor object.
-
-    .OUTPUTS
-        [PSCustomObject] ACLConversionResult
-    #>
-
-    [CmdletBinding()]
-    [OutputType('ACLConversionResult')]
-    param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [ValidateNotNull()]
-        [PSCustomObject]$BackupData,
-
-        [Parameter()]
-        [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
-    )
-
-    process {
-        try {
-            if (-not $BackupData.SDDL) {
-                return [PSCustomObject]@{
-                    PSTypeName = 'ACLConversionResult'
-                    Success = $false
-                    SecurityDescriptor = $null
-                    SourceSDDL = $null
-                    ACECount = 0
-                    SDDLLength = 0
-                    ErrorMessage = "BackupData object does not contain SDDL property"
-                    CorrelationId = $CorrelationId
-                    ConvertedAt = Get-Date
-                }
-            }
-
-            # Create security descriptor from SDDL
-            $securityDescriptor = [System.DirectoryServices.ActiveDirectorySecurity]::new()
-            
-            # Try to set SDDL and catch any parsing errors
-            try {
-                $securityDescriptor.SetSecurityDescriptorSddlForm($BackupData.SDDL)
-            }
-            catch {
-                # SDDL parsing failed - return failure result
-                return [PSCustomObject]@{
-                    PSTypeName = 'ACLConversionResult'
-                    Success = $false
-                    SecurityDescriptor = $null
-                    SourceSDDL = $BackupData.SDDL
-                    ACECount = 0
-                    SDDLLength = $BackupData.SDDL.Length
-                    ErrorMessage = "SDDL conversion failed: $($_.Exception.Message)"
-                    CorrelationId = $CorrelationId
-                    ConvertedAt = Get-Date
-                }
-            }
-
-            # Extract metadata about the ACL
-            $aceCount = ($BackupData.SDDL -split '\(' | Where-Object { $_ -like '*;*' }).Count
-            $sddlLength = $BackupData.SDDL.Length
-
-            return [PSCustomObject]@{
-                PSTypeName = 'ACLConversionResult'
-                Success = $true
-                SecurityDescriptor = $securityDescriptor
-                SourceSDDL = $BackupData.SDDL
-                ACECount = $aceCount
-                SDDLLength = $sddlLength
-                CorrelationId = $CorrelationId
-                ConvertedAt = Get-Date
-            }
-        }
-        catch {
-            return [PSCustomObject]@{
-                PSTypeName = 'ACLConversionResult'
-                Success = $false
-                SecurityDescriptor = $null
-                SourceSDDL = if ($BackupData.SDDL) { $BackupData.SDDL } else { $null }
-                ACECount = 0
-                SDDLLength = if ($BackupData.SDDL) { $BackupData.SDDL.Length } else { 0 }
-                ErrorMessage = "SDDL conversion failed: $($_.Exception.Message)"
-                CorrelationId = $CorrelationId
-                ConvertedAt = Get-Date
             }
         }
     }

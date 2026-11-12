@@ -70,18 +70,6 @@ Describe "Write-ProcessingSummary" -Tag "Unit", "Private", "Reporting" {
             Test-Path (Join-Path $TestDrive 'none.csv') | Should -BeFalse
         }
 
-        It "Should report Success in automation mode when no error count is present" {
-            $script:Captured = [System.Collections.Generic.List[string]]::new()
-            Mock Write-Information { $script:Captured.Add($MessageData) }
-
-            Write-ProcessingSummary -ProcessingResults $script:MinimalResults -AutomationMode
-
-            $json = $script:Captured[1] | ConvertFrom-Json
-            $json.Status | Should -Be 'Success'
-            $json.Summary.TotalObjectsProcessed | Should -Be 150
-            $json.Summary.Duration | Should -Be '00:15:00'
-            $json.Summary.PSObject.Properties.Name | Should -Not -Contain 'OrphanedSIDsFound'
-        }
     }
 
     Context "Removal results" {

@@ -169,7 +169,24 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             Test-Path (Join-Path $testDir 'batch_1.json') | Should -Be $true
             $manager.Dispose()
         }
-    }
+
+        It "Should log the number of results the batch wrote (#99)" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 10, $false)
+            1..3 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
+
+            # Set globally: on Windows PowerShell 5.1 a class method reads preferences from the scope
+            # its class was first compiled in, which in a full run is another test file's
+            $savedPreference = $global:VerbosePreference
+            $global:VerbosePreference = 'Continue'
+            try {
+                $verbose = @(& { $manager.FlushBatch() } 4>&1)
+            } finally {
+                $global:VerbosePreference = $savedPreference
+            }
+
+            @($verbose.Message) -like 'Flushed batch 1 with * results to *' | Should -BeLike 'Flushed batch 1 with 3 results to *'
+            $manager.Dispose()
+        }    }
 
     Context "GetAllResults" {
         It "Should return the results from every batch file and the unflushed remainder, in order" {
@@ -237,6 +254,21 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager.Dispose()
         }
 
+        It "Should read each batch file once, and only the batches flushed since on a later call (#100)" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
+            1..3 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
+            $null = $manager.GetAllResults()
+
+            # Spoil the two files already read: a second read of either would warn and lose results
+            $manager.Summary.BatchFiles | ForEach-Object { Set-Content -Path $_ -Value '{ not json' }
+            $manager.AddResult((New-TestResult -Number 4))
+
+            $output = @(& { $manager.GetAllResults() } 3>&1)
+
+            @($output | Where-Object { $_ -is [System.Management.Automation.WarningRecord] }).Count | Should -Be 0
+            $output.OrphanedSID | Should -Be @(1..4 | ForEach-Object { "S-1-5-21-1-2-3-$_" })
+            $manager.Dispose()
+        }
         It "Should return every added result in order in WhatIf mode, across flushed batches" {
             $directory = New-TestDirectoryPath
             $manager = [StreamingResultsManager]::new($directory, 2, $true)
@@ -278,6 +310,18 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager.Dispose()
         }
 
+        It "Should export the results already read back without reading the batch files again (#100)" {
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
+            1..3 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
+            $null = $manager.GetAllResults()
+            $manager.Summary.BatchFiles | ForEach-Object { Set-Content -Path $_ -Value '{ not json' }
+            $csv = Join-Path $TestDrive "reuse_$([guid]::NewGuid().ToString('N')).csv"
+
+            $manager.ExportToCsv($csv) | Should -Be $true
+
+            @(Import-Csv -Path $csv).OrphanedSID | Should -Be @(1..3 | ForEach-Object { "S-1-5-21-1-2-3-$_" })
+            $manager.Dispose()
+        }
         It "Should not create a CSV when there are no results" {
             $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
             $csv = Join-Path $TestDrive "empty_$([guid]::NewGuid().ToString('N')).csv"

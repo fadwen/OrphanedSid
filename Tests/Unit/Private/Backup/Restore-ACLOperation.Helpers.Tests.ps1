@@ -6,9 +6,9 @@
     Unit tests for the helpers in Restore-ACLOperation.ps1 that Set-ObjectACL delegates to.
 
 .DESCRIPTION
-    Restore-ACLOperation.Tests.ps1 mocks Get-RestorationTarget, Confirm-RestorationSuccess and
-    ConvertFrom-BackupToACL to test Set-ObjectACL in isolation, so their bodies were never run. These
-    tests run them with only Get-ADObject and Get-Acl mocked.
+    Restore-ACLOperation.Tests.ps1 mocks Get-RestorationTarget and Confirm-RestorationSuccess to test
+    Set-ObjectACL in isolation, so their bodies were never run. These tests run them with only
+    Get-ADObject and Get-Acl mocked.
 #>
 
 BeforeAll {
@@ -203,46 +203,5 @@ Describe 'Confirm-RestorationSuccess' -Tag 'Unit', 'Backup', 'Private' {
         $result.IsVerified | Should -BeFalse
         $result.VerificationIssues[0] | Should -BeLike 'Failed to read current ACL:*not operational*'
         $result.ExpectedEntries | Should -Be 0
-    }
-}
-
-Describe 'ConvertFrom-BackupToACL' -Tag 'Unit', 'Backup', 'Private' {
-
-    It 'Builds a security descriptor from the backup SDDL and counts its entries' {
-        $result = ConvertFrom-BackupToACL -BackupData ([PSCustomObject]@{ SDDL = $script:sddl }) -CorrelationId 'cv-1'
-
-        $result.PSTypeNames | Should -Contain 'ACLConversionResult'
-        $result.Success | Should -BeTrue
-        $result.SecurityDescriptor | Should -BeOfType [System.DirectoryServices.ActiveDirectorySecurity]
-        $result.SecurityDescriptor.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::All) | Should -BeLike '*S-1-5-21-1-2-3-9001*'
-        $result.ACECount | Should -Be 2
-        $result.SDDLLength | Should -Be $script:sddl.Length
-        $result.SourceSDDL | Should -Be $script:sddl
-        $result.CorrelationId | Should -Be 'cv-1'
-    }
-
-    It 'Accepts the backup data from the pipeline' {
-        ([PSCustomObject]@{ SDDL = $script:sddl } | ConvertFrom-BackupToACL).Success | Should -BeTrue
-    }
-
-    It 'Rejects null backup data' {
-        { ConvertFrom-BackupToACL -BackupData $null } | Should -Throw "*parameter 'BackupData'*"
-    }
-
-    It 'Fails without throwing when the backup has no SDDL' {
-        $result = ConvertFrom-BackupToACL -BackupData ([PSCustomObject]@{ ObjectDN = $script:dn })
-
-        $result.Success | Should -BeFalse
-        $result.SecurityDescriptor | Should -BeNullOrEmpty
-        $result.ErrorMessage | Should -Be 'BackupData object does not contain SDDL property'
-    }
-
-    It 'Fails without throwing when the SDDL does not parse' {
-        $result = ConvertFrom-BackupToACL -BackupData ([PSCustomObject]@{ SDDL = 'this is not sddl' })
-
-        $result.Success | Should -BeFalse
-        $result.ErrorMessage | Should -BeLike 'SDDL conversion failed:*'
-        $result.SourceSDDL | Should -Be 'this is not sddl'
-        $result.SDDLLength | Should -Be 16
     }
 }

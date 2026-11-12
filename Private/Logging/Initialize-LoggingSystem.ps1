@@ -17,8 +17,7 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For logging initialization issues: .\Troubleshooting\Common\Logging-Initialization.md
-    - For configuration problems: .\Troubleshooting\Common\Configuration-Issues.md
+    - For logging initialization issues: .\Troubleshooting\Common\Common-Issues.md
 
 .LINK
     https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-logging

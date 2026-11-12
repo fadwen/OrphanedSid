@@ -33,8 +33,7 @@ function Invoke-ADOperationWithRetry {
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
         TROUBLESHOOTING:
-        - For operation failures: .\Troubleshooting\Common\AD-Operation-Issues.md
-        - For retry configuration: .\Troubleshooting\Performance\Retry-Tuning.md
+        - For operation failures: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding()]

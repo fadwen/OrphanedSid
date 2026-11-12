@@ -9,6 +9,10 @@ class StreamingResultsManager : System.IDisposable {
     [System.Collections.Generic.List[object]]$CurrentResults
     # In WhatIf mode nothing is written to disk, so flushed batches are kept here instead
     [System.Collections.Generic.List[object]]$WhatIfResults
+    # Results already read back from batch files, and how many batch files they cover, so a second
+    # GetAllResults (ExportToCsv after Find-OrphanedSid has emitted) reads no file twice
+    hidden [System.Collections.Generic.List[object]]$ReadBackResults = [System.Collections.Generic.List[object]]::new()
+    hidden [int]$ReadBackBatchCount = 0
     [object]$Summary
     [bool]$Disposed
     [bool]$WhatIfMode
@@ -187,13 +191,14 @@ class StreamingResultsManager : System.IDisposable {
             # Add to summary
             $this.Summary.BatchFiles += $batchFile
 
-            # Clear current results to free memory
+            # Clear current results to free memory, counting them first for the log line
+            $flushedCount = $this.CurrentResults.Count
             $this.CurrentResults.Clear()
 
             # Force garbage collection after each batch
             [System.GC]::Collect()
 
-            Write-Verbose "Flushed batch $($this.CurrentBatch) with $($this.CurrentResults.Count) results to $batchFile"
+            Write-Verbose "Flushed batch $($this.CurrentBatch) with $flushedCount results to $batchFile"
         }
         catch {
             Write-Warning "Failed to flush batch $($this.CurrentBatch): $($_.Exception.Message)"
@@ -270,14 +275,15 @@ class StreamingResultsManager : System.IDisposable {
             return $this.WhatIfResults.ToArray()
         }
 
-        $allResults = @()
-
-        foreach ($batchFile in $this.Summary.BatchFiles) {
+        # Only batch files flushed since the last call are read; the rest are already in the list
+        $batchFiles = @($this.Summary.BatchFiles)
+        for ($index = $this.ReadBackBatchCount; $index -lt $batchFiles.Count; $index++) {
+            $batchFile = $batchFiles[$index]
             if (Test-Path $batchFile) {
                 try {
                     $batchContent = Get-Content $batchFile -Raw | ConvertFrom-Json
                     foreach ($item in @($batchContent)) {
-                        $allResults += $this.RestoreResult($item)
+                        $this.ReadBackResults.Add($this.RestoreResult($item))
                     }
                 }
                 catch {
@@ -285,8 +291,9 @@ class StreamingResultsManager : System.IDisposable {
                 }
             }
         }
+        $this.ReadBackBatchCount = $batchFiles.Count
 
-        return $allResults
+        return $this.ReadBackResults.ToArray()
     }
 
     # JSON loses types: enums come back as numbers, and a DateTime comes back as UTC on Windows
@@ -397,6 +404,7 @@ class StreamingResultsManager : System.IDisposable {
             # Clear references (always safe to do)
             $this.CurrentResults.Clear()
             $this.CurrentResults = $null
+            $this.ReadBackResults.Clear()
 
             $this.Disposed = $true
 

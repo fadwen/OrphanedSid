@@ -2,12 +2,11 @@
 
 <#
 .SYNOPSIS
-    Pester tests for the Private/System/Invoke-ResourceDisposal.ps1 functions
+    Pester tests for Invoke-ResourceCleanup, in Private/System/Invoke-ResourceDisposal.ps1
 
 .DESCRIPTION
-    Covers the two disposal functions that release resources at the end of a run:
-    - Invoke-ResourceCleanup: disposes the MemoryManager and any additional IDisposable resources
-    - Invoke-ResourceDisposal: disposes an arbitrary set of resources and reports counts
+    Invoke-ResourceCleanup releases resources at the end of a run: it disposes the MemoryManager
+    and any additional IDisposable resources, then collects.
 
     Disposal must run even under -WhatIf; only the logging around it honours ShouldProcess.
     These tests use a small IDisposable test double so no real resources are touched.
@@ -27,6 +26,8 @@ BeforeAll {
     # before that file is parsed.
     . (Join-Path $projectRoot 'Classes\MemoryManager.ps1')
 
+    # The constants Invoke-ResourceCleanup reads are defined once, in Initialize-MemoryManager.ps1
+    . (Join-Path $projectRoot 'Private\System\Initialize-MemoryManager.ps1')
     . (Join-Path $projectRoot 'Private\System\Invoke-ResourceDisposal.ps1')
 
     # Stub so Write-StructuredLog can be mocked. The parameter names are what the
@@ -174,119 +175,6 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
 
             Should -Invoke Write-StructuredLog -Times 4 -Exactly -Scope It -ParameterFilter {
                 $CorrelationId -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-            }
-        }
-    }
-}
-
-Describe 'Invoke-ResourceDisposal' -Tag 'Unit', 'System' {
-
-    BeforeEach {
-        Mock Write-StructuredLog { }
-    }
-
-    Context 'Disposal counts' {
-        It 'Disposes IDisposable resources and counts them' {
-            $first = [DisposableProbe]::new()
-            $second = [DisposableProbe]::new()
-
-            $result = Invoke-ResourceDisposal -Resources @($first, $second)
-
-            $first.Disposed | Should -Be $true
-            $second.Disposed | Should -Be $true
-            $result.TotalResources | Should -Be 2
-            $result.DisposedCount | Should -Be 2
-            $result.FailedCount | Should -Be 0
-            $result.SkippedCount | Should -Be 0
-        }
-
-        It 'Skips null entries and non-disposable objects' {
-            $probe = [DisposableProbe]::new()
-
-            $result = Invoke-ResourceDisposal -Resources @($null, 'just a string', $probe)
-
-            $result.DisposedCount | Should -Be 1
-            $result.SkippedCount | Should -Be 2
-        }
-
-        It 'Returns zero counts for an empty collection' {
-            $result = Invoke-ResourceDisposal -Resources @()
-
-            $result.TotalResources | Should -Be 0
-            $result.DisposedCount | Should -Be 0
-        }
-    }
-
-    Context 'Failure handling' {
-        It 'Rethrows the first disposal failure without -Force' {
-            $failing = [DisposableProbe]::new()
-            $failing.ThrowOnDispose = $true
-
-            $after = [DisposableProbe]::new()
-
-            { Invoke-ResourceDisposal -Resources @($failing, $after) -CorrelationId 'disp-err' } | Should -Throw '*Dispose failed on purpose*'
-
-            $after.Disposed | Should -Be $false
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
-                $Level -eq 'Error' -and $Message -like 'Resource disposal operation failed:*Dispose failed on purpose*' -and
-                $CorrelationId -eq 'disp-err'
-            }
-        }
-
-        It 'Logs a completion summary with the counts' {
-            $failing = [DisposableProbe]::new()
-            $failing.ThrowOnDispose = $true
-
-            Invoke-ResourceDisposal -Resources @($failing, [DisposableProbe]::new(), $null) -Force | Out-Null
-
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
-                $Message -eq 'Resource disposal completed. Disposed: 1, Failed: 1, Skipped: 1' -and $Level -eq 'Information'
-            }
-        }
-
-        It 'Continues past a failure and records it with -Force' {
-            $failing = [DisposableProbe]::new()
-            $failing.ThrowOnDispose = $true
-            $probe = [DisposableProbe]::new()
-
-            $result = Invoke-ResourceDisposal -Resources @($failing, $probe) -Force
-
-            $probe.Disposed | Should -Be $true
-            $result.FailedCount | Should -Be 1
-            $result.DisposedCount | Should -Be 1
-            $result.Errors.Count | Should -Be 1
-            $result.Errors[0] | Should -Be 'Dispose failed on purpose'
-        }
-
-        It 'Logs the failure at Warning level' {
-            $failing = [DisposableProbe]::new()
-            $failing.ThrowOnDispose = $true
-
-            Invoke-ResourceDisposal -Resources @($failing) -Force | Out-Null
-
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -Scope It -ParameterFilter {
-                $Level -eq 'Warning' -and $Message -like 'Failed to dispose resource DisposableProbe:*'
-            }
-        }
-    }
-
-    Context 'WhatIf behaviour' {
-        It 'Still disposes resources under -WhatIf' {
-            $probe = [DisposableProbe]::new()
-
-            $result = Invoke-ResourceDisposal -Resources @($probe) -WhatIf
-
-            $probe.Disposed | Should -Be $true
-            $result.DisposedCount | Should -Be 1
-        }
-
-        It 'Suppresses informational logging under -WhatIf' {
-            $probe = [DisposableProbe]::new()
-
-            Invoke-ResourceDisposal -Resources @($probe) -WhatIf | Out-Null
-
-            Should -Invoke Write-StructuredLog -Times 0 -Exactly -Scope It -ParameterFilter {
-                $Level -eq 'Information'
             }
         }
     }

@@ -17,8 +17,7 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For output issues: .\Troubleshooting\Common\Output-Issues.md
-    - For CSV export problems: .\Troubleshooting\Common\File-Export-Issues.md
+    - For output issues: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 
@@ -73,15 +72,6 @@ function Write-ProcessingSummary {
         Supports integration with reporting systems, compliance
         documentation, and change management processes.
 
-    .PARAMETER AutomationMode
-        [Switch] (Optional) Whether to output structured data for automation.
-        Enables integration with CI/CD pipelines and monitoring systems.
-
-        AUTOMATION BENEFITS:
-        - Structured JSON output for programmatic consumption
-        - Standardized status codes for success/failure determination
-        - Comprehensive metadata for downstream processing
-
     .PARAMETER CorrelationId
         [String] (Optional) Correlation ID for tracking this operation.
         Auto-generated if not provided for audit purposes.
@@ -97,14 +87,6 @@ function Write-ProcessingSummary {
         OUTPUT: Console summary and CSV file export
         USE CASE: Standard result reporting and documentation
         COMPLIANCE: Supports audit trail requirements
-
-    .EXAMPLE
-        PS> Write-ProcessingSummary -ProcessingResults $results -AutomationMode
-
-        DESCRIPTION: Generate structured output for automation
-        OUTPUT: JSON-formatted automation data
-        INTEGRATION: Enables CI/CD pipeline integration
-        MONITORING: Supports automated alerting and dashboards
 
     .EXAMPLE
         PS> Write-ProcessingSummary -ProcessingResults $restoreResults
@@ -132,16 +114,13 @@ function Write-ProcessingSummary {
         - Streaming export for large result sets
 
         TROUBLESHOOTING:
-        - For output issues: .\Troubleshooting\Common\Output-Issues.md
-        - For CSV export problems: .\Troubleshooting\Common\File-Export-Issues.md
-        - For automation integration: .\Troubleshooting\Integration\Automation-Issues.md
-        - For performance optimization: .\Troubleshooting\Performance\Output-Performance.md
+        - For output issues: .\Troubleshooting\Common\Common-Issues.md
+        - For performance optimization: .\Troubleshooting\Performance\Performance-Tuning.md
 
         KNOWN LIMITATIONS:
         - Large result sets may impact console display performance
         - CSV export requires sufficient disk space
         - Color output may not display correctly in all terminals
-        - Automation mode requires JSON parsing capabilities in consuming systems
     #>
     [CmdletBinding()]
     param(
@@ -150,9 +129,6 @@ function Write-ProcessingSummary {
 
         [Parameter()]
         [string]$OutputPath,
-
-        [Parameter()]
-        [switch]$AutomationMode,
 
         [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
@@ -299,74 +275,6 @@ function Write-ProcessingSummary {
                         Write-StructuredLog "No orphaned SIDs found. Active Directory ACLs appear to be clean." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                     }
                 }
-            }
-
-            # Automation output if requested
-            if ($AutomationMode) {
-                $automationOutput = [PSCustomObject]@{
-                    CorrelationId = $CorrelationId
-                    ProcessingResults = $ProcessingResults
-                    Summary = if ($resultKeys -contains 'SuccessfulRestores') {
-                        # Restore operation summary
-                        @{
-                            TotalObjectsProcessed = $ProcessingResults.TotalObjectsProcessed
-                            SuccessfulRestores = $ProcessingResults.SuccessfulRestores
-                            FailedRestores = $ProcessingResults.FailedRestores
-                            Duration = $ProcessingResults.ProcessingDuration.ToString()
-                            WhatIfMode = $ProcessingResults.WhatIfMode
-                            BackupPath = $ProcessingResults.BackupPath
-                        }
-                    } else {
-                        # Discovery/removal operation summary
-                        $summaryData = @{
-                            TotalObjectsProcessed = $ProcessingResults.TotalObjectsProcessed
-                            Duration = $ProcessingResults.ProcessingDuration.ToString()
-                        }
-
-                        if ($resultKeys -contains 'OrphanedSIDsFound') {
-                            $summaryData.OrphanedSIDsFound = $ProcessingResults.OrphanedSIDsFound
-                        }
-
-                        if ($resultKeys -contains 'UnexaminedObjects') {
-                    Write-StructuredLog "Objects not examined (security descriptor not readable): $($ProcessingResults.UnexaminedObjects)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    if ($ProcessingResults.UnexaminedObjects -gt 0) {
-                        Write-StructuredLog "$($ProcessingResults.UnexaminedObjects) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
-                    }
-                }
-
-                if ($resultKeys -contains 'UnverifiedSIDsFound') {
-                            $summaryData.UnverifiedSIDsFound = $ProcessingResults.UnverifiedSIDsFound
-                        }
-                if ($resultKeys -contains 'UnexaminedObjects') {
-                            $summaryData.UnexaminedObjects = $ProcessingResults.UnexaminedObjects
-                        }
-
-                        if ($resultKeys -contains 'ProcessingErrors') {
-                            $summaryData.ProcessingErrors = $ProcessingResults.ProcessingErrors
-                        }
-
-                        if ($resultKeys -contains 'PeakMemoryUsageMB') {
-                            $summaryData.PeakMemoryMB = $ProcessingResults.PeakMemoryUsageMB
-                        }
-
-                        $summaryData
-                    }
-                    Status = if ($resultKeys -contains 'SuccessfulRestores') {
-                        if ($ProcessingResults.FailedRestores -eq 0) { "Success" } else { "Warning" }
-                    } else {
-                        if ($resultKeys -contains 'ProcessingErrors' -and $ProcessingResults.ProcessingErrors -eq 0) {
-                            "Success"
-                        } elseif ($resultKeys -contains 'ProcessingErrors') {
-                            "Warning"
-                        } else {
-                            "Success"
-                        }
-                    }
-                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                }
-
-                Write-Information "##[section]Script Completion" -InformationAction Continue
-                Write-Information ($automationOutput | ConvertTo-Json -Depth 3) -InformationAction Continue
             }
 
             Write-StructuredLog "Processing summary completed" -Level Information -Component 'Summary' -CorrelationId $CorrelationId

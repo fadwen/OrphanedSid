@@ -21,8 +21,7 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For verification failures: .\Troubleshooting\Common\Verification-Issues.md
-    - For AD replication delays: .\Troubleshooting\Common\AD-Replication-Issues.md
+    - For verification failures: .\Troubleshooting\Common\Common-Issues.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function

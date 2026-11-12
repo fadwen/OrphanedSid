@@ -24,8 +24,8 @@ Defined in `Classes\StreamingResultsManager.ps1`, created once per run by
   JSON, an array or a single object for a batch of one); a `summary_<yyyyMMdd_HHmmss>.json`
   records totals and the batch file list.
 - **Garbage collection**: `GC.Collect()` after every flush.
-- **Export**: `ExportToCsv($path)` flushes the current batch, reads all batch files back, and calls
-  `Export-Csv`. `Write-ProcessingSummary` calls it when `-OutputPath` is given.
+- **Export**: `ExportToCsv($path)` takes the results from `GetAllResults()`, which reads only the
+  batch files an earlier call has not, and calls `Export-Csv`. `Write-ProcessingSummary` calls it when `-OutputPath` is given.
 - **Cleanup**: `Dispose()` flushes, updates the summary and removes the temp directory unless the
   `PreserveFiles` property is set. `Stop-OrphanedSidSession` sets that property when `-PreserveTempFiles` is
   passed, and logs `Temporary result files preserved in: <path>`.
@@ -200,7 +200,7 @@ Suggested thresholds by object count; adjust to the host's free memory:
 - `AddResult($result)`: adds to the current batch and flushes when `BatchSize` are held
 - `FlushBatch()`: writes `batch_N.json`, clears the list, collects
 - `GetSummary()`: returns totals and batch file list, updating the summary file
-- `GetAllResults()`: flushes, then reads every batch file back
+- `GetAllResults()`: flushes, reads the batch files no earlier call has read, and returns every result read so far
 - `ExportToCsv($path)`: `GetAllResults()` piped to `Export-Csv`
 - `Dispose()`: flush, summary update, `Cleanup()` unless `PreserveFiles`, final collection
 - `Cleanup()`: removes the temp directory

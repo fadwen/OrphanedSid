@@ -23,9 +23,8 @@ console (unless `-SuppressConsoleOutput` was given) and writes it to the file on
 equal to the configured level's number. `-LogLevel Warning` therefore keeps `Critical`, `Error` and
 `Warning` in the file and drops the rest.
 
-The level is held in module state by `Private/Logging/Initialize-LoggingConfiguration.ps1`, which
-also exposes `Set-LogLevel -Level <level>` and `Get-LogLevel` for code that needs to change it at
-run time.
+The level is held in module state, `$script:LogLevel`, declared in
+`Private/Logging/Initialize-LoggingConfiguration.ps1` and set when each command starts.
 
 ## Security Logging Path
 
