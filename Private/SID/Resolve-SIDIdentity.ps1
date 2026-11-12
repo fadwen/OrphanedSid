@@ -174,15 +174,32 @@ function Test-AccessRuleForOrphanedSID {
             return $null
         }
 
-        # Resolve identity reference to SID string
-        $sidString = Resolve-IdentityReference -IdentityReference $AccessRule.IdentityReference -ObjectDN $ObjectDN -CorrelationId $CorrelationId
+        # Resolve identity reference to SID string. Get-Acl rules arrive as SecurityIdentifier, whose
+        # value is the SID; other reference types go through the resolver
+        $identity = $AccessRule.IdentityReference
+        if ($identity -is [System.Security.Principal.SecurityIdentifier]) {
+            $sidString = $identity.Value
+        } else {
+            $sidString = Resolve-IdentityReference -IdentityReference $identity -ObjectDN $ObjectDN -CorrelationId $CorrelationId
+        }
         if (-not $sidString) {
             Write-StructuredLog "Failed to resolve identity reference to SID for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
             return $null
         }
 
-        # Validate SID format and check for well-known SIDs
-        if (-not (Test-SIDValidityAndType -SIDString $sidString -CorrelationId $CorrelationId)) {
+        # Validate SID format and check for well-known SIDs. The answer depends only on the SID and
+        # this run's configuration, and the same few dozen SIDs recur on every object, so a run
+        # checks each SID once (#111). Start-OrphanedSidSession creates the cache and
+        # Stop-OrphanedSidSession drops it; without one, every rule is checked.
+        if ($null -ne $script:SIDClassificationCache -and $script:SIDClassificationCache.ContainsKey($sidString)) {
+            $isCandidate = $script:SIDClassificationCache[$sidString]
+        } else {
+            $isCandidate = Test-SIDValidityAndType -SIDString $sidString -CorrelationId $CorrelationId
+            if ($null -ne $script:SIDClassificationCache) {
+                $script:SIDClassificationCache[$sidString] = $isCandidate
+            }
+        }
+        if (-not $isCandidate) {
             Write-StructuredLog "SID validation failed or well-known SID detected: $sidString" -Level Debug -CorrelationId $CorrelationId
             return $null
         }

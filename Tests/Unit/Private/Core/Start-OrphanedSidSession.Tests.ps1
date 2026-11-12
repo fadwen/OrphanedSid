@@ -168,6 +168,17 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
     }
 
     Context 'Module state' {
+        It 'Starts each run with an empty SID classification cache (#111)' {
+            # Whether a SID is well known depends on the run's configuration, so a previous run's
+            # answers must not carry over
+            $script:SIDClassificationCache = @{ 'S-1-5-21-1-2-3-500' = $false }
+
+            Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' | Out-Null
+
+            $script:SIDClassificationCache | Should -BeOfType [hashtable]
+            $script:SIDClassificationCache.Count | Should -Be 0
+        }
+
         It 'Resets the per-run state before initializing and records the results after' {
             $result = Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -CorrelationId 'start-1' -SuppressConsoleOutput -ConfigPath 'C:\cfg.json' -MaxMemoryUsageMB 2048
 

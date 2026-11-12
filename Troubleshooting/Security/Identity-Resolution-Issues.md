@@ -9,10 +9,10 @@ functions involved are:
 | Function | Role |
 |---|---|
 | `Test-AccessRuleForOrphanedSID` | Entry point per access rule; returns an `OrphanedSIDResult` or `$null` |
-| `Resolve-IdentityReference` | Routes `SecurityIdentifier`, `NTAccount` and other identity types to a SID string |
+| `Resolve-IdentityReference` | Routes `NTAccount` and other identity types to a SID string; `Test-AccessRuleForOrphanedSID` reads a `SecurityIdentifier` directly |
 | `Convert-NTAccountToSID` | Translates an `NTAccount`; a failed translation returns the marker `ORPHANED_ACCOUNT:<name>` |
 | `Get-StringFromIdentityReference` | Extracts a string from other identity types: `Value` property, then `ToString()`, then `[string]` cast |
-| `Test-SIDValidityAndType` | `Test-SIDFormat` followed by `Test-WellKnownSID`; well-known SIDs are excluded |
+| `Test-SIDValidityAndType` | `Test-SIDFormat` followed by `Test-WellKnownSID`; well-known SIDs are excluded. Within a run each SID is checked once and the answer reused |
 
 Downstream, `Test-OrphanedSID` (in `Test-OrphanedSID.ps1`) performs the directory lookups and
 `Get-SIDAnalysis` categorises the SID for the result object.
@@ -31,8 +31,11 @@ All of these are private functions; see [Loading the functions in a session](#lo
 
 #### Why
 
-`Get-Acl` on the `AD:` drive normally returns `IdentityReference` as `SecurityIdentifier` for
-unresolvable principals, so NTAccount translation failures are rare. When one does occur,
+`Get-ObjectAccessRule` reads `Get-Acl` rules with `SecurityIdentifier` references, so an
+`NTAccount` reaches the resolver only from the fallback strategies, which read a descriptor's
+`Access` property: the object's own binary or deserialized descriptor, or a fresh query. Even
+there an unresolvable principal arrives as a `SecurityIdentifier`, so NTAccount translation
+failures are rare. When one does occur,
 `Convert-NTAccountToSID` returns the string `ORPHANED_ACCOUNT:<name>`. That string then fails
 `Test-SIDFormat` inside `Test-SIDValidityAndType`, so `Test-AccessRuleForOrphanedSID` logs
 `SID validation failed or well-known SID detected` at Debug level and returns `$null`. The entry is

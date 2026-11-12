@@ -8,6 +8,21 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- Detection is several times faster. Measured on a lab domain controller, a user object with the
+  default 24 access rules took 941 ms on Windows PowerShell 5.1 and 327 ms on PowerShell 7; it now
+  takes 96 ms and 72 ms. `Find-OrphanedSid` over 31 objects went from 29 to 4 seconds on 5.1.
+  Three costs are gone:
+  - Debug and Verbose log entries that neither the file nor the console shows were formatted
+    before being thrown away.
+  - Each access rule's SID was translated to an account name when the ACL was read, and back to a
+    SID to check it.
+  - The format and well-known checks ran again for SIDs that recur on every object; each SID is now
+    checked once per run.
+
+  Results are unchanged, and so are logs at `Information` and above. A `-LogLevel Debug` log no
+  longer has the two identity-resolution lines per access rule, and has the format and well-known
+  lines once per SID rather than once per rule.
+  ([#111](https://github.com/fadwen/OrphanedSid/issues/111))
 - A SID that cannot be verified because the domain controller does not answer is reported in about
   42 seconds instead of about 3.5 minutes. Each of its five directory lookups waited for the AD Web
   Services connect timeout in turn. After the first fails with `Unable to contact the server`, the

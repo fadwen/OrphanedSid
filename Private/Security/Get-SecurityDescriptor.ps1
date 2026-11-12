@@ -225,21 +225,26 @@ function Get-SecurityDescriptorFromGetAcl {
 
         $acl = Get-Acl -Path "AD:\$objectDN" -ErrorAction Stop
 
-        if (-not $acl -or -not $acl.Access) {
+        # Access is a computed property that translates every entry's SID to an account name on each
+        # read, and detection translated each name back to a SID. Reading the rules once, with SID
+        # references, removed both lookups from every rule (#111). An orphaned SID arrives as a
+        # SecurityIdentifier either way.
+        $allRules = if ($acl) { @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) } else { @() }
+        if ($allRules.Count -eq 0) {
             Write-StructuredLog "Get-Acl returned null or empty access list for $objectDN" -Level Debug -CorrelationId $CorrelationId
             return $null
         }
 
         $accessRules = @(if ($IncludeInherited) {
-            $acl.Access
+            $allRules
         } else {
-            $acl.Access | Where-Object { -not $_.IsInherited }
+            $allRules | Where-Object { -not $_.IsInherited }
         })
 
         if ($accessRules.Count -eq 0) {
             # The descriptor was read; every entry is inherited. An empty array, not $null, tells
             # Get-ObjectAccessRule that retrieval succeeded and nothing is left to examine.
-            Write-StructuredLog "No explicit access rules on $objectDN (all $(@($acl.Access).Count) are inherited)" -Level Debug -CorrelationId $CorrelationId
+            Write-StructuredLog "No explicit access rules on $objectDN (all $($allRules.Count) are inherited)" -Level Debug -CorrelationId $CorrelationId
             return , @()
         }
 
