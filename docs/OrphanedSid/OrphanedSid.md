@@ -1,11 +1,11 @@
 ---
 document type: module
-Help Version: 1.0.0.0
+Help Version: 1.1.0.0
 HelpInfoUri: 
 Locale: en-US
 Module Guid: 7d3f2a9e-5b61-4c08-9e4a-2f8c1b6d0a37
 Module Name: OrphanedSid
-ms.date: 11/08/2026
+ms.date: 11/11/2026
 PlatyPS schema version: 2024-05-01
 title: OrphanedSid Module
 ---

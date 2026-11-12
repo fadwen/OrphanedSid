@@ -6,6 +6,8 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-11
+
 ### Changed
 
 - Detection is several times faster. Measured on a lab domain controller, a user object with the

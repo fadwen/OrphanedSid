@@ -1,6 +1,6 @@
 @{
     RootModule = 'OrphanedSid.psm1'
-    ModuleVersion = '1.0.1'
+    ModuleVersion = '1.1.0'
     GUID = '7d3f2a9e-5b61-4c08-9e4a-2f8c1b6d0a37'
     Author = 'Jeffrey Stuhr'
     CompanyName = 'Jeffrey Stuhr'
@@ -36,19 +36,22 @@
             LicenseUri = 'https://github.com/fadwen/OrphanedSid/blob/main/LICENSE'
             ProjectUri = 'https://github.com/fadwen/OrphanedSid'
             ReleaseNotes = @'
-1.0.1 - Restore-OrphanedSidBackup restores a single object again. In 1.0.0 every single-object
-restore failed with "Could not find file '<BackupPath>\C'", because one matching backup was
-indexed as a string. Container restores were not affected.
-A single-object restore now matches backups on the object DN they record, not on the file name,
-which could select a backup of another object such as CN=User10 for CN=User1.
-
-1.0.0 - First release as a module.
-Find-OrphanedSid, Remove-OrphanedSid and Restore-OrphanedSidBackup replace the three modes of the
-Find-UnknownSID.ps1 script that lived in the TechbyJeff repository. Results are written to the
-pipeline as objects; -OutputPath still writes a CSV. Remove-OrphanedSid and
-Restore-OrphanedSidBackup prompt before changing anything and need -Force (or -Confirm:$false)
-to run unattended.
-See CHANGELOG.md for the detail.
+1.1.0 - Safer removal, faster detection, and fixes from testing against a live domain.
+A SID is reported orphaned only when its deleted object is found or every directory lookup
+completed and none found it. A SID whose lookup failed, including one from a trusted domain that
+cannot be reached, is reported as Unverified (new VerificationStatus and VerificationError
+properties) and is never removed. A live principal found among deleted-object search results is no
+longer taken as deleted.
+Remove-OrphanedSid takes one backup per object, removes all of that object's orphaned entries
+together, and returns one RemovalOperationResult per object; restoring such an object now brings
+back every removed entry. Inherited entries are left in place with a warning.
+Detection is several times faster: on a lab domain controller a typical user object went from
+941 ms to 96 ms on Windows PowerShell 5.1. An unreachable domain controller costs about 42 seconds
+per SID instead of 3.5 minutes.
+Pipeline input of Active Directory objects now works for all three commands. -MaxRetries now
+sets the retries of each search-base read and SID lookup. Logging, configuration, backup
+timestamps, correlation IDs and restore messages are corrected.
+See CHANGELOG.md for every change and the issue behind it.
 '@
             RequireLicenseAcceptance = $false
         }
