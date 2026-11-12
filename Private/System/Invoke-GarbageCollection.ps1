@@ -90,14 +90,6 @@ function Invoke-Cleanup {
         if (-not $CorrelationId.Trim()) {
             $CorrelationId = [System.Guid]::NewGuid().ToString()
         }
-
-        # Memory management configuration constants
-        $script:MemoryManagementConfig = @{
-            MemoryPressureAmountMB = 50
-            GCRetryAttempts = 3
-            GCRetryDelayMilliseconds = 100
-            LogComponent = 'MemoryManagement'
-        }
     }
 
     process {

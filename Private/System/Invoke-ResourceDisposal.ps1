@@ -95,11 +95,6 @@ function Invoke-ResourceCleanup {
         if (-not $CorrelationId.Trim()) {
             $CorrelationId = [System.Guid]::NewGuid().ToString()
         }
-
-        # Memory management configuration constants
-        $script:MemoryManagementConfig = @{
-            LogComponent = 'MemoryManagement'
-        }
     }
 
     process {

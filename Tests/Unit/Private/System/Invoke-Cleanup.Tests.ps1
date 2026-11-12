@@ -12,6 +12,8 @@
 #>
 
 BeforeAll {
+    # The constants Invoke-Cleanup reads are defined once, in Initialize-MemoryManager.ps1
+    . "$PSScriptRoot\..\..\..\..\Private\System\Initialize-MemoryManager.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }

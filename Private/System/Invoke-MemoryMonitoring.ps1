@@ -51,6 +51,21 @@ function Get-SystemGCTotalMemory {
     return [System.GC]::GetTotalMemory($ForceFullCollection)
 }
 
+function Get-ProcessWorkingSetByte {
+    <#
+    .SYNOPSIS
+        Wrapper for the current process's working set, to enable mocking in tests
+
+    .DESCRIPTION
+        Returns WorkingSet64 of the PowerShell process. MemoryManager compares this same
+        measure with -MaxMemoryUsageMB, so Invoke-MemoryCheck rates its status on it too.
+    #>
+    [OutputType([long])]
+    param()
+
+    return [System.Diagnostics.Process]::GetCurrentProcess().WorkingSet64
+}
+
 function Get-SystemGCCollectionCount {
     <#
     .SYNOPSIS
@@ -147,9 +162,12 @@ function Invoke-MemoryCheck {
                 $MemoryManager.CheckCounter = $MemoryManager.CheckInterval
             }
 
-            # Get current memory usage for analysis
-            $currentMemory = [math]::Round((Get-SystemGCTotalMemory) / 1MB, 2)
-            
+            # The working set, the measure MemoryManager compares with its threshold. The managed
+            # heap (GC.GetTotalMemory) is a fraction of it, so rating the heap against the same
+            # threshold reported Normal while the manager's working-set warning fired.
+            $currentMemory = [math]::Round((Get-ProcessWorkingSetByte) / 1MB, 2)
+            $managedHeapMB = [math]::Round((Get-SystemGCTotalMemory) / 1MB, 2)
+
             $MemoryManager.CheckMemoryUsage()
             
             # Return comprehensive monitoring results
@@ -174,6 +192,7 @@ function Invoke-MemoryCheck {
 
             return [PSCustomObject]@{
                 CurrentMemoryMB = $currentMemory
+                ManagedHeapMB = $managedHeapMB
                 MaxMemoryMB = $MemoryManager.MaxMemoryMB
                 ThresholdExceeded = $thresholdExceeded
                 MemoryUsagePercent = [math]::Round($usagePercent, 0)

@@ -27,6 +27,8 @@ BeforeAll {
     # before that file is parsed.
     . (Join-Path $projectRoot 'Classes\MemoryManager.ps1')
 
+    # The constants Invoke-ResourceCleanup reads are defined once, in Initialize-MemoryManager.ps1
+    . (Join-Path $projectRoot 'Private\System\Initialize-MemoryManager.ps1')
     . (Join-Path $projectRoot 'Private\System\Invoke-ResourceDisposal.ps1')
 
     # Stub so Write-StructuredLog can be mocked. The parameter names are what the

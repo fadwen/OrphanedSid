@@ -142,11 +142,26 @@ Describe "Initialize-MemoryManager" -Tag 'Unit' {
     }
 
     Context "Configuration Constants" {
-        It "Should define the memory management defaults at load time" {
+        It "Should define the constants the cleanup functions read at load time" {
             $script:MemoryManagementConfig | Should -BeOfType [hashtable]
-            $script:MemoryManagementConfig.DefaultMemoryThresholdMB | Should -Be 1024
-            $script:MemoryManagementConfig.DefaultCheckInterval | Should -Be 25
+            $script:MemoryManagementConfig.MemoryPressureAmountMB | Should -Be 50
+            $script:MemoryManagementConfig.GCRetryAttempts | Should -Be 3
+            $script:MemoryManagementConfig.GCRetryDelayMilliseconds | Should -Be 100
             $script:MemoryManagementConfig.LogComponent | Should -Be 'MemoryManagement'
+        }
+
+        It "Is assigned only here, so no cleanup function can drop a key another one reads (#98)" {
+            $privateRoot = Join-Path $PSScriptRoot '..\..\..\..\Private'
+            $assigners = foreach ($file in Get-ChildItem -Path $privateRoot -Filter *.ps1 -Recurse) {
+                $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+                $found = $ast.FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                        $node.Left.Extent.Text -eq '$script:MemoryManagementConfig'
+                    }, $true)
+                if ($found) { $file.Name }
+            }
+            @($assigners) | Should -Be @('Initialize-MemoryManager.ps1')
         }
     }
 }

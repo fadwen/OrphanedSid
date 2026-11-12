@@ -75,6 +75,11 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- The internal memory check that the troubleshooting guide runs, `Invoke-MemoryCheck`, rated the
+  .NET managed heap against `-MaxMemoryUsageMB`, a limit the run compares with the process working
+  set. The heap is a fraction of the working set, so the check reported `Normal` while the run's own
+  memory warning fired. It now rates the working set and reports the heap beside it as
+  `ManagedHeapMB`. ([#97](https://github.com/fadwen/OrphanedSid/issues/97))
 - Piping Active Directory objects into `Find-OrphanedSid` or `Remove-OrphanedSid`, as in
   `Get-ADOrganizationalUnit ... | Find-OrphanedSid`, ignored them and processed the whole domain;
   piping them into `Restore-OrphanedSidBackup` failed with `Cannot bind argument to parameter
