@@ -17,8 +17,8 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For DN validation issues: .\Troubleshooting\Security\DN-Validation.md
-    - For AD object access: .\Troubleshooting\Common\AD-Access-Issues.md
+    - For DN validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
+    - For AD object access: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 
@@ -112,10 +112,9 @@ function Test-ValidDistinguishedName {
         - Scales linearly with DN length and complexity
 
         TROUBLESHOOTING:
-        - For DN validation issues: .\Troubleshooting\Security\DN-Validation.md
-        - For AD object access: .\Troubleshooting\Common\AD-Access-Issues.md
-        - For injection prevention: .\Troubleshooting\Security\Injection-Prevention.md
-        - For performance tuning: .\Troubleshooting\Performance\Validation-Performance.md
+        - For DN validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
+        - For AD object access: .\Troubleshooting\Common\Common-Issues.md
+        - For performance tuning: .\Troubleshooting\Performance\Performance-Tuning.md
 
         KNOWN LIMITATIONS:
         - Does not validate DN against actual AD objects (existence check)

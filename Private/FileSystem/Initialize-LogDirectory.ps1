@@ -17,8 +17,7 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For path resolution issues: .\Troubleshooting\FileSystem\Path-Resolution.md
-    - For permission problems: .\Troubleshooting\Security\File-Permissions.md
+    - For path resolution issues: .\Troubleshooting\Common\Common-Issues.md
 
 .LINK
     https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-paths

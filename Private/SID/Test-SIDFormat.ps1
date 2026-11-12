@@ -41,8 +41,6 @@
 
     TROUBLESHOOTING:
     - For format validation issues: .\Troubleshooting\Security\SID-Format-Issues.md
-    - For well-known SID issues: .\Troubleshooting\Security\Well-Known-SID-Issues.md
-    - For performance optimization: .\Troubleshooting\Performance\Format-Validation-Performance.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function
@@ -134,7 +132,6 @@ function Test-SIDFormat {
 
         TROUBLESHOOTING:
         - For validation errors: .\Troubleshooting\Security\SID-Format-Issues.md
-        - For format issues: .\Troubleshooting\Common\SID-Format-Problems.md
 
     .LINK
         Test-WellKnownSID
@@ -273,12 +270,12 @@ function Test-WellKnownSID {
         - Domain-specific admin groups (512, 518, 519)
 
         TROUBLESHOOTING:
-        - For recognition issues: .\Troubleshooting\Security\Well-Known-SID-Issues.md
-        - For configuration: .\Troubleshooting\Common\Configuration-Problems.md
+        - For recognition issues: .\Troubleshooting\Security\SID-Format-Issues.md
+        - For configuration: .\Troubleshooting\Common\Common-Issues.md
 
     .LINK
         Test-SIDFormat
-        .\Troubleshooting\Security\Well-Known-SID-Issues.md
+        .\Troubleshooting\Security\SID-Format-Issues.md
     #>
     [CmdletBinding()]
     [OutputType([bool])]

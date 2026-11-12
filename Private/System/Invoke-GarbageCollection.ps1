@@ -20,8 +20,7 @@
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
     TROUBLESHOOTING:
-    - For cleanup issues: .\Troubleshooting\Performance\Garbage-Collection.md
-    - For memory pressure: .\Troubleshooting\Performance\Memory-Pressure.md
+    - For cleanup issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
 
 .COMPONENT

@@ -22,7 +22,7 @@
     TROUBLESHOOTING:
     - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
-    - For reporting issues: .\Troubleshooting\Performance\Memory-Statistics.md
+    - For reporting issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
 .COMPONENT
     Find-UnknownSID Memory Statistics System

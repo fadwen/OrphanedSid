@@ -21,8 +21,8 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For logging issues: .\Troubleshooting\Common\Logging-Issues.md
-    - For security audit compliance: .\Troubleshooting\Security\Audit-Compliance.md
+    - For logging issues: .\Troubleshooting\Common\Common-Issues.md
+    - For security audit compliance: .\Troubleshooting\Security\Security-Logging-Issues.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-SecurityLog function

@@ -22,8 +22,8 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For ACL manipulation errors: .\Troubleshooting\Common\ACL-Manipulation-Issues.md
-    - For performance issues: .\Troubleshooting\Performance\ACL-Processing-Optimization.md
+    - For ACL manipulation errors: .\Troubleshooting\Common\Common-Issues.md
+    - For performance issues: .\Troubleshooting\Performance\Performance-Tuning.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function

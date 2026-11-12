@@ -112,12 +112,10 @@ function Set-ObjectACL {
         - Confirms target object existence before modification
 
         TROUBLESHOOTING:
-        - For permission errors: .\Troubleshooting\Security\Permission-Issues.md
-        - For SDDL format issues: .\Troubleshooting\Common\Backup-Restore-Issues.md
-        - For verification failures: .\Troubleshooting\Common\Backup-Restore-Issues.md
+        - For permission errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     .LINK
-        .\Troubleshooting\Security\Permission-Issues.md
+        .\Troubleshooting\Common\Backup-Restore-Issues.md
         .\Troubleshooting\Common\Backup-Restore-Issues.md
     #>
 

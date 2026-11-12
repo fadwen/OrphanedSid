@@ -21,8 +21,7 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For ACL application failures: .\Troubleshooting\Common\ACL-Application-Issues.md
-    - For AD connectivity issues: .\Troubleshooting\Common\AD-Connection-Issues.md
+    - For ACL application failures: .\Troubleshooting\Common\Common-Issues.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function

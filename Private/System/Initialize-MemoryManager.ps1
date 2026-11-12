@@ -21,8 +21,7 @@
 
     TROUBLESHOOTING:
     - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
-    - For configuration: .\Troubleshooting\Performance\Memory-Configuration.md
-    - For initialization issues: .\Troubleshooting\Common\Initialization-Problems.md
+    - For configuration: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
 .COMPONENT
     Find-UnknownSID Memory Manager Initialization System

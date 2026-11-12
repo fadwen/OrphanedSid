@@ -37,8 +37,6 @@
 
     TROUBLESHOOTING:
     - For ACL retrieval failures: .\Troubleshooting\Security\Security-Descriptor-Issues.md
-    - For binary processing errors: .\Troubleshooting\Security\Binary-Descriptor-Processing.md
-    - For performance optimization: .\Troubleshooting\Performance\Security-Descriptor-Performance.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function

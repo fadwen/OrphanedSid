@@ -22,8 +22,7 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For workflow failures: .\Troubleshooting\Common\Workflow-Issues.md
-    - For integration issues: .\Troubleshooting\Common\Module-Integration-Issues.md
+    - For workflow failures: .\Troubleshooting\Common\Common-Issues.md
 
     DEPENDENCIES:
     - Requires Security\Invoke-SecurityValidation.ps1 for security validation

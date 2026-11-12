@@ -332,7 +332,12 @@ One object per target. For a container it summarises the run (`TotalObjects`,
 object's restore result. Both carry `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`
 and `CorrelationId`. A failed container summary's `ErrorMessage` reads
 `<failed> of <total> objects failed to restore: <reasons>`, listing each distinct reason from
-`IndividualResults` once, or `No objects were restored` when no backup was found under it.
+`IndividualResults` once, or `No objects were restored` when the folder holds backups but none of
+an object at or under the container. When `-BackupPath` holds no `.xml` file at all, the command
+stops before choosing any backup: it writes the error
+`Restore workflow failed for <DN> : No backup files found in directory: <path> - CorrelationId: <id>`,
+and the result's
+`ErrorMessage` reads `No backup files found in directory: <path>`.
 ## NOTES
 
 Author: Jeffrey Stuhr

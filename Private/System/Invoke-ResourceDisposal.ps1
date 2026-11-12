@@ -20,8 +20,7 @@
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
     TROUBLESHOOTING:
-    - For disposal issues: .\Troubleshooting\Performance\Resource-Disposal.md
-    - For cleanup problems: .\Troubleshooting\Performance\Resource-Cleanup.md
+    - For disposal issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
 
 .COMPONENT

@@ -1099,7 +1099,12 @@ as an error and skipped; input that yields no usable DN stops the command.</maml
 object's restore result. Both carry `Success`, `TargetObjectDN`, `EntriesRestored`, `ErrorMessage`
 and `CorrelationId`. A failed container summary's `ErrorMessage` reads
 `&lt;failed&gt; of &lt;total&gt; objects failed to restore: &lt;reasons&gt;`, listing each distinct reason from
-`IndividualResults` once, or `No objects were restored` when no backup was found under it.</maml:para>
+`IndividualResults` once, or `No objects were restored` when the folder holds backups but none of
+an object at or under the container. When `-BackupPath` holds no `.xml` file at all, the command
+stops before choosing any backup: it writes the error
+`Restore workflow failed for &lt;DN&gt; : No backup files found in directory: &lt;path&gt; - CorrelationId: &lt;id&gt;`,
+and the result's
+`ErrorMessage` reads `No backup files found in directory: &lt;path&gt;`.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>

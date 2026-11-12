@@ -138,8 +138,6 @@ function Invoke-RestoreWorkflow {
 
         TROUBLESHOOTING:
         - For workflow failures: .\Troubleshooting\Common\Backup-Restore-Issues.md
-        - For performance issues: .\Troubleshooting\Performance\Optimization-Guide.md
-        - For validation errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     .LINK
         .\Troubleshooting\Common\Backup-Restore-Issues.md

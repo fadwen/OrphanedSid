@@ -1,4 +1,4 @@
-# Memory Management Troubleshooting
+﻿# Memory Management Troubleshooting
 
 ## Overview
 

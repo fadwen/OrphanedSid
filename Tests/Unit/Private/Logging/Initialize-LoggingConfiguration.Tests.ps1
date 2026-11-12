@@ -1,4 +1,4 @@
-# Unit tests for Initialize-LoggingConfiguration.ps1
+﻿# Unit tests for Initialize-LoggingConfiguration.ps1
 BeforeAll {
     $here = $PSScriptRoot
 

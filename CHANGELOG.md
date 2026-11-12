@@ -83,6 +83,19 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- The `Restore-OrphanedSidBackup` help described `No objects were restored` as the result for a
+  container with no backups. That message means the folder holds backups but none under the
+  container; a folder with no backup at all stops earlier with
+  `No backup files found in directory: <path>`. The help now names both.
+  ([#102](https://github.com/fadwen/OrphanedSid/issues/102))
+- The backup checks in the backup troubleshooting guide reported good backups as
+  `Invalid SDDL format` when run on a machine outside the backups' domain, because domain aliases
+  such as `DA` in the SDDL cannot be resolved there. The guide now says to run them on a
+  domain-joined host and names the error. ([#103](https://github.com/fadwen/OrphanedSid/issues/103))
+- The internal help of the private functions pointed to 72 troubleshooting guides that do not
+  exist. Each reference now names the existing guide that covers the area, and a contract test
+  fails on any reference that does not resolve.
+  ([#101](https://github.com/fadwen/OrphanedSid/issues/101))
 - With `-Verbose`, each `Flushed batch N with ... results` line said 0 results, because the count
   was read after the batch was cleared. It now reports the number written.
   ([#99](https://github.com/fadwen/OrphanedSid/issues/99))

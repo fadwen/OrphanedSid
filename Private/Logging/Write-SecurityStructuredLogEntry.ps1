@@ -42,7 +42,6 @@
 
         TROUBLESHOOTING:
         - For security logging issues: .\Troubleshooting\Security\Security-Logging-Issues.md
-        - For compliance requirements: .\Troubleshooting\Security\Compliance-Guide.md
     #>
     [CmdletBinding()]
     param(

@@ -33,8 +33,7 @@ function Invoke-OperationWithRetry {
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
         TROUBLESHOOTING:
-        - For retry configuration: .\Troubleshooting\Performance\Retry-Configuration.md
-        - For error patterns: .\Troubleshooting\Common\Error-Classification.md
+        - For retry configuration: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding()]

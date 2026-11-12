@@ -111,8 +111,6 @@ function Test-BackupIntegrity {
 
         TROUBLESHOOTING:
         - For hash mismatches: .\Troubleshooting\Common\Backup-Restore-Issues.md
-        - For format errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
-        - For version issues: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     .LINK
         .\Troubleshooting\Common\Backup-Restore-Issues.md

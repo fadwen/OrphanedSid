@@ -32,8 +32,7 @@ function Write-ADOperationSecurityLog {
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
         TROUBLESHOOTING:
-        - For logging configuration: .\Troubleshooting\Security\Audit-Configuration.md
-        - For compliance requirements: .\Troubleshooting\Security\Compliance-Guide.md
+        - For logging configuration: .\Troubleshooting\Security\Security-Logging-Issues.md
     #>
 
     [CmdletBinding()]

@@ -17,8 +17,8 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For orchestration issues: .\Troubleshooting\Common\Orchestration-Issues.md
-    - For workflow coordination: .\Troubleshooting\Common\Workflow-Issues.md
+    - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
+    - For workflow coordination: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 
@@ -82,8 +82,8 @@ function Start-OrchestrationWorkflow {
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
         TROUBLESHOOTING:
-        - For orchestration issues: .\Troubleshooting\Common\Orchestration-Issues.md
-        - For workflow coordination: .\Troubleshooting\Common\Workflow-Issues.md
+        - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
+        - For workflow coordination: .\Troubleshooting\Common\Common-Issues.md
     #>
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',

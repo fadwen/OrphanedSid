@@ -33,8 +33,7 @@
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
         TROUBLESHOOTING:
-        - For performance optimization: .\Troubleshooting\Performance\Sequential-Optimization.md
-        - For bulk operation issues: .\Troubleshooting\Common\Bulk-Processing.md
+        - For performance optimization: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding()]

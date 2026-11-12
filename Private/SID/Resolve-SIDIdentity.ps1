@@ -36,8 +36,6 @@
 
     TROUBLESHOOTING:
     - For identity resolution issues: .\Troubleshooting\Security\Identity-Resolution-Issues.md
-    - For NTAccount translation errors: .\Troubleshooting\Security\NTAccount-Translation-Issues.md
-    - For SID validation problems: .\Troubleshooting\Security\SID-Validation-Issues.md
 
     DEPENDENCIES:
     - Requires Logging.ps1 for Write-StructuredLog function

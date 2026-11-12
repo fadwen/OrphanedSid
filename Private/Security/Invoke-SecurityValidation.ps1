@@ -21,8 +21,7 @@
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
-    - For validation failures: .\Troubleshooting\Security\Security-Validation-Issues.md
-    - For risk assessment: .\Troubleshooting\Security\Risk-Assessment-Guide.md
+    - For validation failures: .\Troubleshooting\Security\Security-Validation-Guide.md
 
     DEPENDENCIES:
     - Requires Classes.ps1 for SecurityValidationResult type

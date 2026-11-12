@@ -17,8 +17,8 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For processing failures: .\Troubleshooting\Common\Processing-Issues.md
-    - For AD connectivity: .\Troubleshooting\Common\AD-Connection-Issues.md
+    - For processing failures: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
+    - For AD connectivity: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 
@@ -144,10 +144,9 @@ function Invoke-MainProcessingLogic {
         - Progress reporting every 50 objects for user feedback
 
         TROUBLESHOOTING:
-        - For processing failures: .\Troubleshooting\Common\Processing-Issues.md
-        - For AD connectivity: .\Troubleshooting\Common\AD-Connection-Issues.md
+        - For processing failures: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
+        - For AD connectivity: .\Troubleshooting\Common\Common-Issues.md
         - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
-        - For permission problems: .\Troubleshooting\Security\Permission-Issues.md
 
         KNOWN LIMITATIONS:
         - Large datasets may require memory management tuning

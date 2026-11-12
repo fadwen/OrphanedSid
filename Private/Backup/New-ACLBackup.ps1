@@ -35,9 +35,7 @@
     - Integrates with Logging.ps1 for structured audit logging
 
     TROUBLESHOOTING:
-    - For backup creation issues: .\Troubleshooting\Common\Backup-Issues.md
-    - For integrity verification: .\Troubleshooting\Security\Integrity-Verification.md
-    - For file permissions: .\Troubleshooting\Common\File-Permissions.md
+    - For backup creation issues: .\Troubleshooting\Common\Backup-Restore-Issues.md
 #>
 
 function New-ACLBackup {
@@ -203,17 +201,14 @@ function New-ACLBackup {
         - Structured logging for SIEM integration
 
         TROUBLESHOOTING:
-        - For backup failures: .\Troubleshooting\Common\Backup-Issues.md
-        - For integrity verification: .\Troubleshooting\Security\Integrity-Verification.md
-        - For file permissions: .\Troubleshooting\Common\File-Permissions.md
-        - For performance optimization: .\Troubleshooting\Performance\Backup-Optimization.md
+        - For backup failures: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
     .LINK
         https://docs.microsoft.com/en-us/windows/security/identity-protection/access-control/security-descriptors
         https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-acl
         https://techbyjeff.net/powershell-acl-management
-        .\Troubleshooting\Common\Backup-Issues.md
-        .\Troubleshooting\Security\Integrity-Verification.md
+        .\Troubleshooting\Common\Backup-Restore-Issues.md
+        .\Troubleshooting\Common\Backup-Restore-Issues.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

@@ -17,8 +17,7 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For initialization issues: .\Troubleshooting\Common\Initialization-Issues.md
-    - For configuration problems: .\Troubleshooting\Common\Configuration-Problems.md
+    - For initialization issues: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 
@@ -191,10 +190,8 @@ function Initialize-ScriptExecution {
         - Log rotation occurs automatically based on size limits
 
         TROUBLESHOOTING:
-        - For initialization failures: .\Troubleshooting\Common\Initialization-Issues.md
-        - For configuration issues: .\Troubleshooting\Common\Configuration-Problems.md
+        - For initialization failures: .\Troubleshooting\Common\Common-Issues.md
         - For memory management: .\Troubleshooting\Performance\Memory-Management.md
-        - For logging problems: .\Troubleshooting\Common\Logging-Issues.md
 
         KNOWN LIMITATIONS:
         - Configuration changes require script restart

@@ -135,6 +135,24 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'Help references' {
+        It 'Points every troubleshooting reference in the shipping files at a guide that exists (#101)' {
+            # Help copied from a template named 81 guides that were never written; a maintainer
+            # following one found nothing
+            $shippingFiles = Get-ChildItem -Path "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public" -Filter *.ps1 -Recurse -File
+            $missing = foreach ($match in ($shippingFiles | Select-String -Pattern '\.\\Troubleshooting\\[^\s''"`)]+\.md' -AllMatches)) {
+                foreach ($reference in $match.Matches.Value) {
+                    # The references are written with backslashes; the suite also runs on Linux
+                    $relative = $reference.Substring(2).Replace('\', [System.IO.Path]::DirectorySeparatorChar)
+                    if (-not (Test-Path -LiteralPath (Join-Path $script:ModuleRoot $relative) -PathType Leaf)) {
+                        "$($match.Filename):$($match.LineNumber) $reference"
+                    }
+                }
+            }
+            @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
+        }
+    }
+
     Context 'Fresh import' {
         BeforeAll {
             Import-Module "$script:ModuleRoot\OrphanedSid.psd1" -Force

@@ -20,8 +20,7 @@
     PERSISTENCE: Variables are reset when PowerShell session ends
 
     TROUBLESHOOTING:
-    - For state issues: .\Troubleshooting\Logging\State-Management.md
-    - For configuration: .\Troubleshooting\Common\Logging-Issues.md
+    - For state issues: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 # Primary logging configuration

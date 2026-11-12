@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -17,8 +17,7 @@
     Version: 2.0.0
 
     TROUBLESHOOTING:
-    - For output issues: .\Troubleshooting\Common\Output-Issues.md
-    - For CSV export problems: .\Troubleshooting\Common\File-Export-Issues.md
+    - For output issues: .\Troubleshooting\Common\Common-Issues.md
 #>
 
 
@@ -115,9 +114,8 @@ function Write-ProcessingSummary {
         - Streaming export for large result sets
 
         TROUBLESHOOTING:
-        - For output issues: .\Troubleshooting\Common\Output-Issues.md
-        - For CSV export problems: .\Troubleshooting\Common\File-Export-Issues.md
-        - For performance optimization: .\Troubleshooting\Performance\Output-Performance.md
+        - For output issues: .\Troubleshooting\Common\Common-Issues.md
+        - For performance optimization: .\Troubleshooting\Performance\Performance-Tuning.md
 
         KNOWN LIMITATIONS:
         - Large result sets may impact console display performance

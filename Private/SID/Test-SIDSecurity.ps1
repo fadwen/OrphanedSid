@@ -40,9 +40,8 @@
     comprehensive security controls while maintaining high cohesion.
 
     TROUBLESHOOTING:
-    - For security validation issues: .\Troubleshooting\Security\SID-Security-Issues.md
-    - For risk assessment problems: .\Troubleshooting\Security\Risk-Assessment-Issues.md
-    - For performance optimization: .\Troubleshooting\Performance\Security-Validation-Performance.md
+    - For security validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
+    - For performance optimization: .\Troubleshooting\Performance\Performance-Tuning.md
 
     DEPENDENCIES:
     - Requires Get-SIDAnalysis.ps1 for SID analysis and categorization
@@ -114,10 +113,10 @@ function Test-SIDSecurity {
         TROUBLESHOOTING:
         - For blocked SIDs: Check Protected SIDs configuration
         - For validation errors: Review security policy compliance
-        - For performance issues: .\Troubleshooting\Performance\Security-Validation-Performance.md
+        - For performance issues: .\Troubleshooting\Performance\Performance-Tuning.md
 
     .LINK
-        .\Troubleshooting\Security\SID-Security-Issues.md
+        .\Troubleshooting\Security\Security-Validation-Guide.md
     #>
 
     [CmdletBinding()]

@@ -41,8 +41,6 @@
 
     TROUBLESHOOTING:
     - For analysis issues: .\Troubleshooting\Security\SID-Analysis-Issues.md
-    - For categorization problems: .\Troubleshooting\Common\Analysis-Errors.md
-    - For performance optimization: .\Troubleshooting\Performance\SID-Analysis-Performance.md
 
     DEPENDENCIES:
     - Requires Test-SIDFormat.ps1 for SID format validation

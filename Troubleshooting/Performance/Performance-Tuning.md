@@ -1,4 +1,4 @@
-# Performance Tuning Guide - OrphanedSid
+﻿# Performance Tuning Guide - OrphanedSid
 ## Overview
 
 `Find-OrphanedSid` processes Active Directory objects sequentially: one `Get-ADObject` query per

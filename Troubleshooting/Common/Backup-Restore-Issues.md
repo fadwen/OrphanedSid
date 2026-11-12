@@ -224,6 +224,13 @@ Get-ChildItem -Path 'D:\ACLBackups\20250702_103631' -Filter *.xml | ForEach-Obje
 `Test-BackupIntegrity` checks the required properties, the signature, and at the default
 `Standard` level the SHA256 hash and that the SDDL parses.
 
+Run this check, and the salvage and scheduled checks below that call it, on a host joined to the
+backups' domain or on one of its domain controllers. A backup's SDDL can use domain-relative
+aliases such as `DA` (Domain Admins), and Windows can only resolve those on a host in that domain.
+Elsewhere a good backup is reported as
+`Invalid SDDL format: ... invalid sid or a sid that cannot be translated`. A restore runs against
+the domain, so the module's own restore does not meet this.
+
 For an inventory of the backups under a folder, including every run folder below the backup root:
 
 ```powershell
@@ -374,7 +381,8 @@ Get-ChildItem -Path 'D:\ACLBackups' -Directory | Sort-Object Name -Descending | 
 
 ### 6. Salvaging a Damaged Backup Set
 
-Copy every file that still passes validation into a new folder, then restore from that folder:
+Copy every file that still passes validation into a new folder, then restore from that folder. Run
+it on a domain-joined host, for the reason given under Backup File Corruption:
 
 ```powershell
 Import-Module OrphanedSid

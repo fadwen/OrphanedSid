@@ -20,8 +20,7 @@
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
     TROUBLESHOOTING:
-    - For monitoring issues: .\Troubleshooting\Performance\Memory-Monitoring.md
-    - For threshold problems: .\Troubleshooting\Performance\Memory-Thresholds.md
+    - For monitoring issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
 
 .COMPONENT
