@@ -85,6 +85,16 @@ Describe 'Stop-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
         }
     }
 
+    Context 'SID classification cache (#111)' {
+        It 'Drops the cache, so detection outside a run checks every rule' {
+            $script:SIDClassificationCache = @{ 'S-1-5-21-1-2-3-500' = $true }
+
+            Stop-OrphanedSidSession
+
+            $script:SIDClassificationCache | Should -BeNullOrEmpty
+        }
+    }
+
     Context 'When cleanup throws' {
         It 'Warns, disposes both managers itself, and still clears the state' {
             Mock Invoke-ResourceCleanup { throw 'cleanup exploded' }

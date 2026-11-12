@@ -82,5 +82,6 @@
         $script:MemoryManager = $null
         $script:Statistics = $null
         $script:RemovalResults = @()
+        $script:SIDClassificationCache = $null
     }
 }

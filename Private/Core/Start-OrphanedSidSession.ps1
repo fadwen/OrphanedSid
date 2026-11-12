@@ -152,6 +152,9 @@ function Start-OrphanedSidSession {
     $script:StreamingResults = $null
     $script:RemovalResults = @()
     $script:CurrentDomainSID = $null
+    # Per run, not per session: whether a SID is well known depends on this run's ProtectedSIDs and
+    # WellKnownSIDPatterns
+    $script:SIDClassificationCache = @{}
 
     $initParams = @{
         ConfigPath            = $ConfigPath

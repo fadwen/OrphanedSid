@@ -243,4 +243,49 @@ Describe 'Test-AccessRuleForOrphanedSID' -Tag 'Unit', 'SID', 'Private' {
         Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn | Should -BeNullOrEmpty
         Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like "*$($script:dn)*directory unreachable*" }
     }
+
+    Context 'Per-run work (#111)' {
+        AfterEach {
+            $script:SIDClassificationCache = $null
+        }
+
+        It 'Checks the format and well-known status of each SID once while a run cache exists' {
+            # Start-OrphanedSidSession creates the cache for a run
+            $script:SIDClassificationCache = @{}
+            Mock Test-SIDValidityAndType { $SIDString -ne 'S-1-5-18' }
+            $wellKnownRule = [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]'S-1-5-18' }
+
+            $first = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn
+            $second = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn
+            1..3 | ForEach-Object { Test-AccessRuleForOrphanedSID -AccessRule $wellKnownRule -ObjectDN $script:dn | Should -BeNullOrEmpty }
+
+            $first.OrphanedSID | Should -Be $script:orphanSid
+            $second.OrphanedSID | Should -Be $script:orphanSid
+            Should -Invoke Test-SIDValidityAndType -Times 1 -Exactly -ParameterFilter { $SIDString -eq $script:orphanSid }
+            Should -Invoke Test-SIDValidityAndType -Times 1 -Exactly -ParameterFilter { $SIDString -eq 'S-1-5-18' }
+            # A cached well-known SID still never reaches the directory
+            Should -Invoke Test-OrphanedSID -Times 0 -Exactly -ParameterFilter { $SID -eq 'S-1-5-18' }
+        }
+
+        It 'Checks every rule when no run cache exists' {
+            $script:SIDClassificationCache = $null
+            Mock Test-SIDValidityAndType { $true }
+
+            1..2 | ForEach-Object { $null = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn }
+
+            Should -Invoke Test-SIDValidityAndType -Times 2 -Exactly
+        }
+
+        It 'Reads a SecurityIdentifier rule directly and sends other reference types to the resolver' {
+            Mock Resolve-IdentityReference { 'S-1-5-32-544' }
+
+            $null = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn
+            Should -Invoke Resolve-IdentityReference -Times 0 -Exactly
+            Should -Invoke Test-OrphanedSID -Times 1 -Exactly -ParameterFilter { $SID -eq $script:orphanSid }
+
+            $accountRule = [PSCustomObject]@{ IdentityReference = [System.Security.Principal.NTAccount]'BUILTIN\Administrators' }
+            $null = Test-AccessRuleForOrphanedSID -AccessRule $accountRule -ObjectDN $script:dn
+            Should -Invoke Resolve-IdentityReference -Times 1 -Exactly
+        }
+    }
 }

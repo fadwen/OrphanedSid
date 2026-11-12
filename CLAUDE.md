@@ -60,10 +60,13 @@ every log line after startup went to the verbose stream only. Any such stub is w
 
 `Start-OrphanedSidSession` sets `$script:Config`, `$script:MemoryManager` and `$script:Statistics`
 and resets `$script:StreamingResults`, `$script:RemovalResults` and `$script:CurrentDomainSID`,
-which `Invoke-MainProcessingLogic` then fills for the run. `Stop-OrphanedSidSession` clears all of
-them except `$script:Config` and `$script:CurrentDomainSID`. Every public command calls the first
-from `begin` and the second from `finally`. The SID validation cache is the exception:
-it lives for the PowerShell session so the second run against the same domain is cheaper.
+which `Invoke-MainProcessingLogic` then fills for the run. It also creates an empty
+`$script:SIDClassificationCache`, the per-SID answer of the format and well-known checks; that
+answer depends on the run's `ProtectedSIDs` and `WellKnownSIDPatterns`, so it must not outlive the
+run. `Stop-OrphanedSidSession` clears all of them except `$script:Config` and
+`$script:CurrentDomainSID`. Every public command calls the first from `begin` and the second from
+`finally`. The SID validation cache is the exception: it lives for the PowerShell session so the
+second run against the same domain is cheaper.
 
 ### Results are emitted before cleanup
 

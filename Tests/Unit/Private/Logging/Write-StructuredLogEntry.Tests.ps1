@@ -12,7 +12,9 @@ Describe "Write-StructuredLogEntry" {
     }
 
     BeforeEach {
-        $script:SuppressConsoleOutput = $true
+        # Write-ConsoleLogEntry is mocked, so nothing reaches the console; suppression would stop the
+        # function calling it at all
+        $script:SuppressConsoleOutput = $false
         Mock Get-LoggingSystemState { [PSCustomObject]@{ LogPath = $null } }
         Mock Test-LogLevel { $true }
         Mock Write-ConsoleLogEntry { }
@@ -77,11 +79,61 @@ Describe "Write-StructuredLogEntry" {
         It "Should not write to the file when Test-LogLevel filters the level out" {
             $logPath = Join-Path $TestDrive 'filtered.log'
             Mock Test-LogLevel { $false }
+            $DebugPreference = 'Continue'
 
             Write-StructuredLogEntry -Message "Filtered" -Level "Debug" -LogPath $logPath
 
             Test-Path $logPath | Should -BeFalse
             Should -Invoke Write-ConsoleLogEntry -Times 1 -Exactly -ParameterFilter { $FormattedMessage -eq '[Debug] [General] Filtered' }
+        }
+
+        It "Formats nothing for a <LevelName> entry the file level filters and the console stream does not show (#111)" -ForEach @(
+            @{ LevelName = 'Debug' }
+            @{ LevelName = 'Verbose' }
+        ) {
+            Mock Test-LogLevel { $false }
+            Mock Get-Date { throw 'an entry with no destination should not be formatted' }
+            $DebugPreference = 'SilentlyContinue'
+            $VerbosePreference = 'SilentlyContinue'
+
+            Write-StructuredLogEntry -Message "Discarded" -Level $LevelName -LogPath (Join-Path $TestDrive 'discarded.log')
+
+            Should -Invoke Write-ConsoleLogEntry -Times 0 -Exactly
+            Should -Invoke Get-LoggingSystemState -Times 0 -Exactly
+            Should -Invoke Get-Date -Times 0 -Exactly
+            Test-Path (Join-Path $TestDrive 'discarded.log') | Should -BeFalse
+        }
+
+        It "Still shows a <LevelName> entry the file level filters when the <LevelName> stream is on" -ForEach @(
+            @{ LevelName = 'Debug'; Preference = 'DebugPreference' }
+            @{ LevelName = 'Verbose'; Preference = 'VerbosePreference' }
+        ) {
+            Mock Test-LogLevel { $false }
+            Set-Variable -Name $Preference -Value 'Continue'
+
+            Write-StructuredLogEntry -Message "Shown" -Level $LevelName
+
+            Should -Invoke Write-ConsoleLogEntry -Times 1 -Exactly -ParameterFilter { $FormattedMessage -eq "[$LevelName] [General] Shown" }
+        }
+
+        It "Still writes a Debug entry to the file when the file level keeps it and the stream is off" {
+            $logPath = Join-Path $TestDrive 'debug-kept.log'
+            $DebugPreference = 'SilentlyContinue'
+
+            Write-StructuredLogEntry -Message "Kept" -Level "Debug" -LogPath $logPath
+
+            Get-Content -Path $logPath | Should -BeLike '*[[]Debug] [[]General]*Kept'
+            Should -Invoke Write-ConsoleLogEntry -Times 0 -Exactly
+        }
+
+        It "Writes a Warning to the file but not the console when console output is suppressed" {
+            $logPath = Join-Path $TestDrive 'suppressed-warning.log'
+            $script:SuppressConsoleOutput = $true
+
+            Write-StructuredLogEntry -Message "Quiet" -Level "Warning" -LogPath $logPath
+
+            Get-Content -Path $logPath | Should -BeLike '*Quiet'
+            Should -Invoke Write-ConsoleLogEntry -Times 0 -Exactly
         }
 
         It "Should warn instead of throwing when the file cannot be written" {

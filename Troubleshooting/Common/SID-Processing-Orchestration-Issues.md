@@ -17,9 +17,11 @@ Invoke-MainProcessingLogic                      (Private\Core)
         -> ActiveDirectoryAccessRule[] or $null
       for each rule:
         Test-AccessRuleForOrphanedSID           (Private\SID\Resolve-SIDIdentity.ps1)
+          SecurityIdentifier.Value, or for any other reference type:
           Resolve-IdentityReference             -> SID string, or $null
             Convert-NTAccountToSID              (for NTAccount identities)
           Test-SIDValidityAndType               -> Test-SIDFormat, Test-WellKnownSID
+                                                   (once per SID per run; the answer is cached)
           Test-OrphanedSID                      (Private\SID\Test-OrphanedSID.ps1) -> Status
           Get-SIDAnalysis -SIDString -CurrentDomainSID (Private\SID\Get-SIDAnalysis.ps1; Orphaned only)
           New-OrphanedSIDResult                 (Private\SID\New-SIDResult.ps1; Orphaned or Unverified)
@@ -35,7 +37,7 @@ Objects are processed sequentially; there is no parallel path.
 
 | Component | Input | Output |
 | --- | --- | --- |
-| `Get-ObjectAccessRule -ADObject <PSObject> [-IncludeInherited]` | AD object with `DistinguishedName` (and usually `nTSecurityDescriptor`) | `ActiveDirectoryAccessRule[]`; `$null` when every strategy fails, or when every entry is inherited and `-IncludeInherited` is off |
+| `Get-ObjectAccessRule -ADObject <PSObject> [-IncludeInherited]` | AD object with `DistinguishedName` (and usually `nTSecurityDescriptor`) | `ActiveDirectoryAccessRule[]`, with `SecurityIdentifier` references when read through `Get-Acl`; `$null` when every strategy fails, or when every entry is inherited and `-IncludeInherited` is off |
 | `Resolve-IdentityReference -IdentityReference <PSObject>` | `SecurityIdentifier`, `NTAccount`, or a deserialized identity | SID string; `ORPHANED_ACCOUNT:<name>` for an untranslatable `NTAccount`; `$null` otherwise |
 | `Test-SIDValidityAndType -SIDString <string>` | SID string | `$true` only for a well-formed, non-well-known SID |
 | `Test-OrphanedSID -SID <string>` | SID string | object with `Status` `Orphaned`, `Exists` or `Unverified` and `ErrorMessage`; `Orphaned` and `Exists` cached per SID for the session |

@@ -37,21 +37,24 @@ BeforeAll {
     }
 
     $script:DescriptorBytes = (New-TestDescriptor).GetSecurityDescriptorBinaryForm()
+
+    # What Get-Acl returns for an AD: path: a real ActiveDirectorySecurity. Two explicit entries and
+    # one inherited, for SIDs no machine can translate.
+    function New-AclFromSddl {
+        param([string]$Sddl)
+        $acl = [System.DirectoryServices.ActiveDirectorySecurity]::new()
+        $acl.SetSecurityDescriptorSddlForm($Sddl)
+        $acl
+    }
+    $script:AclSddl = 'O:BAG:BAD:(A;;GA;;;S-1-5-21-1-2-3-1001)(A;;RP;;;S-1-5-21-1-2-3-1003)(A;ID;RP;;;S-1-5-21-1-2-3-1002)'
+    $script:InheritedOnlySddl = 'O:BAG:BAD:(A;ID;RP;;;S-1-5-21-1-2-3-1002)'
 }
 
 Describe "Get-ObjectAccessRule" -Tag 'Unit', 'Private', 'Security' {
 
     BeforeEach {
         Mock Write-StructuredLog { }
-        Mock Get-Acl {
-            [PSCustomObject]@{
-                Access = @(
-                    [PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1001'; ActiveDirectoryRights = 'GenericAll'; IsInherited = $false }
-                    [PSCustomObject]@{ IdentityReference = 'DOMAIN\TestUser'; ActiveDirectoryRights = 'ReadProperty'; IsInherited = $false }
-                    [PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1002'; ActiveDirectoryRights = 'ReadProperty'; IsInherited = $true }
-                )
-            }
-        }
+        Mock Get-Acl { New-AclFromSddl -Sddl $script:AclSddl }
         Mock Get-ADObject { throw 'Get-ADObject should not be reached' }
     }
 
@@ -60,9 +63,20 @@ Describe "Get-ObjectAccessRule" -Tag 'Unit', 'Private', 'Security' {
             $result = @(Get-ObjectAccessRule -ADObject (New-TestObject))
 
             $result.Count | Should -Be 2
-            @($result.IdentityReference) | Should -Be @('S-1-5-21-1-2-3-1001', 'DOMAIN\TestUser')
+            @($result.IdentityReference.Value) | Should -Be @('S-1-5-21-1-2-3-1001', 'S-1-5-21-1-2-3-1003')
             Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq 'AD:\CN=TestUser,OU=Users,DC=domain,DC=com' }
             Should -Invoke Get-ADObject -Times 0 -Exactly
+        }
+
+        It "Returns SID references, without translating them to account names (#111)" {
+            # SYSTEM translates on every machine; .Access would have returned it as NT AUTHORITY\SYSTEM
+            Mock Get-Acl { New-AclFromSddl -Sddl 'O:BAG:BAD:(A;;GA;;;SY)' }
+
+            $result = @(Get-ObjectAccessRule -ADObject (New-TestObject))
+
+            $result.Count | Should -Be 1
+            $result[0].IdentityReference | Should -BeOfType [System.Security.Principal.SecurityIdentifier]
+            $result[0].IdentityReference.Value | Should -Be 'S-1-5-18'
         }
 
         It "Returns inherited rules too with -IncludeInherited" {
@@ -83,9 +97,7 @@ Describe "Get-ObjectAccessRule" -Tag 'Unit', 'Private', 'Security' {
 
         It "Stops quietly, without a fallback query or a warning, when every entry is inherited (#48)" {
             Mock Get-Acl {
-                [PSCustomObject]@{
-                    Access = @([PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1002'; ActiveDirectoryRights = 'ReadProperty'; IsInherited = $true })
-                }
+                New-AclFromSddl -Sddl $script:InheritedOnlySddl
             }
             # The binary strategy would read the object's own descriptor; give it one so a call shows
             $object = New-TestObject -Descriptor (New-TestDescriptor)
@@ -102,9 +114,7 @@ Describe "Get-ObjectAccessRule" -Tag 'Unit', 'Private', 'Security' {
 
         It "Still returns the inherited entries of such an object with -IncludeInherited" {
             Mock Get-Acl {
-                [PSCustomObject]@{
-                    Access = @([PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1002'; ActiveDirectoryRights = 'ReadProperty'; IsInherited = $true })
-                }
+                New-AclFromSddl -Sddl $script:InheritedOnlySddl
             }
 
             @(Get-ObjectAccessRule -ADObject (New-TestObject) -IncludeInherited).Count | Should -Be 1
