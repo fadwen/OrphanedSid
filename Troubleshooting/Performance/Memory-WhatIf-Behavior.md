@@ -87,10 +87,6 @@ modes. Under `-WhatIf` the log shows `WhatIf: Would dispose and cleanup resource
 
 ### Functions that do honour -WhatIf
 
-- `Invoke-GarbageCollection` (same file as `Invoke-Cleanup`) is a targeted helper that no command
-  calls. Under `-WhatIf` it skips the collection, logs
-  `WhatIf: Would perform garbage collection`, and returns `MemoryAfter` equal to `MemoryBefore`
-  with `WhatIfMode = $true`.
 - `StreamingResultsManager` in WhatIf mode creates no temp directory and writes no batch files; it
   keeps each flushed batch in memory (`WhatIfResults`) so `GetAllResults()` can return it, so a
   preview holds every result in memory where a real run holds at most one batch.

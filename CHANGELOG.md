@@ -65,6 +65,14 @@ All notable changes to this module are recorded here. Format follows
   `Objects not examined` lines inside its own block.
   ([#95](https://github.com/fadwen/OrphanedSid/issues/95),
   [#96](https://github.com/fadwen/OrphanedSid/issues/96))
+- Eighteen internal functions that no command reached: `ConvertFrom-BackupToACL`,
+  `Get-SafeFileName`, `Test-DirectoryAccess`, `Export-DiagnosticData`, `Get-LogFileSummary` with
+  `Get-LogContentAnalysis`, `Get-LogFileHealth` and `Get-LogFileStatistics`, `Get-StringHash`,
+  `Get-LoggingState`, `Update-LoggingMetrics`, `Set-LogLevel`, `Get-LogLevel`,
+  `Invoke-GarbageCollection` with its three collector wrappers, and `Invoke-ResourceDisposal`.
+  The logging metadata, metrics and validation tables that only they read are removed too. A run
+  still collects through `Invoke-Cleanup` and disposes through `Invoke-ResourceCleanup`.
+  ([#107](https://github.com/fadwen/OrphanedSid/issues/107))
 - Five internal backup helpers that no command called: `Test-BackupValidation`,
   `Test-BackupFormat`, `Get-BackupMetadata`, `Find-BackupFile` and `Get-BackupFileMetadata`. A
   restore checks each backup with `Test-BackupIntegrity` and finds backups in

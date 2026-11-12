@@ -24,8 +24,6 @@
     #   PSUseSupportsShouldProcess, PSShouldProcess, PSAvoidOverwritingBuiltInCmdlets,
     #   PSUseProcessBlockForPipelineCommand   Mock bodies are named after, and shaped like, the
     #                                         commands they replace.
-    #   PSAvoidUsingBrokenHashAlgorithms      Get-StringHash.Tests exercises the MD5 and SHA1
-    #                                         options the function offers for legacy checksums.
     #   PSPossibleIncorrectComparisonWithNull Assertions written as `$value -ne $null` read as the
     #                                         test intends; the collection case does not apply.
     Severity     = @('Error', 'Warning')
@@ -46,7 +44,6 @@
         'PSShouldProcess'
         'PSAvoidOverwritingBuiltInCmdlets'
         'PSUseProcessBlockForPipelineCommand'
-        'PSAvoidUsingBrokenHashAlgorithms'
         'PSPossibleIncorrectComparisonWithNull'
     )
 }
