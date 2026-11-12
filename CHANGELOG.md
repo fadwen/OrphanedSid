@@ -60,6 +60,11 @@ All notable changes to this module are recorded here. Format follows
 - The `EnableDetailedLogging` configuration key, which was read but never acted on. A `-ConfigPath`
   file that still sets it loads as before; the key is ignored like any other unknown key.
   ([#43](https://github.com/fadwen/OrphanedSid/issues/43))
+- Two pieces of internal code that no command reached: the `Get-SIDRiskAssessment` reporting
+  helper, and the `-AutomationMode` summary of `Write-ProcessingSummary`, which also repeated the
+  `Objects not examined` lines inside its own block.
+  ([#95](https://github.com/fadwen/OrphanedSid/issues/95),
+  [#96](https://github.com/fadwen/OrphanedSid/issues/96))
 - Five internal backup helpers that no command called: `Test-BackupValidation`,
   `Test-BackupFormat`, `Get-BackupMetadata`, `Find-BackupFile` and `Get-BackupFileMetadata`. A
   restore checks each backup with `Test-BackupIntegrity` and finds backups in

@@ -131,13 +131,6 @@ unchanged. Only `AllowedSIDs` are ever passed to `Invoke-SIDRemoval`.
 Every decision writes a `DataValidation` security audit entry (see
 [Security-Logging-Issues.md](./Security-Logging-Issues.md)).
 
-### Get-SIDRiskAssessment
-
-`Get-SIDRiskAssessment -SIDList <sids>` runs `Get-SIDAnalysis` and `Test-SIDSecurity` over a list
-and returns `OverallRisk`, `RiskBreakdown`, `BlockedSIDs`, `AllowedSIDs`, `RequiresApproval`,
-`Recommendations` and `SafeForAutomation` (true only when nothing is blocked and nothing requires
-approval). It is a reporting helper and no command calls it.
-
 ### Verifying the validation
 
 The functions, classes and `$script:Config` are private, so run the test at the prompt through the

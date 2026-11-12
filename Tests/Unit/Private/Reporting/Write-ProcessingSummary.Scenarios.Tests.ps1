@@ -3,8 +3,8 @@
 
 <#
 .SYNOPSIS
-    Scenario tests for Write-ProcessingSummary: discovery, removal and restore results, CSV export
-    and automation output.
+    Scenario tests for Write-ProcessingSummary: discovery, removal and restore results, and CSV
+    export.
 
 .DESCRIPTION
     Write-ProcessingSummary.Tests.ps1 checks the parameters and that the summary logs something.
@@ -109,18 +109,6 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 0)
 
             Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -like '*could not be examined*' }
-        }
-
-        It 'Includes the unexamined count in automation output' {
-            $info = Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unexamined 5) -AutomationMode 6>&1
-
-            ($info | Out-String) | Should -Match '"UnexaminedObjects":\s*5'
-        }
-
-        It 'Includes the unverified count in automation output' {
-            $info = Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -AsHashtable -Unverified 4) -AutomationMode 6>&1
-
-            ($info | Out-String) | Should -Match '"UnverifiedSIDsFound":\s*4'
         }
 
         It 'Exports the streamed results to the CSV path through the streaming manager' {
@@ -263,53 +251,6 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Results @())
 
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'No restore operations were performed.' }
-        }
-    }
-
-    Context 'Automation mode' {
-        It 'Writes a JSON summary block for a discovery run' {
-            $captured = [System.Collections.Generic.List[string]]::new()
-            Mock Write-Information { $captured.Add($MessageData) }
-
-            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -Errors 0) -AutomationMode -CorrelationId 'auto-1'
-
-            $captured[0] | Should -Be '##[section]Script Completion'
-            $json = $captured[1] | ConvertFrom-Json
-            $json.CorrelationId | Should -Be 'auto-1'
-            $json.Status | Should -Be 'Success'
-            $json.Summary.TotalObjectsProcessed | Should -Be 37
-            $json.Summary.OrphanedSIDsFound | Should -Be 2
-            $json.Summary.PeakMemoryMB | Should -Be 141.5
-        }
-
-        It 'Reports Warning when a discovery run had errors' {
-            $captured = [System.Collections.Generic.List[string]]::new()
-            Mock Write-Information { $captured.Add($MessageData) }
-
-            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults -Errors 2) -AutomationMode
-
-            ($captured[1] | ConvertFrom-Json).Status | Should -Be 'Warning'
-        }
-
-        It 'Reports the restore counts and Warning when a restore failed' {
-            $captured = [System.Collections.Generic.List[string]]::new()
-            Mock Write-Information { $captured.Add($MessageData) }
-            $restores = @([PSCustomObject]@{ ObjectDN = 'CN=A,DC=contoso,DC=com'; Success = $false; ErrorMessage = 'denied' })
-
-            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Failed 1 -Results $restores) -AutomationMode
-
-            $json = $captured[1] | ConvertFrom-Json
-            $json.Status | Should -Be 'Warning'
-            $json.Summary.FailedRestores | Should -Be 1
-            $json.Summary.BackupPath | Should -Be 'C:\OrphanedSidTest\Backup\20261108_133153'
-        }
-
-        It 'Writes nothing to the information stream outside automation mode' {
-            Mock Write-Information { }
-
-            Write-ProcessingSummary -ProcessingResults (New-DiscoveryResults)
-
-            Should -Invoke Write-Information -Times 0 -Exactly
         }
     }
 
