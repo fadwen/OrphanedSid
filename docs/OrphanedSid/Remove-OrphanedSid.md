@@ -62,7 +62,8 @@ discovered entries as CSV.
 Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -WhatIf
 
 DESCRIPTION: Shows what would be removed without touching anything
-OUTPUT: A WhatIf line for the run and one per object with entries that would be removed
+OUTPUT: A WhatIf line for the run and one per object with entries that would be removed, and a
+RemovalOperationResult per such object whose RemovedSIDs lists what would be removed
 USE CASE: The review step before a cleanup
 
 ### EXAMPLE 2
@@ -70,7 +71,7 @@ USE CASE: The review step before a cleanup
 Remove-OrphanedSid -SearchBase 'OU=Decommissioned,DC=contoso,DC=com' -BackupPath 'D:\ADBackups'
 
 DESCRIPTION: Prompts once, backs up every affected ACL to D:\ADBackups\<timestamp>\, then removes
-OUTPUT: One RemovalOperationResult per object changed
+OUTPUT: One RemovalOperationResult per object with entries to remove
 USE CASE: An interactive cleanup with the backup on a dedicated drive
 
 ### EXAMPLE 3
@@ -78,7 +79,7 @@ USE CASE: An interactive cleanup with the backup on a dedicated drive
 Remove-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -Force -CorrelationId 'CHG0012345' -OutputPath '.\Reports\CHG0012345.csv'
 
 DESCRIPTION: Unattended removal tagged with a change number
-OUTPUT: Result objects, a CSV, a log and a backup folder that all carry CHG0012345
+OUTPUT: Result objects, a CSV, a log and backup files that all carry CHG0012345
 USE CASE: A scheduled task or a pipeline step
 
 ## PARAMETERS
@@ -251,7 +252,8 @@ HelpMessage: ''
 ### -LogPath
 
 Log file.
-Defaults to .\Logs\Remove-OrphanedSid_<yyyyMMdd_HHmmss>.log.
+When omitted, the LogFilePath of the -ConfigPath file is used if it sets one, and otherwise
+.\Logs\Remove-OrphanedSid_<yyyyMMdd_HHmmss>.log under the current directory.
 An existing file is appended to; one larger than MaxLogFileSizeMB (default 10) is first renamed
 to <name>_<yyyyMMdd_HHmmss>.log.
 
@@ -296,8 +298,10 @@ HelpMessage: ''
 
 ### -MaxRetries
 
-Retry attempts for a transient Active Directory failure on one object.
-Default 3.
+Retries after the first attempt for each directory read that fails with an error that looks
+transient, such as a timeout or a busy or unavailable server: the read of each search base, and
+each lookup of a SID. Default 3, so a read is tried up to four times.
+A domain controller that cannot be contacted is not retried; the SID is reported Unverified.
 
 ```yaml
 Type: System.Int32
@@ -448,8 +452,9 @@ Distinguished names as strings, or objects with a `DistinguishedName` property: 
 
 ### RemovalOperationResult
 
-One object per object changed, covering all of its orphaned entries, with `ObjectDN`, `IntendedRemovals`, `ActualRemovals`,
-`FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
+One object per object with orphaned entries to remove, covering all of them, including an
+object whose removal failed (`Success` false), with `ObjectDN`, `IntendedRemovals`,
+`ActualRemovals`, `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
 `ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
 backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
 -BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.

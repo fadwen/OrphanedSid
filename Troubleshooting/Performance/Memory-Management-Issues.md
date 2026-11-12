@@ -14,7 +14,7 @@ how to read their output. The architecture itself is described in
 | Component | File | Behaviour |
 |---|---|---|
 | `MemoryManager` class | `Classes\MemoryManager.ps1` | Counts operations; every `CheckInterval` operations it reads the process working set, tracks the peak, and if the value exceeds `MaxMemoryMB` runs `GC.Collect()` twice around `WaitForPendingFinalizers()`, adds and removes 50 MB of GC pressure, and re-measures. It never throws; it warns. |
-| `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic` with `-WhatIf:$false`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object (`Normal` under 75 % of the threshold, `High` to 90 %, `Critical` above). |
+| `Invoke-MemoryCheck` | `Private\System\Invoke-MemoryMonitoring.ps1` | Called once per AD object by `Invoke-MainProcessingLogic` with `-WhatIf:$false`; drives `MemoryManager.CheckMemoryUsage()` and returns a status object rating the managed heap (`GC.GetTotalMemory`, not the working set) against the threshold: `Normal` up to 75 %, `High` to 90 %, `Critical` above. |
 | `Invoke-Cleanup` | `Private\System\Invoke-GarbageCollection.ps1` | Called every 100 processed objects, with `-WhatIf:$false`. Adds 50 MB of GC pressure, runs three collect/finalize cycles 100 ms apart, removes the pressure, and returns `MemoryBeforeMB`, `MemoryAfterMB`, `MemoryFreedMB`. `-IncludeLOHCompaction` sets `GCLargeObjectHeapCompactionMode.CompactOnce` for that cleanup. |
 | `StreamingResultsManager` | `Classes\StreamingResultsManager.ps1` | Holds at most `BatchSize` results (default 50) in memory before flushing them to a JSON batch file and calling `GC.Collect()`. |
 | `Invoke-ResourceCleanup` | `Private\System\Invoke-ResourceDisposal.ps1` | Runs from `Stop-OrphanedSidSession` in each command's `finally` block, with `-WhatIf:$false`; disposes the streaming manager and the memory manager, then performs a final collection. |
@@ -84,11 +84,13 @@ when the command itself is behaving.
   holds one small lookup result per distinct SID found orphaned or existing. It grows with the
   number of distinct SIDs, not with the number of objects, and lasts for the PowerShell session
   until the module is removed or re-imported. It is rarely the cause.
-- Results are not held in memory. Each `OrphanedSIDResult` is handed to
+- Results are not held in memory during processing. Each `OrphanedSIDResult` is handed to
   `StreamingResultsManager.AddResult()` and flushed to disk after `BatchSize` results (default 50).
+  At the end of the run `Find-OrphanedSid` reads every batch back with `GetAllResults()` to emit
+  the results, and the `-OutputPath` export reads them back again.
 - Access rules returned by `Get-ObjectAccessRule` are released after each object
-  (`$accessRules = $null` in `Private\SID\Invoke-SIDProcessing.ps1`), and the orchestrator runs a
-  collection every 100 SIDs it inspects.
+  (`$accessRules = $null` in `Private\SID\Invoke-SIDProcessing.ps1`), and a collection runs after
+  an object whose inspected access rules number a multiple of 100.
 
 **Resolution**
 
@@ -123,7 +125,8 @@ The run terminates with `OutOfMemoryException`, typically while reading a very l
 
 3. For very large result sets, run one search base per invocation with its own `-OutputPath` so
    each export is bounded.
-4. Keep the batch files for inspection with `-PreserveTempFiles`; they are plain JSON arrays under
+4. Keep the batch files for inspection with `-PreserveTempFiles`; they are JSON (an array, or a
+   single object for a batch of one) under
    `$env:TEMP\OrphanedSid-<CorrelationId>\batch_N.json` and can be read with
    `Get-Content -Raw | ConvertFrom-Json` without running the export.
 

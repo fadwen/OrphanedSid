@@ -15,7 +15,7 @@ measure their effect.
 | Object discovery | `Get-ADObjectFromSearchBase` requesting `nTSecurityDescriptor` | Objects under each search base |
 | ACL retrieval | `Get-ObjectAccessRule`: `Get-Acl -Path AD:\<DN>`, falling back to the binary descriptor, then a fresh `Get-ADObject` | One call per object; inherited ACEs multiply the entries to inspect |
 | SID resolution | `Test-OrphanedSID`: `Get-ADObject` by `objectSid`, deleted-object lookup, `SecurityIdentifier.Translate`, then `Get-ADUser`/`Get-ADGroup`/`Get-ADComputer` | One round of lookups per distinct SID; Orphaned and Exists results are cached per SID for the PowerShell session |
-| Retries | `Invoke-OperationWithRetry` for AD calls, per-object retry loop in `Invoke-MainProcessingLogic` | Transient failures multiply wall time through back-off sleeps |
+| Retries | `Invoke-OperationWithRetry` around each directory read, up to `-MaxRetries` retries | Transient failures multiply wall time through back-off sleeps |
 | Memory management | `Invoke-MemoryCheck` per object, `Invoke-Cleanup` every 100 objects | Fixed overhead; three forced collections per cleanup |
 | Export | `StreamingResultsManager.ExportToCsv` | Reads every batch file back before `Export-Csv` |
 
@@ -53,7 +53,8 @@ Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 `BatchSize` (1-1000, default 50) is the number of results `StreamingResultsManager` holds in
 memory before writing a batch file to `<TEMP>\OrphanedSid-<CorrelationId>\`. A larger value
 means fewer, larger writes and a slightly higher working set; a smaller value flushes more often.
-The effect is small either way because each result is a few hundred bytes. Change it only when the
+The effect is small either way because each result is about 1.5 KB of JSON, its processing
+statistics included (measured on a domain controller). Change it only when the
 log shows memory warnings on a host with very little RAM (lower it) or when the temp folder fills
 with thousands of tiny files on a very large OU (raise it).
 
@@ -64,17 +65,17 @@ Find-OrphanedSid -SearchBase "DC=contoso,DC=com" -ConfigPath .\config.json
 
 ### -MaxRetries
 
-Range 1-10, default 3. It is the number of times `Invoke-MainProcessingLogic` retries reading an
-object's ACL and SIDs after a detection error, sleeping `2 * attempt` seconds between attempts. A
-removal error is not retried.
+Range 1-10, default 3. It is the number of retries after the first attempt for each directory
+read: the read of each search base during discovery, and each of a SID's directory lookups.
+`Invoke-OperationWithRetry` retries only errors matching its retryable-error pattern (a timeout,
+a busy, unavailable or non-operational server), sleeping `2^(attempt-1)` seconds plus 0 or 1
+second of jitter, capped at 30 seconds. Any other error fails the read at once.
 
-Separately, `Invoke-OperationWithRetry` wraps AD cmdlet calls with its own fixed limit (3 attempts
-by default), not `-MaxRetries`. It retries only errors matching its retryable-error pattern,
-sleeping `2^(attempt-1)` seconds plus 0 or 1 second of jitter, capped at 30 seconds.
-
-On a healthy domain controller retries never fire and the value is irrelevant. On a flaky link,
-lower it to fail fast and re-run the affected search base, or raise it to ride out short outages
-at the cost of long pauses.
+On a healthy domain controller retries never fire. On a link that drops for seconds at a time,
+raise it to ride out short outages; each retry adds its back-off to the run. A domain controller
+that cannot be contacted at all is not retried, whatever the value: each SID that needs it costs
+one connection timeout and is reported `Unverified`. The ACL reads and writes of a removal keep
+their own fixed limits, and a removal is never repeated as a whole.
 
 ### -LogLevel
 
@@ -173,7 +174,7 @@ noise.
 | Observation | Likely cause | Action |
 |---|---|---|
 | Progress lines far apart, CPU idle | Domain controller or network latency on per-SID lookups | Run on or near a DC; check `Test-NetConnection <dc> -Port 389` |
-| `Retry attempt N of M for object ...` warnings | Transient AD errors | Check DC health; lower `-MaxRetries` to fail fast |
+| `SID could not be verified` warnings, about 42 s each | Domain controller unreachable; one connection timeout per SID, and Unverified answers are not cached, so each object carrying the SID pays again | Restore connectivity, then re-run the search base |
 | `Memory usage threshold exceeded` warnings | Threshold too low for the session | Raise `-MaxMemoryUsageMB` |
 | Rate collapses when `-IncludeInherited` is set | Inherited ACEs multiply entries | Drop the switch unless a full audit is required |
 | Long pause after `Completed <searchbase>` | CSV export reading all batch files | Split the search base; smaller exports |

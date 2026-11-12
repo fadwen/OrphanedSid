@@ -14,14 +14,15 @@ how to diagnose them.
 Defined in `Classes\StreamingResultsManager.ps1`, created once per run by
 `Private\Core\Invoke-MainProcessingLogic.ps1`.
 
-- **Purpose**: results are never accumulated in an in-memory array. Each `OrphanedSIDResult` is
-  passed to `AddResult()`; when `BatchSize` are held the batch is written to disk and the list is
-  cleared.
+- **Purpose**: results are not accumulated in memory during processing. Each `OrphanedSIDResult`
+  is passed to `AddResult()`; when `BatchSize` are held the batch is written to disk and the list
+  is cleared. At the end `Find-OrphanedSid` reads them all back with `GetAllResults()` to emit them.
 - **Batch size**: the `BatchSize` configuration key (1-1000, default 50), read from `-ConfigPath`
   and passed to the constructor by `Invoke-MainProcessingLogic`.
 - **Storage**: `<TEMP>\OrphanedSid-<CorrelationId>\`, where `<TEMP>` is
   `[System.IO.Path]::GetTempPath()`. Batches are `batch_1.json`, `batch_2.json`, ... (compressed
-  JSON arrays); a `summary_<yyyyMMdd_HHmmss>.json` records totals and the batch file list.
+  JSON, an array or a single object for a batch of one); a `summary_<yyyyMMdd_HHmmss>.json`
+  records totals and the batch file list.
 - **Garbage collection**: `GC.Collect()` after every flush.
 - **Export**: `ExportToCsv($path)` flushes the current batch, reads all batch files back, and calls
   `Export-Csv`. `Write-ProcessingSummary` calls it when `-OutputPath` is given.
@@ -56,7 +57,7 @@ In `Invoke-MainProcessingLogic`:
   applied, and the result is written as a verbose line:
   `Memory usage at 100 objects: 412.3 MB (Freed: 18.6 MB)`.
 - In `Private\SID\Invoke-SIDProcessing.ps1`, access-rule references are nulled after each object
-  and a collection runs every 100 SIDs inspected.
+  and a collection runs after an object whose inspected access rules number a multiple of 100.
 - In each command's `finally` block, `Stop-OrphanedSidSession` calls `Invoke-ResourceCleanup`, which disposes the streaming manager and the
   memory manager and runs a final collection.
 
@@ -75,8 +76,9 @@ set against the threshold:
 | Acceptable | 90 % to 100 % |
 | Concerning | at or above 100 % |
 
-With the default 1024 MB threshold a plain Windows PowerShell session with the ActiveDirectory
-module loaded commonly starts between 150 and 300 MB.
+The default 1024 MB threshold leaves wide headroom: on a domain controller, a Windows PowerShell
+5.1 session with the ActiveDirectory module and OrphanedSid loaded measured about 105 MB, and about
+120 MB after a small discovery run.
 
 ## Common Memory Issues
 
@@ -137,7 +139,7 @@ Get-Process -Name powershell, pwsh -ErrorAction SilentlyContinue |
 
 Regular log entries are written as `[timestamp] [Level] [Component] [CorrelationId] Message`.
 Memory events use the `MemoryManagement` component. Debug-level lines reach the file only with
-`-LogLevel Debug`.
+`-LogLevel Debug` or `Verbose` (or `-Debug`/`-Verbose` when `-LogLevel` is not given).
 
 ```powershell
 $log = Get-ChildItem .\Logs\Find-OrphanedSid_*.log | Sort-Object LastWriteTime | Select-Object -Last 1

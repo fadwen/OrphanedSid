@@ -42,6 +42,10 @@ BeforeAll {
     $script:FailingSid = "$script:DomainSid-1777"
     # A live principal whose ordinary lookups time out; only the deleted-objects lookup answers (#39)
     $script:FlakySid = "$script:DomainSid-1300"
+    # A deleted principal whose lookups time out the next $script:TransientFailures times, then
+    # answer not-found; used to show that -MaxRetries reaches the lookups (#89)
+    $script:TransientSid = "$script:DomainSid-1400"
+    $script:TransientFailures = 0
     $script:BuiltinAdmins = 'S-1-5-32-544'
 
     function New-DirectoryObject {
@@ -98,6 +102,10 @@ BeforeAll {
         if ($Sid -eq $script:FlakySid) {
             throw [System.TimeoutException]::new('The operation returned because the timeout limit was exceeded.')
         }
+        if ($Sid -eq $script:TransientSid -and $script:TransientFailures -gt 0) {
+            $script:TransientFailures--
+            throw [System.TimeoutException]::new('The operation returned because the timeout limit was exceeded.')
+        }
         if ($Sid -eq $script:LiveSid) {
             return [PSCustomObject]@{ DistinguishedName = "CN=Alice,OU=Users,$script:DomainDN"; ObjectClass = 'user'; SID = $Sid }
         }
@@ -115,13 +123,14 @@ BeforeAll {
     }
 
     function Invoke-FindOrphanedSid {
-        param([string]$OutputPath)
+        param([string]$OutputPath, [int]$MaxRetries = -1)
         $parameters = @{
             SearchBase            = "OU=Finance,$script:DomainDN"
             LogPath               = Join-Path $TestDrive 'find.log'
             SuppressConsoleOutput = $true
         }
         if ($OutputPath) { $parameters.OutputPath = $OutputPath }
+        if ($MaxRetries -ge 0) { $parameters.MaxRetries = $MaxRetries }
         Find-OrphanedSid @parameters
     }
 
@@ -326,6 +335,75 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             foreach ($dn in $script:Directory.Keys) {
                 $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
             }
+        }
+    }
+
+    Context 'Log file chosen by a configuration file (#90)' {
+        BeforeEach {
+            $script:priorLocation = Get-Location
+            $script:runDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+            New-Item -Path $script:runDir -ItemType Directory | Out-Null
+            Set-Location $script:runDir
+            $script:configuredLog = Join-Path $script:runDir 'configured.log'
+            $script:cfg = Join-Path $script:runDir 'cfg.json'
+            @{ LogFilePath = $script:configuredLog } | ConvertTo-Json | Set-Content $script:cfg
+        }
+
+        AfterEach {
+            Set-Location $script:priorLocation
+        }
+
+        It 'Writes the whole run, header first, to the LogFilePath when -LogPath is not given' {
+            $null = Find-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -ConfigPath $script:cfg -SuppressConsoleOutput -CorrelationId 'cfg-log-1'
+
+            $lines = @(Get-Content $script:configuredLog)
+            ($lines | Select-String -Pattern 'Module Version:' -SimpleMatch).Count | Should -Be 1
+            ($lines | Select-String -Pattern 'Find-OrphanedSid starting' -SimpleMatch).Count | Should -Be 1
+            ($lines | Select-String -Pattern 'Discovery completed' -SimpleMatch).Count | Should -Be 1
+            # Before #90 the header and the first lines went to the default file
+            Test-Path (Join-Path $script:runDir 'Logs') | Should -BeFalse
+        }
+
+        It 'Keeps -LogPath over the configured LogFilePath, and writes the whole run there' {
+            $mine = Join-Path $script:runDir 'mine.log'
+
+            $null = Find-OrphanedSid -SearchBase "OU=Finance,$script:DomainDN" -ConfigPath $script:cfg -LogPath $mine -SuppressConsoleOutput
+
+            Test-Path $script:configuredLog | Should -BeFalse
+            @(Select-String -Path $mine -Pattern 'Module Version:' -SimpleMatch).Count | Should -Be 1
+            @(Select-String -Path $mine -Pattern 'Discovery completed' -SimpleMatch).Count | Should -Be 1
+        }
+    }
+
+    Context '-MaxRetries reaches the directory lookups (#89)' {
+        BeforeEach {
+            # The retry back-off is not what is under test
+            Mock -ModuleName OrphanedSid Start-Sleep { }
+            $dn = "CN=Transient,OU=Finance,$script:DomainDN"
+            $script:Directory[$dn] = New-DirectoryObject -DN $dn -ObjectClass 'group' -Trustee $script:TransientSid
+        }
+
+        It 'Settles a SID whose lookup recovers within -MaxRetries, and reports it orphaned' {
+            # Three timeouts, then not-found: the fourth attempt answers. Before #89 every lookup
+            # made three attempts whatever -MaxRetries said, so this SID came back Unverified.
+            $script:TransientFailures = 3
+
+            $transient = @(Invoke-FindOrphanedSid -MaxRetries 3 | Where-Object OrphanedSID -eq $script:TransientSid)
+
+            $transient.Count | Should -Be 1
+            $transient[0].VerificationStatus | Should -Be 'Orphaned'
+            $script:TransientFailures | Should -Be 0
+        }
+
+        It 'Leaves the same SID unverified when -MaxRetries is too low for it to recover' {
+            # Two timeouts outlast one retry. Before #89 the lookup's third attempt answered.
+            $script:TransientFailures = 2
+
+            $transient = @(Invoke-FindOrphanedSid -MaxRetries 1 | Where-Object OrphanedSID -eq $script:TransientSid)
+
+            $transient.Count | Should -Be 1
+            $transient[0].VerificationStatus | Should -Be 'Unverified'
+            $transient[0].VerificationError | Should -Match 'timeout limit was exceeded'
         }
     }
 

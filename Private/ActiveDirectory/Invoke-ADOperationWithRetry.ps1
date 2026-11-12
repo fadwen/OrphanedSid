@@ -11,7 +11,8 @@ function Invoke-ADOperationWithRetry {
         The AD operation to execute
 
     .PARAMETER MaxRetries
-        Maximum retry attempts for transient failures
+        Total attempts, the first included, for a failure that looks transient (1-11, default 3).
+        A caller holding a retry count passes that count plus one.
 
     .PARAMETER OperationName
         Descriptive name for the operation
@@ -43,7 +44,8 @@ function Invoke-ADOperationWithRetry {
         [scriptblock]$ScriptBlock,
 
         [Parameter()]
-        [ValidateRange(1, 10)]
+        # Attempts, the first included: a caller's 10 retries is 11 attempts
+        [ValidateRange(1, 11)]
         [int]$MaxRetries = 3,
 
         [Parameter()]

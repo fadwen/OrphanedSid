@@ -20,7 +20,7 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Test-SIDFormat { param($SID) }
     function Test-WellKnownSID { param($SID) }
-    function Test-OrphanedSID { param($SID, $CorrelationId) }
+    function Test-OrphanedSID { param($SID, $MaxRetries, $CorrelationId) }
     function Get-SIDAnalysis { param($SIDString, $CurrentDomainSID) }
     function New-OrphanedSIDResult { param($ObjectDN, $ObjectClass, $OrphanedSID, $AccessRule, $LikelySource, $Confidence, $Notes, $ProcessingMethod, $VerificationStatus, $VerificationError, $CorrelationId) }
 
@@ -161,6 +161,14 @@ Describe 'Test-AccessRuleForOrphanedSID' -Tag 'Unit', 'SID', 'Private' {
         }
         $script:orphanRule = [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]$script:orphanSid; ActiveDirectoryRights = 'GenericRead' }
         $script:validRule = [PSCustomObject]@{ IdentityReference = [System.Security.Principal.SecurityIdentifier]'S-1-5-21-111-222-333-1105' }
+    }
+
+    It 'Passes -MaxRetries to the SID lookup, 3 by default (#89)' {
+        $null = Test-AccessRuleForOrphanedSID -AccessRule $script:orphanRule -ObjectDN $script:dn -MaxRetries 0
+        $null = Test-AccessRuleForOrphanedSID -AccessRule $script:validRule -ObjectDN $script:dn
+
+        Should -Invoke Test-OrphanedSID -Times 1 -Exactly -ParameterFilter { $SID -eq $script:orphanSid -and $MaxRetries -eq 0 }
+        Should -Invoke Test-OrphanedSID -Times 1 -Exactly -ParameterFilter { $SID -eq 'S-1-5-21-111-222-333-1105' -and $MaxRetries -eq 3 }
     }
 
     It 'Builds a result for an orphaned SID with the analysis attached' {

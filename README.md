@@ -38,11 +38,11 @@ applies it. Discovery results stream to batch files on disk while the run is in 
   and Computers containers) are flagged high risk. The configuration file can replace the first two
   lists.
 - **A failed lookup is not an orphan.** A SID is reported orphaned only when every directory lookup
-  completed and none found it. When a lookup fails with a timeout, access denied or an unreachable
-  domain controller, the entry is reported with `VerificationStatus = Unverified` and the failure in
-  `VerificationError`, and `Remove-OrphanedSid` leaves it in place. A SID from a trusted domain is
-  orphaned only when that domain answers that the principal is gone; an unreachable trust leaves it
-  unverified. See [SIDs from a trusted domain](./Troubleshooting/Security/Orphaned-SID-Issues.md#6-sids-from-a-trusted-domain).
+  completed and none found it, or when it is found among deleted objects. When a lookup fails with
+  a timeout, access denied or an unreachable domain controller, the entry is reported with
+  `VerificationStatus = Unverified` and the failure in `VerificationError`, and
+  `Remove-OrphanedSid` leaves it in place. A SID from a trusted domain is orphaned only when that
+  domain answers that the principal is gone; an unreachable trust leaves it unverified. See [SIDs from a trusted domain](./Troubleshooting/Security/Orphaned-SID-Issues.md#6-sids-from-a-trusted-domain).
 - **Confirmation gate.** `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` have
   `ConfirmImpact = 'High'`: they prompt once, `-WhatIf` previews, and an unattended run needs
   `-Force`.
@@ -139,6 +139,10 @@ Import-Csv .\Reports\CHG0012345.csv |
     Restore-OrphanedSidBackup -BackupPath 'D:\ADBackups\20260703_104232' -Force
 ```
 
+The CSV lists every entry the run found. An object the run did not change, such as one whose
+entries were all unverified or inherited, has no backup in the folder, so its result has
+`Success = False` and `No backup files found for object <DN> ...`.
+
 ### Scheduled task
 
 ```powershell
@@ -154,8 +158,8 @@ if ($results.Count -gt 0) {
 ```
 
 An unverified entry is a SID that no lookup found but at least one lookup failed to check, so it may
-still belong to a live principal. `VerificationError` names each failed lookup; re-run once the
-cause is fixed.
+still belong to a live principal. `VerificationError` names each failed lookup, and any lookup
+skipped because the directory server could not be contacted; re-run once the cause is fixed.
 
 ### Configuration file
 
@@ -168,7 +172,8 @@ cause is fixed.
 | `BatchSize` | 1-1000 | Results per streaming batch file (default 50) |
 | `MemoryCheckInterval` | 1-1000 | Operations between memory checks (default 50) |
 | `LogLevel` | Critical to Verbose | File log level when the command line sets none; `-LogLevel`, `-Verbose` and `-Debug` win |
-| `LogFilePath`, `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Logging behaviour |
+| `LogFilePath` | path | Log file when `-LogPath` is not given; `-LogPath` wins |
+| `EnableLogFileRotation`, `MaxLogFileSizeMB` | | Rotate the log file aside when it is larger than the limit (default 10 MB) |
 
 A file that sets either SID list uses exactly that list; to add to the defaults, repeat them in the
 file. [Automation](Documentation/Automation.md#the-two-sid-lists-replace-the-defaults) shows how

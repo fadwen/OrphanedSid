@@ -32,9 +32,10 @@ and its SHA256 hash), applies the saved security descriptor to the object, and r
 ACL back to verify the result.
 
 -TargetObjectDN decides the scope.
-A container (an OU or the domain root) restores every
+A container (a DN that starts with OU= or DC=, such as an OU or the domain root) restores every
 object that is the container or sits under it.
-A single object restores only backups whose recorded object DN equals
+Any other DN, including a CN= container such as CN=Users, is treated as a single object, which
+restores only backups whose recorded object DN equals
 -TargetObjectDN, compared without regard to letter case.
 Either way each object is restored once, from its most recent backup in the folder.
 -BackupPath is the folder that holds the .xml files, normally one timestamped run
@@ -46,7 +47,8 @@ the restore.
 An unattended run must pass -Force or -Confirm:$false.
 
 One result object per target is written to the pipeline; -OutputPath writes the same rows
-as CSV.
+as CSV, with the columns Success, TargetObjectDN, EntriesRestored, ErrorMessage and
+CorrelationId.
 
 ## EXAMPLES
 
@@ -71,8 +73,9 @@ USE CASE: Undoing a cleanup that removed an entry still in use
 Import-Csv .\Reports\CHG0012345.csv | Select-Object -ExpandProperty ObjectDN -Unique |
         Restore-OrphanedSidBackup -BackupPath 'D:\ADBackups\20260703_104232' -Force
 
-DESCRIPTION: Restores exactly the objects a removal run reported
-OUTPUT: One result per object
+DESCRIPTION: Restores the objects listed in a removal run's CSV
+OUTPUT: One result per object; an object that run did not change, such as one with only
+unverified entries, has no backup in the folder and comes back with Success False
 USE CASE: Targeted rollback driven by the removal's own CSV
 
 ## PARAMETERS

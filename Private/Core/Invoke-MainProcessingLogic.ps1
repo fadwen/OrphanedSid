@@ -77,8 +77,9 @@ function Invoke-MainProcessingLogic {
         but provides more comprehensive security analysis.
 
     .PARAMETER MaxRetries
-        [Int] (Optional) Maximum retry attempts for failed operations (Default: 3).
-        Provides resilience against transient failures.
+        [Int] (Optional) Retries after the first attempt for each directory read during discovery
+        and each SID lookup during detection, when the failure looks transient (Default: 3).
+        Passed to Get-ADObjectsSequential and Find-OrphanedSIDsInObject.
 
     .PARAMETER BackupPath
         [String] (Optional) Directory path for storing ACL backups.
@@ -236,7 +237,7 @@ function Invoke-MainProcessingLogic {
                 # Always perform discovery phase - ShouldProcess only applies to removal operations
                 # Get AD objects for processing using refactored sequential processing
                 try {
-                    $adObjects = Get-ADObjectsSequential -SearchBase @($searchPath) -CorrelationId $CorrelationId
+                    $adObjects = Get-ADObjectsSequential -SearchBase @($searchPath) -MaxRetries $MaxRetries -CorrelationId $CorrelationId
 
                     # Log successful AD discovery
                     Write-ADOperationSecurityLog -OperationName 'AD-ObjectDiscovery' -Outcome 'Success' -SecurityContext @{
@@ -318,26 +319,12 @@ function Invoke-MainProcessingLogic {
                             return
                         }
 
-                        # Detection is the step that reads the directory, so it is the one retried.
-                        # Removal below runs once, on the result; a removal error is not retried,
-                        # because a second attempt would take a second backup and act on an ACL
-                        # the first attempt may already have changed.
-                        $orphanedResults = $null
-                        $detectionAttempt = 0
-                        while ($null -eq $orphanedResults) {
-                            try {
-                                $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID -CorrelationId $CorrelationId)
-                            }
-                            catch {
-                                $detectionAttempt++
-                                if ($detectionAttempt -gt $MaxRetries) {
-                                    Write-StructuredLog "Max retries ($MaxRetries) exceeded for object $($currentObject.DistinguishedName)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
-                                    throw
-                                }
-                                Write-StructuredLog "Retry attempt $detectionAttempt of $MaxRetries for object $($currentObject.DistinguishedName): $($_.Exception.Message)" -Level Warning -Component 'MainProcessing' -CorrelationId $CorrelationId
-                                Start-Sleep -Seconds (2 * $detectionAttempt)
-                            }
-                        }
+                        # -MaxRetries applies to each directory lookup inside detection, where a
+                        # transient failure happens. Detection itself never throws: a failed rule is
+                        # logged and skipped, and a lookup that still fails gives an Unverified
+                        # result. Removal below runs once; a second attempt would take a second
+                        # backup and act on an ACL the first attempt may already have changed.
+                        $orphanedResults = @(Find-OrphanedSIDsInObject -ADObject $currentObject -IncludeInherited:$IncludeInherited -CurrentDomainSID $script:CurrentDomainSID -MaxRetries $MaxRetries -CorrelationId $CorrelationId)
 
                         # An Unverified result is a SID that no lookup found but at least one lookup
                         # failed to check. It is reported, counted apart, and never removed.

@@ -15,7 +15,9 @@ order and returns the first non-empty result:
    `Get-ADObject -Identity <DN> -Properties nTSecurityDescriptor` and processes the result the same
    way.
 
-Without `-IncludeInherited`, every strategy filters out entries where `IsInherited` is true.
+Without `-IncludeInherited`, every strategy filters out entries where `IsInherited` is true. When
+`Get-Acl` reads an ACL whose entries are all inherited, the object is skipped there with a Debug
+line and the other strategies are not tried.
 Objects are supplied by `Get-ADObjectFromSearchBase`, which always requests
 `nTSecurityDescriptor`; `Find-OrphanedSIDsInObject` skips objects where that property is empty
 before calling `Get-ObjectAccessRule`.
@@ -220,6 +222,7 @@ have used.
 |---|---|---|
 | `Get-Acl failed for <DN>: <error>` | Debug | Strategy 1 failed; falling back |
 | `Get-Acl returned null or empty access list for <DN>` | Debug | The ACL has no entries at all, or none were readable |
+| `No explicit access rules on <DN> (all N are inherited)` | Debug | Nothing to examine without `-IncludeInherited`; object skipped |
 | `No nTSecurityDescriptor property found for <DN>` | Debug | Strategy 2 has nothing to parse |
 | `Failed to convert binary security descriptor for <DN> : <error>` | Warning | Strategy 2 conversion failed |
 | `Fresh AD query returned no security descriptor for <DN>` | Warning | Strategy 3 found the object but no descriptor |

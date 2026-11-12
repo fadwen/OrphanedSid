@@ -29,7 +29,9 @@ It works through these steps and stops at the first that decides:
 7. If any step from 3 to 6 threw anything other than a not-found error
    (`ADIdentityNotFoundException`, or `IdentityNotMappedException` for the translation), the SID is
    `Unverified` and `ErrorMessage` names each failed step (Warning
-   `SID could not be verified - N lookup(s) failed: <SID> (<errors>)`).
+   `SID could not be verified - N lookup(s) failed: <SID> (<errors>)`, or
+   `N lookup(s) failed, M not attempted` when the directory server could not be contacted; see
+   [Unverified SIDs](#5-unverified-sids)).
 8. Otherwise `Orphaned` (Debug `SID could not be resolved - marking as orphaned: <SID>`).
 
 Directory calls go through `Invoke-ADOperationWithRetry`, so transient failures are retried before
@@ -158,7 +160,8 @@ Disabled accounts are not orphaned; only SIDs with no object are reported.
 
 **Causes**
 
-- Each distinct SID costs up to six directory operations when it is orphaned.
+- Each distinct SID costs up to five directory lookups and one name translation when it is
+  orphaned.
 - Domain controller latency or load.
 - Retries after transient errors (see `-MaxRetries` in
   [Performance-Tuning.md](../Performance/Performance-Tuning.md)).
@@ -203,6 +206,7 @@ $dc = (Get-ADDomain).PDCEmulator
 Test-NetConnection -ComputerName $dc -Port 389    # LDAP
 Test-NetConnection -ComputerName $dc -Port 636    # LDAPS
 Test-NetConnection -ComputerName $dc -Port 3268   # Global Catalog
+Test-NetConnection -ComputerName $dc -Port 9389   # AD Web Services, used by the AD cmdlets
 ```
 
 A run that cannot reach the directory removes nothing: every SID it cannot check is `Unverified`.
@@ -334,8 +338,8 @@ session. The cache lives in the module's scope, so it lasts as long as the modul
 | `SID found in AD via Get-ADObject: <DN>` | Debug | `Exists` |
 | `SID found in deleted objects: <DN> - treating as orphaned` | Debug | Tombstoned object; `Orphaned` |
 | `SID could not be translated - likely orphaned: <SID>` | Debug | Translation reported not-found; later steps still run |
-| `Get-ADObject lookup failed for SID <SID> : <error>`, `Deleted objects lookup failed for SID <SID> : <error>`, `SecurityIdentifier translation failed for <SID> : <error>`, `<cmdlet> lookup failed for <SID> : <error>` | Warning | A step threw something other than not-found; later steps still run |
-| `SID could not be verified - N lookup(s) failed: <SID> (<errors>)` | Warning | Nothing found the SID and a step failed; `Unverified` |
+| `Get-ADObject lookup failed for SID <SID> : <error>`, `Deleted objects lookup failed for SID <SID> : <error>`, `SecurityIdentifier translation failed for <SID> : <error>`, `<cmdlet> lookup failed for <SID> : <error>` | Warning | A step threw something other than not-found; later steps still run, except the directory lookups after an `Unable to contact the server` failure |
+| `SID could not be verified - N lookup(s) failed[, M not attempted]: <SID> (<errors>)` | Warning | Nothing found the SID and a step failed; `Unverified` |
 | `SID could not be resolved - marking as orphaned: <SID>` | Debug | Every step completed and none found it; `Orphaned` |
 | `Error testing SID for orphaned status <SID> : <error>` | Error | Unexpected exception; `Unverified` |
 | `UNVERIFIED SID: <SID> on <DN> could not be checked - <errors>` | Warning | Discovery listed the entry as unverified |

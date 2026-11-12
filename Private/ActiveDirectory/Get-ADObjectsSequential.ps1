@@ -13,6 +13,10 @@
     .PARAMETER IncludeInherited
         Whether to include inherited permissions in security descriptors
 
+    .PARAMETER MaxRetries
+        Retries after the first attempt for each search base's read when the failure looks
+        transient (0-10, default 3). Passed to Get-ADObjectFromSearchBase.
+
     .PARAMETER CorrelationId
         Unique identifier for operation tracking and correlation
 
@@ -42,6 +46,10 @@
 
         [Parameter()]
         [switch]$IncludeInherited,
+
+        [Parameter()]
+        [ValidateRange(0, 10)]
+        [int]$MaxRetries = 3,
 
         [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
@@ -77,7 +85,7 @@
         foreach ($currentSearchBase in $SearchBase) {
             try {
                 Write-Verbose "Processing search base: $currentSearchBase"
-                $searchResults = Get-ADObjectFromSearchBase -SearchBase $currentSearchBase -IncludeInherited:$IncludeInherited -CorrelationId $CorrelationId
+                $searchResults = Get-ADObjectFromSearchBase -SearchBase $currentSearchBase -IncludeInherited:$IncludeInherited -MaxRetries $MaxRetries -CorrelationId $CorrelationId
                 
                 if ($searchResults) {
                     $allResults += $searchResults
@@ -90,7 +98,7 @@
             }
             catch {
                 $script:failedBases++
-                Write-Warning "Failed to process search base $currentSearchBase : $($_.Exception.Message)"
+                Write-Warning "Failed to retrieve objects from search base '$currentSearchBase': $($_.Exception.Message)"
                 
                 # Log the failure but continue processing
                 Write-ADOperationSecurityLog -OperationName 'Get-ADObjectsSequential' -Outcome 'Failure' -SecurityContext @{

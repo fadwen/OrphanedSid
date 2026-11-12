@@ -27,7 +27,7 @@ access rules:
 | Order | Strategy | Message when it fails | Level |
 | --- | --- | --- | --- |
 | 1 | `Get-Acl -Path "AD:\<DN>"` | `Get-Acl failed for <DN>: <message>` | Debug |
-| 2 | Binary or deserialized `nTSecurityDescriptor` conversion | `Failed to process deserialized security descriptor for <DN> : <message>` or `Failed to convert binary security descriptor for <DN> : <message>` | Warning |
+| 2 | Binary or deserialized `nTSecurityDescriptor` conversion | `Failed to process deserialized security descriptor for <DN> : <message>` or `Failed to convert binary security descriptor for <DN> : <message>` (Warning); `Binary security descriptor processing failed for <DN>: <message>` (Debug) | Warning or Debug |
 | 3 | Fresh `Get-ADObject -Identity <DN> -Properties nTSecurityDescriptor` | `Fresh AD query returned no security descriptor for <DN>` or `Fresh AD query failed for <DN>: <message>` | Warning |
 
 Only when all three fail does the summary warning above appear. None of these calls is retried;
@@ -41,7 +41,7 @@ Two related Debug-level messages are not warnings and need no action:
 - `No security descriptor found for <DN>` - the object came back without an `nTSecurityDescriptor`
   value; only seen when `Find-OrphanedSIDsInObject` is called directly (see below).
 - `No access rules retrieved for <DN>` - logged after every strategy came back empty, so it follows
-  the warning above.
+  the warning above, and also after an object skipped because all its entries are inherited.
 
 ## Why These Warnings Occur
 
@@ -49,12 +49,13 @@ Two related Debug-level messages are not warnings and need no action:
   (non-inherited) entries are examined. When `Get-Acl` reads an ACL whose entries are all
   inherited, the object is skipped with a Debug entry, `No explicit access rules on <DN> (all N
   are inherited)`, and no other strategy is tried. Such an entry is removed on the parent it is
-  inherited from.
+  inherited from. If `Get-Acl` itself fails on such an object, strategies 2 and 3 filter out the
+  inherited entries, return nothing, and the warning does appear.
 - **A descriptor that cannot be parsed**: `Get-Acl` fails and the descriptor fetched with the
-  object cannot be converted, so strategies 2 and 3 log their own Warning first.
+  object cannot be converted, so strategies 2 and 3 log their own messages first.
 
-A transient `Get-Acl` failure on its own does not produce the warning: strategy 2 then parses the
-descriptor that was already fetched with the object.
+A transient `Get-Acl` failure on an object with explicit entries does not produce the warning:
+strategy 2 then parses the descriptor that was already fetched with the object.
 
 An object whose descriptor the running account is not allowed to read does not produce it either.
 Active Directory returns such an object without `nTSecurityDescriptor`, and the command skips it

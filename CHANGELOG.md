@@ -15,7 +15,6 @@ All notable changes to this module are recorded here. Format follows
   server could not be contacted: <lookups>`. The SID is still `Unverified` and is never removed.
   The local name lookup still runs and can still show that the SID exists.
   ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
-
 - The documentation now states that `ProtectedSIDs` and `WellKnownSIDPatterns` in a `-ConfigPath`
   file replace the default lists in full, with nothing merged, and that this is intended: the file
   is the list. It also says what the built-in well-known check protects whatever the file says,
@@ -24,7 +23,7 @@ All notable changes to this module are recorded here. Format follows
   ([#54](https://github.com/fadwen/OrphanedSid/issues/54))
 - `Remove-OrphanedSid` returns one `RemovalOperationResult` per object changed, covering all of its
   removed entries, instead of one per entry, and confirms once per object. Under `-WhatIf` it
-  previews one object per object. When any of an object's orphaned SIDs is blocked by the security
+  previews one result per object. When any of an object's orphaned SIDs is blocked by the security
   check, none of that object's entries is removed.
   ([#40](https://github.com/fadwen/OrphanedSid/issues/40))
 - `Find-OrphanedSid` results, and its CSV, carry two new properties: `VerificationStatus`
@@ -37,6 +36,10 @@ All notable changes to this module are recorded here. Format follows
 - `IntendedRemovals` on removal results is a number. It was a one-element string array holding the
   count (`{"2"}`), unlike `ActualRemovals` and `FailedRemovals`.
   ([#28](https://github.com/fadwen/OrphanedSid/issues/28))
+- `-SearchBase` and `-TargetObjectDN` no longer bind pipeline input by property name. A piped
+  object is read only through its `DistinguishedName` property, so one that carries its DN in a
+  `SearchBase` or `TargetObjectDN` property instead is reported and skipped.
+  ([#79](https://github.com/fadwen/OrphanedSid/issues/79))
 
 ### Removed
 
@@ -82,6 +85,13 @@ All notable changes to this module are recorded here. Format follows
   path against the process directory rather than the current location. It now resolves it against
   the current location, as `Remove-OrphanedSid -BackupPath` and `-LogPath` already do.
   ([#80](https://github.com/fadwen/OrphanedSid/issues/80))
+- A `-ConfigPath` file that set `LogFilePath` split each run's log across two files: the header and
+  the first lines went to `-LogPath` or the default `.\Logs\<Command>_<timestamp>.log`, the rest
+  to `LogFilePath`. It also overrode a `-LogPath` given on the command line, and its folder was not
+  created. The log file is now chosen once, before anything is written: `-LogPath` when given,
+  otherwise the file's `LogFilePath`, otherwise the default name. A `LogFilePath` is resolved,
+  created, checked and rotated the same way as `-LogPath`.
+  ([#90](https://github.com/fadwen/OrphanedSid/issues/90))
 - A fixed `-LogPath` reused across runs was emptied at the start of each run, so the previous run's
   log was lost, and log rotation never applied to it. A run now appends to an existing log file.
   When the file is larger than `MaxLogFileSizeMB` (default 10) and `EnableLogFileRotation` is on, it
@@ -172,8 +182,9 @@ All notable changes to this module are recorded here. Format follows
   treated the same as "this SID does not exist", so live principals could lose their access; the
   removal was recoverable only from the backup. A SID is now orphaned only when its deleted object
   is found, or when every lookup completed and none found it. A SID that no lookup found but at
-  least one lookup failed to check is reported as unverified and is never removed. This includes a SID from a trusted domain whose domain
-  controllers cannot be reached. ([#9](https://github.com/fadwen/OrphanedSid/issues/9))
+  least one lookup failed to check is reported as unverified and is never removed. This includes a
+  SID from a trusted domain whose domain controllers cannot be reached.
+  ([#9](https://github.com/fadwen/OrphanedSid/issues/9))
 - A failed lookup no longer sticks for the rest of the run. Unverified results are not cached, so
   the next object that carries the same SID looks it up again.
 - The processing summary did not log the processing rate, peak memory, error count or orphaned SID
@@ -217,7 +228,6 @@ All notable changes to this module are recorded here. Format follows
 - When `Restore-OrphanedSidBackup` rejected a target object, the error ended in an empty reason
   (`Target object validation failed: `). It now names each problem found.
   ([#16](https://github.com/fadwen/OrphanedSid/issues/16))
-- A missing backup folder was logged twice. ([#20](https://github.com/fadwen/OrphanedSid/issues/20))
 - The internal restore workflow could restore the wrong object in two ways: given one backup file,
   it restored whichever object the file recorded rather than the target; given several targets in
   one call, it restored every target after the first from the first one's backup. It now refuses a
@@ -225,13 +235,21 @@ All notable changes to this module are recorded here. Format follows
   path is reachable from `Restore-OrphanedSidBackup`, which calls the workflow once per target with
   a backup folder, so no restore was affected.
   ([#17](https://github.com/fadwen/OrphanedSid/issues/17))
-- When reading an object failed, the retry never re-read it: it passed the error instead of the
-  object, so every attempt failed, and each failing object still waited through the back-off (12
-  seconds with the default `-MaxRetries 3`). The error and retry log lines also named no object. The
-  directory read is now retried on the object itself; an object that succeeds on a retry is no
-  longer counted as an error, and `Remove-OrphanedSid` removes what the retry finds. A failed
-  removal is not retried, so an object is never backed up and changed twice.
-  ([#22](https://github.com/fadwen/OrphanedSid/issues/22))
+- `-MaxRetries` had no effect. It controlled a retry of each object's detection, which never
+  failed in a way that reached the retry: a failed SID lookup was reported, not thrown. The
+  per-object retry is removed, and `-MaxRetries` is now the number of retries after the first
+  attempt for each directory read that fails with a transient error (a timeout, a busy or
+  unavailable server): the read of each search base, and each lookup of a SID. The SID lookups
+  made three attempts whatever the value; with the default of 3 they now make up to four. A
+  domain controller that cannot be contacted is still not retried. A removal is never repeated, so
+  an object is never backed up and changed twice.
+  ([#89](https://github.com/fadwen/OrphanedSid/issues/89),
+  [#22](https://github.com/fadwen/OrphanedSid/issues/22))
+- A search base whose read failed was counted as read successfully with no objects: the failure
+  was caught and logged as a warning before the step that counts failed search bases and writes
+  the `Get-ADObjectsSequential` `Failure` audit entry could see it. It is now counted as failed,
+  audited, and warned about once with `Failed to retrieve objects from search base '<DN>': <error>`;
+  a transient failure is retried first. ([#89](https://github.com/fadwen/OrphanedSid/issues/89))
 - `Find-OrphanedSid` returned nothing when `$WhatIfPreference` was `$true` in the session, although
   discovery ran and the summary counted what it found.
   ([#14](https://github.com/fadwen/OrphanedSid/issues/14))

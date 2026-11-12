@@ -149,14 +149,15 @@ $metrics = & (Get-Module OrphanedSid) { $script:SecurityLoggingMetrics }
 
 **What is logged**
 
-`Invoke-MainProcessingLogic` writes an `AD-ObjectDiscovery` attempt/success pair per search base,
-an `OrphanedSID-Detection` entry per object with findings, and an `OrphanedSID-Removal`
-attempt/success (or failure) pair per object changed. The second entry of the pair carries
+`Invoke-MainProcessingLogic` writes an `AD-ObjectDiscovery` attempt/success pair per search base
+(with a `Get-ADObjectsSequential` pair inside it), an `OrphanedSID-Detection` entry per object with
+findings, and an `OrphanedSID-Removal` attempt/success (or failure) pair per object changed. The second entry of the pair carries
 `ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`, the backup written before the
 change; it is a failure, with `ErrorMessage`, when the removal did not succeed. `Invoke-ADOperationWithRetry` writes an
 `ObjectAccess` attempt and success (or failure) for every directory call it makes, which includes
 each lookup `Test-OrphanedSID` performs for a SID not yet in the cache. During removal
-`Test-SIDSecurity` writes `DataValidation` entries for each SID it validates. The volume therefore
+`Test-SIDSecurity` writes `DataValidation` entries for each SID it validates, and
+`Invoke-RemovalWorkflow` writes `PrivilegeUse` entries for each ACL it changes. The volume therefore
 grows with the number of distinct SIDs looked up, not only with findings. The entries cannot be
 suppressed; they are the audit trail.
 

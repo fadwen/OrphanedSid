@@ -68,9 +68,9 @@ Every SID that discovery marks orphaned passes through `Invoke-SecurityValidatio
 (`Private\Security\Invoke-SecurityValidation.ps1`) inside `Invoke-RemovalWorkflow` before any ACL
 is touched. It calls `Test-SIDSecurity -ValidationLevel Standard` for each SID and produces a
 `SecurityValidationResult` with `IsValid`, `RiskLevel`, `AllowedSIDs`, `BlockedSIDs`, `Issues` and
-`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` passes all of an object's verified
-orphaned SIDs in one call, and a call is skipped whole if any of its SIDs is blocked, with
-`SECURITY BLOCK: Security validation failed: <issues>` at Error level, so the object's ACL is left
+`RequiresElevatedConfirmation`. `Invoke-MainProcessingLogic` passes all of an object's verified,
+non-inherited orphaned SIDs in one call, and a call is skipped whole if any of its SIDs is blocked,
+with `SECURITY BLOCK: Security validation failed: <issues>` at Error level, so the object's ACL is left
 unchanged. Only `AllowedSIDs` are ever passed to `Invoke-SIDRemoval`.
 
 ### Test-SIDSecurity
@@ -160,7 +160,9 @@ $domainSID = (Get-ADDomain).DomainSID.Value
 
 Expected: the first three are blocked (protected or well-known), `-500` and `-1001` are valid with
 `RiskLevel = High` (unknown domain context) and `RequiresElevatedConfirmation = True`, and the
-last is blocked as a malicious pattern.
+last is blocked as a malicious pattern. With no log file set up in the session, the security
+entries these calls write go to `$env:TEMP\OrphanedSid-Security-<yyyyMMdd>.log`, with a warning
+each.
 
 ```powershell
 $result = & $osid { Invoke-SecurityValidation -OrphanedSIDs @("$domainSID-1001", 'S-1-5-32-544') -ObjectDN 'CN=Test,OU=Users,DC=contoso,DC=com' }
@@ -179,8 +181,8 @@ for integrity checking. If the backup fails the removal is aborted
 `<BackupPath>\<yyyyMMdd_HHmmss>\`, with `-BackupPath` defaulting to `.\Backup` under the current
 directory. Under `-WhatIf` no backup is written because no change is made.
 
-`Restore-OrphanedSidBackup -BackupPath <folder>` validates each backup file with
-`Test-BackupIntegrity`, including the hash, before `Set-ObjectACL`
+`Restore-OrphanedSidBackup -TargetObjectDN <DN> -BackupPath <folder>` validates each backup file
+with `Test-BackupIntegrity`, including the hash, before `Set-ObjectACL`
 (`Private\Backup\Restore-ACLOperation.ps1`) rewrites the ACL. See
 [Backup-Restore-Issues.md](../Common/Backup-Restore-Issues.md).
 
@@ -199,12 +201,13 @@ with `Component = SecurityAudit`. Events written during a run:
 | SecurityEventType | OperationName or source | When |
 |---|---|---|
 | ObjectAccess | `AD-ObjectDiscovery` | Attempt/Success/Failure per search base |
+| ObjectAccess | `Get-ADObjectsSequential` | Attempt and Success per search base, Failure for a base that could not be read |
 | ObjectAccess | `OrphanedSID-Detection` | Success per object with findings, listing the SIDs |
 | ObjectAccess | `OrphanedSID-Removal` | Attempt, then Success or Failure, per object; the second carries `ActualRemovals`, `FailedRemovals`, `BackupCreated` and `BackupFile`. WhatIf attempts carry `WhatIfMode = true` |
 | ObjectAccess | `Invoke-ADOperationWithRetry` (`Get-ADObject-BySID`, `Get-ADUser`, ...) | Attempt, then Success or Failure, per directory call |
 | DataValidation | `Test-SIDSecurity` | Attempt, then Success, Failure (blocked) or a second Attempt (high risk) per SID |
 | SecurityViolation | `Test-SIDSecurity` | Malicious pattern detected |
-| PrivilegeUse | `Invoke-RemovalWorkflow` | ACL modification initiated |
+| PrivilegeUse | `Invoke-RemovalWorkflow` | Attempt when an ACL modification starts, then Success, or Failure when the workflow, the write or its verification fails |
 
 How to read them, and what to do when they land in emergency files, is in
 [Security-Logging-Issues.md](./Security-Logging-Issues.md).
