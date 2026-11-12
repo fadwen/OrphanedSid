@@ -1,4 +1,4 @@
-﻿# Performance Tuning Guide - OrphanedSid
+# Performance Tuning Guide - OrphanedSid
 ## Overview
 
 `Find-OrphanedSid` processes Active Directory objects sequentially: one `Get-ADObject` query per
@@ -17,7 +17,7 @@ measure their effect.
 | SID resolution | `Test-OrphanedSID`: `Get-ADObject` by `objectSid`, deleted-object lookup, `SecurityIdentifier.Translate`, then `Get-ADUser`/`Get-ADGroup`/`Get-ADComputer` | One round of lookups per distinct SID; Orphaned and Exists results are cached per SID for the PowerShell session |
 | Retries | `Invoke-OperationWithRetry` around each directory read, up to `-MaxRetries` retries | Transient failures multiply wall time through back-off sleeps |
 | Memory management | `Invoke-MemoryCheck` per object, `Invoke-Cleanup` every 100 objects | Fixed overhead; three forced collections per cleanup |
-| Export | `StreamingResultsManager.ExportToCsv` | Reads every batch file back before `Export-Csv` |
+| Export | `StreamingResultsManager.ExportToCsv` | Holds every result in memory for `Export-Csv`; reuses the read-back the pipeline output already made |
 
 An orphaned SID costs the most: every lookup method fails before it is declared orphaned. A valid
 SID usually returns on the first `Get-ADObject`. The validation cache means each distinct SID pays

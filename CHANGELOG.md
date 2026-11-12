@@ -75,6 +75,14 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- With `-Verbose`, each `Flushed batch N with ... results` line said 0 results, because the count
+  was read after the batch was cleared. It now reports the number written.
+  ([#99](https://github.com/fadwen/OrphanedSid/issues/99))
+- With `-OutputPath`, the results were read back from the batch files twice, once for the
+  pipeline and once for the CSV, and each read built its array one result at a time, which slows
+  down with the size of the result set on Windows PowerShell 5.1. Each batch file is now read
+  once, into a list, and the export reuses that read.
+  ([#100](https://github.com/fadwen/OrphanedSid/issues/100))
 - The internal memory check that the troubleshooting guide runs, `Invoke-MemoryCheck`, rated the
   .NET managed heap against `-MaxMemoryUsageMB`, a limit the run compares with the process working
   set. The heap is a fraction of the working set, so the check reported `Normal` while the run's own

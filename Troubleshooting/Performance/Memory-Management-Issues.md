@@ -86,8 +86,8 @@ when the command itself is behaving.
   until the module is removed or re-imported. It is rarely the cause.
 - Results are not held in memory during processing. Each `OrphanedSIDResult` is handed to
   `StreamingResultsManager.AddResult()` and flushed to disk after `BatchSize` results (default 50).
-  At the end of the run `Find-OrphanedSid` reads every batch back with `GetAllResults()` to emit
-  the results, and the `-OutputPath` export reads them back again.
+  At the end of the run `Find-OrphanedSid` reads every batch back once with `GetAllResults()` to
+  emit the results, and the `-OutputPath` export reuses what that read returned.
 - Access rules returned by `Get-ObjectAccessRule` are released after each object
   (`$accessRules = $null` in `Private\SID\Invoke-SIDProcessing.ps1`), and a collection runs after
   an object whose inspected access rules number a multiple of 100.
@@ -104,14 +104,14 @@ search bases so each process stays short-lived.
 **Symptoms**
 
 The run terminates with `OutOfMemoryException`, typically while reading a very large ACL or while
-`GetAllResults()` concatenates batch files for the CSV export.
+`GetAllResults()` reads the batch files back at the end of the run.
 
 **Root causes**
 
 - A 32-bit PowerShell host (2 GB address space). Check with `[IntPtr]::Size -eq 4`.
 - System-wide memory pressure from other processes.
-- An export of a very large result set: `ExportToCsv()` reads every batch file back into memory
-  before calling `Export-Csv`.
+- A very large result set: at the end of the run every result is read back into memory, to be
+  written to the pipeline and to `Export-Csv`, and held until the session ends.
 
 **Resolution**
 
