@@ -239,7 +239,7 @@ Invoke-Pester ./Tests                                                      # Pes
 ```
 
 Conventions come from [ai-powershell-standards](https://github.com/fadwen/ai-powershell-standards)
-and are mirrored into `.github/` and `.claude/` by a weekly workflow. See [CLAUDE.md](./CLAUDE.md)
+and are installed into `.github/`, `.claude/` and `.agents/` by a weekly workflow. See [CLAUDE.md](./CLAUDE.md)
 for the invariants specific to this module.
 
 ## Blog posts
