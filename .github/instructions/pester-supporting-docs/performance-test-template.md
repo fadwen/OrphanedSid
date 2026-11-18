@@ -1,402 +1,510 @@
 # Performance Test Template
 
-Targets **Pester 6.2+**. Uses the `Should-*` assertion syntax - see
-[Assertion Guide](./assertion-guide.md).
+Use this template for performance benchmarking and regression detection. TST-43 requires
+performance tests for a function that processes more than 100 items; they validate timing and
+memory use. The limits come from a baseline file and from the requirement; the figures below are
+placeholders. The rules are in the [Pester rules](../powershell-pester.instructions.md). The file
+below passes on Pester 6.2.0 under PowerShell 7.6 and Windows PowerShell 5.1.
 
-**NOTE**: Do not use Unicode emojis in any generated code, documentation, or test output. Use plain
-text descriptions and standard ASCII characters only.
+Do not use emoji in generated code, documentation, or test output. Use plain text and standard
+ASCII characters only (STY-06, TST-07).
 
-## Standard Performance Test Structure
+## The Code Under Test
 
-Use this template for performance benchmarking and regression detection:
+The template tests the module `ModuleName` from the [unit test template](./unit-test-template.md).
+`Get-ThingSummary -Thing <object[]>` reads each thing once and emits one object for each state, with
+the number of things in that state.
+
+## The Baseline File
+
+The limits that change as the code changes are kept in a data file, so that a new baseline is a
+change to data and not to the tests. A test falls back to a default when the file, or a figure in
+it, is missing.
+
+```powershell
+# Tests/TestData/Baselines/performance-baselines.psd1
+@{
+    BaselineInputMilliseconds = 1000
+}
+```
+
+A `.psd1` file holds literals only, so a duration is written as a number of milliseconds, not as a
+`[timespan]`.
+
+## The Test File
 
 ```powershell
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
 
-# Performance measurement is meaningless when other test files are competing for the
-# CPU. This directive keeps the file on the serial path even when Run.Parallel is set.
 #pester:no-parallel
+#pester:no-shuffle
 
 BeforeAll {
-    # Import module under test. Each file is self-contained in Pester 6.
-    $ModulePath = Join-Path $PSScriptRoot '..\..\ModuleName.psd1'
-    Import-Module $ModulePath -Force
+    $moduleRoot = Split-Path -Path $PSScriptRoot -Parent
+    $modulePath = Join-Path -Path $moduleRoot -ChildPath 'ModuleName.psd1'
+    if (-not (Get-Module -Name ModuleName)) {
+        Import-Module -Name $modulePath
+    }
 
     # Performance test configuration
-    $PerformanceConfig = @{
-        BaselineDataSize = 100
-        ScaleTestDataSize = 1000
-        MaxExecutionTime = [TimeSpan]::FromSeconds(30)
+    $performanceConfig = @{
+        BaselineDataSize = 2000
+        ScaleTestDataSize = 20000
+        MaxExecutionTime = [timespan]::FromSeconds(5)
         MaxMemoryUsageMB = 100
         WarmupIterations = 3
         TestIterations = 5
     }
 
-    # Load performance baselines
-    $BaselinePath = Join-Path $PSScriptRoot "..\TestData\performance-baselines.psd1"
-    if (Test-Path $BaselinePath) {
-        $PerformanceBaselines = Import-PowerShellDataFile $BaselinePath
+    # Load the performance baselines. Without the file, each test falls back to its default.
+    $dataPath = Join-Path -Path $PSScriptRoot -ChildPath 'TestData'
+    $baselineFolder = Join-Path -Path $dataPath -ChildPath 'Baselines'
+    $baselinePath = Join-Path -Path $baselineFolder -ChildPath 'performance-baselines.psd1'
+    if (Test-Path -LiteralPath $baselinePath) {
+        $performanceBaselines = Import-PowerShellDataFile -LiteralPath $baselinePath
     } else {
-        $PerformanceBaselines = @{}
+        $performanceBaselines = @{}
     }
+
+    $largeInput = foreach ($index in 1..$performanceConfig.ScaleTestDataSize) {
+        $state = if ($index % 3 -eq 0) { 'failed' } elseif ($index % 2 -eq 0) { 'stopped' } else { 'ready' }
+        [PSCustomObject]@{ Name = "thing-$index"; State = $state }
+    }
+    $smallInput = $largeInput | Select-Object -First $performanceConfig.BaselineDataSize
+
+    # The tests add their figures here, and AfterAll saves them.
+    $performanceMetrics = @{}
+
+    # The first call pays for module loading and compilation, so it is made before any measurement.
+    $null = Get-ThingSummary -Thing $smallInput
 }
 
-Describe "Performance Tests" -Tag "Performance", "Benchmark" {
-    Context "Execution Time Baselines" {
+AfterAll {
+    # Save the performance metrics for comparison with later runs.
+    $resultsPath = Join-Path -Path $PSScriptRoot -ChildPath 'Results'
+    if (-not (Test-Path -LiteralPath $resultsPath)) {
+        $null = New-Item -Path $resultsPath -ItemType Directory
+    }
+
+    $performanceMetrics.TestDate = (Get-Date).ToString('o')
+    $performanceMetrics.PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+    $performanceMetrics.Platform = [System.Environment]::OSVersion.Platform.ToString()
+
+    $fileName = 'performance-results-{0}.json' -f (Get-Date -Format 'yyyyMMdd-HHmmss')
+    $json = ConvertTo-Json -InputObject $performanceMetrics -Depth 10
+    Set-Content -LiteralPath (Join-Path -Path $resultsPath -ChildPath $fileName) -Value $json -Encoding ascii
+}
+
+Describe 'Get-ThingSummary performance' -Tag 'Performance', 'Benchmark' {
+    Context 'Execution time baselines' {
         BeforeEach {
-            # Warm up the function
-            1..$PerformanceConfig.WarmupIterations | ForEach-Object {
-                Function-Name -ParameterName 'WarmupValue' | Out-Null
+            # Warm up the function.
+            foreach ($iteration in 1..$performanceConfig.WarmupIterations) {
+                $null = Get-ThingSummary -Thing $smallInput
             }
 
-            # Force garbage collection for consistent baseline
+            # Force garbage collection for a consistent baseline.
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
         }
 
-        It "Should process a single item faster than the baseline" {
-            # Should-BeFasterThan takes the scriptblock and a duration string or TimeSpan,
-            # and reports the measured time in the failure message.
-            { Function-Name -ParameterName 'SingleItem' } | Should-BeFasterThan '1s'
+        It 'Should process the baseline input faster than the limit' {
+            { Get-ThingSummary -Thing $smallInput } | Should-BeFasterThan '1s'
         }
 
-        It "Should process single item within baseline across iterations" {
-            $baseline = if ($PerformanceBaselines.SingleItemBaseline) {
-                $PerformanceBaselines.SingleItemBaseline
-            } else {
-                [TimeSpan]::FromSeconds(1)
-            }
-            $measurements = @()
-
-            # Run multiple iterations for accurate measurement
-            1..$PerformanceConfig.TestIterations | ForEach-Object {
-                $executionTime = Measure-Command {
-                    Function-Name -ParameterName 'SingleItem'
-                }
-                $measurements += $executionTime.TotalMilliseconds
+        It 'Should stay within the baseline across iterations' {
+            $baselineMs = 1000
+            if ($performanceBaselines.ContainsKey('BaselineInputMilliseconds')) {
+                $baselineMs = $performanceBaselines.BaselineInputMilliseconds
             }
 
+            # Run several iterations for an accurate measurement.
+            $measurements = foreach ($iteration in 1..$performanceConfig.TestIterations) {
+                (Measure-Command { $null = Get-ThingSummary -Thing $smallInput }).TotalMilliseconds
+            }
             $averageMs = ($measurements | Measure-Object -Average).Average
-            $maxMs     = ($measurements | Measure-Object -Maximum).Maximum
+            $maximumMs = ($measurements | Measure-Object -Maximum).Maximum
+            $performanceMetrics.AverageMilliseconds = $averageMs
+            $performanceMetrics.MaximumMilliseconds = $maximumMs
 
-            # Compare like with like - milliseconds against milliseconds. Comparing a
-            # TimeSpan against a raw number silently coerces and gives nonsense results.
-            $averageMs | Should-BeLessThan $baseline.TotalMilliseconds
-            $maxMs     | Should-BeLessThan ($baseline.TotalMilliseconds * 1.5) `
-                -Because 'peak may exceed the average baseline by up to 50%'
+            $averageMs | Should-BeLessThan $baselineMs
+            $maximumMs | Should-BeLessThan ($baselineMs * 1.5) -Because 'the peak may exceed the baseline by half'
         }
 
-        It "Should scale efficiently with data volume" {
-            $baselineItems = 1..$PerformanceConfig.BaselineDataSize
-            $scaledItems = 1..$PerformanceConfig.ScaleTestDataSize
-
-            # Measure baseline performance
-            $baselineTime = Measure-Command {
-                Function-Name -ParameterName $baselineItems
+        It 'Should scale efficiently with data volume' {
+            $smallRuns = foreach ($iteration in 1..$performanceConfig.TestIterations) {
+                (Measure-Command { $null = Get-ThingSummary -Thing $smallInput }).TotalMilliseconds
             }
-
-            # Measure scaled performance
-            $scaledTime = Measure-Command {
-                Function-Name -ParameterName $scaledItems
+            $largeRuns = foreach ($iteration in 1..$performanceConfig.TestIterations) {
+                (Measure-Command { $null = Get-ThingSummary -Thing $largeInput }).TotalMilliseconds
             }
+            $smallBest = ($smallRuns | Measure-Object -Minimum).Minimum
+            $largeBest = ($largeRuns | Measure-Object -Minimum).Minimum
 
-            # Calculate scaling efficiency
-            $dataScaleFactor = $PerformanceConfig.ScaleTestDataSize / $PerformanceConfig.BaselineDataSize
-            $timeScaleFactor = $scaledTime.TotalMilliseconds / $baselineTime.TotalMilliseconds
-
-            # Should scale sub-linearly due to optimizations
+            # A floor of one millisecond keeps timer resolution from deciding the ratio.
+            $dataScaleFactor = $performanceConfig.ScaleTestDataSize / $performanceConfig.BaselineDataSize
+            $timeScaleFactor = $largeBest / [math]::Max($smallBest, 1)
             $scalingEfficiency = $timeScaleFactor / $dataScaleFactor
-            $scalingEfficiency | Should-BeLessThan 1.5 -Because 'processing should scale sub-linearly'
+            $performanceMetrics.ScalingEfficiency = $scalingEfficiency
+
+            $scalingEfficiency | Should-BeLessThan 1.5 -Because 'the summary reads each thing once'
         }
 
-        It "Should complete large datasets within time limit" {
-            $largeDataset = 1..5000
-            $result = $null
-
-            # Do not put assertions inside Measure-Command - the assertion cost lands in
-            # the measurement, and a failure there reports a confusing location.
-            $executionTime = Measure-Command {
-                $result = Function-Name -ParameterName $largeDataset
+        It 'Should complete a large data set within the time limit' {
+            $elapsed = Measure-Command {
+                $result = @(Get-ThingSummary -Thing $largeInput)
             }
 
-            $result | Should-BeCollection -Count 5000
-            $executionTime.TotalMilliseconds |
-                Should-BeLessThan $PerformanceConfig.MaxExecutionTime.TotalMilliseconds
+            $result | Should-BeCollection -Count 3
+            ($result | Measure-Object -Property Count -Sum).Sum | Should-Be $performanceConfig.ScaleTestDataSize
+            $elapsed.TotalMilliseconds | Should-BeLessThan $performanceConfig.MaxExecutionTime.TotalMilliseconds
         }
 
-        It "Should maintain consistent performance across iterations" {
+        It 'Should maintain consistent performance across iterations' {
+            # One measurement repeats the call until it lasts about a quarter of a second.
+            $single = (Measure-Command { $null = Get-ThingSummary -Thing $largeInput }).TotalMilliseconds
+            $callCount = [int][math]::Ceiling(250 / [math]::Max($single, 1))
             $iterations = 10
-            $measurements = @()
 
-            1..$iterations | ForEach-Object {
-                $time = Measure-Command {
-                    Function-Name -ParameterName (1..100)
+            $measurements = foreach ($iteration in 1..$iterations) {
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                $elapsed = Measure-Command {
+                    foreach ($call in 1..$callCount) {
+                        $null = Get-ThingSummary -Thing $largeInput
+                    }
                 }
-                $measurements += $time.TotalMilliseconds
+                $elapsed.TotalMilliseconds
             }
 
-            # Calculate coefficient of variation (CV)
+            # Coefficient of variation: the standard deviation as a share of the average.
             $average = ($measurements | Measure-Object -Average).Average
-            $stdDev = [Math]::Sqrt((($measurements | ForEach-Object { ($_ - $average) * ($_ - $average) }) | Measure-Object -Sum).Sum / $iterations)
-            $cv = $stdDev / $average
+            $squares = foreach ($measurement in $measurements) {
+                ($measurement - $average) * ($measurement - $average)
+            }
+            $standardDeviation = [math]::Sqrt(($squares | Measure-Object -Sum).Sum / $iterations)
+            $variation = $standardDeviation / $average
+            $performanceMetrics.CoefficientOfVariation = $variation
 
-            # CV should be less than 20% for consistent performance
-            $cv | Should-BeLessThan 0.20 -Because 'execution time should be stable across runs'
+            $variation | Should-BeLessThan 0.20 -Because 'the time should be stable across runs'
         }
     }
 
-    Context "Memory Usage" {
-        It "Should maintain reasonable memory footprint" {
+    Context 'Memory usage' {
+        It 'Should maintain a reasonable memory footprint' {
             $beforeMemory = [System.GC]::GetTotalMemory($true)
 
-            Function-Name -ParameterName (1..$PerformanceConfig.ScaleTestDataSize)
+            $null = Get-ThingSummary -Thing $largeInput
 
-            $afterMemory = [System.GC]::GetTotalMemory($false)  # Don't force GC yet
+            # No collection is forced here, so the figure includes what the call left behind.
+            $afterMemory = [System.GC]::GetTotalMemory($false)
             $memoryUsedMB = ($afterMemory - $beforeMemory) / 1MB
+            $performanceMetrics.MemoryUsedMB = $memoryUsedMB
 
-            $memoryUsedMB | Should-BeLessThan $PerformanceConfig.MaxMemoryUsageMB
+            $memoryUsedMB | Should-BeLessThan $performanceConfig.MaxMemoryUsageMB
         }
 
-        It "Should release memory after completion" {
+        It 'Should release memory after completion' {
             $beforeMemory = [System.GC]::GetTotalMemory($true)
 
-            Function-Name -ParameterName (1..$PerformanceConfig.ScaleTestDataSize)
+            $null = Get-ThingSummary -Thing $largeInput
 
-            # Force garbage collection
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
             [System.GC]::Collect()
-
             $afterMemory = [System.GC]::GetTotalMemory($true)
-            $memoryDifference = [Math]::Abs($afterMemory - $beforeMemory) / 1MB
+            $memoryDifferenceMB = [math]::Abs($afterMemory - $beforeMemory) / 1MB
 
-            # Should release most memory (allow 10MB tolerance)
-            $memoryDifference | Should-BeLessThan 10 -Because 'the function should not retain allocations'
+            # Most of the memory must be released. The tolerance is 10 MB.
+            $memoryDifferenceMB | Should-BeLessThan 10 -Because 'the function should not retain allocations'
         }
 
-        It "Should not have memory leaks with repeated calls" {
+        It 'Should not have memory leaks with repeated calls' {
             $initialMemory = [System.GC]::GetTotalMemory($true)
-            $memoryMeasurements = @()
 
-            # Execute function multiple times
-            1..20 | ForEach-Object {
-                Function-Name -ParameterName (1..100)
-
-                # Measure memory every 5 iterations
-                if ($_ % 5 -eq 0) {
+            # Measure the memory after every fifth call.
+            $memoryMeasurements = foreach ($call in 1..20) {
+                $null = Get-ThingSummary -Thing $smallInput
+                if ($call % 5 -eq 0) {
                     [System.GC]::Collect()
-                    $currentMemory = [System.GC]::GetTotalMemory($true)
-                    $memoryMeasurements += ($currentMemory - $initialMemory) / 1MB
+                    ([System.GC]::GetTotalMemory($true) - $initialMemory) / 1MB
                 }
             }
 
-            # Memory usage should not continuously increase
-            $firstMeasurement = $memoryMeasurements[0]
-            $lastMeasurement = $memoryMeasurements[-1]
-            $memoryGrowth = $lastMeasurement - $firstMeasurement
-
-            # Allow maximum 5MB growth over 20 iterations
+            # Memory must not keep growing: at most 5 MB between the first and the last measurement.
+            $memoryMeasurements | Should-BeCollection -Count 4
+            $memoryGrowth = $memoryMeasurements[-1] - $memoryMeasurements[0]
             $memoryGrowth | Should-BeLessThan 5 -Because 'repeated calls must not leak'
         }
     }
 
-    Context "Throughput and Scalability" {
-        It "Should achieve minimum throughput requirements" {
-            $testData = 1..1000
-            $requiredThroughput = 50  # items per second
-            $results = $null
+    Context 'Throughput and scalability' {
+        It 'Should achieve the minimum throughput' {
+            # Things for each second
+            $requiredThroughput = 50
 
-            $executionTime = Measure-Command {
-                $results = Function-Name -ParameterName $testData
+            $elapsed = Measure-Command {
+                $result = @(Get-ThingSummary -Thing $smallInput)
             }
 
-            $results | Should-BeCollection -Count 1000
-
-            $actualThroughput = 1000 / $executionTime.TotalSeconds
+            ($result | Measure-Object -Property Count -Sum).Sum | Should-Be $performanceConfig.BaselineDataSize
+            $actualThroughput = $performanceConfig.BaselineDataSize / $elapsed.TotalSeconds
+            $performanceMetrics.ThingsPerSecond = $actualThroughput
             $actualThroughput | Should-BeGreaterThan $requiredThroughput
         }
 
-        It "Should handle concurrent execution efficiently" {
-            $concurrentJobs = 1..5 | ForEach-Object {
-                Start-Job -ScriptBlock {
-                    param($ModulePath, $JobId)
+        It 'Should handle concurrent execution efficiently' {
+            $thingCount = $performanceConfig.ScaleTestDataSize
+            $runCount = $performanceConfig.TestIterations
+            $jobScript = {
+                param($ModulePath, $ThingCount, $RunCount)
 
-                    Import-Module $ModulePath -Force
+                Import-Module -Name $ModulePath
+                $things = foreach ($index in 1..$ThingCount) {
+                    [PSCustomObject]@{ Name = "thing-$index"; State = 'ready' }
+                }
+                $null = Get-ThingSummary -Thing $things
+                $runs = foreach ($run in 1..$RunCount) {
+                    (Measure-Command { $summary = @(Get-ThingSummary -Thing $things) }).TotalMilliseconds
+                }
 
-                    $startTime = Get-Date
-                    $result = Function-Name -ParameterName (1..200)
-                    $endTime = Get-Date
-
-                    return @{
-                        JobId = $JobId
-                        ItemsProcessed = $result.Count
-                        ExecutionTime = ($endTime - $startTime).TotalMilliseconds
-                        Success = $result.Count -eq 200
-                    }
-                } -ArgumentList $ModulePath, $_
+                [PSCustomObject]@{
+                    ItemsProcessed = ($summary | Measure-Object -Property Count -Sum).Sum
+                    BestMilliseconds = ($runs | Measure-Object -Minimum).Minimum
+                }
             }
 
-            # Wait for all jobs to complete
-            $results = $concurrentJobs | Wait-Job | Receive-Job
-            $concurrentJobs | Remove-Job
+            $jobs = foreach ($jobNumber in 1..5) {
+                Start-Job -ScriptBlock $jobScript -ArgumentList $modulePath, $thingCount, $runCount
+            }
+            $jobResults = @($jobs | Wait-Job | Receive-Job)
+            $jobs | Remove-Job
 
-            # Verify all jobs completed successfully
-            $results | Should-All { $_.Success }
-            $results | Should-All { $_.ItemsProcessed -eq 200 }
-            $results | Should-All { $_.ExecutionTime -lt 30000 }   # 30 seconds max
+            # Every job completed and processed every thing.
+            $jobResults | Should-BeCollection -Count 5
+            $jobResults | Should-All { $_.ItemsProcessed -eq $thingCount }
+            $jobResults | Should-All { $_.BestMilliseconds -lt 30000 }
 
-            # Verify concurrent execution didn't significantly degrade performance
-            $averageConcurrentTime = ($results.ExecutionTime | Measure-Object -Average).Average
-            $serialTime = Measure-Command { Function-Name -ParameterName (1..200) }
-
-            # Concurrent execution should not be more than 2x slower per job
-            $averageConcurrentTime | Should-BeLessThan ($serialTime.TotalMilliseconds * 2)
+            # A call in a job must not take more than twice as long as a call made alone.
+            $serialRuns = foreach ($run in 1..$runCount) {
+                (Measure-Command { $null = Get-ThingSummary -Thing $largeInput }).TotalMilliseconds
+            }
+            $serialBest = ($serialRuns | Measure-Object -Minimum).Minimum
+            $averageConcurrent = ($jobResults.BestMilliseconds | Measure-Object -Average).Average
+            $averageConcurrent | Should-BeLessThan ([math]::Max($serialBest, 1) * 2)
         }
     }
 
-    Context "Resource Utilization" {
-        It "Should efficiently use CPU resources" {
-            $cpuCounter = Get-Counter "\Process(powershell*)\% Processor Time" -ErrorAction SilentlyContinue
+    Context 'Resource utilization' {
+        It 'Should use CPU resources efficiently' {
+            $ownSample = $null
+            if (Get-Command -Name Get-Counter -ErrorAction SilentlyContinue) {
+                $processName = (Get-Process -Id $PID).ProcessName
+                $idCounterPath = "\Process($processName*)\ID Process"
+                $idCounter = Get-Counter -Counter $idCounterPath -ErrorAction SilentlyContinue
+                if ($null -ne $idCounter) {
+                    $ownSample = $idCounter.CounterSamples |
+                        Where-Object { $_.CookedValue -eq $PID } |
+                        Select-Object -First 1
+                }
+            }
 
-            if ($cpuCounter) {
-                $beforeCpu = $cpuCounter.CounterSamples | Where-Object { $_.InstanceName -like "*$PID*" } | Select-Object -First 1 -ExpandProperty CookedValue
-
-                Function-Name -ParameterName (1..1000)
-
-                Start-Sleep -Seconds 1  # Allow CPU counter to update
-                $afterCpu = (Get-Counter "\Process(powershell*)\% Processor Time").CounterSamples | Where-Object { $_.InstanceName -like "*$PID*" } | Select-Object -First 1 -ExpandProperty CookedValue
-
-                # CPU usage should be reasonable (less than 80% for single-threaded operation)
-                $cpuUsage = $afterCpu - $beforeCpu
-                $cpuUsage | Should-BeLessThan 80
+            if ($null -eq $ownSample) {
+                Set-ItResult -Skipped -Because 'CPU performance counters are not available'
             } else {
-                Set-ItResult -Skipped -Because "CPU performance counters not available"
+                $cpuCounter = $ownSample.Path -replace 'id process$', '% processor time'
+                $before = (Get-Counter -Counter $cpuCounter).CounterSamples[0]
+
+                foreach ($call in 1..10) {
+                    $null = Get-ThingSummary -Thing $largeInput
+                }
+
+                $after = (Get-Counter -Counter $cpuCounter).CounterSamples[0]
+
+                # The raw value counts processor time in the unit of the time stamp. 100 percent of
+                # the result is every processor in use for the whole interval.
+                $processorTime = $after.RawValue - $before.RawValue
+                $interval = ($after.TimeStamp100nSec - $before.TimeStamp100nSec) * [Environment]::ProcessorCount
+                $cpuUsage = 100 * $processorTime / $interval
+                $performanceMetrics.ProcessorPercent = $cpuUsage
+
+                $cpuUsage | Should-BeGreaterThan 0
+                $cpuUsage | Should-BeLessThan 80
             }
         }
 
-        It "Should not create excessive temporary files" {
-            $tempFilesBefore = @(Get-ChildItem -Path $env:TEMP -File | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-5) })
+        It 'Should not create excessive temporary files' {
+            $tempPath = [System.IO.Path]::GetTempPath()
+            $startTime = Get-Date
 
-            Function-Name -ParameterName (1..500)
+            $null = Get-ThingSummary -Thing $largeInput
 
-            $tempFilesAfter = @(Get-ChildItem -Path $env:TEMP -File | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-5) })
+            $newFiles = @(
+                Get-ChildItem -LiteralPath $tempPath -File | Where-Object { $_.CreationTime -ge $startTime }
+            )
 
-            $newTempFiles = $tempFilesAfter.Count - $tempFilesBefore.Count
-
-            # Should not create more than 5 temporary files
-            $newTempFiles | Should-BeLessThanOrEqual 5
+            # Other processes write to this folder too, so the limit is five files and not zero.
+            $newFiles.Count | Should-BeLessThanOrEqual 5
         }
     }
 }
-
-AfterAll {
-    # Save performance metrics for baseline comparison
-    $resultsPath = Join-Path $PSScriptRoot "..\Results\performance-results-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
-
-    $performanceMetrics = @{
-        TestDate = Get-Date
-        PowerShellVersion = $PSVersionTable.PSVersion
-        Platform = $PSVersionTable.Platform
-        # Add specific metrics from test execution
-    }
-
-    $performanceMetrics | ConvertTo-Json -Depth 10 | Out-File $resultsPath
-}
 ```
 
-## Pester 6 Notes for Performance Tests
+## What The Template Shows
 
-### Always opt out of parallel execution
+### A Time Limit
 
-Put `#pester:no-parallel` at the top of every performance test file. Timing measurements taken while
-other test files compete for CPU are noise. Opted-out files run serially in the parent session while
-other files run in parallel, so you keep the speedup elsewhere without corrupting the benchmarks.
+`Should-BeFasterThan` measures the piped script block and puts the measured time in the failure
+message. Use it for a plain limit. Pipe the script block, not its result: any input other than a
+script block or a `[timespan]` is an error.
 
-Belt and braces: also keep `Run.Parallel = $false` in `PesterConfiguration.Performance.psd1`.
+Use `Measure-Command` when the test needs the number itself, for a ratio, an average, or a
+coefficient of variation, or when it must also assert the result of the measured call.
 
-### Use `Should-BeFasterThan` for simple time limits
+### Assertions Stay Outside The Measurement
+
+An assertion inside `Measure-Command` adds its own time to the figure. The large-input test assigns
+the result inside the measured block, where the variable stays visible afterwards, and asserts
+after the measurement. Asserting the result also proves that the fast call did the work.
+
+### Like Is Compared With Like
+
+`Should-BeLessThan` cannot compare a `[timespan]` with a number. It stops with `Could not compare`:
 
 ```powershell
-{ Function-Name -ParameterName 'x' } | Should-BeFasterThan '250ms'
-{ Function-Name -ParameterName 'x' } | Should-BeSlowerThan '10ms'
+# Non-compliant: a TimeSpan compared with a number
+$elapsed | Should-BeLessThan 5000
+
+# Compliant: milliseconds compared with milliseconds
+$elapsed.TotalMilliseconds | Should-BeLessThan 5000
+
+# Compliant: a TimeSpan compared with a TimeSpan
+$elapsed | Should-BeLessThan ([timespan]::FromSeconds(5))
 ```
 
-It accepts a duration string (`'250ms'`, `'2s'`) or a `TimeSpan`, measures the scriptblock, and puts
-the actual measured time in the failure message. Prefer it over `Measure-Command` plus a comparison
-for single-shot limits. Keep `Measure-Command` where you need the measurement itself for ratios,
-averages, or coefficient-of-variation math.
+### Measurements Are Made Stable
 
-Pipe the **scriptblock**, not its result. From 6.2 both assertions throw when handed anything other
-than a `[scriptblock]` or a `[timespan]`; on 6.1 a string, number, or `$null` slipped through and
-the test passed without measuring. A limit that starts failing on 6.2 with
-`Expected a [scriptblock] to measure or a [timespan] to compare` was never a limit.
+- The input is built once in `BeforeAll`, and one call is made before any measurement.
+- `BeforeEach` warms the function up again and forces a garbage collection, so that every timing
+  test starts from the same state.
+- The baseline test runs several iterations and asserts the average and the maximum. The maximum
+  may exceed the baseline by half.
+- The scaling test uses the best of several runs instead. The minimum is the better figure for a
+  ratio, because a single run can include a garbage collection or another process taking the
+  processor.
+- Limits leave room for a slower machine. A limit close to the usual time makes the test fail at
+  random, and a test that fails at random gets ignored.
 
-### Compare like with like
+### Scaling
 
-The most common bug in hand-rolled performance assertions is comparing a `TimeSpan` against a raw
-number:
+The scaling test divides the growth in time by the growth in data. A function that reads each item
+once stays near 1: measured here, between 0.5 and 1.2. The limit of 1.5 leaves room for noise and
+fails a function whose time grows clearly faster than its input.
 
-```powershell
-# WRONG - TimeSpan vs. double; the comparison does not mean what it looks like
-$elapsed | Should-BeLessThan ($baseline.TotalMilliseconds * 1.5)
+### Consistency
 
-# RIGHT - both sides in milliseconds
-$elapsed.TotalMilliseconds | Should-BeLessThan ($baseline.TotalMilliseconds * 1.5)
+The consistency test computes the coefficient of variation over 10 iterations and requires less
+than 20 percent. A measurement of a few milliseconds varies with the timer and the scheduler more
+than with the code, so each measurement repeats the call until it lasts about a quarter of a
+second. Measured here with this function: measurements of about 10 milliseconds gave a variation
+between 0.13 and 0.33, and measurements of 250 milliseconds stayed below 0.15.
 
-# ALSO RIGHT - both sides TimeSpan
-$elapsed | Should-BeLessThan ([TimeSpan]::FromMilliseconds($baseline.TotalMilliseconds * 1.5))
-```
+### Memory
 
-Pester 6's type-aware assertions make the mismatch visible in the failure message, but the fix is to
-not write it in the first place.
+Three tests cover memory: the footprint during a call, the release after it, and growth over
+repeated calls. `[System.GC]::GetTotalMemory($true)` collects before it reads, which gives the
+starting figure; the footprint test reads the second figure without a collection.
 
-### Keep assertions out of `Measure-Command`
+### Throughput And Concurrent Runs
 
-An assertion inside the measured scriptblock adds its own cost to the measurement, and a failure
-there reports a confusing location. Capture the result, measure, then assert.
+The throughput test divides the number of items by the elapsed time and asserts the result of the
+call as well. The concurrency test starts five jobs. A job is a new process, so the script block
+receives the module path as an argument, imports the module, and makes one call before it measures.
+The test then compares the time of a call in a job with the time of a call made alone.
 
-### Never enable coverage on a performance job
+### Processor And Temporary Files
 
-Coverage instruments exactly the thing you are measuring, so the numbers stop meaning anything.
+The processor test reads the `% Processor Time` counter of its own process before and after the
+work and computes the share from the raw values of the two samples. It finds its own counter
+instance through the `ID Process` counter, because the instance name does not contain the process
+ID: measured here, a filter on the ID in the instance name matched no sample, and the test then
+compared nothing. The test is skipped when `Get-Counter` or the counter is not available.
 
-Pester 6.0 refused to combine coverage with `Run.Parallel` at all, falling back to sequential with a
-warning. 6.1 does collect coverage across parallel workers - but it forces breakpoint-based
-collection to do it, which is heavier per file than the default profiler tracer. Either way, a
-performance job should run sequentially with coverage off.
+The share is of all processors together. A single-threaded call that keeps one processor busy
+reads 100 divided by the number of processors; measured here on 20 processors it was 4 percent.
+
+The temporary-file test counts the files that appeared in the temporary folder during the call.
+
+### Metrics Are Saved And Compared
+
+Each test adds its figure to `$performanceMetrics`, and the top-level `AfterAll` writes them to a
+JSON file in `Tests/Results`, one file for each run. The saved files are the history that the
+regression guidelines below rely on, and `performance-baselines.psd1` holds the baseline that a
+test compares with.
+
+The large input can also come from a shared helper; see
+[Test Data Management Guide](./test-data-guide.md#performance-test-data).
+
+### The File Does Not Run In Parallel
+
+Timings taken while other test files use the processor are noise. Put the comment
+`#pester:no-parallel` at the top of every performance test file. It keeps the file in the main
+session, one file at a time, when a run sets `Run.Parallel`. That option is experimental and off by
+default.
+
+As a second safeguard, also keep `Run.Parallel = $false` in `PesterConfiguration.Performance.psd1`,
+the settings file of the performance run; see
+[Pester Configuration Guide](./pester-configuration.md#settings-for-each-environment).
+
+### The Run Is Not Shuffled
+
+A performance baseline assumes a fixed order. Do not turn `Run.Shuffle` on for a run of performance
+tests. The runner script in [Test Execution Guide](./test-execution.md#the-test-runner-script)
+shuffles every other run and leaves performance tests in their declared order (TST-46).
+
+Put the comment `#pester:no-shuffle` at the top of every performance test file as well. A run of
+every test type is shuffled, and the comment keeps the blocks and tests of the file in the order
+they are written; see [Test Execution Guide](./test-execution.md#shuffled-test-order).
+
+### Coverage Is Off
+
+Do not enable code coverage in a run that measures time. Coverage instruments the code that is being
+measured. Tag the `Describe` block `Performance` and with the category, here `Benchmark` (TST-04),
+and run these tests in their own job with `Filter.Tag`, without `CodeCoverage.Enabled`.
 
 ## Performance Test Guidelines
 
 ### Baseline Establishment
 
-- Warm up functions before measurement
-- Run multiple iterations for accuracy
-- Force garbage collection for consistency
-- Establish realistic performance targets
+- Warm up functions before measurement.
+- Run several iterations for accuracy.
+- Force garbage collection for consistency.
+- Establish realistic performance targets.
 
 ### Memory Testing
 
-- Measure memory usage during execution
-- Verify memory release after completion
-- Test for memory leaks with repeated calls
-- Monitor garbage collection patterns
+- Measure memory usage during execution.
+- Verify memory release after completion.
+- Test for memory leaks with repeated calls.
+- Monitor garbage collection patterns.
 
 ### Scalability Testing
 
-- Test with increasing data sizes
-- Measure throughput and response time
-- Validate concurrent execution performance
-- Test resource utilization limits
+- Test with increasing data sizes.
+- Measure throughput and response time.
+- Validate concurrent execution performance.
+- Test the limits of resource utilization.
 
 ### Regression Detection
 
-- Compare against historical baselines
-- Track performance trends over time
-- Alert on significant performance degradation
-- Maintain performance metrics database
+- Compare against historical baselines.
+- Track performance trends over time.
+- Alert on significant performance degradation.
+- Maintain a database of performance metrics.
 
 ### Resource Monitoring
 
-- Monitor CPU utilization
-- Track temporary file creation
-- Measure network usage (if applicable)
-- Validate resource cleanup
+- Monitor CPU utilization.
+- Track the creation of temporary files.
+- Measure network usage where it applies.
+- Validate resource cleanup.

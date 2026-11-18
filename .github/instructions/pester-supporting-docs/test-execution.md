@@ -1,17 +1,150 @@
 # Test Execution Guide
 
-Targets **Pester 6.2+** on Windows PowerShell 5.1 or PowerShell 7.4+.
+This guide covers how to run tests, how to read the result, and the two experimental run modes,
+parallel and shuffled. It supports rules TST-40 to TST-42 in
+[powershell-pester.instructions.md](../powershell-pester.instructions.md). The behaviour described
+here was checked on Pester 6.2.0 under PowerShell 7.6 and Windows PowerShell 5.1.
 
-**NOTE**: Do not use Unicode emojis in any generated code, documentation, or test output. Use plain
-text descriptions and standard ASCII characters only.
+Do not use emoji in generated code, in documentation, or in test output. Use plain text and ASCII
+characters only.
 
-## Comprehensive Test Runner Script
+## Loading the Right Pester Version
 
-Create a standardized test execution script for consistent testing across environments:
+A test file declares the minimum version with `#Requires` (TST-01). That line does not choose
+between installed versions, and Windows PowerShell 5.1 ships with Pester 3.4.0. Install the version
+the standard targets and import exactly that version before a run:
 
 ```powershell
-# Invoke-Tests.ps1
-#Requires -Version 5.1
+Install-PSResource -Name Pester -Version 6.2.0 -TrustRepository
+Import-Module -Name Pester -RequiredVersion 6.2.0
+```
+
+## Running Tests
+
+```powershell
+# Every test file under a folder
+Invoke-Pester -Path ./Tests
+
+# One file, listing every test
+Invoke-Pester -Path ./Tests/Unit/Get-ServerHealth.Tests.ps1 -Output Detailed
+
+# By tag
+Invoke-Pester -Path ./Tests -TagFilter 'Unit'
+Invoke-Pester -Path ./Tests -ExcludeTagFilter 'Integration', 'Slow'
+
+# By name, with wildcards
+Invoke-Pester -Path ./Tests -FullNameFilter '*Get-ServerHealth*'
+```
+
+`-Output` takes `None`, `Normal`, `Detailed`, or `Diagnostic`. It also accepts `Minimal`, which
+Pester 6 treats as `Normal`.
+
+For coverage, reports, or any other option, pass a configuration object; see
+[Pester Configuration Guide](./pester-configuration.md). To run exactly what CI runs, call the
+script that CI calls: the [runner script](#the-test-runner-script) below, or the gate script in
+[CI/CD Integration Guide](./cicd-integration.md#the-gate-script).
+
+### Console Output
+
+A run prints one banner, one line for each test file, and one summary:
+
+```text
+Running tests from 4 files.
+[+] C:\repo\Tests\Unit\Get-ServerHealth.Tests.ps1 638ms (5 tests)
+Tests completed in 1.2s
+Tests Passed: 20, Failed: 0, Skipped: 0, Inconclusive: 0, NotRun: 0
+```
+
+A discovery-only run (`Run.SkipRun`) prints `Starting discovery in 4 files.`,
+`Discovery found 20 tests in 39ms.`, and `Test run was skipped.` instead.
+
+Do not read results from this text. Set `Run.PassThru` and use the result object.
+
+## The Test Runner Script
+
+Keep one standard script, `Tests/Invoke-Tests.ps1`, so that tests run the same way on every machine
+and in CI. It takes the type of test and the environment, loads the configuration files of
+[Pester Configuration Guide](./pester-configuration.md#settings-for-each-environment), prints a
+summary, writes the reports, and applies the gate.
+
+The script, its helper file, and the settings files are kept in the `Tests` folder, as the layout
+in [Pester Test Structure Guide](./test-structure-guide.md#test-directory-layout) shows. A `build`
+folder beside `Tests` is the alternative; both are one level below the repository root, so the
+script is the same in either.
+
+```powershell
+#requires -Version 7.6
+
+<#
+.SYNOPSIS
+Runs the Pester tests of one type and applies the quality gate.
+
+.DESCRIPTION
+Loads the Pester configuration of the environment, selects the tests of the requested type, runs
+them, and prints a summary. Writes a test result report and a metrics file, and on request a
+coverage report and an HTML report. Throws when no tests ran, when the Pester result is not
+'Passed', or when code coverage is below the configured target. With PassThru the result object is
+returned and the last two checks are left to the caller.
+
+.PARAMETER TestType
+Tests to run: Unit, Integration, Performance, Security, or All.
+
+.PARAMETER Environment
+Environment whose configuration file is merged over the standard file.
+
+.PARAMETER OutputPath
+Folder that receives the reports. The default is Tests/Results in the repository.
+
+.PARAMETER CodeCoverage
+Measures code coverage and applies the coverage gate.
+
+.PARAMETER PassThru
+Returns the Pester result object.
+
+.PARAMETER ShowReport
+Writes an HTML report of the run.
+
+.PARAMETER Tag
+Tags to run in place of the tag of the test type. A test that has any one of the tags runs, and
+the folder of the test type still limits the run.
+
+.PARAMETER ExcludeTag
+Tags to leave out.
+
+.PARAMETER Parallel
+Experimental. Runs test files at the same time. Ignored for performance and integration tests.
+
+.PARAMETER ThrottleLimit
+Number of files to run at once in a parallel run. 0 uses every processor.
+
+.PARAMETER NoShuffle
+Runs the tests in their declared order. Without it every run is shuffled, except a run of
+performance tests: files, blocks, and tests run in a random order. Experimental in Pester.
+
+.PARAMETER ShuffleSeed
+Seed of an earlier shuffled run, to repeat its order. 0 picks a new seed and prints it.
+
+.EXAMPLE
+./Tests/Invoke-Tests.ps1 -TestType Unit
+
+Runs the unit tests with the development configuration.
+
+.EXAMPLE
+./Tests/Invoke-Tests.ps1 -TestType Unit -Environment CI -CodeCoverage
+
+Runs the unit tests as CI does, in a shuffled order, with the coverage gate.
+
+.EXAMPLE
+./Tests/Invoke-Tests.ps1 -TestType Unit -ShuffleSeed 852659930
+
+Repeats the order of an earlier run, to reproduce a failure that it reported.
+
+.INPUTS
+None. This script does not accept pipeline input.
+
+.OUTPUTS
+None, or the Pester result object when PassThru is given.
+#>
 [CmdletBinding()]
 param(
     [ValidateSet('Unit', 'Integration', 'Performance', 'Security', 'All')]
@@ -20,402 +153,525 @@ param(
     [ValidateSet('Development', 'CI', 'Production')]
     [string]$Environment = 'Development',
 
-    [string]$OutputPath = './Tests/Results',
+    [string]$OutputPath,
+
     [switch]$CodeCoverage,
+
     [switch]$PassThru,
+
     [switch]$ShowReport,
+
     [string[]]$Tag = @(),
+
     [string[]]$ExcludeTag = @(),
 
-    # EXPERIMENTAL: run test files concurrently, one file per runspace.
-    # Runs on Windows PowerShell 5.1 and PowerShell 7 alike from Pester 6.2.
     [switch]$Parallel,
-    [int]$ThrottleLimit = 0,  # 0 = use all available processors
 
-    # EXPERIMENTAL: randomize file/block/test order to surface order dependence.
-    [switch]$Shuffle,
-    [int]$ShuffleSeed = 0     # 0 = new seed each run, printed at the start
+    [int]$ThrottleLimit = 0,
+
+    [switch]$NoShuffle,
+
+    [int]$ShuffleSeed = 0
 )
 
-begin {
-    Write-Host "PowerShell Test Execution Framework" -ForegroundColor Cyan
-    Write-Host "Test Type: $TestType | Environment: $Environment" -ForegroundColor Green
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-    # Pester 6.2 is required - Should-* assertions, New-ShouldAssertion, the parallel
-    # runner, Run.Shuffle, and BeforeAll in Pester.BeforeContainer.ps1 are not all
-    # present in earlier versions
-    $pester = Get-Module Pester -ListAvailable |
-        Sort-Object Version -Descending | Select-Object -First 1
+$repositoryRoot = Split-Path -Path $PSScriptRoot -Parent
+$testRoot = Join-Path -Path $repositoryRoot -ChildPath 'Tests'
+if (-not $OutputPath) {
+    $OutputPath = Join-Path -Path $testRoot -ChildPath 'Results'
+}
+$null = New-Item -Path $OutputPath -ItemType Directory -Force
 
-    if (-not $pester -or $pester.Version -lt [version]'6.2.0') {
-        Write-Error "Pester 6.2+ is required (found: $(if ($pester) { $pester.Version } else { 'none' })). Install with: Install-Module Pester -MinimumVersion 6.2.0 -Force"
-        exit 1
-    }
-    Import-Module Pester -MinimumVersion 6.2.0 -Force
+. (Join-Path -Path $PSScriptRoot -ChildPath 'TestRunnerHelpers.ps1')
 
-    # Ensure output directory exists
-    if (-not (Test-Path $OutputPath)) {
-        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
-    }
+Write-Host "Test type: $TestType | Environment: $Environment" -ForegroundColor Green
 
-    # Import test configuration
-    $configPath = Join-Path $PSScriptRoot "PesterConfiguration.$Environment.psd1"
-    if (-not (Test-Path $configPath)) {
-        $configPath = Join-Path $PSScriptRoot "PesterConfiguration.psd1"
-    }
+$environmentCheck = Test-TestEnvironment -TestDataPath (Join-Path -Path $testRoot -ChildPath 'TestData')
+if (-not $environmentCheck.Valid) {
+    throw "The test environment is not ready. $($environmentCheck.Issues -join ' ')"
+}
+Import-Module -Name Pester -RequiredVersion 6.2.0
 
-    if (Test-Path $configPath) {
-        $configData = Import-PowerShellDataFile $configPath
-        $config = New-PesterConfiguration -Hashtable $configData
+$configuration = Get-PesterConfiguration -Environment $Environment -ConfigPath $PSScriptRoot
+$configuration.Run.RepoRoot = $repositoryRoot
+$configuration.Run.PassThru = $true
+$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+# The tests of the requested type
+$typeFolders = @(
+    Get-ChildItem -LiteralPath $testRoot -Directory |
+        Where-Object { $_.Name -in 'Unit', 'Integration', 'Performance', 'Security' } |
+        ForEach-Object { $_.FullName }
+)
+if ($typeFolders.Count -eq 0) {
+    # A flat Tests folder (MOD-01): every test file is in the run, and the tag selects the type.
+    $configuration.Run.Path = $testRoot
+} elseif ($TestType -eq 'All') {
+    # The Performance and Security folders exist only where such tests do (TST-43).
+    $configuration.Run.Path = $typeFolders
+} else {
+    $configuration.Run.Path = Join-Path -Path $testRoot -ChildPath $TestType
+}
+if ($TestType -ne 'All') {
+    $configuration.Filter.Tag = $TestType
+}
+if ($Tag.Count -gt 0) {
+    # Several tags select a test that has any one of them, so these tags replace the tag of the
+    # test type. The folder of the type still limits the run.
+    $configuration.Filter.Tag = $Tag
+}
+if ($ExcludeTag.Count -gt 0) {
+    $configuration.Filter.ExcludeTag = $ExcludeTag
+}
+
+# Code coverage
+$configuration.CodeCoverage.Enabled = [bool]$CodeCoverage
+if ($CodeCoverage) {
+    $coverageFile = "Coverage-$TestType-$timestamp.xml"
+    $configuration.CodeCoverage.OutputPath = Join-Path -Path $OutputPath -ChildPath $coverageFile
+    Write-Host 'Code coverage enabled (profiler-based)' -ForegroundColor Green
+}
+
+# Parallel execution
+if ($Parallel) {
+    if ($TestType -in 'Performance', 'Integration') {
+        Write-Warning "$TestType tests should not run in parallel; ignoring -Parallel."
     } else {
-        $config = New-PesterConfiguration
-    }
-}
+        $configuration.Run.Parallel = $true
+        $configuration.Run.ParallelThrottleLimit = $ThrottleLimit
+        $limitText = if ($ThrottleLimit -eq 0) { 'all processors' } else { "$ThrottleLimit files" }
+        Write-Host "Parallel execution enabled (throttle: $limitText)" -ForegroundColor Green
 
-process {
-    try {
-        $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-
-        # Configure test execution based on type
-        switch ($TestType) {
-            'Unit' {
-                $config.Run.Path = @('./Tests/Unit')
-                $config.Filter.Tag = @('Unit')
-                Write-Host "Executing Unit Tests..." -ForegroundColor Yellow
-            }
-            'Integration' {
-                $config.Run.Path = @('./Tests/Integration')
-                $config.Filter.Tag = @('Integration')
-                Write-Host "Executing Integration Tests..." -ForegroundColor Yellow
-            }
-            'Performance' {
-                $config.Run.Path = @('./Tests/Performance')
-                $config.Filter.Tag = @('Performance')
-                Write-Host "Executing Performance Tests..." -ForegroundColor Yellow
-            }
-            'Security' {
-                $config.Run.Path = @('./Tests/Security')
-                $config.Filter.Tag = @('Security')
-                Write-Host "Executing Security Tests..." -ForegroundColor Yellow
-            }
-            'All' {
-                $config.Run.Path = @('./Tests/Unit', './Tests/Integration', './Tests/Performance', './Tests/Security')
-                Write-Host "Executing All Tests..." -ForegroundColor Yellow
-            }
-        }
-
-        # Apply additional tag filtering
-        if ($Tag) {
-            $config.Filter.Tag = @($config.Filter.Tag.Value) + $Tag
-        }
-        if ($ExcludeTag) {
-            $config.Filter.ExcludeTag = $ExcludeTag
-        }
-
-        $config.Run.PassThru = $true
-
-        # Configure code coverage
         if ($CodeCoverage) {
-            $config.CodeCoverage.Enabled = $true
-            $config.CodeCoverage.OutputPath = Join-Path $OutputPath "Coverage-$TestType-$timestamp.xml"
-            Write-Host "Code coverage enabled (profiler-based)" -ForegroundColor Green
-        }
-
-        # Configure parallel execution
-        if ($Parallel) {
-            if ($TestType -in 'Performance', 'Integration') {
-                Write-Warning "$TestType tests should not run in parallel; ignoring -Parallel."
-            }
-            else {
-                $config.Run.Parallel = $true
-                $config.Run.ParallelThrottleLimit = $ThrottleLimit
-                $limitText = if ($ThrottleLimit -eq 0) { 'all processors' } else { "$ThrottleLimit files" }
-                Write-Host "Parallel execution enabled (throttle: $limitText)" -ForegroundColor Green
-
-                # Pester 6.1 collects coverage under parallel, but forces breakpoint mode
-                # to do it - which is far slower per file than the profiler tracer.
-                if ($CodeCoverage) {
-                    Write-Warning "Coverage under -Parallel uses breakpoints, not the profiler. Expect it to be slower than a sequential coverage run."
-                }
-            }
-        }
-
-        # Configure shuffled execution order
-        if ($Shuffle) {
-            if ($TestType -eq 'Performance') {
-                Write-Warning "Performance baselines assume a fixed order; ignoring -Shuffle."
-            }
-            else {
-                $config.Run.Shuffle = $true
-                if ($ShuffleSeed -ne 0) {
-                    $config.Run.ShuffleSeed = $ShuffleSeed
-                    Write-Host "Shuffled execution replaying seed $ShuffleSeed" -ForegroundColor Green
-                } else {
-                    Write-Host "Shuffled execution enabled (seed printed below)" -ForegroundColor Green
-                }
-            }
-        }
-
-        # Configure test results output
-        $config.TestResult.Enabled = $true
-        $config.TestResult.OutputPath = Join-Path $OutputPath "TestResults-$TestType-$timestamp.xml"
-
-        # Set environment-specific verbosity
-        if ($Environment -eq 'CI') {
-            $config.Output.Verbosity = 'Normal'
-            $config.Output.CIFormat = 'Auto'
-        } else {
-            $config.Output.Verbosity = 'Detailed'
-        }
-
-        # Execute tests
-        $startTime = Get-Date
-        Write-Host "Test execution started at $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
-
-        $result = Invoke-Pester -Configuration $config
-
-        $endTime = Get-Date
-        $duration = $endTime - $startTime
-
-        # Generate comprehensive summary
-        Write-Host "`nTest Execution Summary:" -ForegroundColor Green
-        Write-Host "  Environment: $Environment" -ForegroundColor Gray
-        Write-Host "  Test Type:   $TestType" -ForegroundColor Gray
-        Write-Host "  Duration:    $($duration.ToString('hh\:mm\:ss'))" -ForegroundColor Gray
-        Write-Host "  Total Tests: $($result.TotalCount)" -ForegroundColor White
-        Write-Host "  Passed:      $($result.PassedCount)" -ForegroundColor Green
-        Write-Host "  Failed:      $($result.FailedCount)" -ForegroundColor $(if ($result.FailedCount -gt 0) { 'Red' } else { 'Green' })
-        Write-Host "  Skipped:     $($result.SkippedCount)" -ForegroundColor Yellow
-        Write-Host "  Inconclusive: $($result.InconclusiveCount)" -ForegroundColor Yellow
-        Write-Host "  Not Run:     $($result.NotRunCount)" -ForegroundColor Gray
-
-        # Code coverage summary.
-        # Pester 5/6 property names: CoveragePercent, CommandsExecutedCount,
-        # CommandsAnalyzedCount. The Pester 4 names (CoveredPercent,
-        # NumberOfCommandsExecuted) do not exist and silently return $null.
-        if ($CodeCoverage -and $result.CodeCoverage) {
-            $coveragePercent = [math]::Round($result.CodeCoverage.CoveragePercent, 2)
-            $coverageTarget  = $result.CodeCoverage.CoveragePercentTarget
-            $coverageColor = if ($coveragePercent -ge $coverageTarget) { 'Green' }
-                             elseif ($coveragePercent -ge ($coverageTarget * 0.75)) { 'Yellow' }
-                             else { 'Red' }
-            Write-Host "  Code Coverage: $coveragePercent% (target $coverageTarget%)" -ForegroundColor $coverageColor
-            Write-Host "    Commands Covered: $($result.CodeCoverage.CommandsExecutedCount)" -ForegroundColor Gray
-            Write-Host "    Commands Total:   $($result.CodeCoverage.CommandsAnalyzedCount)" -ForegroundColor Gray
-            Write-Host "    Files Analyzed:   $($result.CodeCoverage.FilesAnalyzedCount)" -ForegroundColor Gray
-        }
-
-        # Performance summary for performance tests.
-        # Test.Duration is a TimeSpan - use .TotalMilliseconds, not the raw object.
-        if ($TestType -eq 'Performance' -or $TestType -eq 'All') {
-            Write-Host "`nPerformance Summary:" -ForegroundColor Cyan
-            $performanceTests = $result.Tests | Where-Object { $_.Tag -contains 'Performance' }
-            if ($performanceTests) {
-                $avgMs = ($performanceTests.Duration.TotalMilliseconds | Measure-Object -Average).Average
-                Write-Host "  Average Test Duration: $([math]::Round($avgMs, 2))ms" -ForegroundColor Gray
-
-                $slowTests = $performanceTests |
-                    Where-Object { $_.Duration.TotalSeconds -gt 5 } |
-                    Sort-Object { $_.Duration } -Descending
-                if ($slowTests) {
-                    Write-Host "  WARNING - Slow Tests (>5s):" -ForegroundColor Yellow
-                    $slowTests | ForEach-Object {
-                        Write-Host "    - $($_.ExpandedPath): $([math]::Round($_.Duration.TotalSeconds, 2))s" -ForegroundColor Yellow
-                    }
-                }
-            }
-        }
-
-        # Failed test details
-        if ($result.FailedCount -gt 0) {
-            Write-Host "`nFailed Tests:" -ForegroundColor Red
-            foreach ($test in $result.Failed) {
-                Write-Host "  - $($test.ExpandedPath)" -ForegroundColor Red
-                Write-Host "    Error: $($test.ErrorRecord.Exception.Message)" -ForegroundColor Red
-
-                # Include troubleshooting hints
-                $hint = Get-TroubleshootingHint -TestName $test.Name -ErrorRecord $test.ErrorRecord
-                if ($hint) {
-                    Write-Host "    Hint: $hint" -ForegroundColor Cyan
-                }
-            }
-        }
-
-        # Report containers that failed to discover. This is a v6 failure mode
-        # (empty -ForEach, or a file that cannot be discovered independently)
-        # and it does NOT show up in FailedCount -
-        # a suite can report 0 failed tests while whole files never ran.
-        if ($result.FailedContainersCount -gt 0) {
-            Write-Host "`nFailed Containers (discovery or setup errors):" -ForegroundColor Red
-            $result.FailedContainers | ForEach-Object {
-                Write-Host "  - $($_.Item)" -ForegroundColor Red
-                if ($_.ErrorRecord) {
-                    Write-Host "    $($_.ErrorRecord.Exception.Message)" -ForegroundColor Red
-                }
-            }
-        }
-
-        # Generate test report
-        if ($ShowReport) {
-            $reportPath = Join-Path $OutputPath "TestReport-$TestType-$timestamp.html"
-            New-TestReport -TestResult $result -OutputPath $reportPath -CodeCoverage:$CodeCoverage
-            Write-Host "`nTest report generated: $reportPath" -ForegroundColor Green
-        }
-
-        # Export metrics for trending
-        $metrics = @{
-            TestType          = $TestType
-            Environment       = $Environment
-            Timestamp         = Get-Date -Format 'o'
-            Duration          = $duration.TotalSeconds
-            TotalTests        = $result.TotalCount
-            PassedTests       = $result.PassedCount
-            FailedTests       = $result.FailedCount
-            SkippedTests      = $result.SkippedCount
-            CodeCoverage      = if ($result.CodeCoverage) { $result.CodeCoverage.CoveragePercent } else { $null }
-            Parallel          = [bool]$config.Run.Parallel.Value
-            # Record the seed. A shuffle failure is only reproducible if the seed
-            # outlives the console log.
-            Shuffle           = [bool]$config.Run.Shuffle.Value
-            ShuffleSeed       = $result.Configuration.Run.ShuffleSeed.Value
-            PesterVersion     = $pester.Version.ToString()
-            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
-            Platform          = $PSVersionTable.Platform
-        }
-
-        $metricsPath = Join-Path $OutputPath "TestMetrics-$TestType-$timestamp.json"
-        $metrics | ConvertTo-Json | Out-File $metricsPath -Encoding UTF8
-
-        # Handle CI/CD integration
-        if ($Environment -eq 'CI') {
-            # GitHub Actions step outputs.
-            # ::set-output was disabled by GitHub in 2023 - write to $GITHUB_OUTPUT.
-            if ($env:GITHUB_OUTPUT) {
-                "total-tests=$($result.TotalCount)"   | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-                "passed-tests=$($result.PassedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-                "failed-tests=$($result.FailedCount)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-                if ($result.CodeCoverage) {
-                    "code-coverage=$($result.CodeCoverage.CoveragePercent)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
-                }
-            }
-
-            # GitHub Actions job summary
-            if ($env:GITHUB_STEP_SUMMARY) {
-                $summary = @(
-                    "## Test Results - $TestType"
-                    ''
-                    '| Metric | Value |'
-                    '| --- | --- |'
-                    "| Total | $($result.TotalCount) |"
-                    "| Passed | $($result.PassedCount) |"
-                    "| Failed | $($result.FailedCount) |"
-                    "| Skipped | $($result.SkippedCount) |"
-                ) -join "`n"
-                $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-            }
-
-            # Azure DevOps variables
-            if ($env:BUILD_BUILDID) {
-                Write-Host "##vso[task.setvariable variable=TotalTests]$($result.TotalCount)"
-                Write-Host "##vso[task.setvariable variable=PassedTests]$($result.PassedCount)"
-                Write-Host "##vso[task.setvariable variable=FailedTests]$($result.FailedCount)"
-                if ($result.CodeCoverage) {
-                    Write-Host "##vso[task.setvariable variable=CodeCoverage]$($result.CodeCoverage.CoveragePercent)"
-                }
-            }
-        }
-
-        # Return result for further processing
-        if ($PassThru) {
-            return $result
-        }
-
-        # Exit with appropriate code. Check container failures too - a file that
-        # failed discovery contributes 0 to FailedCount.
-        if ($result.FailedCount -gt 0 -or $result.FailedContainersCount -gt 0) {
-            Write-Host "`nTests failed. Exiting with code 1." -ForegroundColor Red
-            exit 1
-        } else {
-            Write-Host "`nAll tests passed successfully." -ForegroundColor Green
-            exit 0
-        }
-    }
-    catch {
-        Write-Host "`nTest execution failed: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Host $_.ScriptStackTrace -ForegroundColor Gray
-
-        if ($PassThru) {
-            throw
-        } else {
-            exit 1
+            # A parallel run collects coverage, but with breakpoints instead of the profiler.
+            Write-Warning 'Coverage in a parallel run uses breakpoints, not the profiler.'
         }
     }
 }
 
-end {
-    Write-Host "`nCleaning up test environment..." -ForegroundColor Gray
+# Shuffled order, in every run except a run of performance tests (TST-46). The settings file may
+# have set the option either way, so it is set here in both cases.
+$isShuffled = -not $NoShuffle -and $TestType -ne 'Performance'
+$configuration.Run.Shuffle = $isShuffled
+if ($isShuffled) {
+    if ($ShuffleSeed -ne 0) {
+        $configuration.Run.ShuffleSeed = $ShuffleSeed
+        Write-Host "Shuffled execution replaying seed $ShuffleSeed" -ForegroundColor Green
+    } else {
+        Write-Host 'Shuffled execution enabled (the seed is printed below)' -ForegroundColor Green
+    }
+} else {
+    Write-Host 'Shuffled execution is off (declared order)' -ForegroundColor Yellow
+    if ($ShuffleSeed -ne 0) {
+        Write-Warning 'This run is not shuffled; ignoring -ShuffleSeed.'
+    }
 }
 
-# Helper functions
-function Get-TroubleshootingHint {
+# Test result report, with the type and the time in its name
+$resultFile = "TestResults-$TestType-$timestamp.xml"
+$configuration.TestResult.Enabled = $true
+$configuration.TestResult.OutputPath = Join-Path -Path $OutputPath -ChildPath $resultFile
+
+# Verbosity for the environment
+if ($Environment -eq 'CI') {
+    $configuration.Output.Verbosity = 'Normal'
+} else {
+    $configuration.Output.Verbosity = 'Detailed'
+}
+
+# The relative paths of the configuration files are resolved from the repository root.
+Push-Location -LiteralPath $repositoryRoot
+try {
+    $configurationCheck = Test-PesterConfiguration -Configuration $configuration
+    if (-not $configurationCheck.Valid) {
+        throw "The Pester configuration is not valid. $($configurationCheck.Issues -join ' ')"
+    }
+
+    $startTime = Get-Date
+    Write-Host "Test execution started at $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+    $result = Invoke-Pester -Configuration $configuration
+    $duration = (Get-Date) - $startTime
+} finally {
+    Pop-Location
+}
+
+if ($null -eq $result -or $result.TotalCount -eq 0) {
+    throw 'Pester ran no tests.'
+}
+
+# Summary
+$failedColor = if ($result.FailedCount -gt 0) { 'Red' } else { 'Green' }
+Write-Host ''
+Write-Host 'Test Execution Summary:' -ForegroundColor Green
+Write-Host "  Environment:  $Environment"
+Write-Host "  Test type:    $TestType"
+Write-Host "  Duration:     $($duration.ToString('hh\:mm\:ss'))"
+Write-Host "  Total tests:  $($result.TotalCount)"
+Write-Host "  Passed:       $($result.PassedCount)" -ForegroundColor Green
+Write-Host "  Failed:       $($result.FailedCount)" -ForegroundColor $failedColor
+Write-Host "  Skipped:      $($result.SkippedCount)" -ForegroundColor Yellow
+Write-Host "  Inconclusive: $($result.InconclusiveCount)" -ForegroundColor Yellow
+Write-Host "  Not run:      $($result.NotRunCount)"
+
+# Coverage summary. The names are CoveragePercent, CommandsExecutedCount, and
+# CommandsAnalyzedCount. The Pester 4 names CoveredPercent and NumberOfCommandsExecuted do not
+# exist.
+$coveragePercent = $null
+if ($CodeCoverage -and $null -ne $result.CodeCoverage) {
+    $coveragePercent = [math]::Round($result.CodeCoverage.CoveragePercent, 2)
+    $coverageTarget = $result.CodeCoverage.CoveragePercentTarget
+    $coverageColor = if ($coveragePercent -ge $coverageTarget) {
+        'Green'
+    } elseif ($coveragePercent -ge ($coverageTarget * 0.75)) {
+        'Yellow'
+    } else {
+        'Red'
+    }
+    Write-Host "  Code Coverage: $coveragePercent% (target $coverageTarget%)" -ForegroundColor $coverageColor
+    Write-Host "    Commands covered: $($result.CodeCoverage.CommandsExecutedCount)"
+    Write-Host "    Commands total:   $($result.CodeCoverage.CommandsAnalyzedCount)"
+    Write-Host "    Files analyzed:   $($result.CodeCoverage.FilesAnalyzedCount)"
+}
+
+# Performance summary. The Duration of a test is a TimeSpan: use TotalMilliseconds, not the
+# object itself.
+if ($TestType -in 'Performance', 'All') {
+    $performanceRoot = Join-Path -Path $testRoot -ChildPath 'Performance'
+    $performanceTests = @(
+        $result.Tests | Where-Object {
+            $_.ScriptBlock.File.StartsWith($performanceRoot, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+    )
+    if ($performanceTests.Count -gt 0) {
+        $averageMs = ($performanceTests.Duration.TotalMilliseconds | Measure-Object -Average).Average
+        Write-Host ''
+        Write-Host 'Performance Summary:' -ForegroundColor Cyan
+        Write-Host "  Average test duration: $([math]::Round($averageMs, 2))ms"
+
+        $slowTests = $performanceTests |
+            Where-Object { $_.Duration.TotalSeconds -gt 5 } |
+            Sort-Object -Property Duration -Descending
+        foreach ($slowTest in $slowTests) {
+            $seconds = [math]::Round($slowTest.Duration.TotalSeconds, 2)
+            Write-Host "  Slow test (over 5 s): $($slowTest.ExpandedPath): ${seconds}s" -ForegroundColor Yellow
+        }
+    }
+}
+
+# Failed tests, each with its error and a hint
+if ($result.FailedCount -gt 0) {
+    Write-Host ''
+    Write-Host 'Failed tests:' -ForegroundColor Red
+    foreach ($test in $result.Failed) {
+        $testError = $test.ErrorRecord[0]
+        Write-Host "  - $($test.ExpandedPath)" -ForegroundColor Red
+        Write-Host "    Error: $($testError.Exception.Message)" -ForegroundColor Red
+
+        $hint = Get-TroubleshootingHint -TestName $test.Name -ErrorRecord $testError
+        if ($hint) {
+            Write-Host "    Hint: $hint" -ForegroundColor Cyan
+        }
+    }
+}
+
+# Files that failed discovery or setup. Such a file adds nothing to FailedCount, so a suite can
+# report 0 failed tests while whole files never ran.
+if ($result.FailedContainersCount -gt 0) {
+    Write-Host ''
+    Write-Host 'Failed files (discovery or setup errors):' -ForegroundColor Red
+    foreach ($container in $result.FailedContainers) {
+        Write-Host "  - $($container.Item)" -ForegroundColor Red
+        foreach ($containerError in $container.ErrorRecord) {
+            Write-Host "    $($containerError.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
+
+# HTML report
+if ($ShowReport) {
+    $reportPath = Join-Path -Path $OutputPath -ChildPath "TestReport-$TestType-$timestamp.html"
+    New-TestReport -TestResult $result -OutputPath $reportPath -CodeCoverage:$CodeCoverage
+    Write-Host "Test report written: $reportPath" -ForegroundColor Green
+}
+
+# Metrics for trending. The seed is recorded because a shuffled failure can be repeated only
+# while the seed outlives the console log.
+$metrics = [ordered]@{
+    TestType = $TestType
+    Environment = $Environment
+    Timestamp = Get-Date -Format 'o'
+    Duration = $duration.TotalSeconds
+    TotalTests = $result.TotalCount
+    PassedTests = $result.PassedCount
+    FailedTests = $result.FailedCount
+    SkippedTests = $result.SkippedCount
+    CodeCoverage = $coveragePercent
+    Parallel = [bool]$configuration.Run.Parallel.Value
+    Shuffle = [bool]$configuration.Run.Shuffle.Value
+    ShuffleSeed = $result.Configuration.Run.ShuffleSeed.Value
+    PesterVersion = (Get-Module -Name Pester).Version.ToString()
+    PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+    Platform = [System.Environment]::OSVersion.Platform.ToString()
+}
+$metricsPath = Join-Path -Path $OutputPath -ChildPath "TestMetrics-$TestType-$timestamp.json"
+$metrics | ConvertTo-Json | Set-Content -LiteralPath $metricsPath -Encoding utf8
+
+if ($Environment -eq 'CI') {
+    # GitHub Actions step outputs. The ::set-output command is deprecated and the runner warns: write
+    # to the file that GITHUB_OUTPUT names.
+    if ($env:GITHUB_OUTPUT) {
+        $outputLines = @(
+            "total-tests=$($result.TotalCount)"
+            "passed-tests=$($result.PassedCount)"
+            "failed-tests=$($result.FailedCount)"
+            if ($null -ne $coveragePercent) {
+                "code-coverage=$coveragePercent"
+            }
+        )
+        Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value $outputLines -Encoding utf8
+    }
+
+    # GitHub Actions job summary
+    if ($env:GITHUB_STEP_SUMMARY) {
+        $summaryLines = @(
+            "## Test Results - $TestType"
+            ''
+            '| Metric | Value |'
+            '| --- | --- |'
+            "| Total | $($result.TotalCount) |"
+            "| Passed | $($result.PassedCount) |"
+            "| Failed | $($result.FailedCount) |"
+            "| Skipped | $($result.SkippedCount) |"
+            if ($null -ne $coveragePercent) {
+                "| Code coverage | $coveragePercent% (target $coverageTarget%) |"
+            }
+            ''
+        )
+        Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summaryLines -Encoding utf8
+    }
+
+    # Azure Pipelines variables
+    if ($env:BUILD_BUILDID) {
+        Write-Host "##vso[task.setvariable variable=TotalTests]$($result.TotalCount)"
+        Write-Host "##vso[task.setvariable variable=PassedTests]$($result.PassedCount)"
+        Write-Host "##vso[task.setvariable variable=FailedTests]$($result.FailedCount)"
+        if ($null -ne $coveragePercent) {
+            Write-Host "##vso[task.setvariable variable=CodeCoverage]$coveragePercent"
+        }
+    }
+}
+
+if ($PassThru) {
+    $result
+    return
+}
+
+# The gate. Result also covers a failed BeforeAll or AfterAll and a file that failed discovery.
+if ($result.Result -ne 'Passed') {
+    $counts = $result.FailedCount, $result.FailedBlocksCount, $result.FailedContainersCount
+    $summary = 'Failed tests: {0}. Failed blocks: {1}. Failed files: {2}.' -f $counts
+    if ($configuration.Run.Shuffle.Value) {
+        $seed = $result.Configuration.Run.ShuffleSeed.Value
+        $summary = "$summary Replay with Run.ShuffleSeed = $seed."
+    }
+    throw "Pester result is '$($result.Result)'. $summary"
+}
+
+# CoveragePercentTarget sets the reported target and does not fail the run, so the script
+# compares the figure and lists the uncovered commands for each file.
+if ($null -ne $coveragePercent -and $coveragePercent -lt $coverageTarget) {
+    Write-Host 'Uncovered commands:'
+    foreach ($file in $result.CodeCoverage.CommandsMissed | Group-Object -Property File) {
+        Write-Host "  $($file.Name): $($file.Count) command(s)"
+        if ($env:GITHUB_ACTIONS) {
+            Write-Host "::warning file=$($file.Name)::$($file.Count) uncovered command(s)"
+        }
+    }
+    throw "Code coverage is $coveragePercent percent. The target is $coverageTarget."
+}
+
+Write-Host 'All tests passed.' -ForegroundColor Green
+```
+
+Notes on the script:
+
+- It fails by throwing (CIC-05), and the gate tests `Result`, not `FailedCount` alone (TST-42).
+- `-Tag` replaces the tag of the test type, because several tags select a test that has any one of
+  them and adding a tag would widen the run. The folder of the type still limits it, so
+  `-TestType Unit -Tag CrossPlatform` runs the tests under `Tests/Unit` that are tagged
+  `CrossPlatform`. Use `-ExcludeTag` to narrow a selection further.
+- A flat `Tests` folder (MOD-01) has no folder for a test type. The script then runs every test
+  file in `Tests`, and the tag of the test type alone selects the tests, so `-Tag` decides the
+  selection by itself there.
+- Every report has the test type and the time in its name, in `Tests/Results`, so that runs do not
+  overwrite each other and one artifact pattern collects them: `Tests/Results/TestResults*.xml`,
+  `Tests/Results/Coverage*.xml`, and `Tests/Results/TestMetrics*.json`. Do not commit the folder.
+- `Run.Parallel` and `Run.Shuffle` are experimental. The script turns `Run.Parallel` on only when
+  the caller passes `-Parallel`. It shuffles every run except a run of performance tests (TST-46);
+  `-NoShuffle` runs the tests in their declared order, for example to compare with a shuffled
+  failure.
+- The script targets PowerShell 7.6. For a project that declares Windows PowerShell 5.1 support,
+  change the first line to `#requires -Version 5.1`. The script and its helper functions were run
+  under Windows PowerShell 5.1 with that line, with and without `-Parallel`.
+
+### Quick Commands
+
+```powershell
+# Unit tests during development
+./Tests/Invoke-Tests.ps1 -TestType Unit -Environment Development
+
+# Unit tests with coverage and an HTML report
+./Tests/Invoke-Tests.ps1 -TestType Unit -CodeCoverage -ShowReport
+
+# Tests with a tag, leaving out the slow ones
+./Tests/Invoke-Tests.ps1 -Tag 'Critical' -ExcludeTag 'Slow'
+
+# Fast feedback: unit tests in parallel, without coverage
+./Tests/Invoke-Tests.ps1 -TestType Unit -Parallel
+
+# Repeat the order of a run that failed, then compare with the declared order
+./Tests/Invoke-Tests.ps1 -TestType Unit -ShuffleSeed 852659930
+./Tests/Invoke-Tests.ps1 -TestType Unit -NoShuffle
+
+# What CI runs
+./Tests/Invoke-Tests.ps1 -TestType All -Environment CI -CodeCoverage
+./Tests/Invoke-Tests.ps1 -TestType Performance -Environment CI
+./Tests/Invoke-Tests.ps1 -TestType Security -Environment CI
+```
+
+### Checking the Environment First
+
+The runner validates the environment before it loads Pester: the PowerShell version, the pinned
+Pester version, and the test data folder. The configuration is validated by
+`Test-PesterConfiguration`; see
+[Pester Configuration Guide](./pester-configuration.md#validating-a-configuration-before-the-run).
+
+```powershell
+# Tests/TestRunnerHelpers.ps1
+function Test-TestEnvironment {
+    [CmdletBinding()]
+    [OutputType('TestRunner.Check')]
     param(
+        [string]$TestDataPath
+    )
+
+    $psVersion = $PSVersionTable.PSVersion
+    $pesterVersions = @((Get-Module -Name Pester -ListAvailable).Version)
+
+    $issues = @(
+        # Pester 6 runs on Windows PowerShell 5.1 and on PowerShell 7.4 or later.
+        if ($psVersion.Major -eq 5 -and $psVersion.Minor -lt 1) {
+            "Windows PowerShell 5.1 is required (found $psVersion)."
+        } elseif ($psVersion.Major -eq 6 -or ($psVersion.Major -eq 7 -and $psVersion.Minor -lt 4)) {
+            "PowerShell 7.4 or later is required (found $psVersion)."
+        }
+
+        if ($pesterVersions.Count -eq 0) {
+            'Required module missing: Pester.'
+        } elseif ($pesterVersions -notcontains [version]'6.2.0') {
+            "Pester 6.2.0 is required (found $($pesterVersions -join ', '))."
+        }
+
+        if ($TestDataPath -and -not (Test-Path -LiteralPath $TestDataPath)) {
+            "Test data folder missing: $TestDataPath"
+        }
+    )
+
+    [PSCustomObject]@{
+        PSTypeName = 'TestRunner.Check'
+        Valid = $issues.Count -eq 0
+        Issues = $issues
+    }
+}
+```
+
+### Failure Hints
+
+For each failed test the runner prints the error and, where the message is a known one, a hint. Add
+the messages that a project meets often.
+
+```powershell
+# Tests/TestRunnerHelpers.ps1
+function Get-TroubleshootingHint {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
         [string]$TestName,
-        # Do not name this parameter $Error - that shadows the automatic variable
+
+        # Not named $Error: that name belongs to an automatic variable (STY-13).
+        [Parameter(Mandatory)]
         [System.Management.Automation.ErrorRecord]$ErrorRecord
     )
 
     $hints = [ordered]@{
-        'Connection'     = 'Check network connectivity and firewall settings. See ./Troubleshooting/Connectivity/'
-        'Authentication' = 'Verify credentials and permissions. See ./Troubleshooting/Security/'
-        'Permission'     = 'Run as administrator or check file permissions. See ./Troubleshooting/Security/'
-        'Memory'         = 'Increase available memory or optimize code. See ./Troubleshooting/Performance/'
-        'Timeout'        = 'Increase timeout values or optimize performance. See ./Troubleshooting/Performance/'
-        'not recognized' = 'Command not found. In Pester 6 each test file must import its own modules - check BeforeAll/BeforeDiscovery.'
-        'ForEach'        = 'Empty -ForEach fails discovery in Pester 6. Build test data in BeforeDiscovery, not BeforeAll.'
-        'Assert-Mock'    = 'Assert-MockCalled was removed in Pester 6. Use Should -Invoke or Should-Invoke.'
-        'to measure or a' = 'Should-BeFasterThan/SlowerThan need a scriptblock or a timespan (Pester 6.2). Pipe the scriptblock, not its result.'
+        'Connection' = 'Check network connectivity and firewall settings.'
+        'Authentication' = 'Verify credentials and permissions.'
+        'Permission' = 'Run as administrator or check file permissions.'
+        'Memory' = 'Increase available memory or optimize the code.'
+        'Timeout' = 'Increase timeout values or optimize performance.'
+        'not recognized' = 'Command not found. In Pester 6 each test file imports its own modules.'
+        'ForEach' = 'An empty -ForEach fails discovery in Pester 6. Build test data in BeforeDiscovery.'
+        'Assert-Mock' = 'Assert-MockCalled was removed in Pester 6. Use Should -Invoke or Should-Invoke.'
+        'to measure or a' = 'Pipe the script block, not its result, to Should-BeFasterThan.'
     }
 
+    $message = $ErrorRecord.Exception.Message
     foreach ($keyword in $hints.Keys) {
-        if ($ErrorRecord.Exception.Message -match [regex]::Escape($keyword) -or $TestName -match [regex]::Escape($keyword)) {
+        $pattern = [regex]::Escape($keyword)
+        if ($message -match $pattern -or $TestName -match $pattern) {
             return $hints[$keyword]
         }
     }
-
-    return "Check ./Troubleshooting/ folder for detailed guidance"
 }
+```
 
+The Pester messages behind the last four hints are explained under
+[Messages and Their Causes](#messages-and-their-causes).
+
+### HTML Report
+
+`-ShowReport` writes an HTML report of the run. Test names and error messages often contain `<`,
+`>`, and `&`, which corrupt the report unless they are encoded.
+
+```powershell
+# Tests/TestRunnerHelpers.ps1
 function New-TestReport {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
+        [Parameter(Mandatory)]
         [object]$TestResult,
+
+        [Parameter(Mandatory)]
         [string]$OutputPath,
+
         [switch]$CodeCoverage
     )
 
     $rows = foreach ($test in $TestResult.Tests) {
-        $resultClass = switch ($test.Result) {
+        $rowClass = switch ($test.Result) {
             'Passed' { 'test-passed' }
             'Failed' { 'test-failed' }
-            default  { '' }
+            default { '' }
         }
-        $errorMessage = if ($test.ErrorRecord) {
-            [System.Web.HttpUtility]::HtmlEncode($test.ErrorRecord.Exception.Message)
-        } else { '' }
-        $name = [System.Web.HttpUtility]::HtmlEncode($test.ExpandedPath)
+        $name = [System.Net.WebUtility]::HtmlEncode($test.ExpandedPath)
+        $message = ''
+        if ($test.ErrorRecord.Count -gt 0) {
+            $message = [System.Net.WebUtility]::HtmlEncode($test.ErrorRecord[0].Exception.Message)
+        }
+        $milliseconds = [math]::Round($test.Duration.TotalMilliseconds, 2)
 
-        @"
-        <tr class="$resultClass">
-            <td>$name</td>
-            <td class="$($test.Result.ToLower())">$($test.Result)</td>
-            <td>$([math]::Round($test.Duration.TotalMilliseconds, 2))ms</td>
-            <td>$errorMessage</td>
-        </tr>
-"@
+        $rowFormat = '        <tr class="{0}"><td>{1}</td><td>{2}</td><td>{3}ms</td><td>{4}</td></tr>'
+        $rowFormat -f $rowClass, $name, $test.Result, $milliseconds, $message
     }
 
-    $coverageRow = if ($CodeCoverage -and $TestResult.CodeCoverage) {
-        "<p><strong>Code Coverage:</strong> $([math]::Round($TestResult.CodeCoverage.CoveragePercent, 2))%</p>"
-    } else { '' }
+    $coverageRow = ''
+    if ($CodeCoverage -and $null -ne $TestResult.CodeCoverage) {
+        $percent = [math]::Round($TestResult.CodeCoverage.CoveragePercent, 2)
+        $coverageRow = "<p><strong>Code Coverage:</strong> $percent%</p>"
+    }
 
     $html = @"
 <!DOCTYPE html>
@@ -426,9 +682,6 @@ function New-TestReport {
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .summary { background: #f0f0f0; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        .passed { color: green; }
-        .failed { color: red; }
-        .skipped { color: orange; }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #f2f2f2; }
@@ -441,432 +694,393 @@ function New-TestReport {
     <div class="summary">
         <h2>Summary</h2>
         <p><strong>Total Tests:</strong> $($TestResult.TotalCount)</p>
-        <p><strong class="passed">Passed:</strong> $($TestResult.PassedCount)</p>
-        <p><strong class="failed">Failed:</strong> $($TestResult.FailedCount)</p>
-        <p><strong class="skipped">Skipped:</strong> $($TestResult.SkippedCount)</p>
+        <p><strong>Passed:</strong> $($TestResult.PassedCount)</p>
+        <p><strong>Failed:</strong> $($TestResult.FailedCount)</p>
+        <p><strong>Skipped:</strong> $($TestResult.SkippedCount)</p>
         <p><strong>Duration:</strong> $($TestResult.Duration)</p>
         $coverageRow
     </div>
     <h2>Test Results</h2>
     <table>
-        <tr>
-            <th>Test Name</th>
-            <th>Result</th>
-            <th>Duration</th>
-            <th>Error Message</th>
-        </tr>
-$($rows -join "`n")
+        <tr><th>Test Name</th><th>Result</th><th>Duration</th><th>Error Message</th></tr>
+$($rows -join [Environment]::NewLine)
     </table>
 </body>
 </html>
 "@
 
-    $html | Out-File $OutputPath -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($OutputPath, 'Write the HTML test report')) {
+        try {
+            Set-Content -LiteralPath $OutputPath -Value $html -Encoding utf8 -ErrorAction Stop
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
+    }
 }
 ```
 
-`New-TestReport` uses `[System.Web.HttpUtility]::HtmlEncode`. On PowerShell 7 add
-`Add-Type -AssemblyName System.Web` first, or substitute your own encoder - test names and error
-messages routinely contain `<`, `>`, and `&` which would otherwise corrupt the report.
+The function encodes with `[System.Net.WebUtility]::HtmlEncode`, which needs no assembly to be
+loaded. `[System.Web.HttpUtility]::HtmlEncode` gives the same text but, measured on Windows
+PowerShell 5.1, fails with `Unable to find type [System.Web.HttpUtility]` until
+`Add-Type -AssemblyName System.Web` has run. On PowerShell 7.6 it worked without that line.
+
+### Metrics for Trending
+
+Each run writes its counts, the seed, and the versions to `TestMetrics-<type>-<time>.json`. Keep the
+files as build artifacts and read them back to see a trend:
+
+```powershell
+# Tests/TestRunnerHelpers.ps1
+function Get-TestTrend {
+    [CmdletBinding()]
+    [OutputType('TestRunner.Metrics')]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ResultsPath
+    )
+
+    try {
+        $files = Get-ChildItem -LiteralPath $ResultsPath -Filter 'TestMetrics-*.json' -File -ErrorAction Stop
+        $entries = foreach ($file in $files) {
+            Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop |
+                ConvertFrom-Json -ErrorAction Stop
+        }
+    } catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+
+    foreach ($entry in $entries | Sort-Object -Property Timestamp) {
+        $entry.PSObject.TypeNames.Insert(0, 'TestRunner.Metrics')
+        $entry
+    }
+}
+```
+
+### Outputs for the CI System
+
+With `-Environment CI` the runner publishes the counts to the CI system that it finds:
+
+| CI system | How the runner knows | What it writes |
+| --- | --- | --- |
+| GitHub Actions | `GITHUB_OUTPUT` is set | Step outputs `total-tests`, `passed-tests`, `failed-tests`, and `code-coverage`, appended to the file that the variable names |
+| GitHub Actions | `GITHUB_STEP_SUMMARY` is set | A Markdown table of the counts, shown as the job summary |
+| Azure Pipelines | `BUILD_BUILDID` is set | The variables `TotalTests`, `PassedTests`, `FailedTests`, and `CodeCoverage`, with `##vso[task.setvariable]` |
+
+Do not use the `::set-output` workflow command for step outputs. GitHub deprecated it in 2022; the
+file that `GITHUB_OUTPUT` names replaces it. These three behaviours belong to the CI services and
+were not run there; writing the two files was run locally with the variables pointing at temporary
+files.
+
+### Cleaning Up After a Run
+
+Tests write their files to `$TestDrive`, which Pester removes (TST-03), and such tests need no
+cleanup. For a suite that still leaves files behind, in the temporary folder or as a temporary
+database, run a cleanup function after the tests:
+
+```powershell
+# Tests/TestRunnerHelpers.ps1
+function Clear-TestArtifact {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+    param(
+        [string]$TempPath = [System.IO.Path]::GetTempPath(),
+
+        [string]$DatabasePath
+    )
+
+    $leftovers = @(
+        Get-ChildItem -LiteralPath $TempPath -Filter 'PesterTest*' -Force
+        if ($DatabasePath -and (Test-Path -LiteralPath $DatabasePath)) {
+            Get-Item -LiteralPath $DatabasePath
+        }
+    )
+
+    foreach ($leftover in $leftovers) {
+        if ($PSCmdlet.ShouldProcess($leftover.FullName, 'Remove the test artifact')) {
+            try {
+                Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction Stop
+            } catch {
+                $PSCmdlet.WriteError($_)
+            }
+        }
+    }
+}
+```
+
+```powershell
+$databasePath = Join-Path -Path $testRoot -ChildPath 'TestData/temp.db'
+Clear-TestArtifact -DatabasePath $databasePath -Confirm:$false
+```
 
 ## Result Object Reference
 
-Pester 6 keeps the v5 result object. The property names below are the ones that exist - the Pester 4
-names in older guidance return `$null` silently.
+`Invoke-Pester` returns the result object when `Run.PassThru` is set, or with `-PassThru`.
 
 | Use | Property |
 | --- | --- |
+| Outcome of the run | `Result`: the string `Passed` or `Failed` |
 | Counts | `TotalCount`, `PassedCount`, `FailedCount`, `SkippedCount`, `InconclusiveCount`, `NotRunCount` |
-| Test collections | `Tests`, `Passed`, `Failed`, `Skipped`, `Inconclusive`, `NotRun` |
-| Per-file results | `Containers` (each has `Item`, `Result`, `Passed`, `ErrorRecord`) |
-| Setup files applied | `$container.BeforeContainerFile` - the `Pester.BeforeContainer.ps1` files that ran for that file, outermost first (6.2+) |
-| Discovery failures | `FailedContainers`, `FailedContainersCount` |
-| Block-level failures | `FailedBlocks`, `FailedBlocksCount` |
-| Coverage percent | `CodeCoverage.CoveragePercent` (**not** `CoveredPercent`) |
+| Failures outside tests | `FailedBlocksCount`, `FailedContainersCount` |
+| Tests | `Tests`, `Passed`, `Failed`, `Skipped`, `Inconclusive`, `NotRun` |
+| Failed setup or teardown blocks | `FailedBlocks` |
+| Test files | `Containers`. Each has `Item`, `Result`, `Passed`, `ErrorRecord`, and `BeforeContainerFile`. |
+| Test files that failed | `FailedContainers` |
+| Coverage percentage | `CodeCoverage.CoveragePercent` |
+| Coverage counts | `CodeCoverage.CommandsAnalyzedCount`, `CommandsExecutedCount`, `CommandsMissedCount`, `FilesAnalyzedCount` |
+| Commands that did not run | `CodeCoverage.CommandsMissed`. Each has `File`, `Line`, and `Command`. |
 | Coverage target | `CodeCoverage.CoveragePercentTarget` |
-| Commands covered | `CodeCoverage.CommandsExecutedCount` (**not** `NumberOfCommandsExecuted`) |
-| Commands total | `CodeCoverage.CommandsAnalyzedCount` (**not** `NumberOfCommandsAnalyzed`) |
-| Missed commands | `CodeCoverage.CommandsMissed` |
-| Test duration | `$test.Duration` - a `TimeSpan`; use `.TotalMilliseconds` |
+| Time | `Duration` on the run, on each file, and on each test. It is a `TimeSpan`. |
+| Settings the run used | `Configuration` |
 
-`Duration` is a `TimeSpan`. Comparing it against a raw number (`$_.Duration -gt 5000`) does not do
-what it looks like - use `$_.Duration.TotalMilliseconds -gt 5000`.
+`CodeCoverage` is `$null` when coverage was not measured. The Pester 4 names `CoveredPercent`,
+`NumberOfCommandsExecuted`, and `NumberOfCommandsAnalyzed` do not exist.
 
-Pester 6 reports a **single duration** per test instead of the v5 `user|framework` split.
+`Duration` is a `TimeSpan`, so compare `$test.Duration.TotalMilliseconds` with a number, not
+`$test.Duration` itself. The console shows one duration for each test, where Pester 5 printed the
+user and framework times separately. The result object also has `UserDuration` and
+`FrameworkDuration`.
 
-**Always check `FailedContainersCount` alongside `FailedCount`.** A file that fails discovery
-contributes nothing to `FailedCount`, so a gate that only inspects `FailedCount` reports success
-while entire test files never ran. This is the most likely way a v6 upgrade passes CI while silently
-losing coverage.
+A tag on a `Describe` or `Context` block is not copied to the `Tag` property of the tests inside
+it. Measured on 6.2.0, a test in a block tagged `Performance` has an empty `Tag`, and the tag is on
+`$test.Block.Tag`.
 
-## Quick Execution Commands
+### What a Failure Looks Like
 
-### Development Testing
+A failed run does not always have a failed test. Measured on Pester 6.2.0:
 
-```powershell
-# Quick unit tests
-.\Invoke-Tests.ps1 -TestType Unit -Environment Development
+| What happened | `Result` | `FailedCount` | `FailedBlocksCount` | `FailedContainersCount` |
+| --- | --- | --- | --- | --- |
+| Two tests fail | `Failed` | 2 | 0 | 0 |
+| `BeforeAll` throws in a block with one test | `Failed` | 1 | 1 | 0 |
+| `AfterAll` throws after the tests passed | `Failed` | 0 | 1 | 0 |
+| A file throws during discovery | `Failed` | 0 | 0 | 1 |
+| `-ForEach` receives an empty list | `Failed` | 0 | 0 | 1 |
+| A file contains no tests | `Passed` | 0 | 0 | 0 |
 
-# Unit tests with coverage
-.\Invoke-Tests.ps1 -TestType Unit -CodeCoverage -ShowReport
+When no test file is found at all, `Invoke-Pester` writes an error, returns no result object, and
+sets `$LASTEXITCODE` to `-1`.
 
-# Specific tags
-.\Invoke-Tests.ps1 -Tag 'Critical' -ExcludeTag 'Slow'
-
-# Fast feedback: unit tests in parallel, no coverage
-.\Invoke-Tests.ps1 -TestType Unit -Parallel
-
-# Surface order dependence, then replay the order that broke
-.\Invoke-Tests.ps1 -TestType Unit -Shuffle
-.\Invoke-Tests.ps1 -TestType Unit -Shuffle -ShuffleSeed 852659930
-```
-
-### CI/CD Pipeline Integration
+This is why the gate tests for a missing result, for `TotalCount`, and for `Result`, and never for
+`FailedCount` alone (TST-42):
 
 ```powershell
-# Full CI test suite
-.\Invoke-Tests.ps1 -TestType All -Environment CI -CodeCoverage
+if ($null -eq $result -or $result.TotalCount -eq 0) {
+    throw 'Pester ran no tests.'
+}
 
-# Performance testing only
-.\Invoke-Tests.ps1 -TestType Performance -Environment CI
-
-# Security validation
-.\Invoke-Tests.ps1 -TestType Security -Environment CI
+if ($result.Result -ne 'Passed') {
+    $counts = $result.FailedCount, $result.FailedBlocksCount, $result.FailedContainersCount
+    $summary = 'Failed tests: {0}. Failed blocks: {1}. Failed files: {2}.' -f $counts
+    throw "Pester result is '$($result.Result)'. $summary"
+}
 ```
 
-## Parallel Test Execution (Experimental)
+### Messages and Their Causes
 
-Pester 6 runs test **files** concurrently, one file per runspace. From 6.2 the workers run on a
-runspace pool, which Windows PowerShell 5.1 and PowerShell 7 both have; 6.0 and 6.1 used
-`ForEach-Object -Parallel` and so ran sequentially on 5.1. On a multi-core machine this cuts
-wall-clock time substantially for large suites.
-
-```powershell
-$config = New-PesterConfiguration
-$config.Run.Path = './Tests/Unit'
-$config.Run.Parallel = $true
-$config.Run.ParallelThrottleLimit = 4   # 0 (default) uses all processors
-Invoke-Pester -Configuration $config
-```
-
-```powershell
-# Via the runner
-.\Invoke-Tests.ps1 -TestType Unit -Parallel -ThrottleLimit 4
-```
-
-### When It Falls Back to Sequential
-
-The run keeps working but emits a **warning** when:
-
-| Condition | Reason |
+| Message | Cause |
 | --- | --- |
-| `ScriptBlock` containers | In-memory containers cannot cross runspaces |
-| `Run.SkipRemainingOnFailure = 'Run'` | A cross-file stop cannot span runspaces |
-| Windows PowerShell 5.1 on Pester 6.0 or 6.1 | Those releases used `ForEach-Object -Parallel`, a PowerShell 7 feature. 6.2 moved to a runspace pool and runs parallel on 5.1 |
+| `Value can not be null or empty array` | A `-ForEach` list is empty or `$null`, usually because it was built in `BeforeAll`. Build it in `BeforeDiscovery`. |
+| `No mock for command '...' matched the call` | Every mock of the command has a `-ParameterFilter` and none matched. Add a mock without a filter. |
+| `A parameter cannot be found that matches parameter name 'Focus'` | `-Focus` does not exist in Pester 6. |
+| `Pester Should -Be syntax is disabled` | `Should.DisableV5` is set and the file uses the `Should -Be` style. |
+| `Expected a [scriptblock] to measure or a [timespan] to compare` | `Should-BeFasterThan` or `Should-BeSlowerThan` received something else. Pipe the script block. |
+| `No test files were found and no scriptblocks were provided` | `Run.Path` points at a folder without test files, or `Run.ExcludePath` removed them all. |
+| `CommandNotFoundException` for a helper function | The helper was dot-sourced by another test file, or at the top level of a setup file. |
 
-When every file opts out with `#pester:no-parallel` the run is simply sequential and no warning is
-printed - there is nothing left to parallelize.
+## Checking Structure Without Running Tests
 
-### A Lost File Is an Error
+`Run.SkipRun` discovers every file and runs nothing. Use it to find files that fail discovery, and
+with `Filter.Tag = 'None'` to find tests without a tag. Both scripts are in
+[Pester Test Structure Guide](./test-structure-guide.md#checking-the-structure).
 
-A worker that died before returning its result used to disappear from the run - the file was not
-failed, skipped, or errored, and the run looked green with one file fewer. From 6.2 the run compares
-results to the files it sent and throws naming the missing ones. A worker that throws is reported
-and the remaining files still report their results, including when the caller runs with
-`$ErrorActionPreference = 'Stop'`, which used to abort the loop at the first failing file and drop
-everything already finished.
+Run the discovery-only check as the first CI step. A discovery failure is cheap to find there and
+confusing to diagnose inside a full run.
 
-### Coverage Under Parallel
+## Parallel Test Execution
 
-Pester 6.0 collected no coverage in a parallel run. **6.1 collects it**: each worker measures the
-same locations and the parent merges the per-location hits, adding the coverage of any
-`#pester:no-parallel` files it ran in-session, into a single report.
+`Run.Parallel` is experimental and off by default. Do not enable it in a configuration that you
+generate unless the user asks.
 
-The catch is that a parallel run forces **breakpoint-based** coverage, because the profiler tracer
-keeps its state in a process-global static and is not concurrency-safe.
-`CodeCoverage.UseBreakpoints = $false` is ignored on that path. Breakpoint coverage is much slower
-per file, so parallel-plus-coverage can easily be slower overall than sequential-plus-profiler.
+With the option on, Pester runs test files at the same time, each file in its own runspace of the
+same process. It works on PowerShell 7 and on Windows PowerShell 5.1. In the examples, `$testRoot`
+holds the full path of the test folder.
 
-Splitting into **two CI jobs** is still the recommendation - a fast parallel job without coverage for
-feedback, and a sequential job with the profiler for the coverage gate - but it is now a performance
-choice you can measure rather than a hard requirement.
+```powershell
+$configuration = New-PesterConfiguration
+$configuration.Run.Path = $testRoot
+$configuration.Run.Parallel = $true
+$configuration.Run.ParallelThrottleLimit = 4
+
+Invoke-Pester -Configuration $configuration
+```
+
+`Run.ParallelThrottleLimit` is the number of files that run at once. The default `0` uses every
+processor. `1` does not turn the mode off: the files still run in worker runspaces, one after
+another.
+
+Each worker runs silently, and the calling session then replays the output of every file in
+discovery order. Console output, the `TestResult` report, and IDE integration therefore behave as
+they do in a sequential run; only the concurrency differs. Measured on 6.2.0 with three files:
+apart from the durations, the console output of the two runs differed only in the banner, which
+reads `Running tests from 3 files in parallel.`, and the NUnit reports differed only in their times
+and in the attribute order of the `environment` element. IDE integration was not tested.
+
+In the result object the files are in the same order as in a sequential run. The `Duration` of the
+run is the elapsed time, not the sum of the files, and `UserDuration`, `FrameworkDuration`, and
+`DiscoveryDuration` of the run are zero. Each file still has its own values.
+
+### When Pester Runs Sequentially Instead
+
+| Condition | What Pester does |
+| --- | --- |
+| A script block container is used (`Run.ScriptBlock`, or `New-PesterContainer -ScriptBlock`) | Warns `Run.Parallel currently parallelizes only file-based runs` and runs sequentially. |
+| `Run.SkipRemainingOnFailure = 'Run'` | Warns that skipping after the first failure cannot span the worker runspaces, and runs sequentially. |
+| Every file has the `#pester:no-parallel` directive | Runs sequentially without a warning. |
+
+A file passed with `New-PesterContainer -Path`, with or without `-Data`, runs in parallel.
 
 ### Which Files to Opt Out
 
-Add `#pester:no-parallel` at the top of any file that cannot share the machine:
+A file that cannot share the machine with other tests starts with the `#pester:no-parallel`
+directive:
 
 ```powershell
 #pester:no-parallel
-Describe 'Performance-Baseline' -Tag 'Performance' {
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
+
+Describe 'Service restart' -Tag 'Integration' {
 }
 ```
 
-- **Performance tests** - timing measurements are meaningless under CPU contention
-- **Integration tests** - shared databases, fixed ports, live endpoints
-- Tests mutating global state (environment variables, the registry, the working directory)
+Pester runs such files one after another in the calling session, after the parallel batch has
+finished. There they share the session state of the caller and write their output as they run.
+Measured on 6.2.0: an opted-out file read a global variable and a function of the calling session,
+and a value that an earlier opted-out file had left; a file in a worker saw none of them. Opt out:
 
-Opted-out files run in the parent session on the serial path, with shared session state and live
-output, while everything else runs in parallel.
+- tests that use a fixed port, a shared database, or another resource that exists once
+- tests that change process-wide state, such as an environment variable or the current location
+- tests that measure time
 
-### Requirements and Guarantees
+### Coverage in a Parallel Run
 
-Parallel needs **file-based** containers - `Run.Path`, or `New-PesterContainer -Path`, including
-parametrized files built with `-Data` (each file's data reaches its worker, so its `param()` block
-binds exactly as in a serial run).
+Coverage is collected in a parallel run: each worker measures its file and Pester merges the
+results into one report. Measured on 6.2.0, the percentage equals that of a sequential run.
 
-Each worker runs silently and the parent **replays** every file's output in discovery order,
-emitting the same plugin-event sequence as a serial run. Console output, the `TestResult` report,
-and IDE adapters behave identically - only concurrency differs.
+A parallel run always measures with breakpoints, even when `CodeCoverage.UseBreakpoints` is
+`$false`, because the profiler-based tracer cannot run in several runspaces at once. Breakpoints
+are usually described as the slower method, so a parallel run with coverage is not necessarily
+faster than a sequential one. Measure both before choosing; one measurement of the two methods is
+in [Pester Configuration Guide](./pester-configuration.md#profiler-and-breakpoints).
 
-The run's total `Duration` becomes the orchestrator's elapsed time rather than the sum of the files,
-and per-phase run totals (user, framework, discovery) are blank. That breakdown is still reported on
-each container.
+Splitting CI into two jobs is still the recommendation: a fast parallel job without coverage for
+feedback, and a sequential job with the profiler for the coverage gate. It is a performance choice
+that can be measured, not a hard requirement. The jobs are shown in
+[CI/CD Integration Guide](./cicd-integration.md#parallel-runs-and-coverage-in-ci).
 
-### Prerequisite: Self-Contained Files
+### A Lost File Is an Error
 
-Parallel only works if each file can be discovered and run on its own, because each worker starts
-from a **clean runspace**. Put shared bootstrap in `Pester.BeforeContainer.ps1` files, which Pester
-dot-sources before every file in both serial and parallel runs - from 6.2, every one between
-`Run.RepoRoot` and the test file's folder. Run-time setup goes in a `BeforeAll`; top-level code in
-the file runs at discovery only:
-
-```powershell
-# Pester.BeforeContainer.ps1, at the repository root
-BeforeAll {
-    . "$PSScriptRoot/Tests/TestHelpers/Bootstrap.ps1"
-}
-```
-
-The `Run.BeforeContainer` option that also did this was **removed in 6.1**. If a CI job sets it, the
-assignment now throws.
-
-The chain starts at `Run.RepoRoot`. When unset, 6.2 resolves it from the session's current location
-at run time (6.1 used the .NET process working directory, which `Set-Location` does not move). Set
-it explicitly when the run does not start inside the repository:
-
-```powershell
-$config.Run.RepoRoot = $PSScriptRoot
-```
-
-Validate isolation before enabling parallel - run a single file on its own:
-
-```powershell
-Invoke-Pester -Path ./Tests/Unit/Public/Get-Thing.Tests.ps1
-```
-
-If it only passes as part of a full run, it is not self-contained.
-
-## Shuffled Test Order (Experimental)
-
-New in 6.1. `Run.Shuffle` reorders the test files, and the blocks and tests inside them, so a suite
-that depends on declaration order fails instead of passing by luck:
-
-```powershell
-$config = New-PesterConfiguration
-$config.Run.Path    = './Tests/Unit'
-$config.Run.Shuffle = $true
-Invoke-Pester -Configuration $config
-```
-
-```powershell
-# Via the runner
-.\Invoke-Tests.ps1 -TestType Unit -Shuffle
-```
-
-Reordering happens only within a level - a test never leaves its `Context`. The run prints the seed
-it picked and records it on the result:
+A worker that ends without returning a result fails the run. Measured on 6.2.0 with four files, one
+of which stops its worker because its top-level code throws a `PipelineStoppedException`: Pester
+writes the error of the worker, collects the other workers, and then fails with this message.
 
 ```text
-Shuffling execution order using seed 852659930. Set 'Run.ShuffleSeed = 852659930' to repeat this order.
+Parallel run lost the results of 1 of 4 file(s), the worker(s) running them did not return a
+result. See the errors above for why. Lost: C:\repo\Tests\Unit\Bad.Tests.ps1
+```
+
+`Invoke-Pester` returns no result object, which the gate treats as a failure. The outcome is the
+same when the caller runs with `$ErrorActionPreference = 'Stop'`: the error of the worker is
+written as a non-terminating error, so the run does not end before the lost file is named.
+
+Before 6.2 such a file disappeared. Measured on 6.1.0 with the same files: with the default error
+preference the run returned `Passed` with three files and three tests, one file fewer than it was
+given, and nothing in the result showed it. With `$ErrorActionPreference = 'Stop'` the run ended at
+the error of the worker, `The pipeline has been stopped`, without naming a file.
+
+### Before Enabling Parallel Runs
+
+Each worker starts with an empty runspace. A test file that relies on a module, a variable, or a
+helper that another test file loaded fails in a parallel run. Check first that each file passes when
+it is run alone, and put shared helpers in a setup file; see
+[Pester Test Structure Guide](./test-structure-guide.md#shared-setup-files).
+
+## Shuffled Test Order
+
+`Run.Shuffle` is experimental, and Pester leaves it off by default. Turn it on in every run, on a
+developer's computer and in CI, with the seed in the failure message (TST-46). Only performance
+tests keep their declared order. Shuffling is what keeps importing the module once for each run
+(TST-05) safe.
+
+With the option on, Pester changes the order of the test files, of the blocks in each file, and of
+the tests in each block. A test stays inside its `Context`, and a `Context` stays inside its
+`Describe`. A suite that depends on the declared order then fails, which exposes a breach of
+TST-31.
+
+```powershell
+$configuration = New-PesterConfiguration
+$configuration.Run.Path = $testRoot
+$configuration.Run.PassThru = $true
+$configuration.Run.Shuffle = $true
+
+$result = Invoke-Pester -Configuration $configuration
+```
+
+The run prints the seed that it used, and the result object holds it:
+
+```text
+Shuffling execution order using seed 314796220. Set 'Run.ShuffleSeed = 314796220' to repeat this order.
 ```
 
 ```powershell
-$result.Configuration.Run.ShuffleSeed.Value    # the seed this run actually used
-$config.Run.ShuffleSeed = 852659930            # replay that exact order
+$seed = $result.Configuration.Run.ShuffleSeed.Value
 ```
 
-Order dependence is the failure mode this finds, and it is one the per-file isolation model in
-Pester 6 already narrows: files no longer share discovery-time state, so what is left is order
-dependence _within_ a file - a `Describe` that leaves a `$script:` variable another one reads, a
-`BeforeAll` that creates a fixture a later `Context` mutates.
+`Run.ShuffleSeed` is `0` by default, which picks a new seed for each run. Setting it to the seed of
+an earlier run repeats that order exactly:
 
-### Reading a Shuffled Failure
+```powershell
+$configuration.Run.ShuffleSeed = 314796220
+```
 
-A failure that appears only under shuffle is a real defect in the tests, not a Pester problem. Work
-it in this order:
+The option changes only the order. It does not change which tests run or how filters apply.
 
-1. Capture the seed from the run output. Without it the ordering is not reproducible.
-2. Re-run with `Run.ShuffleSeed` set to that value and confirm the failure repeats.
-3. Find the shared state. It is nearly always a `$script:` variable, a file left on disk outside
-   `TestDrive`, an environment variable, or a mock counter read across blocks.
-4. Fix the test, not the order. Move setup into the block that needs it, or reset state in
-   `AfterEach`.
+The option combines with `Run.Parallel`. Replay a seed in the mode that produced it: measured on
+Pester 6.2.0, seed 1 gave one order within a file in a sequential run and another in a parallel
+run, and each repeated exactly in its own mode.
 
-A file whose blocks genuinely must run in sequence opts out with a directive, parsed the same way as
-`#pester:no-parallel`:
+Do not shuffle performance tests. A performance baseline assumes a fixed order, so the runner
+script leaves the option off for a run of performance tests. A run of every test type is
+shuffled, so each performance test file also starts with `#pester:no-shuffle`, as the file in
+[Performance Test Template](./performance-test-template.md#the-run-is-not-shuffled) does.
+
+### When a Test Fails Only in a Shuffled Run
+
+A failure that appears only in a shuffled run is a defect in the tests, not in Pester. Each file is
+discovered and run on its own, so most of the order dependence that is left is inside a file: a
+`Describe` block that leaves a `$script:` variable that another one reads, or a `BeforeAll` that
+creates a fixture that a later `Context` changes. State in module scope still crosses files when
+the module is imported once for each run (TST-05).
+
+1. Record the seed from the output or from the result object. Without it the order cannot be
+   repeated.
+2. Run again with `Run.ShuffleSeed` set to that value and confirm that the failure repeats.
+3. Find the state that the tests share. It is usually a `$script:` variable, a file outside
+   `$TestDrive`, an environment variable, or a mock whose calls are counted across blocks.
+4. Correct the test, not the order: move the setup into the block that needs it, or restore the
+   state in `AfterEach`.
+
+A file whose blocks must run in the declared order starts with the `#pester:no-shuffle` directive.
+Its blocks and tests then keep their order. Measured on Pester 6.2.0 under six seeds, with the
+directive before or after the `#Requires` line: the blocks and tests of the file ran as written
+every time, and the position of the file among the other files still changed.
 
 ```powershell
 #pester:no-shuffle
-Describe 'ordered migration steps' -Tag 'Integration' {
+#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.2.0' }
+
+Describe 'Database migration steps' -Tag 'Integration' {
 }
 ```
 
-Treat that directive the way you treat `#pester:no-parallel`: reasonable for a sequential
-integration script, a smell in a unit test file.
-
-`Run.Shuffle` is experimental and may change. It affects ordering only - never which tests run, nor
-how filters apply.
-
-## Test Execution Best Practices
-
-### Pre-Test Validation
-
-```powershell
-# Validate environment before testing
-function Test-TestEnvironment {
-    $issues = @()
-
-    # Check PowerShell version - Pester 6 requires 5.1 or 7.4+
-    $psVersion = $PSVersionTable.PSVersion
-    if ($psVersion.Major -eq 5 -and $psVersion.Minor -lt 1) {
-        $issues += "Windows PowerShell 5.1+ required (found $psVersion)"
-    }
-    elseif ($psVersion.Major -eq 6 -or ($psVersion.Major -eq 7 -and $psVersion -lt [version]'7.4')) {
-        $issues += "PowerShell 7.4+ required (found $psVersion). Pester 6 dropped support for 6.x and early 7.x."
-    }
-
-    # Check Pester version
-    $pester = Get-Module Pester -ListAvailable |
-        Sort-Object Version -Descending | Select-Object -First 1
-    if (-not $pester) {
-        $issues += "Required module missing: Pester"
-    } elseif ($pester.Version -lt [version]'6.2.0') {
-        $issues += "Pester 6.2+ required (found $($pester.Version))"
-    }
-
-    # Check test data availability
-    if (-not (Test-Path './Tests/TestData')) {
-        $issues += "Test data directory missing"
-    }
-
-    return @{
-        Valid  = $issues.Count -eq 0
-        Issues = $issues
-    }
-}
-```
-
-### Structural Validation (Discovery-Only Pass)
-
-Run discovery without executing anything. This is fast and catches the v6 structural breakages -
-empty `-ForEach` sets, files that cannot be discovered independently, and from 6.2 a configuration
-value of the wrong type:
-
-```powershell
-function Test-SuiteStructure {
-    param([string]$Path = './Tests')
-
-    $config = New-PesterConfiguration
-    $config.Run.Path = $Path
-    $config.Run.SkipRun = $true
-    $config.Run.PassThru = $true
-    $config.Output.Verbosity = 'Normal'
-
-    $result = Invoke-Pester -Configuration $config
-
-    $failed = $result.Containers | Where-Object { -not $_.Passed }
-    if ($failed) {
-        $failed | ForEach-Object { Write-Error "Discovery failed: $($_.Item)" }
-        throw "$($failed.Count) file(s) failed discovery"
-    }
-
-    Write-Host "Discovered $($result.TotalCount) tests across $($result.Containers.Count) files"
-    return $result
-}
-```
-
-Run this as the first CI step. A discovery failure is cheap to find here and confusing to diagnose
-inside a full run.
-
-### Tagging Audit
-
-```powershell
-# Fail the build if any test escaped the tagging convention
-$config = New-PesterConfiguration
-$config.Run.Path = './Tests'
-$config.Filter.Tag = 'None'     # reserved value: tests with NO tags
-$config.Run.SkipRun = $true
-$config.Run.PassThru = $true
-$config.Output.Verbosity = 'None'
-
-$result = Invoke-Pester -Configuration $config
-
-# ShouldRun is the flag Filter.Tag sets, so it is the only count that reflects the filter.
-# TotalCount ignores it and reports everything discovered, which would fail every non-empty
-# suite; PassedCount only counts untagged tests that ran AND passed, and Run.SkipRun means
-# nothing runs, so it is always 0. Both were verified against Pester 6.1.0.
-$untagged = @($result.Tests | Where-Object ShouldRun)
-if ($untagged.Count -gt 0) {
-    $untagged | ForEach-Object { Write-Host "::error::Untagged test: $($_.ExpandedPath)" }
-    throw "$($untagged.Count) test(s) have no tag."
-}
-```
-
-### Coverage Gate
-
-```powershell
-# CoveragePercentTarget sets the reported target; it does not fail the run.
-# Enforce the gate yourself.
-$result = Invoke-Pester -Configuration $config
-if ($result.CodeCoverage) {
-    $actual = [math]::Round($result.CodeCoverage.CoveragePercent, 2)
-    $target = $result.CodeCoverage.CoveragePercentTarget
-    if ($actual -lt $target) {
-        Write-Host "Uncovered commands:"
-        $result.CodeCoverage.CommandsMissed |
-            Group-Object File |
-            ForEach-Object { Write-Host "  $($_.Name): $($_.Count) commands" }
-        throw "Code coverage $actual% is below the $target% target"
-    }
-}
-```
-
-### Post-Test Cleanup
-
-```powershell
-# Clean up test artifacts
-function Clear-TestArtifacts {
-    Get-ChildItem -Path $env:TEMP -Filter "PesterTest*" -Recurse -ErrorAction SilentlyContinue |
-        Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-
-    # Clean up test databases
-    if (Test-Path './Tests/TestData/temp.db') {
-        Remove-Item './Tests/TestData/temp.db' -Force
-    }
-}
-```
-
-### Test Result Analysis
-
-```powershell
-# Analyze test trends
-function Get-TestTrends {
-    param([string]$ResultsPath = './Tests/Results')
-
-    Get-ChildItem -Path $ResultsPath -Filter "TestMetrics-*.json" |
-        ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json } |
-        Sort-Object Timestamp
-}
-```
-
-### Converting Results to Other Formats
-
-`TestResult` writes one format per run. Convert the result object for additional formats:
-
-```powershell
-$config.Run.PassThru = $true
-$result = Invoke-Pester -Configuration $config
-
-Export-NUnitReport -Result $result -Path './Tests/Results/NUnit.xml'
-Export-JUnitReport -Result $result -Path './Tests/Results/JUnit.xml'
-```
+The directive states that the file depends on its order. That is acceptable for an integration
+scenario that is written as a sequence of steps and for a performance test file, and it is a
+defect in a unit test file.
