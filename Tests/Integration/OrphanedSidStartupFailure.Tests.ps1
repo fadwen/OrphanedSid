@@ -1,11 +1,11 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
-# Each command here runs in a process of its own, as the last statement but one of a script with no
-# try around it. Pester runs every test inside a try, and inside a try a throw raised during
-# start-up propagates whatever the caller's error action is. A command called directly from a
-# test therefore behaves correctly even when a command called from a prompt or a scheduled script
-# does not.
+# Each command here runs in a process of its own, as the last statement but one of a script that
+# has no try around it unless the test writes one. Pester runs every test inside a try, and
+# inside a try a throw raised during start-up propagates whatever the caller's error action is.
+# A command called directly from a test therefore behaves correctly even when a command called
+# from a prompt or a scheduled script does not.
 #
 # A second runspace in this process would be cheaper and is not usable: on Windows PowerShell 5.1,
 # once another runspace has imported the module and been closed, the static method
@@ -76,7 +76,10 @@ Set-Location -LiteralPath <<WORK>>
             [Parameter(Mandatory)]
             [string]$Command,
 
-            [string]$Fault = ''
+            [string]$Fault = '',
+
+            # Runs the script the way a pipeline agent runs an inline step: dot-sourced from -Command
+            [switch]$AsCommand
         )
 
         $readsFile = Join-Path -Path $script:WorkFolder -ChildPath 'directory-reads.txt'
@@ -95,9 +98,15 @@ Set-Location -LiteralPath <<WORK>>
         $text = $text.Replace('<<FAULT>>', $Fault).Replace('<<COMMAND>>', $Command)
         [System.IO.File]::WriteAllText($scriptFile, $text, [System.Text.UTF8Encoding]::new($true))
 
+        $hostArguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass')
+        if ($AsCommand) {
+            $hostArguments += '-Command', "`". $(ConvertTo-Literal -Text $scriptFile)`""
+        } else {
+            $hostArguments += '-File', "`"$scriptFile`""
+        }
         $startParameters = @{
             FilePath = $script:HostPath
-            ArgumentList = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$scriptFile`"")
+            ArgumentList = $hostArguments
             RedirectStandardOutput = $outputFile
             RedirectStandardError = $errorFile
             NoNewWindow = $true
@@ -205,6 +214,32 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
             $run.ReachedEnd | Should-BeFalse
             $run.ExitCode | Should-Be 1
             $run.Text | Should-BeLikeString '*No usable search base in the input*'
+            $run.DirectoryReads | Should-Be 0
+        }
+
+        It 'Hands the error to a catch around the call and lets the script carry on' {
+            # Documentation/Automation.md names try and catch as the way to handle a critical error.
+            $config = ConvertTo-Literal -Text $script:InvalidConfig
+            $command = "try { Find-OrphanedSid $script:Common -ConfigPath $config } " +
+                'catch { ''CAUGHT: '' + $_.Exception.Message }'
+
+            $run = Invoke-InNewProcess -Command $command
+
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
+            $run.Text | Should-BeLikeString '*CAUGHT: Configuration validation failed*'
+            $run.DirectoryReads | Should-Be 0
+        }
+
+        It 'Ends a script that is run through -Command, with exit code 1' {
+            $config = ConvertTo-Literal -Text $script:InvalidConfig
+            $command = "Find-OrphanedSid $script:Common -ConfigPath $config"
+
+            $run = Invoke-InNewProcess -Command $command -AsCommand
+
+            $run.ReachedEnd | Should-BeFalse
+            $run.ExitCode | Should-Be 1
+            $run.Text | Should-BeLikeString '*Configuration validation failed*'
             $run.DirectoryReads | Should-Be 0
         }
 
