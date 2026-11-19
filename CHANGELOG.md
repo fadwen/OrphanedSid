@@ -62,6 +62,12 @@ All notable changes to this module are recorded here. Format follows
   ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
 - A removal in which every entry failed to be removed is reported as `Success = False`. It was
   reported as a success. ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- Importing the module now fails when one of its files fails to load, or when `Classes`, `Public`
+  or one of the folders under `Private` is missing, and the error names the file or folder.
+  Before, a file that did not parse was reported and skipped, and a missing folder was skipped in
+  silence. The import succeeded with all three commands exported, and with one private function
+  missing `Find-OrphanedSid` returned no results at all where it should have reported orphaned
+  SIDs. ([#122](https://github.com/fadwen/OrphanedSid/issues/122))
 
 ## [1.1.0] - 2026-11-11
 

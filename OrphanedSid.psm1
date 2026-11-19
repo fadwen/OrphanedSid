@@ -10,16 +10,10 @@ Write-Verbose "Initializing OrphanedSid module from: $ModuleRoot"
 
 # Classes first: several private functions constrain a parameter to one of these types, and a type
 # literal in a param block must already be defined when the file that uses it is parsed.
-$classFiles = Get-ChildItem -Path (Join-Path $ModuleRoot 'Classes') -Filter '*.ps1' -ErrorAction SilentlyContinue
-foreach ($class in $classFiles) {
-    Write-Verbose "Loading class: $($class.Name)"
-    . $class.FullName
-}
 
 # Private functions, one per file, grouped in folders by area. Logging\ goes first because every
 # other function logs through Write-StructuredLog, and its own files depend on
 # Initialize-LoggingConfiguration having defined the shared state.
-$privateRoot = Join-Path $ModuleRoot 'Private'
 $privateFolders = @(
     'Logging'
     'FileSystem'
@@ -34,29 +28,63 @@ $privateFolders = @(
     'Reporting'
     'Core'
 )
-$loadedPrivate = foreach ($folder in $privateFolders) {
-    $folderPath = Join-Path $privateRoot $folder
-    foreach ($function in (Get-ChildItem -Path $folderPath -Filter '*.ps1' -ErrorAction SilentlyContinue)) {
-        Write-Verbose "Loading private function: $($function.Name)"
-        . $function.FullName
-        $function.FullName
+
+# Every folder named here has to be present. A missing one is an incomplete installation, and
+# skipping it would import the module with commands that fail, or report nothing, when they run.
+$classesPath = Join-Path -Path $ModuleRoot -ChildPath 'Classes'
+$publicPath = Join-Path -Path $ModuleRoot -ChildPath 'Public'
+$privateRoot = Join-Path -Path $ModuleRoot -ChildPath 'Private'
+$requiredFolders = @(
+    $classesPath
+    foreach ($folder in $privateFolders) {
+        Join-Path -Path $privateRoot -ChildPath $folder
+    }
+    $publicPath
+)
+foreach ($folderPath in $requiredFolders) {
+    if (-not (Test-Path -LiteralPath $folderPath -PathType Container)) {
+        $message = "OrphanedSid cannot be imported: the folder '$folderPath' is missing. Install the module again."
+        throw [System.IO.DirectoryNotFoundException]::new($message)
     }
 }
 
+$classFiles = @(Get-ChildItem -LiteralPath $classesPath -Filter '*.ps1' -File -ErrorAction Stop)
+$orderedPrivateFiles = @(
+    foreach ($folder in $privateFolders) {
+        $folderPath = Join-Path -Path $privateRoot -ChildPath $folder
+        Get-ChildItem -LiteralPath $folderPath -Filter '*.ps1' -File -ErrorAction Stop
+    }
+)
+
 # Any Private folder not named above still loads; the explicit list only fixes the order.
-$remaining = Get-ChildItem -Path $privateRoot -Filter '*.ps1' -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notin $loadedPrivate }
-foreach ($function in $remaining) {
-    Write-Verbose "Loading private function: $($function.Name)"
-    . $function.FullName
+$orderedPrivatePaths = @($orderedPrivateFiles | ForEach-Object { $_.FullName })
+$otherPrivateFiles = @(
+    Get-ChildItem -LiteralPath $privateRoot -Filter '*.ps1' -File -Recurse -ErrorAction Stop |
+        Where-Object { $orderedPrivatePaths -notcontains $_.FullName }
+)
+$publicFiles = @(Get-ChildItem -LiteralPath $publicPath -Filter '*.ps1' -File -ErrorAction Stop)
+
+foreach ($sourceFile in $classFiles + $orderedPrivateFiles + $otherPrivateFiles + $publicFiles) {
+    Write-Verbose "Loading $($sourceFile.FullName)"
+    try {
+        . $sourceFile.FullName
+    } catch {
+        # A file that fails to load has to fail the import. Left to itself, PowerShell reports a
+        # file that does not parse and carries on, and the module is imported with that file's
+        # functions missing.
+        $message = "OrphanedSid cannot be imported: '$($sourceFile.FullName)' failed to load. $($_.Exception.Message)"
+        throw [System.InvalidOperationException]::new($message, $_.Exception)
+    }
 }
 
-# Public functions
-$publicFunctions = Get-ChildItem -Path (Join-Path $ModuleRoot 'Public') -Filter '*.ps1' -ErrorAction SilentlyContinue
-foreach ($function in $publicFunctions) {
-    Write-Verbose "Loading public function: $($function.Name)"
-    . $function.FullName
-}
+# The loader's own variables are removed, so that none of them stays in module scope, where a
+# function that reads a variable of the same name before assigning it would find the leftover.
+$loaderVariables = @(
+    'classesPath', 'publicPath', 'privateRoot', 'privateFolders', 'requiredFolders', 'folder', 'folderPath'
+    'classFiles', 'orderedPrivateFiles', 'orderedPrivatePaths', 'otherPrivateFiles', 'publicFiles', 'sourceFile'
+)
+Remove-Variable -Name $loaderVariables -Scope Script
+Remove-Variable -Name 'loaderVariables' -Scope Script
 
 # Module-scope state shared by the private functions. A command sets these for the duration of
 # one run through Start-OrphanedSidSession and clears them in Stop-OrphanedSidSession.

@@ -50,6 +50,13 @@ with `Logging` first. Top-level code in `Private/` only sets `$script:` state or
 stub; nothing may call a module function at load time: a top-level
 `Write-StructuredLog "module loaded"` line once existed in twenty files and broke the import.
 
+The loader requires `Classes`, `Public` and every folder in its `Private` list to exist, and each
+dot-source sits in a `try` whose `catch` throws. Without the `try`, PowerShell reports a file that
+does not parse and carries on: the import succeeds with all three commands exported, and with
+`Test-SIDFormat` missing `Find-OrphanedSid` returned nothing, because each SID failed a check that
+only logged a warning. A new folder under `Private` loads without being listed; listing it makes it
+required.
+
 ### A fallback stub must be guarded
 
 `Invoke-GarbageCollection.ps1` defines a minimal `Write-StructuredLog` and `Get-CurrentMemoryUsage`
