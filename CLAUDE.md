@@ -71,7 +71,11 @@ run. `Stop-OrphanedSidSession` clears all of them except `$script:Config` and
 `throw` in start-up follows the caller's error action: under `-ErrorAction SilentlyContinue` it is
 swallowed, and `process` and `end` run with no configuration. No ordinary Pester test can see
 this, because every test runs inside a `try`; `Tests/Integration/OrphanedSidStartupFailure.Tests.ps1`
-runs each command in a runspace of its own for that reason. The SID validation cache is the exception: it lives for the PowerShell session so the
+runs each command in a process of its own for that reason. It has to be a process and not a second
+runspace: on Windows PowerShell 5.1, once another runspace has imported the module and been
+closed, the static `[ScriptConfiguration]::LoadFromFile()` fails in the first one with a
+`NullReferenceException`, and every later test that passes `-ConfigPath` fails with it (#125).
+The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
 
 ### Results are emitted before cleanup

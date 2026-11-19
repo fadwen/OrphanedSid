@@ -1,111 +1,111 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 #Requires -Version 5.1
 
-# Each command here runs in a runspace of its own, with no try above the call. Pester runs every
-# test inside a try, and inside a try a throw raised during start-up propagates whatever the
-# caller's error action is. A command called directly from a test therefore behaves correctly
-# even when a command called from a prompt or a scheduled script does not.
+# Each command here runs in a process of its own, as the last statement but one of a script with no
+# try around it. Pester runs every test inside a try, and inside a try a throw raised during
+# start-up propagates whatever the caller's error action is. A command called directly from a
+# test therefore behaves correctly even when a command called from a prompt or a scheduled script
+# does not.
+#
+# A second runspace in this process would be cheaper and is not usable: on Windows PowerShell 5.1,
+# once another runspace has imported the module and been closed, the static method
+# [ScriptConfiguration]::LoadFromFile() fails in this one with a NullReferenceException, and every
+# later test that passes -ConfigPath fails with it.
 
 BeforeAll {
     $script:RepositoryRoot = (Resolve-Path -LiteralPath (Join-Path -Path $PSScriptRoot -ChildPath '..\..')).Path
+    $script:HostPath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 
-    # Runs in the new runspace before the command. The module is imported unchanged; the
-    # directory is a set of global functions, which the module's calls resolve to.
-    $script:Setup = {
-        param($RepositoryRoot)
+    # The script the new process runs. The module is imported unchanged; the directory is a set of
+    # global functions, which the module's calls resolve to. The last line is reached only when the
+    # command did not end the script.
+    $script:Template = @'
+. '<<STUBS>>'
+Import-Module -Name '<<MANIFEST>>'
 
-        . (Join-Path -Path $RepositoryRoot -ChildPath 'Tests\TestHelpers\ADCmdletStubs.ps1')
-        Import-Module -Name (Join-Path -Path $RepositoryRoot -ChildPath 'OrphanedSid.psd1')
+function global:Get-ADDomain {
+    [PSCustomObject]@{
+        DistinguishedName = 'DC=lab,DC=test'
+        DomainSID = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-21-1111111111-2222222222-3333333333')
+    }
+}
 
-        $global:DirectoryReads = 0
+function global:Get-ADObject {
+    param($Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $ResultPageSize,
+        [switch]$IncludeDeletedObjects, $Server)
+    [System.IO.File]::AppendAllText('<<READS>>', "read`r`n")
+}
 
-        function global:Get-ADDomain {
-            [PSCustomObject]@{
-                DistinguishedName = 'DC=lab,DC=test'
-                DomainSID = [System.Security.Principal.SecurityIdentifier]::new(
-                    'S-1-5-21-1111111111-2222222222-3333333333')
-            }
-        }
+# The session helper asks whether the ActiveDirectory module is installed and imports it.
+function global:Get-Module {
+    [CmdletBinding()]
+    param([Parameter(Position = 0)]$Name, [switch]$ListAvailable, [switch]$All)
+    if ($Name -eq 'ActiveDirectory') {
+        return [PSCustomObject]@{ Name = 'ActiveDirectory' }
+    }
+    Microsoft.PowerShell.Core\Get-Module @PSBoundParameters
+}
 
-        function global:Get-ADObject {
-            param($Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $ResultPageSize,
-                [switch]$IncludeDeletedObjects, $Server)
-            $global:DirectoryReads++
-        }
+function global:Import-Module {
+    [CmdletBinding()]
+    param([Parameter(Position = 0)]$Name, [switch]$Force, [switch]$PassThru)
+    if ($Name -eq 'ActiveDirectory') {
+        return
+    }
+    Microsoft.PowerShell.Core\Import-Module @PSBoundParameters
+}
 
-        # The session helper asks whether the ActiveDirectory module is installed and imports it.
-        function global:Get-Module {
-            [CmdletBinding()]
-            param([Parameter(Position = 0)]$Name, [switch]$ListAvailable, [switch]$All)
-            if ($Name -eq 'ActiveDirectory') {
-                return [PSCustomObject]@{ Name = 'ActiveDirectory' }
-            }
-            Microsoft.PowerShell.Core\Get-Module @PSBoundParameters
-        }
+<<FAULT>>
+Set-Location -LiteralPath '<<WORK>>'
+<<COMMAND>>
+[System.IO.File]::WriteAllText('<<REACHED>>', 'reached')
+'@
 
-        function global:Import-Module {
-            [CmdletBinding()]
-            param([Parameter(Position = 0)]$Name, [switch]$Force, [switch]$PassThru)
-            if ($Name -eq 'ActiveDirectory') {
-                return
-            }
-            Microsoft.PowerShell.Core\Import-Module @PSBoundParameters
-        }
-    }.ToString()
-
-    function Invoke-InNewRunspace {
+    function Invoke-InNewProcess {
         param(
             [Parameter(Mandatory)]
-            [string]$Script,
+            [string]$Command,
 
-            [string]$Fault
+            [string]$Fault = ''
         )
 
-        $shell = [powershell]::Create()
-        try {
-            $null = $shell.AddScript($script:Setup).AddArgument($script:RepositoryRoot).Invoke()
-            if ($Fault) {
-                $shell.Commands.Clear()
-                $null = $shell.AddScript($Fault).Invoke()
-            }
+        $readsFile = Join-Path -Path $script:WorkFolder -ChildPath 'directory-reads.txt'
+        $reachedFile = Join-Path -Path $script:WorkFolder -ChildPath 'reached-the-end.txt'
+        $scriptFile = Join-Path -Path $script:WorkFolder -ChildPath 'run.ps1'
+        $outputFile = Join-Path -Path $script:WorkFolder -ChildPath 'output.txt'
+        $errorFile = Join-Path -Path $script:WorkFolder -ChildPath 'errors.txt'
 
-            # Loading the stand-ins records lookups of commands that do not exist; start clean.
-            $shell.Commands.Clear()
-            $null = $shell.AddScript('$global:Error.Clear()').Invoke()
-            $shell.Streams.Error.Clear()
+        $stubs = Join-Path -Path $script:RepositoryRoot -ChildPath 'Tests\TestHelpers\ADCmdletStubs.ps1'
+        $manifest = Join-Path -Path $script:RepositoryRoot -ChildPath 'OrphanedSid.psd1'
+        $text = $script:Template.Replace('<<STUBS>>', $stubs.Replace("'", "''"))
+        $text = $text.Replace('<<MANIFEST>>', $manifest.Replace("'", "''"))
+        $text = $text.Replace('<<READS>>', $readsFile).Replace('<<REACHED>>', $reachedFile)
+        $text = $text.Replace('<<WORK>>', $script:WorkFolder).Replace('<<FAULT>>', $Fault)
+        $text = $text.Replace('<<COMMAND>>', $Command)
+        [System.IO.File]::WriteAllText($scriptFile, $text, [System.Text.UTF8Encoding]::new($true))
 
-            $shell.Commands.Clear()
-            $null = $shell.AddScript($Script)
-            # What the caller is shown: an error that ends the script is raised by Invoke(), with
-            # its message one level in, and one that ends only the command is on the error stream.
-            $shown = [System.Collections.Generic.List[string]]::new()
-            $ended = $false
-            try {
-                $null = $shell.Invoke()
-            } catch {
-                $ended = $true
-                $shown.Add($_.Exception.InnerException.Message)
-            }
-            foreach ($record in $shell.Streams.Error) {
-                $shown.Add($record.Exception.Message)
-            }
+        $startParameters = @{
+            FilePath = $script:HostPath
+            ArgumentList = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$scriptFile`"")
+            RedirectStandardOutput = $outputFile
+            RedirectStandardError = $errorFile
+            NoNewWindow = $true
+            Wait = $true
+            PassThru = $true
+        }
+        $process = Start-Process @startParameters
 
-            # What the session recorded, shown or not. The record of the stop itself has no message.
-            $shell.Commands.Clear()
-            $readErrors = '$global:Error | ForEach-Object { $_.Exception.Message } | Where-Object { $_ }'
-            $recorded = @($shell.AddScript($readErrors).Invoke())
-            $shell.Commands.Clear()
-            $directoryReads = $shell.AddScript('$global:DirectoryReads').Invoke()[0]
+        $directoryReads = 0
+        if (Test-Path -LiteralPath $readsFile) {
+            $directoryReads = @(Get-Content -LiteralPath $readsFile).Count
+        }
 
-            [PSCustomObject]@{
-                # True when the error ended the calling script, not only the command
-                Ended = $ended
-                Shown = $shown.ToArray()
-                Recorded = [string[]]$recorded
-                DirectoryReads = $directoryReads
-            }
-        } finally {
-            $shell.Dispose()
+        [PSCustomObject]@{
+            ExitCode = $process.ExitCode
+            # True when the script carried on after the command
+            ReachedEnd = Test-Path -LiteralPath $reachedFile
+            Text = [System.IO.File]::ReadAllText($outputFile) + [System.IO.File]::ReadAllText($errorFile)
+            DirectoryReads = $directoryReads
         }
     }
 }
@@ -127,20 +127,19 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
     }
 
     Context 'Core Functionality' {
-        It 'Reads the directory when the configuration file is valid' {
-            $script = "Set-Location -LiteralPath '$script:WorkFolder'; " +
-                "Find-OrphanedSid $script:Common -ConfigPath '$script:ValidConfig' -ErrorAction SilentlyContinue"
+        It 'Reads the directory and lets the script carry on when the configuration file is valid' {
+            $command = "Find-OrphanedSid $script:Common -ConfigPath '$script:ValidConfig' -ErrorAction SilentlyContinue"
 
-            $run = Invoke-InNewRunspace -Script $script
+            $run = Invoke-InNewProcess -Command $command
 
-            $run.Shown | Should-BeCollection -Count 0
-            $run.Ended | Should-BeFalse
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
             $run.DirectoryReads | Should-BeGreaterThan 0
         }
     }
 
     Context 'Error Handling' {
-        It '<CommandName> ends with the configuration error and reads nothing from the directory, with <Handling>' -ForEach @(
+        It '<CommandName> ends the script with the configuration error and reads nothing from the directory, with <Handling>' -ForEach @(
             @{ CommandName = 'Find-OrphanedSid'; Prefix = ''; Suffix = ''; Handling = 'the default error action' }
             @{
                 CommandName = 'Find-OrphanedSid'; Prefix = ''; Suffix = ' -ErrorAction SilentlyContinue'
@@ -164,35 +163,33 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
             if ($CommandName -eq 'Remove-OrphanedSid') {
                 $extra = " -Force -BackupPath '$script:BackupFolder'"
             }
-            $script = "Set-Location -LiteralPath '$script:WorkFolder'; $Prefix" +
-                "$CommandName $script:Common -ConfigPath '$script:InvalidConfig'$extra$Suffix"
+            $command = "$Prefix$CommandName $script:Common -ConfigPath '$script:InvalidConfig'$extra$Suffix"
 
-            $run = Invoke-InNewRunspace -Script $script
+            $run = Invoke-InNewProcess -Command $command
 
-            $run.Shown | Should-BeCollection -Count 1
-            $run.Shown[0] | Should-BeLikeString '*Configuration validation failed*'
-            # Nothing from a later stage: before the fix the session recorded a second error, from
-            # the first statistics counter, and that was the one the caller was shown.
-            $run.Recorded | Should-All { $_ -like '*Configuration validation failed*' }
-            $run.Ended | Should-BeTrue
+            $run.ReachedEnd | Should-BeFalse
+            $run.ExitCode | Should-Be 1
+            $run.Text | Should-BeLikeString '*Configuration validation failed*'
+            # Before the fix the caller was shown an error from a later stage instead: the first
+            # statistics counter, which was $null.
+            ($run.Text -like '*cannot be found on this object*') | Should-BeFalse
             $run.DirectoryReads | Should-Be 0
         }
 
-        It 'Restore-OrphanedSidBackup ends with the start-up error under -ErrorAction SilentlyContinue' {
+        It 'Restore-OrphanedSidBackup ends the script with the start-up error under -ErrorAction SilentlyContinue' {
             # Restore-OrphanedSidBackup takes no configuration file, so its start-up is made to
-            # fail by replacing one private function in the new runspace's copy of the module.
+            # fail by replacing one private function in the new process's copy of the module.
             $fault = '& (Get-Module -Name OrphanedSid) { ' +
                 'function script:Initialize-LoggingSystem { throw ''The logging system could not start'' } }'
-            $script = "Set-Location -LiteralPath '$script:WorkFolder'; " +
-                "Restore-OrphanedSidBackup -TargetObjectDN 'OU=Finance,DC=lab,DC=test' " +
+            $command = "Restore-OrphanedSidBackup -TargetObjectDN 'OU=Finance,DC=lab,DC=test' " +
                 "-BackupPath '$script:BackupFolder' -LogPath '$script:LogFile' -SuppressConsoleOutput -Force " +
                 '-ErrorAction SilentlyContinue'
 
-            $run = Invoke-InNewRunspace -Script $script -Fault $fault
+            $run = Invoke-InNewProcess -Command $command -Fault $fault
 
-            $run.Shown | Should-BeCollection -Count 1
-            $run.Shown[0] | Should-BeLikeString '*The logging system could not start*'
-            $run.Ended | Should-BeTrue
+            $run.ReachedEnd | Should-BeFalse
+            $run.ExitCode | Should-Be 1
+            $run.Text | Should-BeLikeString '*The logging system could not start*'
             $run.DirectoryReads | Should-Be 0
         }
     }
