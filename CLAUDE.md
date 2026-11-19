@@ -92,9 +92,12 @@ The `catch` in `begin` and the `catch` in `end` of each public command raise the
 favour of `$PSCmdlet.ThrowTerminatingError()`, and it is used here on purpose.
 `ThrowTerminatingError()` ends only the statement that called the command: a scheduled script
 carries on with its next line and `powershell -File` exits with 0, which was measured.
-`Documentation/Automation.md` tells callers that a critical error is raised as a terminating
-error that fails the job step. Replacing the call changes that contract, so it is a change to
-announce in a release, not a tidy-up. The exception covers these `catch` blocks only.
+`Documentation/Automation.md` tells callers that a critical error ends the calling script or
+command line whatever the error action is, that the process exits with 1, and that `try`/`catch`
+is the way to handle it. Replacing the call changes that contract, so it is a change to announce
+in a release, not a tidy-up. The exception covers these six lines only. Every other `throw` and
+`Write-Error -ErrorAction Stop` directly in an advanced function is an ordinary violation of
+ERR-11, to be replaced and not copied (#130).
 
 ### Results are emitted before cleanup
 

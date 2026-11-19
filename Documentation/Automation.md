@@ -11,11 +11,18 @@ through PowerShell's error stream:
 | Outcome | How it surfaces |
 |---------|-----------------|
 | The run completed | The command returns normally. Individual objects may still have failed; check the result objects, the log and the CSV. |
-| A critical error ended the run | The command logs `Discovery failed: ...`, `Removal failed: ...` or `Restore failed: ...` at `Error` level and raises a terminating error. |
+| A critical error ended the run | The command logs `Discovery failed: ...`, `Removal failed: ...` or `Restore failed: ...` at `Error` level and raises a terminating error, which also ends the script or command line that called the command. |
 
 A failed object, a blocked SID or a failed backup does not end the run; those outcomes are recorded
-in the log and in the per-object results. Wrap the call in `try`/`catch`, or pass
-`-ErrorAction Stop`, so that a terminating error fails the job step.
+in the log and in the per-object results.
+
+A critical error ends more than the command. It also ends the script or command line that called
+the command, whatever `-ErrorAction` or `$ErrorActionPreference` is set to, and `powershell.exe`
+or `pwsh` then exits with code 1, whether it was started with `-File` or with `-Command`. A
+scheduled task or a pipeline step therefore reports the failure without any extra parameter:
+`-ErrorAction Stop` is not needed for it, and `-ErrorAction SilentlyContinue` does not suppress it.
+To handle the failure and carry on, wrap the call in `try`/`catch`; the script then continues
+after the `catch`.
 
 ### Pipeline Output
 

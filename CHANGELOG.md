@@ -68,6 +68,11 @@ All notable changes to this module are recorded here. Format follows
   silence. The import succeeded with all three commands exported, and with one private function
   missing `Find-OrphanedSid` returned no results at all where it should have reported orphaned
   SIDs. ([#122](https://github.com/fadwen/OrphanedSid/issues/122))
+- `Documentation/Automation.md` no longer advises `-ErrorAction Stop` so that a critical error
+  fails a job step. A critical error ends the script or command line that called the command
+  whatever the error action is, and `powershell.exe` or `pwsh` exits with code 1, so the step
+  fails without it. The guide now says that, and that `try`/`catch` is how a caller handles such
+  an error and carries on.
 
 ## [1.1.0] - 2026-11-11
 
