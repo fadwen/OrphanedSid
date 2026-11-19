@@ -134,7 +134,7 @@ function Get-ACLForRemoval {
 
         # Retrieve ACL with retry logic for reliability
         $acl = Invoke-ADOperationWithRetry -ScriptBlock {
-            Get-Acl -Path "AD:\$($ObjectDistinguishedName.Trim())" -ErrorAction Stop
+            Get-DirectoryObjectAcl -DistinguishedName $ObjectDistinguishedName
         } -MaxRetries 3 -OperationName 'Get-ACL' -ObjectContext $ObjectDistinguishedName -CorrelationId $CorrelationId
 
         if (-not $acl) {

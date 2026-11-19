@@ -224,7 +224,7 @@ function Write-SecurityFileEntry {
 
     try {
         # BYPASS log level filtering - always write security entries
-        Add-Content -Path $loggingState.LogPath -Value $FormattedMessage -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
+        Add-Content -LiteralPath $loggingState.LogPath -Value $FormattedMessage -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
         Write-Verbose "Security log entry written successfully to: $($loggingState.LogPath)"
     }
     catch {
@@ -265,7 +265,7 @@ function Write-SecurityFileEntryDirect {
     # Try normal log path first
     if ($loggingState.LogPath) {
         try {
-            Add-Content -Path $loggingState.LogPath -Value $Message -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
+            Add-Content -LiteralPath $loggingState.LogPath -Value $Message -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
             return
         }
         catch {
@@ -276,7 +276,7 @@ function Write-SecurityFileEntryDirect {
     # Fallback to temp directory
     try {
         $tempLogPath = Join-Path $env:TEMP "OrphanedSid-Security-$(Get-Date -Format 'yyyyMMdd').log"
-        Add-Content -Path $tempLogPath -Value $Message -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
+        Add-Content -LiteralPath $tempLogPath -Value $Message -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
         Write-Warning "Security log written to emergency location: $tempLogPath"
     }
     catch {

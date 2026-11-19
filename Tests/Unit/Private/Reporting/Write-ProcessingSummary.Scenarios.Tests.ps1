@@ -169,11 +169,17 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like 'Consider reviewing the error log*' }
         }
 
-        It 'Logs the export failure at Error level and does not throw' {
+        It 'Logs the export failure at Error level and reports it to the caller without ending the command (#119)' {
             $results = New-DiscoveryResults
             $results.StreamingManager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { throw 'disk full' } -Force
 
-            { Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv } | Should -Not -Throw
+            $output = Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv -ErrorAction Continue 2>&1
+            $errors = @($output | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+
+            $errors.Count | Should -Be 1
+            $errors[0].FullyQualifiedErrorId | Should -BeLike 'ResultExportFailed,*'
+            $errors[0].TargetObject | Should -Be $script:csv
+            $errors[0].Exception.Message | Should -Match 'disk full'
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Failed to export results to CSV:*disk full*' }
         }
     }

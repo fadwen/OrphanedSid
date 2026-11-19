@@ -6,6 +6,34 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Square brackets in a path, and `[`, `]`, `*`, `?` or a backtick in an object's name, no longer
+  stop a run or send it to another object. PowerShell reads those characters as a pattern, and
+  the module passed names and paths in the form that is matched as one.
+  - An object such as `OU=Payroll [EU]` was reported by `Find-OrphanedSid` and could never be
+    cleaned: `Remove-OrphanedSid` returned `Failed to retrieve ACL` for it. The security
+    descriptor of such an object is now read and written through its `nTSecurityDescriptor`
+    attribute, by `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` alike. An object with an
+    ordinary name is still read and written through the `AD:` drive, as before.
+  - For an object such as ``OU=Pay`*``, with a backtick before one of those characters, the
+    `AD:` drive returned the security descriptor of the object named without the backtick,
+    `OU=Pay*`. `Find-OrphanedSid` reported its orphaned entries under that other object and not
+    under its own name. Such a name is now read through the attribute as well and is reported
+    correctly. It still cannot be cleaned, for another reason
+    ([#128](https://github.com/fadwen/OrphanedSid/issues/128)).
+  - `-BackupPath` with brackets failed every removal with `Unable to find the specified file`.
+  - `-LogPath` with brackets let the removal run and wrote only the header of the log.
+  - `-OutputPath` with brackets wrote no CSV and reported nothing.
+  - `-ConfigPath` with brackets was rejected as not found.
+
+  In the name of a backup file, `[` and `]` in the object's name are now replaced by `_`, like the
+  other characters that are replaced there.
+  ([#119](https://github.com/fadwen/OrphanedSid/issues/119))
+- A CSV that cannot be written is now reported as an error by `Find-OrphanedSid` and
+  `Remove-OrphanedSid`, after the results have been returned. Before, the failure appeared only in
+  the log file. ([#119](https://github.com/fadwen/OrphanedSid/issues/119))
+
 ## [1.1.0] - 2026-11-11
 
 ### Changed

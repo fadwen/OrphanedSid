@@ -262,7 +262,7 @@ function Initialize-ScriptExecution {
             # The configuration is read before the log file is set up, because its rotation settings
             # decide whether the existing file is renamed aside before this run writes to it. A file
             # that fails to load is reported once the log exists, so the failure reaches the file.
-            $configFromFile = [bool]($ConfigPath -and (Test-Path $ConfigPath))
+            $configFromFile = [bool]($ConfigPath -and (Test-Path -LiteralPath $ConfigPath))
             $configLoadError = $null
             $script:Config = if ($configFromFile) {
                 try {

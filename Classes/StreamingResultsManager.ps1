@@ -361,7 +361,7 @@ class StreamingResultsManager : System.IDisposable {
             Write-Verbose "WhatIf: Would export $($allResults.Count) results to $outputPath"
         } else {
             if ($allResults.Count -gt 0) {
-                $allResults | Export-Csv -Path $outputPath -NoTypeInformation -Encoding UTF8
+                $allResults | Export-Csv -LiteralPath $outputPath -NoTypeInformation -Encoding UTF8
                 Write-Verbose "Exported $($allResults.Count) results to $outputPath"
                 $written = $true
             }

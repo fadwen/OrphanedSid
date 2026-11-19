@@ -223,7 +223,7 @@ function Get-SecurityDescriptorFromGetAcl {
         $objectDN = $ADObject.DistinguishedName
         Write-StructuredLog "Attempting Get-Acl retrieval for: $objectDN" -Level Debug -CorrelationId $CorrelationId
 
-        $acl = Get-Acl -Path "AD:\$objectDN" -ErrorAction Stop
+        $acl = Get-DirectoryObjectAcl -DistinguishedName $objectDN
 
         # Access is a computed property that translates every entry's SID to an account name on each
         # read, and detection translated each name back to a SID. Reading the rules once, with SID

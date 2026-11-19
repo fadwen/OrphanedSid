@@ -247,7 +247,7 @@ function New-ACLBackup {
             }
 
             # Create safe filename with comprehensive sanitization
-            $safeName = $ObjectDN.Trim() -replace '[\\/:*?"<>|,=]', '_' -replace '\s+', '_'
+            $safeName = $ObjectDN.Trim() -replace '[\\/:*?"<>|,=\[\]]', '_' -replace '\s+', '_'
 
             # The whole path must stay under the 260-character Windows limit, which .NET Framework
             # enforces on Windows PowerShell 5.1: folder, separator, name and "_yyyyMMdd_HHmmss.xml".
@@ -292,7 +292,7 @@ function New-ACLBackup {
             }
 
             # Ensure backup directory exists with proper error handling
-            if (-not (Test-Path $BackupPath)) {
+            if (-not (Test-Path -LiteralPath $BackupPath)) {
                 New-Item -Path $BackupPath -ItemType Directory -Force | Out-Null
                 Write-StructuredLog "Created backup directory: $BackupPath" -Level Information -CorrelationId $CorrelationId
             }
@@ -334,17 +334,17 @@ function New-ACLBackup {
 
             # Export backup data with comprehensive error handling
             if ($PSCmdlet.ShouldProcess($ObjectDN, "Create ACL Backup")) {
-                $backupData | Export-Clixml -Path $backupFile -Force -Encoding UTF8
+                $backupData | Export-Clixml -LiteralPath $backupFile -Force -Encoding UTF8
 
                 # Immediate integrity verification to ensure backup authenticity
-                $verifyData = Import-Clixml -Path $backupFile -ErrorAction Stop
+                $verifyData = Import-Clixml -LiteralPath $backupFile -ErrorAction Stop
                 if ($verifyData.SDDLHash -cne $backupData.SDDLHash) {
-                    Remove-Item $backupFile -Force -ErrorAction SilentlyContinue
+                    Remove-Item -LiteralPath $backupFile -Force -ErrorAction SilentlyContinue
                     throw "Backup integrity check failed - SHA256 hash mismatch detected"
                 }
 
                 if ($verifyData.ObjectDN.Trim() -ne $ObjectDN.Trim()) {
-                    Remove-Item $backupFile -Force -ErrorAction SilentlyContinue
+                    Remove-Item -LiteralPath $backupFile -Force -ErrorAction SilentlyContinue
                     throw "Backup integrity check failed - ObjectDN mismatch detected"
                 }
             }
@@ -373,8 +373,8 @@ function New-ACLBackup {
             Write-StructuredLog "Failed to create ACL backup for $($ObjectDN.Trim()) : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId -Data $errorDetails
 
             # Cleanup any partial backup files on failure
-            if ($backupFile -and (Test-Path $backupFile -ErrorAction SilentlyContinue)) {
-                Remove-Item $backupFile -Force -ErrorAction SilentlyContinue
+            if ($backupFile -and (Test-Path -LiteralPath $backupFile -ErrorAction SilentlyContinue)) {
+                Remove-Item -LiteralPath $backupFile -Force -ErrorAction SilentlyContinue
                 Write-StructuredLog "Cleaned up partial backup file: $backupFile" -Level Debug -CorrelationId $CorrelationId
             }
 

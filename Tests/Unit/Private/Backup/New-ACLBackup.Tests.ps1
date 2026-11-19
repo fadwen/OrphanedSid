@@ -72,6 +72,26 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
     }
 
     Context 'Writing the backup' {
+        It 'Backs up an object whose name contains square brackets, under a file name without them (#119)' {
+            $dn = 'OU=Payroll [EU],OU=Groups,DC=contoso,DC=com'
+
+            $file = New-ACLBackup -ObjectDN $dn -ACL $script:acl -BackupPath $script:backupDir
+
+            Test-Path -LiteralPath $file -PathType Leaf | Should -BeTrue
+            [System.IO.Path]::GetFileName($file) | Should -Not -Match '[\[\]]'
+            (Import-Clixml -LiteralPath $file).ObjectDN | Should -Be $dn
+        }
+
+        It 'Writes the backup into a folder whose name contains square brackets (#119)' {
+            $folder = Join-Path $TestDrive "Backup [prod] $([guid]::NewGuid().ToString('N'))"
+
+            $file = New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $folder
+
+            Test-Path -LiteralPath $file -PathType Leaf | Should -BeTrue
+            [System.IO.Path]::GetDirectoryName($file) | Should -Be $folder
+            (Import-Clixml -LiteralPath $file).ObjectDN | Should -Be $script:dn
+        }
+
         It 'Creates the folder and one Clixml file named from the sanitized DN and a timestamp' {
             $result = New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir
 

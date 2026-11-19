@@ -159,7 +159,7 @@ function Set-ModifiedACL {
             try {
                 # Use retry logic for reliable AD operations
                 Invoke-ADOperationWithRetry -ScriptBlock {
-                    Set-Acl -Path "AD:\$($ObjectDN.Trim())" -AclObject $ACL -ErrorAction Stop
+                    Set-DirectoryObjectAcl -DistinguishedName $ObjectDN -AclObject $ACL
                 } -MaxRetries 3 -CorrelationId $CorrelationId
 
                 Write-StructuredLog "Successfully applied ACL changes to $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
@@ -188,7 +188,7 @@ function Set-ModifiedACL {
             try {
                 Write-StructuredLog "Verifying ACL application for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
                 Invoke-ADOperationWithRetry -ScriptBlock {
-                    Get-Acl -Path "AD:\$($ObjectDN.Trim())" -ErrorAction Stop | Out-Null
+                    $null = Get-DirectoryObjectAcl -DistinguishedName $ObjectDN
                 } -MaxRetries 2 -CorrelationId $CorrelationId
                 $verified = $true
                 Write-StructuredLog "ACL verification successful for $ObjectDN" -Level Debug -CorrelationId $CorrelationId

@@ -62,12 +62,12 @@ class ScriptConfiguration {
     }
 
     static [ScriptConfiguration]LoadFromFile([string]$configPath) {
-        if (-not (Test-Path $configPath)) {
+        if (-not (Test-Path -LiteralPath $configPath)) {
             throw "Configuration file not found: $configPath"
         }
 
         try {
-            $configData = Get-Content $configPath -Raw | ConvertFrom-Json
+            $configData = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
             $config = [ScriptConfiguration]::new()
 
             # Validation with proper error handling

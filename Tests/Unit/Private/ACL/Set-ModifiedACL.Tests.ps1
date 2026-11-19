@@ -14,6 +14,8 @@
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Set-ModifiedACL.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Set-DirectoryObjectAcl.ps1"
 
     # Placeholders for the collaborators so they can be mocked; the real ones live in other files
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
@@ -21,13 +23,20 @@ BeforeAll {
     function Invoke-ADOperationWithRetry { param([scriptblock]$ScriptBlock, $MaxRetries, $OperationName, $ObjectContext, $CorrelationId) }
 
     $script:dn = 'CN=Finance Share,OU=Groups,DC=contoso,DC=com'
-    $script:acl = [PSCustomObject]@{
-        Access = @(
-            [PSCustomObject]@{ IdentityReference = 'CONTOSO\Domain Admins' }
-            [PSCustomObject]@{ IdentityReference = 'CONTOSO\Finance' }
-            [PSCustomObject]@{ IdentityReference = 'NT AUTHORITY\SYSTEM' }
-        )
+    # A real security descriptor with three entries, because the write goes through
+    # Set-DirectoryObjectAcl, which accepts nothing else. The trustees are well-known SIDs, so
+    # reading them back needs no domain.
+    $script:acl = [System.DirectoryServices.ActiveDirectorySecurity]::new()
+    foreach ($sid in 'S-1-5-32-544', 'S-1-5-18', 'S-1-5-11') {
+        $rule = [System.DirectoryServices.ActiveDirectoryAccessRule]::new(
+            [System.Security.Principal.SecurityIdentifier]$sid,
+            [System.DirectoryServices.ActiveDirectoryRights]::GenericRead,
+            [System.Security.AccessControl.AccessControlType]::Allow)
+        $script:acl.AddAccessRule($rule)
     }
+
+    # On PowerShell 7 the Access property the function counts comes from this module's type data
+    Import-Module Microsoft.PowerShell.Security
 }
 
 Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {

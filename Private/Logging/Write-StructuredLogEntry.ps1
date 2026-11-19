@@ -84,7 +84,7 @@
                     # -WhatIf on the public command reaches here through $WhatIfPreference; the log is
                     # not what is being rehearsed, so the write is pinned
                     # -ErrorAction Stop: Add-Content's failures are non-terminating and would skip the catch
-                    Add-Content -Path $effectiveLogPath -Value $formattedEntryForFile -Encoding UTF8 -WhatIf:$false -ErrorAction Stop
+                    Add-Content -LiteralPath $effectiveLogPath -Value $formattedEntryForFile -Encoding UTF8 -WhatIf:$false -ErrorAction Stop
                 } catch {
                     Write-Warning "Failed to write log entry to file: $($_.Exception.Message)"
                 }
