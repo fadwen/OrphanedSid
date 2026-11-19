@@ -15,6 +15,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\New-ACLBackup.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Utilities\Get-OrphanedSidModuleVersion.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
@@ -80,6 +81,15 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
             Test-Path -LiteralPath $file -PathType Leaf | Should -BeTrue
             [System.IO.Path]::GetFileName($file) | Should -Not -Match '[\[\]]'
             (Import-Clixml -LiteralPath $file).ObjectDN | Should -Be $dn
+        }
+
+        It 'Records the number of access rules, read from the security descriptor itself (#121)' {
+            $acl = New-TestAcl -Sids 'S-1-5-21-111-222-333-9001', 'S-1-5-21-111-222-333-9002', 'S-1-5-32-544'
+
+            $file = New-ACLBackup -ObjectDN $script:dn -ACL $acl -BackupPath $script:backupDir
+
+            (Import-Clixml -LiteralPath $file).ACLEntryCount | Should -Be 3
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like '*contains no access entries*' }
         }
 
         It 'Writes the backup into a folder whose name contains square brackets (#119)' {

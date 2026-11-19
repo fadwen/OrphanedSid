@@ -208,6 +208,17 @@ function Invoke-RemovalWorkflow {
         $result.ActualRemovals = $removalResults.RemovedSIDs.Count
         $result.FailedRemovals = $removalResults.FailedSIDs.Count
 
+        # SIDs that discovery reported and that hold no explicit entry in the ACL read in phase 2,
+        # the one that was backed up in phase 4 and changed in phase 5: they were neither removed
+        # nor failed. Outside -WhatIf, where nothing is removed by design, they make the result a
+        # failure whatever else succeeded.
+        $notFoundSIDs = @()
+        if (-not $WhatIfMode) {
+            $notFoundSIDs = @($securityValidation.AllowedSIDs | Where-Object {
+                    $removalResults.RemovedSIDs -notcontains $_ -and $removalResults.FailedSIDs -notcontains $_
+                })
+        }
+
         # Phase 6: Security Audit Logging
         Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "ACL modification operation initiated" -Outcome 'Attempt' -CorrelationId $CorrelationId -SecurityContext @{
             Operation = 'RemoveOrphanedSIDs'
@@ -273,8 +284,32 @@ function Invoke-RemovalWorkflow {
             $result.Success = $true
             Write-StructuredLog "WhatIf mode: No changes applied" -Level Verbose -CorrelationId $CorrelationId
         } else {
-            $result.Success = $true  # No changes needed
-            Write-StructuredLog "No SIDs required removal" -Level Verbose -CorrelationId $CorrelationId
+            # No entry was removed, so nothing was written. Every SID that was asked for either
+            # failed, which is reported here, or was not found on the object, which is reported
+            # below. There is no third case: validation allows every SID or blocks the object.
+            $result.Success = ($removalResults.FailedSIDs.Count -eq 0)
+            if (-not $result.Success) {
+                $result.ErrorMessage = "The entry could not be removed for: $($removalResults.FailedSIDs -join ', ')"
+            }
+            Write-StructuredLog "No entry was removed from the ACL of $ObjectDistinguishedName" -Level Warning -CorrelationId $CorrelationId
+        }
+
+        if ($notFoundSIDs.Count -gt 0) {
+            $result.Success = $false
+            $notFoundMessage = "No explicit entry was found on the object for $($notFoundSIDs.Count) of " +
+                "$($result.IntendedRemovals) SID(s) reported for removal: $($notFoundSIDs -join ', ')"
+            if ($result.ErrorMessage) {
+                $result.ErrorMessage = "$($result.ErrorMessage); $notFoundMessage"
+            } else {
+                $result.ErrorMessage = $notFoundMessage
+            }
+            Write-StructuredLog "$notFoundMessage (Object: $ObjectDistinguishedName)" -Level Error -CorrelationId $CorrelationId
+            Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "ACL modification did not find the entries reported for removal" -Outcome 'Failure' -CorrelationId $CorrelationId -SecurityContext @{
+                Operation = 'RemoveOrphanedSIDs'
+                TargetObjectDN = $ObjectDistinguishedName
+                SIDsNotFound = $notFoundSIDs
+                IntendedRemovals = $result.IntendedRemovals
+            }
         }
 
         Write-StructuredLog "SID removal workflow completed for $ObjectDistinguishedName - Success: $($result.Success), Removed: $($result.ActualRemovals), Failed: $($result.FailedRemovals)" -Level Verbose -CorrelationId $CorrelationId

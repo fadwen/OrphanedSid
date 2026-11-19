@@ -147,7 +147,8 @@ function Set-ModifiedACL {
             throw "Target path not found: $ObjectDN"
         }
 
-        Write-StructuredLog "ACL contains $($ACL.Access.Count) access rules for application" -Level Debug -CorrelationId $CorrelationId
+        $ruleCount = @(Get-AclAccessRule -Acl $ACL).Count
+        Write-StructuredLog "ACL contains $ruleCount access rules for application" -Level Debug -CorrelationId $CorrelationId
 
         $startTime = Get-Date
         $success = $false
@@ -210,8 +211,8 @@ function Set-ModifiedACL {
             # Additional properties for enterprise functionality
             Verified = $verified
             VerificationError = $verificationError
-            RulesApplied = if ($success -and $ACL.Access) { $ACL.Access.Count } else { 0 }
-            AccessEntriesApplied = if ($success -and $ACL.Access) { $ACL.Access.Count } else { 0 }  # Alias for tests
+            RulesApplied = if ($success) { $ruleCount } else { 0 }
+            AccessEntriesApplied = if ($success) { $ruleCount } else { 0 }  # Alias for tests
             TroubleshootingInfo = if (-not $success) { "Check ACL permissions and network connectivity for path: $ObjectDN" } else { $null }
             NetworkError = $false  # For simplicity, assume network is always OK unless explicitly failing
             ComplianceValidation = "ACL operation compliant with enterprise security policies"

@@ -13,6 +13,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Invoke-SIDRemoval.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
@@ -74,22 +75,46 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
             $script:acl.Removed.Count | Should -Be 0
         }
 
-        It 'Throws for an object that is not an ACL' {
-            $notAnAcl = [PSCustomObject]@{ InvalidProperty = 1 }
-
-            { Invoke-SIDRemoval -ACL $notAnAcl -AllowedSIDs $script:orphan1 } |
-                Should -Throw -ExpectedMessage '*must have Access property*'
-        }
-
-        It 'Treats an object without an Access collection as an empty ACL' {
+        It 'Throws for an object whose access rules cannot be read, and adds nothing to it (#121)' {
             $bare = [PSCustomObject]@{ Owner = 'CONTOSO\Domain Admins' }
 
-            $result = Invoke-SIDRemoval -ACL $bare -AllowedSIDs $script:orphan1
+            { Invoke-SIDRemoval -ACL $bare -AllowedSIDs $script:orphan1 } |
+                Should -Throw -ErrorId 'AclAccessRulesUnavailable,Get-AclAccessRule'
 
-            $result.Success | Should -BeTrue
-            $result.SIDFound | Should -BeFalse
-            $result.RulesProcessed | Should -Be 0
-            @($bare.Access).Count | Should -Be 0
+            $bare.PSObject.Properties['Access'] | Should -BeNullOrEmpty
+        }
+
+        It 'Removes the entry from a real security descriptor in a runspace that a host created (#121)' {
+            # On PowerShell 7 an ACL object has no Access property in such a runspace. The function
+            # used to read that property, find no rules, and report success with nothing removed.
+            $root = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..\..\..").Path
+            $inRunspace = {
+                param($Root, $Orphan)
+                function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
+                . (Join-Path $Root 'Private\ACL\Get-AclAccessRule.ps1')
+                . (Join-Path $Root 'Private\ACL\Invoke-SIDRemoval.ps1')
+                $acl = [System.DirectoryServices.ActiveDirectorySecurity]::new()
+                $acl.SetSecurityDescriptorSddlForm("O:BAG:BAD:(A;;GA;;;BA)(A;;RPWP;;;$Orphan)")
+                $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $Orphan -ObjectDN 'OU=Test,DC=contoso,DC=com'
+                $remaining = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
+                [PSCustomObject]@{
+                    Removed   = @($result.RemovedSIDs)
+                    Remaining = @($remaining | ForEach-Object { $_.IdentityReference.Value })
+                }
+            }
+            $shell = [powershell]::Create()
+            try {
+                $run = $shell.AddScript($inRunspace.ToString()).AddArgument($root).AddArgument($script:orphan1).Invoke()
+                $failures = @($shell.Streams.Error | ForEach-Object { "$_" })
+            }
+            finally {
+                $shell.Dispose()
+            }
+
+            $failures | Should -BeNullOrEmpty
+            @($run).Count | Should -Be 1
+            @($run[0].Removed) | Should -Be @($script:orphan1)
+            @($run[0].Remaining) | Should -Be @('S-1-5-32-544')
         }
     }
 

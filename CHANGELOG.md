@@ -6,6 +6,16 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
+  is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
+  someone else removed in the meantime, and a run that removed some entries and did not find
+  others: the entries that are found are still removed, with a backup, and `ErrorMessage` names
+  the SIDs that were not. Such a result was `Success = True` before, so automation that counts
+  failures by `Success` will count these. The help of `Remove-OrphanedSid` describes it.
+  ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+
 ### Fixed
 
 - Square brackets in a path, and `[`, `]`, `*`, `?` or a backtick in an object's name, no longer
@@ -42,6 +52,16 @@ All notable changes to this module are recorded here. Format follows
   and `Restore-OrphanedSidBackup` now raise the start-up error itself and stop there, and
   processing refuses to start without a loaded configuration.
   ([#120](https://github.com/fadwen/OrphanedSid/issues/120))
+- `Remove-OrphanedSid` no longer reports a removal as successful when nothing was removed. In a
+  PowerShell 7 runspace that a host application creates, a security descriptor has no `Access`
+  property. The removal read that property, found no entries, wrote nothing, and returned
+  `Success = True` with `ActualRemovals = 0`, counted under "Successful removals". A `pwsh.exe`
+  session and Windows PowerShell 5.1 were not affected. Access rules are now read from the
+  security descriptor itself, so the entries are found and removed in such a runspace too, and
+  the `ACLEntryCount` recorded in a backup is the real number of rules there.
+  ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- A removal in which every entry failed to be removed is reported as `Success = False`. It was
+  reported as a success. ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
 
 ## [1.1.0] - 2026-11-11
 
