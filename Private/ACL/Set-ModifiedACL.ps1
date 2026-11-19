@@ -138,7 +138,8 @@ function Set-ModifiedACL {
         }
 
         # The check is of the form of the name only. Whether the object exists is settled by the
-        # write below, which fails with the directory's own error.
+        # write below, which fails with the directory's own error. ThrowTerminatingError() leaves
+        # the function at once: the catch at the end of this function does not receive the error.
         if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDN -CorrelationId $CorrelationId)) {
             $message = "The distinguished name was refused because it is not well formed: $ObjectDN"
             $exception = [System.ArgumentException]::new($message)
@@ -232,14 +233,11 @@ function Set-ModifiedACL {
         $errorMessage = $_.Exception.Message
         Write-StructuredLog "Failed to apply ACL changes to $ObjectDN : $errorMessage" -Level Error -CorrelationId $CorrelationId
         
-        # An input that was refused ends the function: a missing ACL, an empty name, or a name that
-        # is not well formed. Only a failure of the write itself is returned as a result.
+        # A missing ACL and an empty name end the function. A name that is not well formed ends it
+        # too and does not come through here: it is raised above with ThrowTerminatingError(),
+        # which passes this catch by. Only a failure of the write itself is returned as a result.
         if ($errorMessage -match "parameter cannot be empty|parameter must not be null") {
             throw $_.Exception
-        }
-
-        if ($_.FullyQualifiedErrorId -like 'DistinguishedNameRefused,*') {
-            $PSCmdlet.ThrowTerminatingError($_)
         }
         
         # Return error result object for operational errors
