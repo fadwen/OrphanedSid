@@ -53,6 +53,21 @@ for a run that found nothing.
 `$found = @(Find-OrphanedSid ...)` captures the findings directly. `-OutputPath` writes the same
 data to CSV in addition.
 
+A `RemovalOperationResult` with `Success = False` names what went wrong in two lists. `FailedSIDs`
+holds the entries that were on the object and could not be removed. `NotFoundSIDs` holds the
+entries that discovery reported and that were no longer on the object, for example because
+someone else removed them between the two steps. A script that retries or alerts on failures can
+treat a result differently when `FailedSIDs` is empty and `NotFoundSIDs` is not:
+
+```powershell
+$results = @(Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -Force -SuppressConsoleOutput)
+$failed = @($results | Where-Object { -not $_.Success })
+$alreadyGone = @($failed | Where-Object { $_.NotFoundSIDs.Count -gt 0 -and $_.FailedSIDs.Count -eq 0 })
+```
+
+Such a result can still carry another failure, such as a changed ACL that could not be written;
+`ErrorMessage` then names it before the entries that were not found.
+
 ## Parameters for Unattended Runs
 
 | Parameter | Commands | Purpose in automation |

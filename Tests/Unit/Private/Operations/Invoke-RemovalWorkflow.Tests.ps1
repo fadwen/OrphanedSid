@@ -125,6 +125,8 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             $result.Success | Should -Be $false
             $result.ActualRemovals | Should -Be 0
             $result.ErrorMessage | Should -BeLike "No explicit entry was found on the object for 1 of 1 SID(s)*$($script:sid1)"
+            $result.NotFoundSIDs | Should -Be @($script:sid1)
+            $result.FailedSIDs.Count | Should -Be 0
             Should -Invoke Set-ModifiedACL -Times 0 -Exactly
             Should -Invoke Invoke-RemovalVerification -Times 0 -Exactly
             Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
@@ -143,6 +145,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             $result.ActualRemovals | Should -Be 1
             $result.RemovedSIDs | Should -Be @($script:sid1)
             $result.ErrorMessage | Should -BeLike "No explicit entry was found on the object for 1 of 2 SID(s)*$($script:sid2)"
+            $result.NotFoundSIDs | Should -Be @($script:sid2)
             Should -Invoke Set-ModifiedACL -Times 1 -Exactly
         }
 
@@ -153,6 +156,7 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
 
             $result.Success | Should -Be $false
             $result.FailedRemovals | Should -Be 1
+            $result.NotFoundSIDs.Count | Should -Be 0
             $result.ErrorMessage | Should -Be "The entry could not be removed for: $($script:sid1)"
             Should -Invoke Set-ModifiedACL -Times 0 -Exactly
         }
@@ -164,6 +168,15 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
 
             $result.Success | Should -Be $true
             $result.ErrorMessage | Should -BeNullOrEmpty
+            $result.NotFoundSIDs.Count | Should -Be 0
+        }
+
+        It "Lists no missing entry when every entry was removed" {
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1
+
+            $result.Success | Should -Be $true
+            $result.NotFoundSIDs.GetType().Name | Should -Be 'String[]'
+            $result.NotFoundSIDs.Count | Should -Be 0
         }
 
         It "Reports the intended removals as a count" {

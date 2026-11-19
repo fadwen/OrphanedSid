@@ -6,6 +6,16 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- A `RemovalOperationResult` has a `NotFoundSIDs` property. It lists the SIDs that discovery
+  reported and that held no explicit entry on the object when `Remove-OrphanedSid` came to remove
+  them, for example because someone else removed the entry in the meantime. Such a result was
+  already `Success = False`, and the SIDs were named only in the text of `ErrorMessage`.
+  `FailedSIDs` still lists the entries that were on the object and could not be removed. When a
+  run has such results, the removal summary in the log counts them on a line of its own, under
+  `Failed removals`. ([#129](https://github.com/fadwen/OrphanedSid/issues/129))
+
 ### Changed
 
 - A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported

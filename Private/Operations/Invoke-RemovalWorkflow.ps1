@@ -100,6 +100,7 @@ function Invoke-RemovalWorkflow {
         - RemovedSIDs: Array of successfully removed SIDs
         - FailedSIDs: Array of SIDs that failed removal
         - BlockedSIDs: Array of SIDs blocked by security policies
+        - NotFoundSIDs: Array of SIDs that held no explicit entry on the object any more
         - Success: Overall operation success status
         - ErrorMessage: Detailed error information if applicable
         - ProcessingTime: Duration of the complete workflow
@@ -218,6 +219,7 @@ function Invoke-RemovalWorkflow {
                     $removalResults.RemovedSIDs -notcontains $_ -and $removalResults.FailedSIDs -notcontains $_
                 })
         }
+        $result.NotFoundSIDs = $notFoundSIDs
 
         # Phase 6: Security Audit Logging
         Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "ACL modification operation initiated" -Outcome 'Attempt' -CorrelationId $CorrelationId -SecurityContext @{

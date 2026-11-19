@@ -228,6 +228,22 @@ function Write-ProcessingSummary {
                 Write-StructuredLog "Removal operations attempted: $($ProcessingResults.RemovalResults.Count)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "Successful removals: $successfulRemovals" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "Failed removals: $failedRemovals" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+
+                # A result in which an entry that discovery reported was no longer on the object is a
+                # failed removal. This line tells such a result from one in which an entry could not
+                # be removed, and is written only when there is one.
+                $goneCounts = @(foreach ($removalResult in $ProcessingResults.RemovalResults) {
+                        $notFound = $removalResult.PSObject.Properties['NotFoundSIDs']
+                        if ($null -ne $notFound -and @($notFound.Value).Count -gt 0) {
+                            @($notFound.Value).Count
+                        }
+                    })
+                if ($goneCounts.Count -gt 0) {
+                    $goneEntries = ($goneCounts | Measure-Object -Sum).Sum
+                    $goneMessage = "Of the failed removals, with an entry that was no longer on the object: " +
+                        "$($goneCounts.Count) ($goneEntries SID(s))"
+                    Write-StructuredLog $goneMessage -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                }
             }
 
             # Export results to CSV if path provided

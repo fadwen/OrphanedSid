@@ -553,6 +553,41 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @(Get-LogCorrelationId -Path $log | Where-Object { $_ -ne 'RUN-42R' } | Select-Object -Unique) | Should -Be @()
         }
 
+        It 'Lists an entry that was gone when the removal read the object in NotFoundSIDs (#129)' {
+            # Someone else removes the entry between discovery and removal. Discovery makes the
+            # first read of the object through the AD: drive, and the removal makes the second.
+            $script:GoneTarget = "CN=Payroll,OU=Finance,$script:DomainDN"
+            $script:GoneReads = 0
+            Mock -ModuleName OrphanedSid Get-Acl -ParameterFilter { $Path -eq "AD:\$script:GoneTarget" } {
+                $script:GoneReads++
+                if ($script:GoneReads -eq 2) {
+                    $entry = "(A;;RPWP;;;$script:OrphanSid)"
+                    $script:Directory[$script:GoneTarget].Sddl = $script:Directory[$script:GoneTarget].Sddl.Replace($entry, '')
+                }
+                Get-DirectoryAcl -DN $script:GoneTarget
+            }
+
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            $script:GoneReads | Should -BeGreaterThan 1
+            $result = @($results | Where-Object ObjectDN -eq $script:GoneTarget)
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeFalse
+            $result[0].NotFoundSIDs | Should -Be @($script:OrphanSid)
+            $result[0].FailedSIDs.Count | Should -Be 0
+            $result[0].ActualRemovals | Should -Be 0
+
+            # The expression Documentation/Automation.md gives for telling such a result apart
+            $failed = @($results | Where-Object { -not $_.Success })
+            $alreadyGone = @($failed | Where-Object { $_.NotFoundSIDs.Count -gt 0 -and $_.FailedSIDs.Count -eq 0 })
+            $alreadyGone.Count | Should -Be 1
+            $alreadyGone[0].ObjectDN | Should -Be $script:GoneTarget
+
+            $summary = @(Get-Content -LiteralPath (Join-Path $TestDrive 'remove.log')) -match 'no longer on the object'
+            @($summary).Count | Should -Be 1
+            $summary[0] | Should -BeLike '*Of the failed removals, with an entry that was no longer on the object: 1 (1 SID(s))*'
+        }
+
         It 'Leaves an object with no orphaned ACE untouched' {
             $null = Invoke-RemoveOrphanedSid
 
