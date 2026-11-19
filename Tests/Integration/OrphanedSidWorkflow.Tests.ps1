@@ -208,6 +208,10 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             } elseif ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) {
                 return
             }
+            # Measured on Windows PowerShell 5.1: the drive does not read a name in which the
+            # directory escaped a character with a backslash (#133). PowerShell 7 reads it; the
+            # fake behaves like the edition that fails.
+            if ($dn.Contains('\')) { throw 'The object name has bad syntax' }
             if (-not $script:Directory.Contains($dn)) { throw "Cannot find path '$Path' dn=[$dn] count=$($script:Directory.Count) keys=$(@($script:Directory.Keys) -join '|')" }
             Get-DirectoryAcl -DN $dn
         }
@@ -219,10 +223,11 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn) -or $dn.Contains('`')) {
                 throw "Set-Acl -Path was called with a name that contains wildcard characters: $dn"
             }
+            if ($dn.Contains('\')) { throw 'The object name has bad syntax' }
             $script:Directory[$dn].Sddl = $AclObject.GetSecurityDescriptorSddlForm('All')
         }
 
-        # The attribute route the module takes for a name with wildcard characters
+        # The attribute route the module takes for a name with wildcard characters or a backslash
         Mock -ModuleName OrphanedSid Set-ADObject {
             $dn = [string]$Identity
             if (-not $script:Directory.Contains($dn)) { throw "Directory object not found: $dn" }
@@ -709,6 +714,53 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             # The file protects the SID that is otherwise reported, so its absence shows the file was read
             $results.OrphanedSID | Should -Not -Contain $script:OrphanSid
             $results.OrphanedSID | Should -Contain $script:FailingSid
+        }
+    }
+
+    Context 'A character that the directory escapes in an object name (#133)' {
+        BeforeEach {
+            $script:EscapedDN = 'CN=Doe\, Jane,OU=Finance,' + $script:DomainDN
+            $script:Directory[$script:EscapedDN] =
+                New-DirectoryObject -DN $script:EscapedDN -ObjectClass 'group' -Trustee $script:LiveSid, $script:OrphanSid
+            $script:OriginalSddl[$script:EscapedDN] = $script:Directory[$script:EscapedDN].Sddl
+        }
+
+        It 'Reports the orphaned entry of an object whose name holds an escaped comma' {
+            $results = @(Invoke-FindOrphanedSid)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            @($orphaned | Where-Object ObjectDN -eq $script:EscapedDN).Count | Should -Be 1
+        }
+
+        It 'Removes the orphaned entry from an object whose name holds an escaped comma, and backs it up' {
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Not -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Contain $script:LiveSid
+            $result = @($results | Where-Object ObjectDN -eq $script:EscapedDN)
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeTrue
+            $result[0].ActualRemovals | Should -Be 1
+            Test-Path -LiteralPath $result[0].BackupFile -PathType Leaf | Should -BeTrue
+        }
+
+        It 'Restores an object whose name holds an escaped comma from its backup' {
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $script:EscapedDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-escaped.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Contain $script:LiveSid
         }
     }
 

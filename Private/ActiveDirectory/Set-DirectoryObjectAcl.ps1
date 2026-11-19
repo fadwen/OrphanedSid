@@ -5,14 +5,20 @@ function Set-DirectoryObjectAcl {
 
     .DESCRIPTION
     Writes the security descriptor through the AD: drive with Set-Acl, as the module always has,
-    unless the distinguished name contains a wildcard character or a backtick. The -Path parameter
-    of Set-Acl treats [ ] * and ? as a pattern, so for an object named 'Payroll [EU]' it matches
-    nothing, and for a name with * or ? it can match other objects. A backtick escapes the
-    character after it, so a path for an object named 'Pay`*' names the object 'Pay*'.
-    Set-Acl -LiteralPath is not a way out: on Windows PowerShell 5.1 the AD: drive does not resolve
-    a literal path for any object. Such a name is therefore written to the nTSecurityDescriptor
-    attribute with Set-ADObject, which takes the distinguished name literally. That write needs
-    no more than the right to change permissions on the object, as Set-Acl does.
+    unless the distinguished name contains a wildcard character, a backtick or a backslash. The
+    -Path parameter of Set-Acl treats [ ] * and ? as a pattern, so for an object named
+    'Payroll [EU]' it matches nothing, and for a name with * or ? it can match other objects. A
+    backtick escapes the character after it, so a path for an object named 'Pay`*' names the
+    object 'Pay*'. Set-Acl -LiteralPath is not a way out: on Windows PowerShell 5.1 the AD: drive
+    does not resolve a literal path for any object.
+
+    A backslash is how the directory escapes a comma, + = " < > ; a backslash and a leading # in
+    a distinguished name, so a group named 'Doe, Jane' is 'CN=Doe\, Jane'. On Windows PowerShell 5.1
+    Set-Acl fails for such a name on the AD: drive with 'The object name has bad syntax'.
+
+    A name with any of these characters is therefore written to the nTSecurityDescriptor attribute
+    with Set-ADObject, which takes the distinguished name literally, on both editions. That write
+    needs no more than the right to change permissions on the object, as Set-Acl does.
 
     Set-Acl and Set-ADObject both honour -WhatIf and -Confirm from the calling command, so this
     function adds no confirmation of its own. A failure of either write ends the function with the
@@ -35,6 +41,12 @@ function Set-DirectoryObjectAcl {
 
     Writes the security descriptor to the nTSecurityDescriptor attribute, because the name contains
     square brackets.
+
+    .EXAMPLE
+    Set-DirectoryObjectAcl -DistinguishedName 'CN=Doe\, Jane,OU=Staff,DC=contoso,DC=com' -AclObject $acl
+
+    Writes the security descriptor to the nTSecurityDescriptor attribute, because the name contains
+    an escaped comma.
 
     .INPUTS
     None.
@@ -74,9 +86,11 @@ function Set-DirectoryObjectAcl {
         # A backtick is no wildcard character to ContainsWildcardCharacters(), which reads it as an
         # escape. The -Path parameter reads it the same way and drops it: for 'Pay`*' the drive hands
         # back the object named 'Pay*'. Such a name takes the literal route as well.
-        $isPattern = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($objectDN) -or
-            $objectDN.Contains('`')
-        if ($isPattern) {
+        # So does a name with a backslash, for which the drive fails on Windows PowerShell 5.1.
+        # PowerShell 7 writes it, so only a 5.1 run against a real domain shows the difference.
+        $writesAttribute = $objectDN.Contains('`') -or $objectDN.Contains('\') -or
+            [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($objectDN)
+        if ($writesAttribute) {
             Set-ADObject -Identity $objectDN -Replace @{ nTSecurityDescriptor = $AclObject } -ErrorAction Stop
         } else {
             Set-Acl -Path "AD:\$objectDN" -AclObject $AclObject -ErrorAction Stop

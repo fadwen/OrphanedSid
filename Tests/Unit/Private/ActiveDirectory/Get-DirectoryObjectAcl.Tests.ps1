@@ -49,6 +49,17 @@ Describe 'Get-DirectoryObjectAcl' -Tag 'Unit', 'Private' {
             Should-Invoke -CommandName Get-ADObject -Times 0 -Exactly
         }
 
+        It 'Reads <Name> through the AD: drive, which reads a dot or a slash as part of the name' -ForEach @(
+            @{ Name = 'OU=Misc...,DC=contoso,DC=com' }
+            @{ Name = 'OU=Inbound/Outbound,DC=contoso,DC=com' }
+        ) {
+            $result = Get-DirectoryObjectAcl -DistinguishedName $Name
+
+            [object]::ReferenceEquals($result, $script:driveAcl) | Should-BeTrue
+            Should-Invoke -CommandName Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$Name" }
+            Should-Invoke -CommandName Get-ADObject -Times 0 -Exactly
+        }
+
         It 'Removes whitespace around the name before reading' {
             $null = Get-DirectoryObjectAcl -DistinguishedName '  OU=Finance,DC=contoso,DC=com  '
 
@@ -63,6 +74,9 @@ Describe 'Get-DirectoryObjectAcl' -Tag 'Unit', 'Private' {
             @{ Name = 'CN=Who?,OU=Finance,DC=contoso,DC=com' }
             @{ Name = 'OU=Pay`*,DC=contoso,DC=com' }
             @{ Name = 'OU=Tick`Name,DC=contoso,DC=com' }
+            @{ Name = 'CN=Doe\, Jane,OU=Staff,DC=contoso,DC=com' }
+            @{ Name = 'OU=Research\+Development,DC=contoso,DC=com' }
+            @{ Name = 'CN=Below,OU=Trailing\\,DC=contoso,DC=com' }
         ) {
             $result = Get-DirectoryObjectAcl -DistinguishedName $Name
 

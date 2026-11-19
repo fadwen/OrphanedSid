@@ -128,12 +128,17 @@ A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-B
 a removal once ran to the end with only the header in its log. `Get-DirectoryObjectAcl` and
 `Set-DirectoryObjectAcl` are the only callers of `Get-Acl` and `Set-Acl` on the `AD:` drive. They
 use `-Path` for an ordinary name, and the `nTSecurityDescriptor` attribute for a name that
-contains `[`, `]`, `*`, `?` or a backtick. The backtick is not an oversight: `-Path` reads it as
-an escape and drops it, so for ``OU=Pay`*`` the drive hands back the descriptor of `OU=Pay*`, a
-different object. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
+contains `[`, `]`, `*`, `?`, a backtick or a backslash. The backtick is not an oversight: `-Path`
+reads it as an escape and drops it, so for ``OU=Pay`*`` the drive hands back the descriptor of
+`OU=Pay*`, a different object. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
 `Get-Acl -LiteralPath` fails on the `AD:` drive for every object, with
 `Cannot find path '//RootDSE/...'`, while on PowerShell 7 it works, so only a 5.1 run against a
-real domain notices.
+real domain notices. The backslash is there for the same edition. The directory escapes `,` `+`
+`=` `"` `<` `>` `;` `\` and a leading `#` with one, so a group named `Doe, Jane` is
+`CN=Doe\, Jane`, and on Windows PowerShell 5.1 the drive fails for every such name with
+`The object name has bad syntax` (#133). The tests cannot see either failure by themselves: the
+fake directory in `Tests/Integration/OrphanedSidWorkflow.Tests.ps1` fails the way 5.1 was measured
+to, and has to be kept that way.
 
 ### The removal reads access rules with `Get-AclAccessRule`, not from `.Access`
 

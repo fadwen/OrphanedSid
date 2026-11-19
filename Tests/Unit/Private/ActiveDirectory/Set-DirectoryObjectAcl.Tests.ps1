@@ -50,6 +50,9 @@ Describe 'Set-DirectoryObjectAcl' -Tag 'Unit', 'Private' {
             @{ Name = 'CN=Who?,OU=Finance,DC=contoso,DC=com' }
             @{ Name = 'OU=Pay`*,DC=contoso,DC=com' }
             @{ Name = 'OU=Tick`Name,DC=contoso,DC=com' }
+            @{ Name = 'CN=Doe\, Jane,OU=Staff,DC=contoso,DC=com' }
+            @{ Name = 'OU=Research\+Development,DC=contoso,DC=com' }
+            @{ Name = 'CN=Below,OU=Trailing\\,DC=contoso,DC=com' }
         ) {
             Set-DirectoryObjectAcl -DistinguishedName $Name -AclObject $script:acl
 

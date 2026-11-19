@@ -73,6 +73,14 @@ All notable changes to this module are recorded here. Format follows
   whatever the error action is, and `powershell.exe` or `pwsh` exits with code 1, so the step
   fails without it. The guide now says that, and shows how a caller handles such an error with
   `try`/`catch` and carries on. ([#131](https://github.com/fadwen/OrphanedSid/pull/131))
+- On Windows PowerShell 5.1, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` now reach an
+  object whose name contains a comma, `+`, `=`, `"`, `<`, `>`, `;`, a backslash or a leading `#`.
+  Active Directory escapes those characters with a backslash, so a group named `Doe, Jane` is
+  `CN=Doe\, Jane`, and on that edition the `AD:` drive does not read or write such a name. Every
+  removal from such an object failed with `The object name has bad syntax`, although
+  `Find-OrphanedSid` reported its entries. The security descriptor of such an object is now read
+  and written through its `nTSecurityDescriptor` attribute, on both editions. PowerShell 7 was
+  not affected. ([#133](https://github.com/fadwen/OrphanedSid/issues/133))
 
 ## [1.1.0] - 2026-11-11
 
