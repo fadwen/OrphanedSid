@@ -388,7 +388,7 @@ function New-LogDirectory {
         [string]$DirectoryPath
     )
 
-    if (-not (Test-Path $DirectoryPath)) {
+    if (-not (Test-Path -LiteralPath $DirectoryPath)) {
         try {
             # Bypass WhatIf for log directory creation
             New-Item -Path $DirectoryPath -ItemType Directory -Force -WhatIf:$false | Out-Null
@@ -404,8 +404,8 @@ function New-LogDirectory {
     # Test write permissions
     try {
         $testFile = Join-Path $DirectoryPath "test_write_$(Get-Random).tmp"
-        Set-Content -Path $testFile -Value "test" -ErrorAction Stop -WhatIf:$false
-        Remove-Item -Path $testFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
+        Set-Content -LiteralPath $testFile -Value "test" -ErrorAction Stop -WhatIf:$false
+        Remove-Item -LiteralPath $testFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
         Write-Verbose "Write permissions validated for directory: $DirectoryPath"
     }
     catch {

@@ -210,7 +210,7 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
         }
 
         It "Should fall back when the directory is not writable" {
-            Mock Set-Content { throw 'Write denied' } -ParameterFilter { $Path -like '*test_write_*.tmp' }
+            Mock Set-Content { throw 'Write denied' } -ParameterFilter { $LiteralPath -like '*test_write_*.tmp' }
 
             $result = Initialize-LogDirectory -LogPath $script:TestLogPath
 

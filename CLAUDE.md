@@ -91,6 +91,18 @@ removal. The domain SID is read once per run in `Invoke-MainProcessingLogic` and
 removal; without it every domain SID is rated
 `Unknown Domain` and the run logs `Could not determine the current domain SID`.
 
+### Paths are literal, and directory security descriptors go through two helpers
+
+A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-BackupPath`,
+`-LogPath`, `-OutputPath` or `-ConfigPath` are otherwise read as a pattern that matches nothing:
+a removal once ran to the end with only the header in its log. `Get-DirectoryObjectAcl` and
+`Set-DirectoryObjectAcl` are the only callers of `Get-Acl` and `Set-Acl` on the `AD:` drive. They
+use `-Path` for an ordinary name, and the `nTSecurityDescriptor` attribute for a name that
+contains `[`, `]`, `*` or `?`. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
+`Get-Acl -LiteralPath` fails on the `AD:` drive for every object, with
+`Cannot find path '//RootDSE/...'`, while on PowerShell 7 it works, so only a 5.1 run against a
+real domain notices.
+
 ### Backups are Clixml with a hash, and nothing else reads them
 
 `New-ACLBackup` writes `<DN sanitized>_<yyyyMMdd_HHmmss>[_<n>].xml` with the SDDL, its SHA256, the

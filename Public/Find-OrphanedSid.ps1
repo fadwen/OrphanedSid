@@ -18,7 +18,7 @@ function Find-OrphanedSid {
         [ValidateScript({
             $directory = Split-Path -Parent $_
             if (-not $directory) { $directory = (Get-Location).Path }
-            if (-not (Test-Path -Path $directory -PathType Container)) {
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
                 throw "The folder for -OutputPath does not exist: $directory"
             }
             $true
@@ -34,7 +34,7 @@ function Find-OrphanedSid {
 
         [Parameter()]
         [ValidateScript({
-            if ($_ -and -not (Test-Path -Path $_ -PathType Leaf)) {
+            if ($_ -and -not (Test-Path -LiteralPath $_ -PathType Leaf)) {
                 throw "Configuration file not found: $_"
             }
             $true

@@ -74,7 +74,7 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
             Write-SecurityStructuredLogEntry -Message "AD object access attempt" -Level Warning
 
             Should -Invoke Add-Content -Times 1 -Exactly -ParameterFilter {
-                $Path -eq 'C:\logs\security.log' -and ($Value | ConvertFrom-Json).Level -eq 'Warning'
+                $LiteralPath -eq 'C:\logs\security.log' -and ($Value | ConvertFrom-Json).Level -eq 'Warning'
             }
         }
 
@@ -169,7 +169,7 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
                 $Message -eq 'CRITICAL: Security log entry failed: Formatting error'
             }
             Should -Invoke Add-Content -Times 1 -Exactly -ParameterFilter {
-                $Path -eq 'C:\logs\security.log' -and
+                $LiteralPath -eq 'C:\logs\security.log' -and
                 $Value -like '*[[]SecurityAudit] [[]Error] SECURITY: Test (CorrelationId: fb-1)'
             }
         }
@@ -285,13 +285,13 @@ Describe "Write-SecurityFileEntryDirect" -Tag @('Unit', 'Logging', 'Security') {
 
     It "Should write to the temp security log when the log path fails" {
         Mock Get-LoggingSystemState { New-LoggingState }
-        Mock Add-Content { throw 'denied' } -ParameterFilter { $Path -eq 'C:\logs\security.log' }
+        Mock Add-Content { throw 'denied' } -ParameterFilter { $LiteralPath -eq 'C:\logs\security.log' }
         Mock Add-Content { }
 
         Write-SecurityFileEntryDirect -Message 'entry'
 
         $expected = Join-Path $env:TEMP "OrphanedSid-Security-$(Get-Date -Format 'yyyyMMdd').log"
-        Should -Invoke Add-Content -Times 1 -Exactly -ParameterFilter { $Path -eq $expected -and $Value -eq 'entry' }
+        Should -Invoke Add-Content -Times 1 -Exactly -ParameterFilter { $LiteralPath -eq $expected -and $Value -eq 'entry' }
         Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -eq "Security log written to emergency location: $expected" }
     }
 

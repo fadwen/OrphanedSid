@@ -14,6 +14,8 @@
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Set-DirectoryObjectAcl.ps1"
 
     $script:dn = 'CN=Finance Share,OU=Groups,DC=contoso,DC=com'
     # Two ACEs. Owner and group are BA, not DA: a domain-relative alias needs a domain to translate,
@@ -46,7 +48,7 @@ Describe 'Get-RestorationTarget' -Tag 'Unit', 'Backup', 'Private' {
         $result.Issues | Should -BeNullOrEmpty
         $result.CorrelationId | Should -Be 'tgt-1'
         Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $Identity -eq $script:dn }
-        Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:$($script:dn)" }
+        Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$($script:dn)" }
     }
 
     It 'Accepts the distinguished name from the pipeline' {
@@ -142,7 +144,7 @@ Describe 'Confirm-RestorationSuccess' -Tag 'Unit', 'Backup', 'Private' {
         $result.ToleranceLevel | Should -Be 'Standard'
         $result.VerificationIssues | Should -BeNullOrEmpty
         $result.CorrelationId | Should -Be 'ver-1'
-        Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:$($script:dn)" }
+        Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$($script:dn)" }
     }
 
     It 'Passes at Standard tolerance when four of five entries match, and fails at Strict' {

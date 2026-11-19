@@ -177,7 +177,11 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             }
             if ($Identity) {
                 if ($script:Directory.Contains([string]$Identity)) {
-                    return [PSCustomObject]@{ DistinguishedName = [string]$Identity; ObjectClass = $script:Directory[[string]$Identity].ObjectClass }
+                    return [PSCustomObject]@{
+                        DistinguishedName    = [string]$Identity
+                        ObjectClass          = $script:Directory[[string]$Identity].ObjectClass
+                        nTSecurityDescriptor = Get-DirectoryAcl -DN ([string]$Identity)
+                    }
                 }
                 throw "Directory object not found: $Identity"
             }
@@ -196,13 +200,28 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
 
         Mock -ModuleName OrphanedSid Get-Acl -ParameterFilter { $Path -like 'AD:*' } {
             $dn = [string](@($Path)[0] -replace '^AD:\\?')
+            # Measured on a domain controller: for a name with wildcard characters, Get-Acl -Path on
+            # the AD: drive returns nothing and raises no error (#119)
+            if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) { return }
             if (-not $script:Directory.Contains($dn)) { throw "Cannot find path '$Path' dn=[$dn] count=$($script:Directory.Count) keys=$(@($script:Directory.Keys) -join '|')" }
             Get-DirectoryAcl -DN $dn
         }
 
         Mock -ModuleName OrphanedSid Set-Acl -ParameterFilter { $Path -like 'AD:*' } {
             $dn = [string](@($Path)[0] -replace '^AD:\\?')
+            # The path is a pattern to Set-Acl, so a write through the AD: drive for such a name is
+            # a defect; fail the test that makes one
+            if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) {
+                throw "Set-Acl -Path was called with a name that contains wildcard characters: $dn"
+            }
             $script:Directory[$dn].Sddl = $AclObject.GetSecurityDescriptorSddlForm('All')
+        }
+
+        # The attribute route the module takes for a name with wildcard characters
+        Mock -ModuleName OrphanedSid Set-ADObject {
+            $dn = [string]$Identity
+            if (-not $script:Directory.Contains($dn)) { throw "Directory object not found: $dn" }
+            $script:Directory[$dn].Sddl = $Replace['nTSecurityDescriptor'].GetSecurityDescriptorSddlForm('All')
         }
     }
 
@@ -580,6 +599,97 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Should -Invoke -ModuleName OrphanedSid Get-ADObject -Times 1 -Exactly -ParameterFilter {
                 -not $IncludeDeletedObjects -and $Filter -eq "objectSid -eq '$script:OrphanSid'"
             }
+        }
+    }
+
+    Context 'Square brackets in an object name and in path parameters (#119)' {
+        BeforeEach {
+            $script:BracketDN = "CN=Payroll [EU],OU=Finance,$script:DomainDN"
+            $script:Directory[$script:BracketDN] =
+                New-DirectoryObject -DN $script:BracketDN -ObjectClass 'group' -Trustee $script:LiveSid, $script:OrphanSid
+            $script:OriginalSddl[$script:BracketDN] = $script:Directory[$script:BracketDN].Sddl
+            $script:BracketFolder = Join-Path $TestDrive "Run [1] $([guid]::NewGuid().ToString('N'))"
+            $null = New-Item -Path $script:BracketFolder -ItemType Directory
+            $script:Search = "OU=Finance,$script:DomainDN"
+        }
+
+        It 'Removes the orphaned entry from an object whose name contains square brackets, and backs it up' {
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            Get-TrusteeSid -DN $script:BracketDN | Should -Not -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $script:BracketDN | Should -Contain $script:LiveSid
+            $result = @($results | Where-Object ObjectDN -eq $script:BracketDN)
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeTrue
+            $result[0].ActualRemovals | Should -Be 1
+            Test-Path -LiteralPath $result[0].BackupFile -PathType Leaf | Should -BeTrue
+            [System.IO.Path]::GetFileName($result[0].BackupFile) | Should -Not -Match '[\[\]]'
+        }
+
+        It 'Restores an object whose name contains square brackets from its backup' {
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $script:BracketDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $script:BracketDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-brackets.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $script:BracketDN | Should -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $script:BracketDN | Should -Contain $script:LiveSid
+        }
+
+        It 'Writes the whole log of a removal to a -LogPath that contains square brackets' {
+            $log = Join-Path $script:BracketFolder 'run[1].log'
+
+            $null = Remove-OrphanedSid -SearchBase $script:Search -BackupPath $script:BackupRoot -LogPath $log -SuppressConsoleOutput -Force
+
+            $lines = @(Get-Content -LiteralPath $log)
+            @($lines -match 'Remove-OrphanedSid starting').Count | Should -Be 1
+            @($lines -match 'Removal completed').Count | Should -Be 1
+            @($lines -match 'SECURITY EVENT').Count | Should -BeGreaterThan 0
+        }
+
+        It 'Writes the backups under a -BackupPath that contains square brackets' {
+            $backupRoot = Join-Path $script:BracketFolder 'Backup [prod]'
+            $null = New-Item -Path $backupRoot -ItemType Directory
+            $log = Join-Path $TestDrive 'remove.log'
+
+            $results = @(Remove-OrphanedSid -SearchBase $script:Search -BackupPath $backupRoot -LogPath $log -SuppressConsoleOutput -Force)
+
+            $results.Count | Should -Be 3
+            @($results | Where-Object { -not $_.Success }).Count | Should -Be 0
+            @(Get-ChildItem -LiteralPath $backupRoot -Recurse -File -Filter '*.xml').Count | Should -Be 3
+            Get-TrusteeSid -DN $script:Search | Should -Not -Contain $script:OrphanSid
+        }
+
+        It 'Writes the CSV to an -OutputPath that contains square brackets' {
+            $csv = Join-Path $script:BracketFolder 'findings[1].csv'
+            $log = Join-Path $TestDrive 'find.log'
+
+            $results = @(Find-OrphanedSid -SearchBase $script:Search -OutputPath $csv -LogPath $log -SuppressConsoleOutput)
+
+            $results.Count | Should -BeGreaterThan 0
+            Test-Path -LiteralPath $csv -PathType Leaf | Should -BeTrue
+            @(Import-Csv -LiteralPath $csv).Count | Should -Be $results.Count
+        }
+
+        It 'Loads a -ConfigPath that contains square brackets' {
+            $config = Join-Path $script:BracketFolder 'settings [prod].json'
+            @{ ProtectedSIDs = @($script:OrphanSid) } | ConvertTo-Json | Set-Content -LiteralPath $config
+            $log = Join-Path $TestDrive 'find.log'
+
+            $results = @(Find-OrphanedSid -SearchBase $script:Search -ConfigPath $config -LogPath $log -SuppressConsoleOutput)
+
+            # The file protects the SID that is otherwise reported, so its absence shows the file was read
+            $results.OrphanedSID | Should -Not -Contain $script:OrphanSid
+            $results.OrphanedSID | Should -Contain $script:FailingSid
         }
     }
 

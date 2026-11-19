@@ -19,6 +19,8 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Set-DirectoryObjectAcl.ps1"
 
     $script:TestObjectDN = 'CN=TestUser,OU=Users,DC=company,DC=com'
     # Three ACEs on well-known aliases, so the SDDL round-trips through ActiveDirectorySecurity without a domain
@@ -85,8 +87,8 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             $results = @($script:TestObjectDN, $other | Set-ObjectACL -BackupData $script:backup)
 
             $results.TargetObjectDN | Should -Be @($script:TestObjectDN, $other)
-            Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:$($script:TestObjectDN)" }
-            Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:$other" }
+            Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$($script:TestObjectDN)" }
+            Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$other" }
         }
     }
 
@@ -105,7 +107,7 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             # The descriptor puts the entries in canonical order, so they are compared as a set
             Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter {
                 $sddl = $AclObject.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::All)
-                $Path -eq "AD:$($script:TestObjectDN)" -and
+                $Path -eq "AD:\$($script:TestObjectDN)" -and
                 $AclObject -is [System.DirectoryServices.ActiveDirectorySecurity] -and
                 $sddl.StartsWith('O:BAG:BAD:') -and $sddl.Length -eq $script:TestSddl.Length -and
                 $sddl.Contains('(A;;RPWP;;;SY)') -and $sddl.Contains('(A;;GA;;;BA)') -and $sddl.Contains('(A;;RP;;;AU)')

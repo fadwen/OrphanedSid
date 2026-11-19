@@ -17,7 +17,7 @@ function Remove-OrphanedSid {
         [Parameter()]
         [ValidateScript({
             $parent = Split-Path -Parent $_
-            if ($parent -and -not (Test-Path -Path $parent -PathType Container)) {
+            if ($parent -and -not (Test-Path -LiteralPath $parent -PathType Container)) {
                 throw "The parent folder for -BackupPath does not exist: $parent"
             }
             $true
@@ -31,7 +31,7 @@ function Remove-OrphanedSid {
         [ValidateScript({
             $directory = Split-Path -Parent $_
             if (-not $directory) { $directory = (Get-Location).Path }
-            if (-not (Test-Path -Path $directory -PathType Container)) {
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
                 throw "The folder for -OutputPath does not exist: $directory"
             }
             $true
@@ -47,7 +47,7 @@ function Remove-OrphanedSid {
 
         [Parameter()]
         [ValidateScript({
-            if ($_ -and -not (Test-Path -Path $_ -PathType Leaf)) {
+            if ($_ -and -not (Test-Path -LiteralPath $_ -PathType Leaf)) {
                 throw "Configuration file not found: $_"
             }
             $true
@@ -134,7 +134,7 @@ function Remove-OrphanedSid {
                 $effectiveBackupPath = Join-Path -Path (Get-Location).Path -ChildPath 'Backup'
             }
             $effectiveBackupPath = Join-Path -Path $effectiveBackupPath -ChildPath (Get-Date -Format 'yyyyMMdd_HHmmss')
-            if (-not $WhatIfPreference -and -not (Test-Path -Path $effectiveBackupPath)) {
+            if (-not $WhatIfPreference -and -not (Test-Path -LiteralPath $effectiveBackupPath)) {
                 New-Item -Path $effectiveBackupPath -ItemType Directory -Force | Out-Null
                 Write-StructuredLog "Created backup folder: $effectiveBackupPath" -Level Information -Component 'Main' -CorrelationId $CorrelationId
             }

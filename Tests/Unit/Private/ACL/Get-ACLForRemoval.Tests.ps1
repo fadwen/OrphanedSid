@@ -13,6 +13,7 @@
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-ACLForRemoval.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Test-ValidDistinguishedName { param($DistinguishedName, $CorrelationId) }

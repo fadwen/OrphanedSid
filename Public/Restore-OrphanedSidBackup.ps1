@@ -16,7 +16,7 @@ function Restore-OrphanedSidBackup {
 
         [Parameter(Mandatory)]
         [ValidateScript({
-            if (-not (Test-Path -Path $_ -PathType Container)) {
+            if (-not (Test-Path -LiteralPath $_ -PathType Container)) {
                 throw "Backup folder not found: $_"
             }
             $true
@@ -30,7 +30,7 @@ function Restore-OrphanedSidBackup {
         [ValidateScript({
             $directory = Split-Path -Parent $_
             if (-not $directory) { $directory = (Get-Location).Path }
-            if (-not (Test-Path -Path $directory -PathType Container)) {
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
                 throw "The folder for -OutputPath does not exist: $directory"
             }
             $true
@@ -145,7 +145,7 @@ function Restore-OrphanedSidBackup {
                 else {
                     $allResults |
                         Select-Object Success, TargetObjectDN, EntriesRestored, ErrorMessage, CorrelationId |
-                        Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+                        Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
                     Write-StructuredLog "Restore results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
             }

@@ -246,7 +246,7 @@ function Write-ProcessingSummary {
                             $exported = $ProcessingResults.StreamingManager.ExportToCsv($OutputPath)
                         } elseif ($hasRestoreResults) {
                             if (-not $WhatIfPreference) {
-                                $ProcessingResults.RestoreResults | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+                                $ProcessingResults.RestoreResults | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
                                 $exported = $true
                             }
                         }
@@ -260,6 +260,16 @@ function Write-ProcessingSummary {
                     }
                     catch {
                         Write-StructuredLog "Failed to export results to CSV: $($_.Exception.Message)" -Level Error -Component 'Summary' -CorrelationId $CorrelationId
+
+                        # The results were already returned, so this does not end the command. It is
+                        # an error and not only a log line because the caller asked for a file and
+                        # has none.
+                        $message = "Results could not be exported to '$OutputPath': $($_.Exception.Message)"
+                        $exception = [System.IO.IOException]::new($message, $_.Exception)
+                        $category = [System.Management.Automation.ErrorCategory]::WriteError
+                        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                            $exception, 'ResultExportFailed', $category, $OutputPath)
+                        $PSCmdlet.WriteError($errorRecord)
                     }
                 }
             } else {

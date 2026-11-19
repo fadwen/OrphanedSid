@@ -212,7 +212,7 @@ function Invoke-RestoreWorkflow {
             }
             
             # Check if file exists
-            if (-not (Test-Path $BackupFile -PathType Leaf)) {
+            if (-not (Test-Path -LiteralPath $BackupFile -PathType Leaf)) {
                 throw "Backup file not found: $BackupFile"
             }
         }
@@ -223,7 +223,7 @@ function Invoke-RestoreWorkflow {
             $BackupPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
             
             # Check if directory exists
-            if (-not (Test-Path $BackupPath -PathType Container)) {
+            if (-not (Test-Path -LiteralPath $BackupPath -PathType Container)) {
                 throw "Backup directory not found: $BackupPath"
             }
         }
@@ -276,7 +276,7 @@ function Invoke-RestoreWorkflow {
                     throw "Invalid backup file path: $BackupFile"
                 }
                 
-                if (-not (Test-Path $BackupFile)) {
+                if (-not (Test-Path -LiteralPath $BackupFile)) {
                     throw "Backup file not found"
                 }
                 
@@ -302,12 +302,12 @@ function Invoke-RestoreWorkflow {
                     throw "Invalid backup directory path: $BackupPath"
                 }
                 
-                if (-not (Test-Path $BackupPath -PathType Container)) {
+                if (-not (Test-Path -LiteralPath $BackupPath -PathType Container)) {
                     throw "Backup directory not found"
                 }
 
                 # Get all XML backup files in the directory
-                $allBackupFiles = @(Get-ChildItem -Path $BackupPath -Filter "*.xml" -File)
+                $allBackupFiles = @(Get-ChildItem -LiteralPath $BackupPath -Filter "*.xml" -File)
 
                 if ($allBackupFiles.Count -eq 0) {
                     throw "No backup files found in directory: $BackupPath"
@@ -331,7 +331,7 @@ function Invoke-RestoreWorkflow {
                 $backupIndex = foreach ($backupFilePath in $allBackupFilePaths) {
                     try {
                         Write-Verbose "Processing backup file: $backupFilePath"
-                        $backupMetadata = Import-Clixml -Path $backupFilePath -ErrorAction Stop
+                        $backupMetadata = Import-Clixml -LiteralPath $backupFilePath -ErrorAction Stop
                         [PSCustomObject]@{
                             Path      = $backupFilePath
                             ObjectDN  = [string]$backupMetadata.ObjectDN
@@ -395,7 +395,7 @@ function Invoke-RestoreWorkflow {
                     Write-Verbose "Processing backup file: $fileToProcess"
 
                     # Load backup data to get the actual target object DN
-                    $backupData = Import-Clixml -Path $fileToProcess -ErrorAction Stop
+                    $backupData = Import-Clixml -LiteralPath $fileToProcess -ErrorAction Stop
                     $actualTargetDN = $backupData.ObjectDN
 
                     # A backup chosen by file must be of the object asked for. Directory mode already

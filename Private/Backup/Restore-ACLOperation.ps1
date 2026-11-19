@@ -178,8 +178,7 @@ function Set-ObjectACL {
                     $securityDescriptor.SetSecurityDescriptorSddlForm($sddlToApply)
 
                     # Apply ACL to Active Directory object
-                    $adPath = "AD:$TargetObjectDN"
-                    Set-Acl -Path $adPath -AclObject $securityDescriptor -ErrorAction Stop
+                    Set-DirectoryObjectAcl -DistinguishedName $TargetObjectDN -AclObject $securityDescriptor
 
                     # Count ACE entries for reporting
                     $modificationsCount = ($sddlToApply -split '\(' | Where-Object { $_ -like '*;*' }).Count
@@ -337,7 +336,7 @@ function Get-RestorationTarget {
             $aclReadable = $null
             if ($objectExists) {
                 try {
-                    $null = Get-Acl -Path "AD:$TargetObjectDN" -ErrorAction Stop
+                    $null = Get-DirectoryObjectAcl -DistinguishedName $TargetObjectDN
                     $aclReadable = $true
                     Write-Verbose "ACL is readable for target object: $TargetObjectDN"
                 }
@@ -437,7 +436,7 @@ function Confirm-RestorationSuccess {
             $currentAcl = $null
             $currentSddl = $null
             try {
-                $currentAcl = Get-Acl -Path "AD:$TargetObjectDN" -ErrorAction Stop
+                $currentAcl = Get-DirectoryObjectAcl -DistinguishedName $TargetObjectDN
                 $currentSddl = $currentAcl.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::All)
             }
             catch {

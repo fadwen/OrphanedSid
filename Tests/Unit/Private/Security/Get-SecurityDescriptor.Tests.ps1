@@ -20,6 +20,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
     . "$PSScriptRoot\..\..\..\..\Private\Security\Get-SecurityDescriptor.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
 
     # One explicit Allow for SYSTEM and one inherited ReadProperty for Administrators. Both SIDs
     # translate on any Windows machine, which the descriptor's Access property needs.
