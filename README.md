@@ -129,7 +129,7 @@ Remove-OrphanedSid -SearchBase 'OU=Servers,DC=contoso,DC=com' -Force `
 ```
 
 Backups land in `D:\ADBackups\<yyyyMMdd_HHmmss>\`, one `.xml` per modified object, named from
-the object's distinguished name with path-unsafe characters, `,`, `=` and spaces replaced by `_`.
+the object's distinguished name with path-unsafe characters, `,`, `=`, `[`, `]` and spaces replaced by `_`.
 
 ### Targeted rollback from a removal's own CSV
 

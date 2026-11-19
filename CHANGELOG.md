@@ -6,16 +6,32 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
+  is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
+  someone else removed in the meantime, and a run that removed some entries and did not find
+  others: the entries that are found are still removed, with a backup, and `ErrorMessage` names
+  the SIDs that were not. Such a result was `Success = True` before, so automation that counts
+  failures by `Success` will count these. The help of `Remove-OrphanedSid` describes it.
+  ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+
 ### Fixed
 
-- Square brackets in a path, and `[`, `]`, `*` or `?` in an object's name, no longer stop a run.
-  PowerShell reads those characters as a pattern, and the module passed names and paths in the
-  form that is matched as one.
+- Square brackets in a path, and `[`, `]`, `*`, `?` or a backtick in an object's name, no longer
+  stop a run or send it to another object. PowerShell reads those characters as a pattern, and
+  the module passed names and paths in the form that is matched as one.
   - An object such as `OU=Payroll [EU]` was reported by `Find-OrphanedSid` and could never be
     cleaned: `Remove-OrphanedSid` returned `Failed to retrieve ACL` for it. The security
     descriptor of such an object is now read and written through its `nTSecurityDescriptor`
     attribute, by `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` alike. An object with an
     ordinary name is still read and written through the `AD:` drive, as before.
+  - For an object such as ``OU=Pay`*``, with a backtick before one of those characters, the
+    `AD:` drive returned the security descriptor of the object named without the backtick,
+    `OU=Pay*`. `Find-OrphanedSid` reported its orphaned entries under that other object and not
+    under its own name. Such a name is now read through the attribute as well and is reported
+    correctly. It still cannot be cleaned, for another reason
+    ([#128](https://github.com/fadwen/OrphanedSid/issues/128)).
   - `-BackupPath` with brackets failed every removal with `Unable to find the specified file`.
   - `-LogPath` with brackets let the removal run and wrote only the header of the log.
   - `-OutputPath` with brackets wrote no CSV and reported nothing.
@@ -44,10 +60,8 @@ All notable changes to this module are recorded here. Format follows
   security descriptor itself, so the entries are found and removed in such a runspace too, and
   the `ACLEntryCount` recorded in a backup is the real number of rules there.
   ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
-- A removal result is `Success = False` whenever an entry that discovery reported is not found on
-  the object, and its `ErrorMessage` names the SIDs. The entries that are found are still removed.
-  It is also `Success = False` when every entry failed to be removed; that case was reported as a
-  success. ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- A removal in which every entry failed to be removed is reported as `Success = False`. It was
+  reported as a success. ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
 - Importing the module now fails when one of its files fails to load, or when `Classes`, `Public`
   or one of the folders under `Private` is missing, and the error names the file or folder.
   Before, a file that did not parse was reported and skipped, and a missing folder was skipped in

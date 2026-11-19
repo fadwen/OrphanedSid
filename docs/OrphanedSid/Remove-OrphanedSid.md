@@ -458,6 +458,11 @@ object whose removal failed (`Success` false), with `ObjectDN`, `IntendedRemoval
 `ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
 backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
 -BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.
+
+`Success` is false when an entry could not be removed, when the changed ACL could not be written
+or verified, and when an entry that was reported for removal was no longer on the object.
+`ErrorMessage` says which, and in the last case names the SIDs; the entries that were found are
+still removed, and `ActualRemovals` is then lower than `IntendedRemovals`.
 ## NOTES
 
 Author: Jeffrey Stuhr
