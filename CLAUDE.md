@@ -121,6 +121,18 @@ removal. The domain SID is read once per run in `Invoke-MainProcessingLogic` and
 removal; without it every domain SID is rated
 `Unknown Domain` and the run logs `Could not determine the current domain SID`.
 
+### A distinguished name is checked for its form, never for "dangerous" characters
+
+`Test-ValidDistinguishedName` once refused `&`, `;`, `|`, a backtick, `--`, `%`, `...`,
+`<script`, `DROP TABLE` and more, and `Get-ACLForRemoval` refused `..`. Those lists are written
+for text that reaches a shell, a browser or a SQL query. A distinguished name reaches none of
+them: it is one argument to the Active Directory cmdlets. Discovery reads names from the
+directory and does not ask the validator, so `OU=R&D` was reported by `Find-OrphanedSid` and
+refused by `Remove-OrphanedSid` with `Target path not found`, for ever (#128). The same goes for
+the restore: `Get-RestorationTarget` must accept every name a removal accepts, or a backup exists
+that cannot be put back. A check that looks like hardening here is a way to strand entries, so
+add one only for a name that Active Directory itself cannot hold.
+
 ### Paths are literal, and directory security descriptors go through two helpers
 
 A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-BackupPath`,

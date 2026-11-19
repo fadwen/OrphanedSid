@@ -49,22 +49,19 @@ Describe 'Get-ACLForRemoval' -Tag 'Unit', 'ACL', 'Private' {
                 Should -Throw -ExpectedMessage '*cannot be empty or whitespace*'
         }
 
-        It 'Throws for a path traversal' {
-            { Get-ACLForRemoval -ObjectDistinguishedName 'CN=..\Admins,DC=contoso,DC=com' } |
-                Should -Throw -ExpectedMessage '*Path traversal detected*'
-            Should -Invoke Get-Acl -Times 0 -Exactly
-        }
-
         It 'Throws for a filesystem path offered as a distinguished name' {
             { Get-ACLForRemoval -ObjectDistinguishedName 'C:\Windows\System32' } |
                 Should -Throw -ExpectedMessage '*got filesystem path*'
         }
 
-        It 'Throws when the target does not exist' {
+        It 'Throws for a name that is refused as not well formed, and reads nothing' {
             Mock Test-ValidDistinguishedName { $false }
 
-            { Get-ACLForRemoval -ObjectDistinguishedName $script:dn } |
-                Should -Throw -ExpectedMessage '*Target path not found*'
+            $expected = @{
+                ErrorId         = 'DistinguishedNameRefused,Get-ACLForRemoval'
+                ExpectedMessage = '*was refused because it is not well formed: OU=NoDomain'
+            }
+            { Get-ACLForRemoval -ObjectDistinguishedName 'OU=NoDomain' } | Should -Throw @expected
             Should -Invoke Get-Acl -Times 0 -Exactly
         }
     }
@@ -78,6 +75,16 @@ Describe 'Get-ACLForRemoval' -Tag 'Unit', 'ACL', 'Private' {
             Should -Invoke Test-ValidDistinguishedName -Times 1 -Exactly -ParameterFilter {
                 $DistinguishedName -eq $script:dn -and $CorrelationId -eq 'read-1'
             }
+        }
+
+        It 'Reads an object whose name holds <Case> (#128)' -ForEach @(
+            @{ Case = 'a run of dots'; Name = 'OU=Misc...,DC=contoso,DC=com' }
+            @{ Case = 'two dots and a slash'; Name = 'OU=../up,DC=contoso,DC=com' }
+        ) {
+            $result = Get-ACLForRemoval -ObjectDistinguishedName $Name
+
+            $result | Should -Be $script:acl
+            Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$Name" }
         }
 
         It 'Trims the distinguished name before building the path' {

@@ -301,22 +301,6 @@ function Get-RestorationTarget {
                 $issues += "Invalid DN format: $TargetObjectDN"
             }
 
-            # Check for potentially malicious input patterns
-            $maliciousPatterns = @(
-                '\.\.\/',           # Directory traversal
-                '[A-Za-z]:\\',      # Windows paths
-                '<script',          # Script injection
-                'DROP\s+TABLE',     # SQL injection
-                'javascript:'       # JavaScript protocol
-            )
-            
-            foreach ($pattern in $maliciousPatterns) {
-                if ($TargetObjectDN -match $pattern) {
-                    $issues += "Invalid DN format: $TargetObjectDN"
-                    break
-                }
-            }
-
             # Check if object exists
             $objectExists = $false
             $objectType = $null

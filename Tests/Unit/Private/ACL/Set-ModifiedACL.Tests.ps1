@@ -62,27 +62,19 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
                 Should -Throw -ExpectedMessage '*cannot be empty or whitespace*'
         }
 
-        It 'Throws for a distinguished name that smuggles a path traversal' {
-            { Set-ModifiedACL -ACL $script:acl -ObjectDN 'CN=..\..\Windows\System32,DC=contoso,DC=com' } |
-                Should -Throw -ExpectedMessage '*Path traversal detected*'
-            Should -Invoke Set-Acl -Times 0 -Exactly
-        }
-
-        It 'Throws for a malformed target that does not exist' {
+        # A refused name ends the function whatever it looks like. The two cases differ in that: the
+        # first is no name at all, and the second has the form of one and lacks a DC= component.
+        It 'Throws for a name that is refused as not well formed, and writes nothing: <Name>' -ForEach @(
+            @{ Name = 'not-a-distinguished-name' }
+            @{ Name = 'CN=Gone,OU=Groups' }
+        ) {
             Mock Test-ValidDistinguishedName { $false }
 
-            { Set-ModifiedACL -ACL $script:acl -ObjectDN 'not-a-distinguished-name' } |
-                Should -Throw -ExpectedMessage '*Target path not found*'
-        }
-
-        It 'Returns a failed result for a well-formed target that does not exist' {
-            Mock Test-ValidDistinguishedName { $false }
-
-            $result = Set-ModifiedACL -ACL $script:acl -ObjectDN 'CN=Gone,OU=Groups,DC=contoso,DC=com'
-
-            $result.Success | Should -BeFalse
-            $result.ErrorMessage | Should -BeLike '*Target path not found*'
-            $result.ErrorCategory | Should -Be 'OperationalError'
+            $expected = @{
+                ErrorId         = 'DistinguishedNameRefused,Set-ModifiedACL'
+                ExpectedMessage = "*was refused because it is not well formed: $Name"
+            }
+            { Set-ModifiedACL -ACL $script:acl -ObjectDN $Name } | Should -Throw @expected
             Should -Invoke Set-Acl -Times 0 -Exactly
         }
     }
@@ -103,6 +95,16 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
                 $Path -eq "AD:\$($script:dn)" -and $AclObject -eq $script:acl
             }
             Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$($script:dn)" }
+        }
+
+        It 'Writes to an object whose name holds <Case> (#128)' -ForEach @(
+            @{ Case = 'a run of dots'; Name = 'OU=Misc...,DC=contoso,DC=com' }
+            @{ Case = 'two dots and the name of a system folder'; Name = 'OU=..System32,DC=contoso,DC=com' }
+        ) {
+            $result = Set-ModifiedACL -ACL $script:acl -ObjectDN $Name
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$Name" }
         }
 
         It 'Trims the distinguished name before building the path' {

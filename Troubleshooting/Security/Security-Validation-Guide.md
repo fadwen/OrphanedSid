@@ -50,9 +50,15 @@ Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConso
 
 - **SearchBase**: each value is checked by `Test-ValidDistinguishedName`
   (`Private\ActiveDirectory\Test-ValidDistinguishedName.ps1`) before processing. It requires the
-  form `(CN|OU|DC)=...,DC=...`, rejects control characters and a set of injection patterns, and
-  validates each component. A failing value stops `Invoke-MainProcessingLogic` with a parameter
-  validation error.
+  form `(CN|OU|DC)=...,DC=...`, rejects control characters, and validates each component. It
+  checks the form of the name only: `&`, `;`, `|`, a backtick, `--`, `%` and a run of dots are
+  ordinary characters in a distinguished name, and a name such as `OU=R&D,DC=contoso,DC=com` is
+  accepted. A failing value stops `Invoke-MainProcessingLogic` with a parameter validation error.
+- **Object names during removal**: the same function checks the name of each object before its
+  ACL is read or written. A name that fails ends that object with
+  `The distinguished name was refused because it is not well formed`, and the log entry of the
+  `DNValidator` component names the check that failed. Whether the object exists is not part of
+  that check; a missing object fails with the directory's own error.
 - **OutputPath**: the parent directory must exist.
 - **BackupPath**: for `Restore-OrphanedSidBackup` the directory must exist; for
   `Remove-OrphanedSid` its parent must exist.

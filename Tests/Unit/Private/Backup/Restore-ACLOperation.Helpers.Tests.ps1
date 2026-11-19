@@ -74,17 +74,20 @@ Describe 'Get-RestorationTarget' -Tag 'Unit', 'Backup', 'Private' {
         $result.Issues | Should -Contain 'Invalid DN format: just-a-name'
     }
 
-    It 'Rejects a distinguished name carrying an injection pattern: <Pattern>' -ForEach @(
-        @{ Pattern = 'CN=../../etc,DC=contoso,DC=com' }
-        @{ Pattern = 'CN=C:\Windows,DC=contoso,DC=com' }
-        @{ Pattern = 'CN=<script>alert(1),DC=contoso,DC=com' }
-        @{ Pattern = 'CN=x; DROP TABLE users,DC=contoso,DC=com' }
-        @{ Pattern = 'CN=javascript:alert(1),DC=contoso,DC=com' }
+    # A restore must reach every object that a removal reaches, so the target is not refused for
+    # a character that only another interpreter gives a meaning (#128).
+    It 'Accepts a distinguished name that holds <Case>' -ForEach @(
+        @{ Case = 'two dots and a slash'; Name = 'OU=../up,DC=contoso,DC=com' }
+        @{ Case = 'the words of a SQL statement'; Name = 'OU=DROP TABLE x,DC=contoso,DC=com' }
+        @{ Case = 'a word and a colon'; Name = 'OU=javascript:x,DC=contoso,DC=com' }
+        @{ Case = 'an ampersand'; Name = 'OU=R&D,DC=contoso,DC=com' }
     ) {
-        $result = Get-RestorationTarget -TargetObjectDN $Pattern
+        $result = Get-RestorationTarget -TargetObjectDN $Name
 
-        $result.IsValid | Should -BeFalse
-        $result.Issues[0] | Should -BeLike 'Invalid DN format:*'
+        $result.IsValid | Should -BeTrue
+        $result.Issues | Should -BeNullOrEmpty
+        Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $Identity -eq $Name }
+        Should -Invoke Get-Acl -Times 1 -Exactly -ParameterFilter { $Path -eq "AD:\$Name" }
     }
 
     It 'Reports an object that does not exist' {

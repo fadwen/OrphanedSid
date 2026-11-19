@@ -164,7 +164,9 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
         Mock -ModuleName OrphanedSid Get-ADObject {
             if ($SearchBase) {
                 foreach ($dn in @($script:Directory.Keys)) {
-                    if ($dn -like "*$SearchBase") {
+                    # Not -like: a search base is a name, and one with a backtick or a bracket would
+                    # be read as a pattern
+                    if ($dn.EndsWith([string]$SearchBase, [System.StringComparison]::OrdinalIgnoreCase)) {
                         [PSCustomObject]@{
                             DistinguishedName    = $dn
                             Name                 = ($dn -split ',')[0] -replace '^\w+='
@@ -714,6 +716,89 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             # The file protects the SID that is otherwise reported, so its absence shows the file was read
             $results.OrphanedSID | Should -Not -Contain $script:OrphanSid
             $results.OrphanedSID | Should -Contain $script:FailingSid
+        }
+    }
+
+    Context 'A character in an object name that another interpreter gives a meaning (#128)' {
+        BeforeEach {
+            # The loop variables must not be called $name or $dn: the cases below receive $Name from
+            # -ForEach, and a variable of that name set here would replace it in every case.
+            $containerNames = @(
+                'R&D', 'Ops | Support', 'Tick`Name', 'Smith--Jones', '100%Cotton', 'Misc...', 'Sales\; Marketing'
+            )
+            foreach ($containerName in $containerNames) {
+                $containerDN = "OU=$containerName,OU=Finance,$script:DomainDN"
+                $script:Directory[$containerDN] =
+                    New-DirectoryObject -DN $containerDN -ObjectClass 'organizationalUnit' -Trustee $script:LiveSid, $script:OrphanSid
+                $script:OriginalSddl[$containerDN] = $script:Directory[$containerDN].Sddl
+            }
+            $script:BelowDN = "CN=Below,OU=R&D,OU=Finance,$script:DomainDN"
+            $script:Directory[$script:BelowDN] =
+                New-DirectoryObject -DN $script:BelowDN -ObjectClass 'group' -Trustee $script:LiveSid, $script:OrphanSid
+            $script:OriginalSddl[$script:BelowDN] = $script:Directory[$script:BelowDN].Sddl
+            $script:OddDNs = @(
+                foreach ($containerName in $containerNames) {
+                    "OU=$containerName,OU=Finance,$script:DomainDN"
+                }
+                $script:BelowDN
+            )
+        }
+
+        # One removal run for all eight objects: a run takes several seconds, whatever it finds.
+        It 'Removes the orphaned entry from each such object, and from an object below one' {
+            $targets = @($script:OddDNs)
+            $targets.Count | Should -Be 8
+
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            # Each line names an object that was not cleaned, with the error the removal gave for it
+            $notCleaned = @(foreach ($target in $targets) {
+                    $result = @($results | Where-Object ObjectDN -eq $target)
+                    $trustees = @(Get-TrusteeSid -DN $target)
+                    $cleaned = $result.Count -eq 1 -and $result[0].Success -and $result[0].ActualRemovals -eq 1 -and
+                        $trustees -notcontains $script:OrphanSid -and $trustees -contains $script:LiveSid
+                    if (-not $cleaned) {
+                        "$target [$(@($result.ErrorMessage) -join '; ')]"
+                    }
+                })
+            $notCleaned | Should -BeNullOrEmpty
+        }
+
+        It 'Takes the container named <Name> as the search base' -ForEach @(
+            @{ Name = 'R&D'; Expected = 2 }
+            @{ Name = 'Ops | Support'; Expected = 1 }
+            @{ Name = 'Tick`Name'; Expected = 1 }
+            @{ Name = 'Smith--Jones'; Expected = 1 }
+            @{ Name = '100%Cotton'; Expected = 1 }
+            @{ Name = 'Misc...'; Expected = 1 }
+            @{ Name = 'Sales\; Marketing'; Expected = 1 }
+        ) {
+            $dn = "OU=$Name,OU=Finance,$script:DomainDN"
+            $log = Join-Path $TestDrive 'find-base.log'
+
+            $results = @(Find-OrphanedSid -SearchBase $dn -LogPath $log -SuppressConsoleOutput)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            $orphaned.Count | Should -Be $Expected
+            @($orphaned | Where-Object ObjectDN -eq $dn).Count | Should -Be 1
+        }
+
+        It 'Restores an object below a container named R&D from its backup' {
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $script:BelowDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $script:BelowDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-below.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $script:BelowDN | Should -Contain $script:OrphanSid
         }
     }
 

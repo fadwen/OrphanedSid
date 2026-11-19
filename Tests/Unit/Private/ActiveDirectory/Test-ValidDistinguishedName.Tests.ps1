@@ -50,19 +50,6 @@ Describe "Test-ValidDistinguishedName" {
                 'RDN=User,OU=Users,DC=contoso,DC=com'  # Invalid RDN type
                 ''  # Empty string
             )
-            
-            MaliciousDNs = @(
-                'CN=User$(Get-Process),OU=Users,DC=contoso,DC=com'
-                "CN=User`$(Invoke-Expression 'whoami'),OU=Users,DC=contoso,DC=com"
-                'CN=User;DROP TABLE Users;--,OU=Users,DC=contoso,DC=com'
-                'CN=User&powershell.exe,OU=Users,DC=contoso,DC=com'
-                'CN=User|Out-File malicious.txt,OU=Users,DC=contoso,DC=com'
-                "CN=User`nInvoke-Command,OU=Users,DC=contoso,DC=com"
-                'CN=../../../etc/passwd,OU=Users,DC=contoso,DC=com'
-                'CN=User<script>alert("xss")</script>,OU=Users,DC=contoso,DC=com'
-                'CN=User%00,OU=Users,DC=contoso,DC=com'  # Null byte injection
-                'CN=User' + [char]0x00 + 'Hidden,OU=Users,DC=contoso,DC=com'
-            )
         }
         
         Mock Write-StructuredLog { }
@@ -210,33 +197,39 @@ Describe "Test-ValidDistinguishedName" {
         }
     }
     
-    Context "Security Injection Prevention" {
-        # Each DN is otherwise well formed, so the rejection must come from the injection pattern
-        # named in the warning, not from the format checks.
-        It "Should reject <Case> with a dangerous-pattern warning" -ForEach @(
-            @{ Case = 'a PowerShell subexpression'; DN = 'CN=User$(Get-Process),OU=Users,DC=contoso,DC=com'; Pattern = '\$\(' }
-            @{ Case = 'a backtick-escaped variable'; DN = 'CN=User`$x,OU=Users,DC=contoso,DC=com'; Pattern = '`\$' }
-            @{ Case = 'a command separator'; DN = 'CN=User&powershell.exe,OU=Users,DC=contoso,DC=com'; Pattern = '&' }
-            @{ Case = 'a pipe'; DN = 'CN=User|Out-File malicious.txt,OU=Users,DC=contoso,DC=com'; Pattern = '\|' }
-            @{ Case = 'SQL injection'; DN = 'CN=User;DROP TABLE Users;--,OU=Users,DC=contoso,DC=com'; Pattern = ';' }
-            @{ Case = 'path traversal'; DN = 'CN=../../../etc/passwd,OU=Users,DC=contoso,DC=com'; Pattern = '\.\.\/' }
-            @{ Case = 'script injection'; DN = 'CN=User<script>alert(1),OU=Users,DC=contoso,DC=com'; Pattern = '<script' }
-            @{ Case = 'URL-encoded null byte'; DN = 'CN=User%00,OU=Users,DC=contoso,DC=com'; Pattern = '%[0-9A-Fa-f]' }
-            @{ Case = 'an embedded null character'; DN = ('CN=User' + [char]0x00 + 'Hidden,OU=Users,DC=contoso,DC=com'); Pattern = '\x00' }
-            @{ Case = 'a SQL comment'; DN = 'CN=User--x,OU=Users,DC=contoso,DC=com'; Pattern = '--' }
+    Context "Characters that another interpreter gives a meaning (#128)" {
+        # A distinguished name reaches the Active Directory cmdlets as one argument, so none of these
+        # characters is refused. Each name was created on a domain controller, and each is written as
+        # the directory returns it. It is tested as the object itself and as the parent of one.
+        It "Should accept <Case>" -ForEach @(
+            @{ Case = 'an ampersand'; DN = 'OU=R&D,DC=contoso,DC=com' }
+            @{ Case = 'a semicolon'; DN = 'OU=Sales\; Marketing,DC=contoso,DC=com' }
+            @{ Case = 'a pipe'; DN = 'OU=Ops | Support,DC=contoso,DC=com' }
+            @{ Case = 'a backtick'; DN = 'OU=Tick`Name,DC=contoso,DC=com' }
+            @{ Case = 'two hyphens'; DN = 'CN=Smith--Jones,OU=Users,DC=contoso,DC=com' }
+            @{ Case = 'a percent sign before a hexadecimal digit'; DN = 'OU=100%Cotton,DC=contoso,DC=com' }
+            @{ Case = 'a slash and an asterisk'; DN = 'CN=A/*B,OU=Users,DC=contoso,DC=com' }
+            @{ Case = 'a run of dots'; DN = 'OU=Misc...,DC=contoso,DC=com' }
+            @{ Case = 'two dots and a slash'; DN = 'OU=../up,DC=contoso,DC=com' }
+            @{ Case = 'a dollar sign and a parenthesis'; DN = 'OU=$(x),DC=contoso,DC=com' }
+            @{ Case = 'the words of a SQL statement'; DN = 'OU=DROP TABLE x,DC=contoso,DC=com' }
+            @{ Case = 'an HTML tag'; DN = 'OU=x \<script\>,DC=contoso,DC=com' }
+            @{ Case = 'a word and a colon'; DN = 'OU=javascript:x,DC=contoso,DC=com' }
         ) {
-            $result = Test-ValidDistinguishedName -DistinguishedName $DN
+            Test-ValidDistinguishedName -DistinguishedName $DN | Should -Be $true
+            Test-ValidDistinguishedName -DistinguishedName "CN=Object,$DN" | Should -Be $true
 
-            $result | Should -Be $false
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
-                $Message -eq "Distinguished Name validation failed: Contains dangerous characters: $Pattern" -and
-                $Level -eq 'Warning'
+            Should -Invoke Write-StructuredLog -Times 2 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -like 'Distinguished Name validation successful:*'
             }
         }
 
-        It "Should reject control characters with a control-character warning" {
-            # A bell character; a newline would already fail the single-line format check
-            $controlCharDN = 'CN=User' + [char]0x07 + 'Bell,OU=Users,DC=contoso,DC=com'
+        It "Should reject <Case> with a control-character warning" -ForEach @(
+            # A newline would already fail the single-line format check
+            @{ Case = 'a bell character'; Character = 0x07 }
+            @{ Case = 'a null character'; Character = 0x00 }
+        ) {
+            $controlCharDN = 'CN=User' + [char]$Character + 'Hidden,OU=Users,DC=contoso,DC=com'
 
             $result = Test-ValidDistinguishedName -DistinguishedName $controlCharDN
 
@@ -396,7 +389,7 @@ Describe "Test-ValidDistinguishedName" {
             $mixedDNs = @(
                 $script:testData.ValidDNs[0]
                 $script:testData.InvalidDNs[0]
-                $script:testData.MaliciousDNs[0]
+                ('CN=User' + [char]0x07 + 'Bell,OU=Users,DC=contoso,DC=com')
             )
             $testCorrelationId = [System.Guid]::NewGuid().ToString()
 

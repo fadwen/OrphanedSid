@@ -117,19 +117,20 @@ function Get-ACLForRemoval {
             throw "ObjectDistinguishedName parameter cannot be empty or whitespace"
         }
 
-        # Security validation - detect path traversal attempts
-        if ($ObjectDistinguishedName -match '\.\.') {
-            throw "Path traversal detected in ObjectDistinguishedName: $ObjectDistinguishedName"
-        }
-
         # Validate ObjectDistinguishedName format (basic validation for AD DN format)
         if ($ObjectDistinguishedName -match '^[A-Za-z]:\\' -and $ObjectDistinguishedName -notmatch '^CN=|^OU=|^DC=') {
             throw "Invalid ObjectDistinguishedName format. Expected AD Distinguished Name, got filesystem path: $ObjectDistinguishedName"
         }
 
-        # Check if target object exists
+        # The check is of the form of the name only. Whether the object exists is settled by the
+        # read below, which fails with the directory's own error.
         if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDistinguishedName -CorrelationId $CorrelationId)) {
-            throw "Target path not found: $ObjectDistinguishedName"
+            $message = "The distinguished name was refused because it is not well formed: $ObjectDistinguishedName"
+            $exception = [System.ArgumentException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'DistinguishedNameRefused', $category, $ObjectDistinguishedName)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
 
         # Retrieve ACL with retry logic for reliability

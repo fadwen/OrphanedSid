@@ -30,8 +30,7 @@ All notable changes to this module are recorded here. Format follows
     `AD:` drive returned the security descriptor of the object named without the backtick,
     `OU=Pay*`. `Find-OrphanedSid` reported its orphaned entries under that other object and not
     under its own name. Such a name is now read through the attribute as well and is reported
-    correctly. It still cannot be cleaned, for another reason
-    ([#128](https://github.com/fadwen/OrphanedSid/issues/128)).
+    correctly.
   - `-BackupPath` with brackets failed every removal with `Unable to find the specified file`.
   - `-LogPath` with brackets let the removal run and wrote only the header of the log.
   - `-OutputPath` with brackets wrote no CSV and reported nothing.
@@ -81,6 +80,20 @@ All notable changes to this module are recorded here. Format follows
   `Find-OrphanedSid` reported its entries. The security descriptor of such an object is now read
   and written through its `nTSecurityDescriptor` attribute, on both editions. PowerShell 7 was
   not affected. ([#133](https://github.com/fadwen/OrphanedSid/issues/133))
+- An object whose name, or whose parent's name, contains `&`, `;`, `|`, a backtick, `--`, `/*`,
+  `..` or `%` followed by a hexadecimal digit can now be cleaned, restored and used as a search
+  base. An organizational unit named `R&D` is the plain case. `Find-OrphanedSid` reported the
+  orphaned entries of such an object, `Remove-OrphanedSid` failed for it with
+  `Target path not found`, although the object exists, and `-SearchBase 'OU=R&D,...'` was
+  rejected at parameter validation. The module refused those characters as "injection patterns".
+  A distinguished name is passed to Active Directory as one argument, where they are ordinary
+  characters, so the name is now checked for its form only. `Restore-OrphanedSidBackup` had a
+  shorter list of the same kind, which refused a target whose name contains `../`, `<script`,
+  `javascript:`, `DROP TABLE` or a drive letter and a backslash; that list is gone too.
+  ([#128](https://github.com/fadwen/OrphanedSid/issues/128))
+- A name that is refused because it is not well formed is now reported as
+  `The distinguished name was refused because it is not well formed`, and no longer as
+  `Target path not found`. ([#128](https://github.com/fadwen/OrphanedSid/issues/128))
 
 ## [1.1.0] - 2026-11-11
 
