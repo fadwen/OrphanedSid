@@ -208,9 +208,10 @@ function Invoke-RemovalWorkflow {
         $result.ActualRemovals = $removalResults.RemovedSIDs.Count
         $result.FailedRemovals = $removalResults.FailedSIDs.Count
 
-        # SIDs that discovery reported and this read of the ACL holds no explicit entry for: they
-        # were neither removed nor failed. Outside -WhatIf, where nothing is removed by design,
-        # they make the result a failure whatever else succeeded.
+        # SIDs that discovery reported and that hold no explicit entry in the ACL read in phase 2,
+        # the one that was backed up in phase 4 and changed in phase 5: they were neither removed
+        # nor failed. Outside -WhatIf, where nothing is removed by design, they make the result a
+        # failure whatever else succeeded.
         $notFoundSIDs = @()
         if (-not $WhatIfMode) {
             $notFoundSIDs = @($securityValidation.AllowedSIDs | Where-Object {
@@ -284,12 +285,11 @@ function Invoke-RemovalWorkflow {
             Write-StructuredLog "WhatIf mode: No changes applied" -Level Verbose -CorrelationId $CorrelationId
         } else {
             # No entry was removed, so nothing was written. Every SID that was asked for either
-            # failed or was not found on the object, and neither is a success.
-            $result.Success = $false
-            if ($removalResults.FailedSIDs.Count -gt 0) {
+            # failed, which is reported here, or was not found on the object, which is reported
+            # below. There is no third case: validation allows every SID or blocks the object.
+            $result.Success = ($removalResults.FailedSIDs.Count -eq 0)
+            if (-not $result.Success) {
                 $result.ErrorMessage = "The entry could not be removed for: $($removalResults.FailedSIDs -join ', ')"
-            } elseif ($notFoundSIDs.Count -eq 0) {
-                $result.ErrorMessage = 'No entry was removed from the object.'
             }
             Write-StructuredLog "No entry was removed from the ACL of $ObjectDistinguishedName" -Level Warning -CorrelationId $CorrelationId
         }

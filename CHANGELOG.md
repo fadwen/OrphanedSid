@@ -6,6 +6,16 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
+  is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
+  someone else removed in the meantime, and a run that removed some entries and did not find
+  others: the entries that are found are still removed, with a backup, and `ErrorMessage` names
+  the SIDs that were not. Such a result was `Success = True` before, so automation that counts
+  failures by `Success` will count these. The help of `Remove-OrphanedSid` describes it.
+  ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+
 ### Fixed
 
 - Square brackets in a path, and `[`, `]`, `*`, `?` or a backtick in an object's name, no longer
@@ -50,10 +60,8 @@ All notable changes to this module are recorded here. Format follows
   security descriptor itself, so the entries are found and removed in such a runspace too, and
   the `ACLEntryCount` recorded in a backup is the real number of rules there.
   ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
-- A removal result is `Success = False` whenever an entry that discovery reported is not found on
-  the object, and its `ErrorMessage` names the SIDs. The entries that are found are still removed.
-  It is also `Success = False` when every entry failed to be removed; that case was reported as a
-  success. ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- A removal in which every entry failed to be removed is reported as `Success = False`. It was
+  reported as a success. ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
 
 ## [1.1.0] - 2026-11-11
 
