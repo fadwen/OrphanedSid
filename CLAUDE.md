@@ -78,6 +78,17 @@ closed, the static `[ScriptConfiguration]::LoadFromFile()` fails in the first on
 The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
 
+### A fatal error of a public command ends the calling script, against ERR-11
+
+The `catch` in `begin` and the `catch` in `end` of each public command raise the failure with
+`Write-Error -ErrorRecord $_ -ErrorAction Stop`. ERR-11 of the standards rules that call out in
+favour of `$PSCmdlet.ThrowTerminatingError()`, and it is used here on purpose.
+`ThrowTerminatingError()` ends only the statement that called the command: a scheduled script
+carries on with its next line and `powershell -File` exits with 0, which was measured.
+`Documentation/Automation.md` tells callers that a critical error is raised as a terminating
+error that fails the job step. Replacing the call changes that contract, so it is a change to
+announce in a release, not a tidy-up. The exception covers these `catch` blocks only.
+
 ### Results are emitted before cleanup
 
 `Find-OrphanedSid` reads results back from the streaming batch files with `GetAllResults()` before

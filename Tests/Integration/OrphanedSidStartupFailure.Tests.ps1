@@ -20,8 +20,8 @@ BeforeAll {
     # global functions, which the module's calls resolve to. The last line is reached only when the
     # command did not end the script.
     $script:Template = @'
-. '<<STUBS>>'
-Import-Module -Name '<<MANIFEST>>'
+. <<STUBS>>
+Import-Module -Name <<MANIFEST>>
 
 function global:Get-ADDomain {
     [PSCustomObject]@{
@@ -33,7 +33,7 @@ function global:Get-ADDomain {
 function global:Get-ADObject {
     param($Identity, $Filter, $LDAPFilter, $SearchBase, $SearchScope, $Properties, $ResultPageSize,
         [switch]$IncludeDeletedObjects, $Server)
-    [System.IO.File]::AppendAllText('<<READS>>', "read`r`n")
+    [System.IO.File]::AppendAllText(<<READS>>, "read`r`n")
 }
 
 # The session helper asks whether the ActiveDirectory module is installed and imports it.
@@ -56,10 +56,20 @@ function global:Import-Module {
 }
 
 <<FAULT>>
-Set-Location -LiteralPath '<<WORK>>'
+Set-Location -LiteralPath <<WORK>>
 <<COMMAND>>
-[System.IO.File]::WriteAllText('<<REACHED>>', 'reached')
+[System.IO.File]::WriteAllText(<<REACHED>>, 'reached')
 '@
+
+    # A path as a single-quoted literal for the generated script, with any quote in it doubled
+    function ConvertTo-Literal {
+        param(
+            [Parameter(Mandatory)]
+            [string]$Text
+        )
+
+        "'" + $Text.Replace("'", "''") + "'"
+    }
 
     function Invoke-InNewProcess {
         param(
@@ -77,11 +87,12 @@ Set-Location -LiteralPath '<<WORK>>'
 
         $stubs = Join-Path -Path $script:RepositoryRoot -ChildPath 'Tests\TestHelpers\ADCmdletStubs.ps1'
         $manifest = Join-Path -Path $script:RepositoryRoot -ChildPath 'OrphanedSid.psd1'
-        $text = $script:Template.Replace('<<STUBS>>', $stubs.Replace("'", "''"))
-        $text = $text.Replace('<<MANIFEST>>', $manifest.Replace("'", "''"))
-        $text = $text.Replace('<<READS>>', $readsFile).Replace('<<REACHED>>', $reachedFile)
-        $text = $text.Replace('<<WORK>>', $script:WorkFolder).Replace('<<FAULT>>', $Fault)
-        $text = $text.Replace('<<COMMAND>>', $Command)
+        $text = $script:Template.Replace('<<STUBS>>', (ConvertTo-Literal -Text $stubs))
+        $text = $text.Replace('<<MANIFEST>>', (ConvertTo-Literal -Text $manifest))
+        $text = $text.Replace('<<READS>>', (ConvertTo-Literal -Text $readsFile))
+        $text = $text.Replace('<<REACHED>>', (ConvertTo-Literal -Text $reachedFile))
+        $text = $text.Replace('<<WORK>>', (ConvertTo-Literal -Text $script:WorkFolder))
+        $text = $text.Replace('<<FAULT>>', $Fault).Replace('<<COMMAND>>', $Command)
         [System.IO.File]::WriteAllText($scriptFile, $text, [System.Text.UTF8Encoding]::new($true))
 
         $startParameters = @{
@@ -123,12 +134,15 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
         $script:ValidConfig = Join-Path -Path $script:WorkFolder -ChildPath 'valid.json'
         Set-Content -LiteralPath $script:ValidConfig -Value '{ "LogLevel": "Warning" }' -Encoding ascii
 
-        $script:Common = "-SearchBase 'OU=Finance,DC=lab,DC=test' -LogPath '$script:LogFile' -SuppressConsoleOutput"
+        $script:LogLiteral = ConvertTo-Literal -Text $script:LogFile
+        $script:BackupLiteral = ConvertTo-Literal -Text $script:BackupFolder
+        $script:Common = "-SearchBase 'OU=Finance,DC=lab,DC=test' -LogPath $script:LogLiteral -SuppressConsoleOutput"
     }
 
     Context 'Core Functionality' {
         It 'Reads the directory and lets the script carry on when the configuration file is valid' {
-            $command = "Find-OrphanedSid $script:Common -ConfigPath '$script:ValidConfig' -ErrorAction SilentlyContinue"
+            $config = ConvertTo-Literal -Text $script:ValidConfig
+            $command = "Find-OrphanedSid $script:Common -ConfigPath $config -ErrorAction SilentlyContinue"
 
             $run = Invoke-InNewProcess -Command $command
 
@@ -161,9 +175,10 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
         ) {
             $extra = ''
             if ($CommandName -eq 'Remove-OrphanedSid') {
-                $extra = " -Force -BackupPath '$script:BackupFolder'"
+                $extra = " -Force -BackupPath $script:BackupLiteral"
             }
-            $command = "$Prefix$CommandName $script:Common -ConfigPath '$script:InvalidConfig'$extra$Suffix"
+            $config = ConvertTo-Literal -Text $script:InvalidConfig
+            $command = "$Prefix$CommandName $script:Common -ConfigPath $config$extra$Suffix"
 
             $run = Invoke-InNewProcess -Command $command
 
@@ -176,13 +191,30 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
             $run.DirectoryReads | Should-Be 0
         }
 
+        It '<CommandName> ends the script when -SearchBase holds no usable name, under -ErrorAction SilentlyContinue' -ForEach @(
+            @{ CommandName = 'Find-OrphanedSid'; Extra = '' }
+            @{ CommandName = 'Remove-OrphanedSid'; Extra = ' -Force' }
+        ) {
+            # That check is in the end block, inside the try whose catch raises the failure, so it
+            # was never swallowed. This passes with or without the fix, and keeps it that way.
+            $command = "$CommandName -SearchBase 42 -LogPath $script:LogLiteral -SuppressConsoleOutput$Extra " +
+                '-ErrorAction SilentlyContinue'
+
+            $run = Invoke-InNewProcess -Command $command
+
+            $run.ReachedEnd | Should-BeFalse
+            $run.ExitCode | Should-Be 1
+            $run.Text | Should-BeLikeString '*No usable search base in the input*'
+            $run.DirectoryReads | Should-Be 0
+        }
+
         It 'Restore-OrphanedSidBackup ends the script with the start-up error under -ErrorAction SilentlyContinue' {
             # Restore-OrphanedSidBackup takes no configuration file, so its start-up is made to
             # fail by replacing one private function in the new process's copy of the module.
             $fault = '& (Get-Module -Name OrphanedSid) { ' +
                 'function script:Initialize-LoggingSystem { throw ''The logging system could not start'' } }'
             $command = "Restore-OrphanedSidBackup -TargetObjectDN 'OU=Finance,DC=lab,DC=test' " +
-                "-BackupPath '$script:BackupFolder' -LogPath '$script:LogFile' -SuppressConsoleOutput -Force " +
+                "-BackupPath $script:BackupLiteral -LogPath $script:LogLiteral -SuppressConsoleOutput -Force " +
                 '-ErrorAction SilentlyContinue'
 
             $run = Invoke-InNewProcess -Command $command -Fault $fault
