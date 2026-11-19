@@ -65,7 +65,15 @@ function Restore-OrphanedSidBackup {
             SuppressConsoleOutput  = $SuppressConsoleOutput
             RequireActiveDirectory = $true
         }
-        $null = Start-OrphanedSidSession @sessionParams
+        try {
+            $null = Start-OrphanedSidSession @sessionParams
+        } catch {
+            # Raised the way the end block raises its failures, so that it ends the calling script
+            # as well. Left to propagate, a throw from start-up followed the caller's error action:
+            # under SilentlyContinue it was swallowed here, and process and end then ran with no
+            # configuration.
+            Write-Error -ErrorRecord $_ -ErrorAction Stop
+        }
 
         $targets = [System.Collections.Generic.List[string]]::new()
     }

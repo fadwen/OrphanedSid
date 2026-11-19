@@ -66,7 +66,12 @@ which `Invoke-MainProcessingLogic` then fills for the run. It also creates an em
 answer depends on the run's `ProtectedSIDs` and `WellKnownSIDPatterns`, so it must not outlive the
 run. `Stop-OrphanedSidSession` clears all of them except `$script:Config` and
 `$script:CurrentDomainSID`. Every public command calls the first from `begin` and the second from
-`finally`. The SID validation cache is the exception: it lives for the PowerShell session so the
+`finally`. The call in `begin` sits in a `try` whose `catch` raises the error with
+`Write-Error -ErrorRecord $_ -ErrorAction Stop`, as the `end` block does. Without that `try`, a
+`throw` in start-up follows the caller's error action: under `-ErrorAction SilentlyContinue` it is
+swallowed, and `process` and `end` run with no configuration. No ordinary Pester test can see
+this, because every test runs inside a `try`; `Tests/Integration/OrphanedSidStartupFailure.Tests.ps1`
+runs each command in a runspace of its own for that reason. The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
 
 ### Results are emitted before cleanup
