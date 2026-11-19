@@ -107,7 +107,10 @@ command line whatever the error action is, that the process exits with 1, and th
 is the way to handle it. Replacing the call changes that contract, so it is a change to announce
 in a release, not a tidy-up. The exception covers these six lines only. Every other `throw` and
 `Write-Error -ErrorAction Stop` directly in an advanced function is an ordinary violation of
-ERR-11, to be replaced and not copied (#130).
+ERR-11, to be replaced and not copied (#130). `Tests/Unit/OrphanedSid.Contract.Tests.ps1` counts
+both kinds by syntax tree. The six must stay six and stay in `Public/`. The others have a
+recorded number: a change that replaces some of them lowers it in the same commit, and a change
+that adds one fails.
 
 ### Results are emitted before cleanup
 

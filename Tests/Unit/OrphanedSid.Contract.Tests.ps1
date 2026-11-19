@@ -150,6 +150,75 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'Terminating errors raised with throw or Write-Error -ErrorAction Stop (#130)' {
+        BeforeAll {
+            # Every throw statement and every Write-Error ... -ErrorAction Stop that sits directly in an
+            # advanced function of Private or Public. A class method and a plain script block, such
+            # as a ValidateScript, may throw, and are not counted.
+            $language = 'System.Management.Automation.Language'
+            $script:OldFormStatements = @(foreach ($path in $script:FileAsts.Keys) {
+                    $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                    if ($relative -like 'Classes*') {
+                        continue
+                    }
+                    $nodes = $script:FileAsts[$path].FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.ThrowStatementAst] -or
+                            ($node -is [System.Management.Automation.Language.CommandAst] -and
+                                $node.GetCommandName() -eq 'Write-Error' -and
+                                $node.Extent.Text -match '-(ErrorAction|EA)\s+[''"]?Stop')
+                        }, $true)
+                    foreach ($node in $nodes) {
+                        $owner = $node.Parent
+                        while ($null -ne $owner -and
+                            $owner.GetType().FullName -notin "$language.FunctionDefinitionAst", "$language.ScriptBlockExpressionAst") {
+                            $owner = $owner.Parent
+                        }
+                        if ($owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                            continue
+                        }
+                        $paramBlock = $owner.Body.ParamBlock
+                        $isAdvanced = $null -ne $paramBlock -and
+                            @($paramBlock.Attributes | Where-Object { $_.TypeName.Name -eq 'CmdletBinding' }).Count -gt 0
+                        if (-not $isAdvanced) {
+                            continue
+                        }
+                        [PSCustomObject]@{
+                            Place = "${relative}:$($node.Extent.StartLineNumber)"
+                            File = $relative
+                            # The form of the six catch lines of the public commands; see CLAUDE.md
+                            PassesErrorRecord = $node -is [System.Management.Automation.Language.CommandAst] -and
+                                $node.Extent.Text -match '-ErrorRecord\b'
+                        }
+                    }
+                })
+        }
+
+        It 'Keeps the recorded exception to the six catch lines of the three public commands' {
+            # Write-Error -ErrorRecord $_ -ErrorAction Stop in the catch of begin and of end. CLAUDE.md,
+            # "A fatal error of a public command ends the calling script, against ERR-11", says why
+            # these lines are an exception and that it covers nothing else.
+            $exceptions = @($script:OldFormStatements | Where-Object PassesErrorRecord)
+
+            $exceptions.Count | Should -Be 6 -Because ($exceptions.Place -join '; ')
+            @($exceptions | Group-Object -Property File).Count | Should -Be 3
+            @($exceptions | Where-Object { $_.File -notlike 'Public*' }).Count | Should -Be 0
+        }
+
+        It 'Has exactly the recorded number of other such statements, which may only go down' {
+            # ERR-11 of the standards: an advanced function ends with $PSCmdlet.ThrowTerminatingError().
+            # The module predates that rule. A change that replaces some of these statements lowers the
+            # number here in the same commit, and a change that adds one fails. When the number
+            # reaches 0, this case stays, as the check that none comes back.
+            $recorded = 73
+            $others = @($script:OldFormStatements | Where-Object { -not $_.PassesErrorRecord })
+            $byFile = ($others | Group-Object -Property File | Sort-Object -Property Count -Descending |
+                    ForEach-Object { "$($_.Count) in $($_.Name)" }) -join '; '
+
+            $others.Count | Should -Be $recorded -Because "the statements are: $byFile"
+        }
+    }
+
     Context 'Calls between module functions' {
         It 'Names only parameters the callee declares' {
             # A unit test that mocks the callee with loose parameters accepts any name; the module does
