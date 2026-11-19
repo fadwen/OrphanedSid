@@ -49,9 +49,11 @@ Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConso
 ## Input Validation
 
 - **SearchBase**: each value is checked by `Test-ValidDistinguishedName`
-  (`Private\ActiveDirectory\Test-ValidDistinguishedName.ps1`) before processing. It requires the
-  form `(CN|OU|DC)=...,DC=...`, rejects control characters, and validates each component. It
-  checks the form of the name only: `&`, `;`, `|`, a backtick, `--`, `%` and a run of dots are
+  (`Private\ActiveDirectory\Test-ValidDistinguishedName.ps1`) before processing. It requires
+  components of the form `attribute=value` with at least one `DC=` component, rejects control
+  characters, and validates each component. The attribute may be any attribute name, because the
+  class of an object decides which one names it: a locality is `L=...` and an organization is
+  `O=...`. It checks the form of the name only: `&`, `;`, `|`, a backtick, `--`, `%` and dots are
   ordinary characters in a distinguished name, and a name such as `OU=R&D,DC=contoso,DC=com` is
   accepted. A failing value stops `Invoke-MainProcessingLogic` with a parameter validation error.
 - **Object names during removal**: the same function checks the name of each object before its

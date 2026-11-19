@@ -41,13 +41,11 @@ Describe "Test-ValidDistinguishedName" {
                 'InvalidDN'
                 'CN=User'
                 'OU=NoCommonName'
-                'DC=onlydc'
                 'CN=,OU=Users,DC=contoso,DC=com'  # Empty CN
                 'CN=User,OU=,DC=contoso,DC=com'   # Empty OU
                 'CN=User,DC=,DC=com'              # Empty DC
                 'CN User OU=Users DC=contoso DC=com'  # Missing separators
                 'CN==User,OU=Users,DC=contoso,DC=com'  # Double equals
-                'RDN=User,OU=Users,DC=contoso,DC=com'  # Invalid RDN type
                 ''  # Empty string
             )
         }
@@ -165,11 +163,6 @@ Describe "Test-ValidDistinguishedName" {
             $result | Should -Be $false
         }
         
-        It "Should reject obviously invalid DN - DC=onlydc" {
-            $result = Test-ValidDistinguishedName -DistinguishedName 'DC=onlydc'
-            $result | Should -Be $false
-        }
-        
         It "Should reject DNs with empty components" {
             $emptyComponentDNs = @(
                 'CN=,OU=Users,DC=contoso,DC=com'
@@ -187,7 +180,6 @@ Describe "Test-ValidDistinguishedName" {
             $invalidSeparatorDNs = @(
                 'CN User OU=Users DC=contoso DC=com'
                 'CN==User,OU=Users,DC=contoso,DC=com'
-                'RDN=User,OU=Users,DC=contoso,DC=com'
             )
             
             foreach ($dn in $invalidSeparatorDNs) {
@@ -197,6 +189,34 @@ Describe "Test-ValidDistinguishedName" {
         }
     }
     
+    Context "Components named by an attribute other than CN, OU or DC (#134)" {
+        # The class of an object sets the attribute that names it, so the function holds no list.
+        # L= and O= were created on a domain controller, as a locality and an organization, with an
+        # organizational unit below the organization.
+        It "Should accept <Case>" -ForEach @(
+            @{ Case = 'a locality'; DN = 'L=Springfield,OU=Test,DC=contoso,DC=com' }
+            @{ Case = 'an organization below a locality'; DN = 'O=Acme,L=Springfield,OU=Test,DC=contoso,DC=com' }
+            @{ Case = 'an organizational unit below an organization'; DN = 'OU=Depot,O=Acme,L=Springfield,DC=contoso,DC=com' }
+            @{ Case = 'an attribute name with a digit and a hyphen'; DN = 'x-id2=7,OU=Test,DC=contoso,DC=com' }
+            @{ Case = 'an attribute given as a dotted number'; DN = '2.5.4.7=Springfield,OU=Test,DC=contoso,DC=com' }
+            @{ Case = 'an attribute given as OID and a dotted number'; DN = 'OID.2.5.4.7=Springfield,DC=contoso,DC=com' }
+            @{ Case = 'the root of a domain with a single label'; DN = 'DC=corp' }
+            @{ Case = 'an object in a domain with a single label'; DN = 'OU=Staff,DC=corp' }
+        ) {
+            Test-ValidDistinguishedName -DistinguishedName $DN | Should -Be $true
+        }
+
+        It "Should reject <Case>" -ForEach @(
+            @{ Case = 'a component with no attribute name'; DN = '=Springfield,DC=contoso,DC=com' }
+            @{ Case = 'an attribute name that starts with a digit'; DN = '1x=Springfield,DC=contoso,DC=com' }
+            @{ Case = 'an attribute name with a space in it'; DN = 'L X=Springfield,DC=contoso,DC=com' }
+            @{ Case = 'a locality with no DC= component'; DN = 'L=Springfield' }
+            @{ Case = 'a locality below something that is not a domain'; DN = 'L=Springfield,O=Acme' }
+        ) {
+            Test-ValidDistinguishedName -DistinguishedName $DN | Should -Be $false
+        }
+    }
+
     Context "Characters that another interpreter gives a meaning (#128)" {
         # A distinguished name reaches the Active Directory cmdlets as one argument, so none of these
         # characters is refused. Each name was created on a domain controller, and each is written as

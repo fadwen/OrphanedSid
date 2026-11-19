@@ -27,9 +27,13 @@ function Test-ValidDistinguishedName {
 
     .DESCRIPTION
     Checks the form of the name and nothing else. The name is not empty, is at most 1024 characters
-    long and holds no control character. Every component is CN=, OU= or DC= followed by a value,
-    and at least one component is DC=. A comma that is escaped with a backslash, or that sits inside
-    a quoted value, does not end a component.
+    long and holds no control character. Every component is the name of an attribute, an equals
+    sign and a value, and at least one component is DC=. A comma that is escaped with a backslash,
+    or that sits inside a quoted value, does not end a component.
+
+    The attribute that names an object is set by the class of the object in the schema. CN, OU and
+    DC are the common ones; a locality is L= and an organization is O=. The function therefore
+    takes any attribute name, and a dotted number, and does not hold a list of them.
 
     The function does not look the object up, and it does not refuse a character because a shell,
     a browser or a database gives it a meaning. A distinguished name is passed to the Active
@@ -58,6 +62,11 @@ function Test-ValidDistinguishedName {
     Returns $true. The ampersand is an ordinary character in a distinguished name.
 
     .EXAMPLE
+    Test-ValidDistinguishedName -DistinguishedName 'O=Acme,L=Springfield,DC=contoso,DC=com'
+
+    Returns $true. An organization and a locality are named by the attributes O and L.
+
+    .EXAMPLE
     'CN=User1,DC=contoso,DC=com', 'OU=Sales' | Test-ValidDistinguishedName
 
     Returns $true and then $false. The second name has no DC= component.
@@ -69,10 +78,6 @@ function Test-ValidDistinguishedName {
     System.Boolean. $true when the string has the form of a distinguished name.
 
     .NOTES
-    KNOWN LIMITATIONS:
-    - A component named by another attribute, such as L= or O=, is refused.
-    - The root of a domain with a single label, such as DC=corp, is refused.
-
     AUTHOR:
     - Author: Jeffrey Stuhr
     - Blog: https://techbyjeff.net
@@ -105,9 +110,12 @@ function Test-ValidDistinguishedName {
                 return $false
             }
 
-            # Basic format validation - must contain DC component and proper structure
-            # Make case-insensitive and allow for various valid DN formats
-            if (-not ($DistinguishedName -match '(?i)^(CN|OU|DC)\s*=.+,\s*DC\s*=.+$')) {
+            # The name starts with an attribute and an equals sign. Which attribute names an object
+            # is set by its class, so none is refused here. That a DC= component is present is
+            # checked below, component by component. A comma before it is not required: the root
+            # of a domain with a single label, such as DC=corp, has none.
+            $attributeName = '([a-z][a-z0-9.-]*|\d+(\.\d+)+)'
+            if (-not ($DistinguishedName -match "^$attributeName\s*=.+$")) {
                 Write-StructuredLog "Distinguished Name validation failed: Invalid format structure" -Level Debug -Component 'DNValidator' -CorrelationId $CorrelationId
                 return $false
             }
@@ -152,7 +160,7 @@ function Test-ValidDistinguishedName {
 
                 # Each component must have format: TYPE=VALUE (case-insensitive)
                 # Handle quoted values and escaped characters - ensure single equals sign
-                if (-not ($component -match '(?i)^(CN|OU|DC)\s*=[^=].*$')) {
+                if (-not ($component -match "^$attributeName\s*=[^=].*$")) {
                     Write-StructuredLog "Distinguished Name validation failed: Invalid component format: $component" -Level Debug -Component 'DNValidator' -CorrelationId $CorrelationId
                     return $false
                 }

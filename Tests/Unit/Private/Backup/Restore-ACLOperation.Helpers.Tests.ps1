@@ -74,6 +74,24 @@ Describe 'Get-RestorationTarget' -Tag 'Unit', 'Backup', 'Private' {
         $result.Issues | Should -Contain 'Invalid DN format: just-a-name'
     }
 
+    It 'Accepts a target that is named by another attribute: <Name> (#134)' -ForEach @(
+        @{ Name = 'L=Springfield,OU=Test,DC=contoso,DC=com' }
+        @{ Name = 'O=Acme,L=Springfield,OU=Test,DC=contoso,DC=com' }
+    ) {
+        $result = Get-RestorationTarget -TargetObjectDN $Name
+
+        $result.IsValid | Should -BeTrue
+        $result.Issues | Should -BeNullOrEmpty
+        Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $Identity -eq $Name }
+    }
+
+    It 'Rejects a target whose first component has no attribute name' {
+        $result = Get-RestorationTarget -TargetObjectDN '=Springfield,DC=contoso,DC=com'
+
+        $result.IsValid | Should -BeFalse
+        $result.Issues | Should -Contain 'Invalid DN format: =Springfield,DC=contoso,DC=com'
+    }
+
     # A restore must reach every object that a removal reaches, so the target is not refused for
     # a character that only another interpreter gives a meaning (#128).
     It 'Accepts a distinguished name that holds <Case>' -ForEach @(

@@ -94,6 +94,15 @@ All notable changes to this module are recorded here. Format follows
 - A name that is refused because it is not well formed is now reported as
   `The distinguished name was refused because it is not well formed`, and no longer as
   `Target path not found`. ([#128](https://github.com/fadwen/OrphanedSid/issues/128))
+- An object that is named by an attribute other than `CN`, `OU` or `DC`, and everything below
+  it, can now be cleaned, restored and used as a search base. An object of class `locality` is
+  `L=...` and one of class `organization` is `O=...`; `Find-OrphanedSid` reported their orphaned
+  entries, and `Remove-OrphanedSid` refused them. Any attribute name is now accepted in a
+  distinguished name, by the removal and by the three checks of the restore.
+  ([#134](https://github.com/fadwen/OrphanedSid/issues/134))
+- The root of a domain with a single label, such as `DC=corp`, is accepted as a search base. It
+  was refused, and it is the default search base, so in such a domain every run needed an
+  explicit `-SearchBase`. ([#134](https://github.com/fadwen/OrphanedSid/issues/134))
 
 ## [1.1.0] - 2026-11-11
 

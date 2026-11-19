@@ -175,6 +175,16 @@ Describe 'Test-BackupIntegrity' -Tag 'Unit', 'Backup', 'Private' {
             $result.Issues | Should -Contain 'Invalid ObjectDN format: just-a-name'
         }
 
+        It 'Accepts an object DN that is named by another attribute: <Name> (#134)' -ForEach @(
+            @{ Name = 'L=Springfield,OU=Test,DC=contoso,DC=com' }
+            @{ Name = 'O=Acme,L=Springfield,OU=Test,DC=contoso,DC=com' }
+        ) {
+            $result = Test-BackupIntegrity -BackupData (New-Backup -Override @{ ObjectDN = $Name }) -ValidationLevel 'Comprehensive'
+
+            $result.IsValid | Should -BeTrue
+            @($result.Issues | Where-Object { $_ -like 'Invalid ObjectDN format:*' }).Count | Should -Be 0
+        }
+
         It 'Flags permissions granted to Everyone or Anonymous' {
             $sddl = 'D:(A;;GA;;;S-1-1-0)(A;;GA;;;S-1-5-7)'
             $result = Test-BackupIntegrity -BackupData (New-Backup -Override @{ SDDL = $sddl; SDDLHash = (Get-Sha256Base64 -Text $sddl) }) -ValidationLevel 'Comprehensive'

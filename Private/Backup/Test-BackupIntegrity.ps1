@@ -250,7 +250,7 @@ function Test-BackupIntegrity {
 
                 # Validate ObjectDN format
                 if ($BackupData.ObjectDN) {
-                    if (-not ($BackupData.ObjectDN -match '^(CN|OU|DC)=.+')) {
+                    if (-not ($BackupData.ObjectDN -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=.+')) {
                         $issues += "Invalid ObjectDN format: $($BackupData.ObjectDN)"
                     }
                 }

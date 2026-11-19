@@ -802,6 +802,74 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
         }
     }
 
+    Context 'An object that is named by an attribute other than CN, OU or DC (#134)' {
+        BeforeEach {
+            $script:LocalityDN = "L=Springfield,OU=Finance,$script:DomainDN"
+            $script:OrganizationDN = "O=Acme,$script:LocalityDN"
+            $script:DepotDN = "OU=Depot,$script:OrganizationDN"
+            $classes = @{
+                $script:LocalityDN = 'locality'
+                $script:OrganizationDN = 'organization'
+                $script:DepotDN = 'organizationalUnit'
+            }
+            foreach ($entry in $classes.GetEnumerator()) {
+                $script:Directory[$entry.Key] =
+                    New-DirectoryObject -DN $entry.Key -ObjectClass $entry.Value -Trustee $script:LiveSid, $script:OrphanSid
+                $script:OriginalSddl[$entry.Key] = $script:Directory[$entry.Key].Sddl
+            }
+        }
+
+        It 'Removes the orphaned entry from a locality, an organization below it and a unit below that' {
+            $targets = @($script:LocalityDN, $script:OrganizationDN, $script:DepotDN)
+
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            # Each line names an object that was not cleaned, with the error the removal gave for it
+            $notCleaned = @(foreach ($target in $targets) {
+                    $result = @($results | Where-Object ObjectDN -eq $target)
+                    $trustees = @(Get-TrusteeSid -DN $target)
+                    $cleaned = $result.Count -eq 1 -and $result[0].Success -and $result[0].ActualRemovals -eq 1 -and
+                        $trustees -notcontains $script:OrphanSid -and $trustees -contains $script:LiveSid
+                    if (-not $cleaned) {
+                        "$target [$(@($result.ErrorMessage) -join '; ')]"
+                    }
+                })
+            $notCleaned | Should -BeNullOrEmpty
+        }
+
+        It 'Takes a locality as the search base' {
+            $log = Join-Path $TestDrive 'find-locality.log'
+
+            $results = @(Find-OrphanedSid -SearchBase $script:LocalityDN -LogPath $log -SuppressConsoleOutput)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            $orphaned.Count | Should -Be 3
+            @($orphaned | Where-Object ObjectDN -eq $script:LocalityDN).Count | Should -Be 1
+        }
+
+        It 'Restores <Case> from its backup' -ForEach @(
+            @{ Case = 'a locality'; Target = 'LocalityDN' }
+            @{ Case = 'an organization below a locality'; Target = 'OrganizationDN' }
+        ) {
+            $targetDN = Get-Variable -Name $Target -Scope Script -ValueOnly
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $targetDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $targetDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-locality.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $targetDN | Should -Contain $script:OrphanSid
+        }
+    }
+
     Context 'A character that the directory escapes in an object name (#133)' {
         BeforeEach {
             $script:EscapedDN = 'CN=Doe\, Jane,OU=Finance,' + $script:DomainDN

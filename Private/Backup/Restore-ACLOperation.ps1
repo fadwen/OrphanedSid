@@ -296,8 +296,10 @@ function Get-RestorationTarget {
         try {
             $issues = @()
 
-            # Validate DN format (strict validation for security)
-            if (-not ($TargetObjectDN -match '^(CN|OU|DC)=.+')) {
+            # The attribute that names an object is set by its class, so any attribute name is
+            # taken, as Test-ValidDistinguishedName does. Whether the object exists is settled
+            # by the lookup below.
+            if (-not ($TargetObjectDN -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=.+')) {
                 $issues += "Invalid DN format: $TargetObjectDN"
             }
 

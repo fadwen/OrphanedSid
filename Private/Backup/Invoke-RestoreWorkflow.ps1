@@ -188,8 +188,9 @@ function Invoke-RestoreWorkflow {
         # Trim and sanitize input first
         $TargetObjectDN = $TargetObjectDN.Trim()
         
-        # Validate target DN format after trimming
-        if (-not ($TargetObjectDN -match '^(CN|OU|DC)=')) {
+        # Validate target DN format after trimming. The attribute that names an object is set by
+        # its class, so any attribute name is taken, as Test-ValidDistinguishedName does.
+        if (-not ($TargetObjectDN -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=')) {
             throw "Invalid target object DN format"
         }
         

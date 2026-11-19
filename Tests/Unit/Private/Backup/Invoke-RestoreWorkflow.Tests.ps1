@@ -82,6 +82,18 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
         }
 
+        It "Should take a TargetObjectDN that is named by another attribute: <Name> (#134)" -ForEach @(
+            @{ Name = 'L=Springfield,OU=Test,DC=company,DC=com' }
+            @{ Name = 'O=Acme,L=Springfield,OU=Test,DC=company,DC=com' }
+        ) {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $Name
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $Name -BackupFile $file
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $TargetObjectDN -eq $Name }
+        }
+
         It "Should require either BackupFile or BackupPath" {
             { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN } | Should -Throw "*Either BackupFile or BackupPath must be specified*"
         }

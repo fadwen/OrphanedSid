@@ -133,6 +133,16 @@ the restore: `Get-RestorationTarget` must accept every name a removal accepts, o
 that cannot be put back. A check that looks like hardening here is a way to strand entries, so
 add one only for a name that Active Directory itself cannot hold.
 
+The same holds for the attribute that names a component. The validator and three checks on the
+restore path once accepted only `CN=`, `OU=` and `DC=`. The class of an object sets that
+attribute in the schema: a `locality` is `L=...` and an `organization` is `O=...`, and both could
+be reported and never cleaned (#134). The four places now take any attribute name or dotted
+number, with the same pattern, and a change to one of them is a change to all four:
+`Test-ValidDistinguishedName`, `Invoke-RestoreWorkflow`, `Get-RestorationTarget` and
+`Test-BackupIntegrity`. `Invoke-RestoreWorkflow` still decides between one object and a whole
+subtree by `OU=` or `DC=`, so a container named otherwise is restored as one object, as a `CN=`
+container is.
+
 ### Paths are literal, and directory security descriptors go through two helpers
 
 A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-BackupPath`,
