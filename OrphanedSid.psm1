@@ -10,7 +10,7 @@ Write-Verbose "Initializing OrphanedSid module from: $ModuleRoot"
 
 # Classes first: several private functions constrain a parameter to one of these types, and a type
 # literal in a param block must already be defined when the file that uses it is parsed.
-#
+
 # Private functions, one per file, grouped in folders by area. Logging\ goes first because every
 # other function logs through Write-StructuredLog, and its own files depend on
 # Initialize-LoggingConfiguration having defined the shared state.
@@ -31,13 +31,15 @@ $privateFolders = @(
 
 # Every folder named here has to be present. A missing one is an incomplete installation, and
 # skipping it would import the module with commands that fail, or report nothing, when they run.
+$classesPath = Join-Path -Path $ModuleRoot -ChildPath 'Classes'
+$publicPath = Join-Path -Path $ModuleRoot -ChildPath 'Public'
 $privateRoot = Join-Path -Path $ModuleRoot -ChildPath 'Private'
 $requiredFolders = @(
-    Join-Path -Path $ModuleRoot -ChildPath 'Classes'
+    $classesPath
     foreach ($folder in $privateFolders) {
         Join-Path -Path $privateRoot -ChildPath $folder
     }
-    Join-Path -Path $ModuleRoot -ChildPath 'Public'
+    $publicPath
 )
 foreach ($folderPath in $requiredFolders) {
     if (-not (Test-Path -LiteralPath $folderPath -PathType Container)) {
@@ -46,7 +48,7 @@ foreach ($folderPath in $requiredFolders) {
     }
 }
 
-$classFiles = @(Get-ChildItem -LiteralPath $requiredFolders[0] -Filter '*.ps1' -File -ErrorAction Stop)
+$classFiles = @(Get-ChildItem -LiteralPath $classesPath -Filter '*.ps1' -File -ErrorAction Stop)
 $orderedPrivateFiles = @(
     foreach ($folder in $privateFolders) {
         $folderPath = Join-Path -Path $privateRoot -ChildPath $folder
@@ -60,7 +62,7 @@ $otherPrivateFiles = @(
     Get-ChildItem -LiteralPath $privateRoot -Filter '*.ps1' -File -Recurse -ErrorAction Stop |
         Where-Object { $orderedPrivatePaths -notcontains $_.FullName }
 )
-$publicFiles = @(Get-ChildItem -LiteralPath $requiredFolders[-1] -Filter '*.ps1' -File -ErrorAction Stop)
+$publicFiles = @(Get-ChildItem -LiteralPath $publicPath -Filter '*.ps1' -File -ErrorAction Stop)
 
 foreach ($sourceFile in $classFiles + $orderedPrivateFiles + $otherPrivateFiles + $publicFiles) {
     Write-Verbose "Loading $($sourceFile.FullName)"
@@ -74,6 +76,15 @@ foreach ($sourceFile in $classFiles + $orderedPrivateFiles + $otherPrivateFiles 
         throw [System.InvalidOperationException]::new($message, $_.Exception)
     }
 }
+
+# The loader's own variables are removed, so that none of them stays in module scope, where a
+# function that reads a variable of the same name before assigning it would find the leftover.
+$loaderVariables = @(
+    'classesPath', 'publicPath', 'privateRoot', 'privateFolders', 'requiredFolders', 'folder', 'folderPath'
+    'classFiles', 'orderedPrivateFiles', 'orderedPrivatePaths', 'otherPrivateFiles', 'publicFiles', 'sourceFile'
+)
+Remove-Variable -Name $loaderVariables -Scope Script
+Remove-Variable -Name 'loaderVariables' -Scope Script
 
 # Module-scope state shared by the private functions. A command sets these for the duration of
 # one run through Start-OrphanedSidSession and clears them in Stop-OrphanedSidSession.

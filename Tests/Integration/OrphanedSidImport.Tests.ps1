@@ -22,6 +22,16 @@ BeforeAll {
         $copy
     }
 
+    # A path as a single-quoted literal for the generated script, with any quote in it doubled
+    function ConvertTo-Literal {
+        param(
+            [Parameter(Mandatory)]
+            [string]$Text
+        )
+
+        "'" + $Text.Replace("'", "''") + "'"
+    }
+
     function Invoke-ImportInNewProcess {
         param(
             [Parameter(Mandatory)]
@@ -40,14 +50,14 @@ BeforeAll {
         # other holds the message of the last error, read from $Error and not from the console,
         # which wraps and colours a long message.
         $lines = @(
-            "Import-Module -Name '$manifest'"
+            "Import-Module -Name $(ConvertTo-Literal -Text $manifest)"
             '$module = Get-Module -Name OrphanedSid'
             'if ($module) {'
             '    $names = @($module.ExportedFunctions.Keys | Sort-Object) -join '','''
-            "    [System.IO.File]::WriteAllText('$exportedFile', `$names)"
+            "    [System.IO.File]::WriteAllText($(ConvertTo-Literal -Text $exportedFile), `$names)"
             '}'
             'if ($Error.Count -gt 0) {'
-            "    [System.IO.File]::WriteAllText('$messageFile', `$Error[0].Exception.Message)"
+            "    [System.IO.File]::WriteAllText($(ConvertTo-Literal -Text $messageFile), `$Error[0].Exception.Message)"
             '}'
         )
         [System.IO.File]::WriteAllText($scriptFile, ($lines -join "`r`n"), [System.Text.UTF8Encoding]::new($true))
