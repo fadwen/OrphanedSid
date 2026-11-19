@@ -24,6 +24,24 @@ scheduled task or a pipeline step therefore reports the failure without any extr
 To handle the failure and carry on, wrap the call in `try`/`catch`; the script then continues
 after the `catch`.
 
+```powershell
+$runFinished = $false
+try {
+    $found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -SuppressConsoleOutput)
+    $runFinished = $true
+} catch {
+    Write-Warning "Discovery did not finish: $($_.Exception.Message)"
+}
+
+if ($runFinished) {
+    Write-Output "Entries found: $($found.Count)"
+}
+```
+
+In the `catch`, `$_` is the error that ended the run. `$found` is not assigned when the run fails,
+so the example tests a flag of its own and does not read `$found`: a failed run must not be taken
+for a run that found nothing.
+
 ### Pipeline Output
 
 | Command | Writes to the pipeline |
