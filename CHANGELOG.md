@@ -33,6 +33,15 @@ All notable changes to this module are recorded here. Format follows
 - A CSV that cannot be written is now reported as an error by `Find-OrphanedSid` and
   `Remove-OrphanedSid`, after the results have been returned. Before, the failure appeared only in
   the log file. ([#119](https://github.com/fadwen/OrphanedSid/issues/119))
+- A start-up failure, such as a `-ConfigPath` file that does not validate, now ends the command
+  with that error whatever error action the caller chose. With `-ErrorAction SilentlyContinue`,
+  or with `$ErrorActionPreference = 'SilentlyContinue'` in the session, the failure was swallowed:
+  the command went on with no configuration loaded, read the search base from the directory, and
+  failed with `The property 'CriticalErrors' cannot be found on this object`. Nothing was removed
+  in that state, but only because a counter was missing. `Find-OrphanedSid`, `Remove-OrphanedSid`
+  and `Restore-OrphanedSidBackup` now raise the start-up error itself and stop there, and
+  processing refuses to start without a loaded configuration.
+  ([#120](https://github.com/fadwen/OrphanedSid/issues/120))
 
 ## [1.1.0] - 2026-11-11
 

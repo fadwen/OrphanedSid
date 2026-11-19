@@ -181,6 +181,19 @@ function Invoke-MainProcessingLogic {
     begin {
         Write-StructuredLog "Starting main processing logic" -Level Information -Component 'MainProcessing' -CorrelationId $CorrelationId
 
+        # Without the session's configuration there is no protected SID list, and the checks that
+        # read it treat a missing configuration as nothing configured. Stop before the directory
+        # is read, not at the first counter that happens to be null.
+        if ($null -eq $script:Config -or $null -eq $script:Statistics) {
+            $message = 'No session is active: the configuration or the run statistics are missing. ' +
+                'Start-OrphanedSidSession has to succeed before any object is processed.'
+            $exception = [System.InvalidOperationException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'SessionNotStarted', $category, $null)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+
         # StreamingResultsManager class is loaded via SecureClassImporter in main script
         # Verify it's available before proceeding
         if (-not ([System.Management.Automation.PSTypeName]'StreamingResultsManager').Type) {

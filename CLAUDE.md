@@ -66,8 +66,28 @@ which `Invoke-MainProcessingLogic` then fills for the run. It also creates an em
 answer depends on the run's `ProtectedSIDs` and `WellKnownSIDPatterns`, so it must not outlive the
 run. `Stop-OrphanedSidSession` clears all of them except `$script:Config` and
 `$script:CurrentDomainSID`. Every public command calls the first from `begin` and the second from
-`finally`. The SID validation cache is the exception: it lives for the PowerShell session so the
+`finally`. The call in `begin` sits in a `try` whose `catch` raises the error with
+`Write-Error -ErrorRecord $_ -ErrorAction Stop`, as the `end` block does. Without that `try`, a
+`throw` in start-up follows the caller's error action: under `-ErrorAction SilentlyContinue` it is
+swallowed, and `process` and `end` run with no configuration. No ordinary Pester test can see
+this, because every test runs inside a `try`; `Tests/Integration/OrphanedSidStartupFailure.Tests.ps1`
+runs each command in a process of its own for that reason. It has to be a process and not a second
+runspace: on Windows PowerShell 5.1, once another runspace has imported the module and been
+closed, the static `[ScriptConfiguration]::LoadFromFile()` fails in the first one with a
+`NullReferenceException`, and every later test that passes `-ConfigPath` fails with it (#125).
+The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
+
+### A fatal error of a public command ends the calling script, against ERR-11
+
+The `catch` in `begin` and the `catch` in `end` of each public command raise the failure with
+`Write-Error -ErrorRecord $_ -ErrorAction Stop`. ERR-11 of the standards rules that call out in
+favour of `$PSCmdlet.ThrowTerminatingError()`, and it is used here on purpose.
+`ThrowTerminatingError()` ends only the statement that called the command: a scheduled script
+carries on with its next line and `powershell -File` exits with 0, which was measured.
+`Documentation/Automation.md` tells callers that a critical error is raised as a terminating
+error that fails the job step. Replacing the call changes that contract, so it is a change to
+announce in a release, not a tidy-up. The exception covers these `catch` blocks only.
 
 ### Results are emitted before cleanup
 

@@ -168,6 +168,19 @@ function Start-OrphanedSidSession {
     }
     $initResults = Initialize-ScriptExecution @initParams
 
+    # Initialize-ScriptExecution reports a failure with throw, which a caller's
+    # -ErrorAction SilentlyContinue swallows when no try encloses this call. It then returns
+    # nothing, and the assignments below would clear the module's state without any error.
+    if ($null -eq $initResults) {
+        $message = "The session for $CommandName could not be initialized. " +
+            'The log file or the errors above give the reason.'
+        $exception = [System.InvalidOperationException]::new($message)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'SessionInitializationFailed', $category, $CommandName)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
     $script:Config = $initResults.Config
     $script:MemoryManager = $initResults.MemoryManager
     $script:Statistics = $initResults.Statistics

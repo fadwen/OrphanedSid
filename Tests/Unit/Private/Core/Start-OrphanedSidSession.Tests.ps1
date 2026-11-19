@@ -205,4 +205,20 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             }
         }
     }
+
+    Context 'Initialization that returns nothing (#120)' {
+        It 'Ends with an error and leaves the module state as it was' {
+            # What Initialize-ScriptExecution does when its throw is swallowed by the caller's error action
+            Mock Initialize-ScriptExecution { }
+            $script:Config = 'previous configuration'
+            $script:Statistics = 'previous statistics'
+
+            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' } |
+                Should -Throw -ErrorId 'SessionInitializationFailed,Start-OrphanedSidSession'
+
+            $script:Config | Should -Be 'previous configuration'
+            $script:Statistics | Should -Be 'previous statistics'
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like '*starting*' }
+        }
+    }
 }

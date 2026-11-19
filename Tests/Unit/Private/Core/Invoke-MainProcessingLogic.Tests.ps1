@@ -129,8 +129,8 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             $result.StreamingManager.WhatIfMode | Should -Be $false
         }
 
-        It "Uses a batch size of 50 when no configuration is loaded" {
-            $script:Config = $null
+        It "Uses a batch size of 50 when the configuration sets none" {
+            $script:Config = [PSCustomObject]@{ BatchSize = $null }
 
             $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com' }
 
@@ -630,6 +630,25 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             $result = Invoke-Subject @{ SearchBase = 'OU=Users,DC=test,DC=com'; Remove = $true; WhatIf = $true }
 
             @($result.RemovalResults.RemovedSIDs) | Should -Be @($script:verifiedSid)
+        }
+    }
+
+    Context 'Without a started session (#120)' {
+        It 'Refuses to run without <Missing>, before the directory is read' -ForEach @(
+            @{ Missing = 'the configuration' }
+            @{ Missing = 'the run statistics' }
+        ) {
+            if ($Missing -eq 'the configuration') {
+                $script:Config = $null
+            } else {
+                $script:Statistics = $null
+            }
+
+            { Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com' } } |
+                Should -Throw -ErrorId 'SessionNotStarted,Invoke-MainProcessingLogic'
+
+            Should -Invoke Get-ADObjectsSequential -Times 0 -Exactly
+            Should -Invoke Get-ADDomain -Times 0 -Exactly
         }
     }
 }
