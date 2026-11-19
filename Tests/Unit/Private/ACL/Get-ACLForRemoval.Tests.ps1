@@ -63,6 +63,8 @@ Describe 'Get-ACLForRemoval' -Tag 'Unit', 'ACL', 'Private' {
             }
             { Get-ACLForRemoval -ObjectDistinguishedName 'OU=NoDomain' } | Should -Throw @expected
             Should -Invoke Get-Acl -Times 0 -Exactly
+            # The error leaves the function without passing its catch, which is what logs at Error
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Error' }
         }
     }
 

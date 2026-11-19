@@ -123,7 +123,9 @@ function Get-ACLForRemoval {
         }
 
         # The check is of the form of the name only. Whether the object exists is settled by the
-        # read below, which fails with the directory's own error.
+        # read below, which fails with the directory's own error. ThrowTerminatingError() leaves
+        # the function at once: the catch at the end of this function does not receive the error,
+        # so it is the caller that logs the refusal.
         if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDistinguishedName -CorrelationId $CorrelationId)) {
             $message = "The distinguished name was refused because it is not well formed: $ObjectDistinguishedName"
             $exception = [System.ArgumentException]::new($message)

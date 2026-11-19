@@ -76,6 +76,8 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
             }
             { Set-ModifiedACL -ACL $script:acl -ObjectDN $Name } | Should -Throw @expected
             Should -Invoke Set-Acl -Times 0 -Exactly
+            # The error leaves the function without passing its catch, which is what logs at Error
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Error' }
         }
     }
 
