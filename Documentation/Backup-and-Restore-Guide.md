@@ -47,8 +47,10 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
 
 - **Location**: `<BackupPath>\<yyyyMMdd_HHmmss>\` (the run timestamp)
 - **File name**: `<SafeObjectName>_<yyyyMMdd_HHmmss>.xml`, where `SafeObjectName` is the object's
-  distinguished name with every `\ / : * ? " < > | , =` character and every run of whitespace
-  replaced by `_`. The name is limited to 200 characters, and less when the folder path is long
+  distinguished name with every `\ / : * ? " < > | , = [ ]` character and every run of whitespace
+  replaced by `_`. Two objects whose names differ only in those characters get the same
+  `SafeObjectName`; the counter described below keeps their files apart, and a restore tells them
+  apart by the DN inside the file. The name is limited to 200 characters, and less when the folder path is long
   enough that the full path would pass 259 characters; a longer name is cut and ends with
   `_<first 8 hex digits of the SHA256 of the DN>_truncated`, so two long DNs never share a name.
   The budget keeps room for a counter: a second backup of the same object in the same second is

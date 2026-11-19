@@ -78,6 +78,17 @@ closed, the static `[ScriptConfiguration]::LoadFromFile()` fails in the first on
 The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
 
+### A fatal error of a public command ends the calling script, against ERR-11
+
+The `catch` in `begin` and the `catch` in `end` of each public command raise the failure with
+`Write-Error -ErrorRecord $_ -ErrorAction Stop`. ERR-11 of the standards rules that call out in
+favour of `$PSCmdlet.ThrowTerminatingError()`, and it is used here on purpose.
+`ThrowTerminatingError()` ends only the statement that called the command: a scheduled script
+carries on with its next line and `powershell -File` exits with 0, which was measured.
+`Documentation/Automation.md` tells callers that a critical error is raised as a terminating
+error that fails the job step. Replacing the call changes that contract, so it is a change to
+announce in a release, not a tidy-up. The exception covers these `catch` blocks only.
+
 ### Results are emitted before cleanup
 
 `Find-OrphanedSid` reads results back from the streaming batch files with `GetAllResults()` before
@@ -107,7 +118,9 @@ A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-B
 a removal once ran to the end with only the header in its log. `Get-DirectoryObjectAcl` and
 `Set-DirectoryObjectAcl` are the only callers of `Get-Acl` and `Set-Acl` on the `AD:` drive. They
 use `-Path` for an ordinary name, and the `nTSecurityDescriptor` attribute for a name that
-contains `[`, `]`, `*` or `?`. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
+contains `[`, `]`, `*`, `?` or a backtick. The backtick is not an oversight: `-Path` reads it as
+an escape and drops it, so for ``OU=Pay`*`` the drive hands back the descriptor of `OU=Pay*`, a
+different object. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
 `Get-Acl -LiteralPath` fails on the `AD:` drive for every object, with
 `Cannot find path '//RootDSE/...'`, while on PowerShell 7 it works, so only a 5.1 run against a
 real domain notices.

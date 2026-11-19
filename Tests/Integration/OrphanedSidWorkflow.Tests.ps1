@@ -201,8 +201,13 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
         Mock -ModuleName OrphanedSid Get-Acl -ParameterFilter { $Path -like 'AD:*' } {
             $dn = [string](@($Path)[0] -replace '^AD:\\?')
             # Measured on a domain controller: for a name with wildcard characters, Get-Acl -Path on
-            # the AD: drive returns nothing and raises no error (#119)
-            if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) { return }
+            # the AD: drive returns nothing and raises no error (#119). A backtick escapes the
+            # character after it, so for 'Team`*' the drive hands back the object named 'Team*'.
+            if ($dn.Contains('`')) {
+                $dn = [System.Management.Automation.WildcardPattern]::Unescape($dn)
+            } elseif ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) {
+                return
+            }
             if (-not $script:Directory.Contains($dn)) { throw "Cannot find path '$Path' dn=[$dn] count=$($script:Directory.Count) keys=$(@($script:Directory.Keys) -join '|')" }
             Get-DirectoryAcl -DN $dn
         }
@@ -211,7 +216,7 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             $dn = [string](@($Path)[0] -replace '^AD:\\?')
             # The path is a pattern to Set-Acl, so a write through the AD: drive for such a name is
             # a defect; fail the test that makes one
-            if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) {
+            if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn) -or $dn.Contains('`')) {
                 throw "Set-Acl -Path was called with a name that contains wildcard characters: $dn"
             }
             $script:Directory[$dn].Sddl = $AclObject.GetSecurityDescriptorSddlForm('All')
@@ -624,6 +629,20 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             $result[0].ActualRemovals | Should -Be 1
             Test-Path -LiteralPath $result[0].BackupFile -PathType Leaf | Should -BeTrue
             [System.IO.Path]::GetFileName($result[0].BackupFile) | Should -Not -Match '[\[\]]'
+        }
+
+        It 'Reports the entries of an object whose name holds a backtick, not those of the sibling the AD: drive hands back for it' {
+            $tickDN = 'CN=Team`*,OU=Finance,' + $script:DomainDN
+            $siblingDN = 'CN=Team*,OU=Finance,' + $script:DomainDN
+            $script:Directory[$tickDN] =
+                New-DirectoryObject -DN $tickDN -ObjectClass 'group' -Trustee $script:LiveSid, $script:OrphanSid
+            $script:Directory[$siblingDN] = New-DirectoryObject -DN $siblingDN -ObjectClass 'group' -Trustee $script:LiveSid
+
+            $results = @(Invoke-FindOrphanedSid)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            @($orphaned | Where-Object ObjectDN -eq $tickDN).Count | Should -Be 1
+            @($orphaned | Where-Object ObjectDN -eq $siblingDN).Count | Should -Be 0
         }
 
         It 'Restores an object whose name contains square brackets from its backup' {
