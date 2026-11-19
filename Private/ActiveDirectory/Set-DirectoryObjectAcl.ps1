@@ -5,12 +5,14 @@ function Set-DirectoryObjectAcl {
 
     .DESCRIPTION
     Writes the security descriptor through the AD: drive with Set-Acl, as the module always has,
-    unless the distinguished name contains a wildcard character. The -Path parameter of Set-Acl
-    treats [ ] * and ? as a pattern, so for an object named 'Payroll [EU]' it matches nothing, and
-    for a name with * or ? it can match other objects. Set-Acl -LiteralPath is not a way out: on
-    Windows PowerShell 5.1 the AD: drive does not resolve a literal path for any object. A name with
-    a wildcard character is therefore written to the nTSecurityDescriptor attribute with
-    Set-ADObject, which takes the distinguished name literally.
+    unless the distinguished name contains a wildcard character or a backtick. The -Path parameter
+    of Set-Acl treats [ ] * and ? as a pattern, so for an object named 'Payroll [EU]' it matches
+    nothing, and for a name with * or ? it can match other objects. A backtick escapes the
+    character after it, so a path for an object named 'Pay`*' names the object 'Pay*'.
+    Set-Acl -LiteralPath is not a way out: on Windows PowerShell 5.1 the AD: drive does not resolve
+    a literal path for any object. Such a name is therefore written to the nTSecurityDescriptor
+    attribute with Set-ADObject, which takes the distinguished name literally. That write needs
+    no more than the right to change permissions on the object, as Set-Acl does.
 
     Set-Acl and Set-ADObject both honour -WhatIf and -Confirm from the calling command, so this
     function adds no confirmation of its own. A failure of either write ends the function with the
@@ -69,7 +71,12 @@ function Set-DirectoryObjectAcl {
     }
 
     try {
-        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($objectDN)) {
+        # A backtick is no wildcard character to ContainsWildcardCharacters(), which reads it as an
+        # escape. The -Path parameter reads it the same way and drops it: for 'Pay`*' the drive hands
+        # back the object named 'Pay*'. Such a name takes the literal route as well.
+        $isPattern = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($objectDN) -or
+            $objectDN.Contains('`')
+        if ($isPattern) {
             Set-ADObject -Identity $objectDN -Replace @{ nTSecurityDescriptor = $AclObject } -ErrorAction Stop
         } else {
             Set-Acl -Path "AD:\$objectDN" -AclObject $AclObject -ErrorAction Stop

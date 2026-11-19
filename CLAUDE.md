@@ -98,7 +98,9 @@ A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-B
 a removal once ran to the end with only the header in its log. `Get-DirectoryObjectAcl` and
 `Set-DirectoryObjectAcl` are the only callers of `Get-Acl` and `Set-Acl` on the `AD:` drive. They
 use `-Path` for an ordinary name, and the `nTSecurityDescriptor` attribute for a name that
-contains `[`, `]`, `*` or `?`. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
+contains `[`, `]`, `*`, `?` or a backtick. The backtick is not an oversight: `-Path` reads it as
+an escape and drops it, so for ``OU=Pay`*`` the drive hands back the descriptor of `OU=Pay*`, a
+different object. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
 `Get-Acl -LiteralPath` fails on the `AD:` drive for every object, with
 `Cannot find path '//RootDSE/...'`, while on PowerShell 7 it works, so only a 5.1 run against a
 real domain notices.

@@ -61,6 +61,8 @@ Describe 'Get-DirectoryObjectAcl' -Tag 'Unit', 'Private' {
             @{ Name = 'OU=Payroll [EU],DC=contoso,DC=com' }
             @{ Name = 'OU=Sales*,DC=contoso,DC=com' }
             @{ Name = 'CN=Who?,OU=Finance,DC=contoso,DC=com' }
+            @{ Name = 'OU=Pay`*,DC=contoso,DC=com' }
+            @{ Name = 'OU=Tick`Name,DC=contoso,DC=com' }
         ) {
             $result = Get-DirectoryObjectAcl -DistinguishedName $Name
 

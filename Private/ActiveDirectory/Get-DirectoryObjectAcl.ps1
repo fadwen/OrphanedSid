@@ -5,12 +5,14 @@ function Get-DirectoryObjectAcl {
 
     .DESCRIPTION
     Reads the security descriptor through the AD: drive with Get-Acl, as the module always has,
-    unless the distinguished name contains a wildcard character. The -Path parameter of Get-Acl
-    treats [ ] * and ? as a pattern, so for an object named 'Payroll [EU]' it returns nothing and
-    raises no error, and for a name with * or ? it can return the descriptors of other objects.
-    Get-Acl -LiteralPath is not a way out: on Windows PowerShell 5.1 it fails on the AD: drive for
-    every object. A name with a wildcard character is therefore read from the nTSecurityDescriptor
-    attribute with Get-ADObject, which takes the distinguished name literally.
+    unless the distinguished name contains a wildcard character or a backtick. The -Path parameter
+    of Get-Acl treats [ ] * and ? as a pattern, so for an object named 'Payroll [EU]' it returns
+    nothing and raises no error, and for a name with * or ? it can return the descriptors of other
+    objects. A backtick escapes the character after it, so for an object named 'Pay`*' it returns
+    the descriptor of the object named 'Pay*'. Get-Acl -LiteralPath is not a way out: on Windows
+    PowerShell 5.1 it fails on the AD: drive for every object. Such a name is therefore read from
+    the nTSecurityDescriptor attribute with Get-ADObject, which takes the distinguished name
+    literally.
 
     A failure of either read ends the function with the original error.
 
@@ -59,7 +61,12 @@ function Get-DirectoryObjectAcl {
     }
 
     try {
-        if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($objectDN)) {
+        # A backtick is no wildcard character to ContainsWildcardCharacters(), which reads it as an
+        # escape. The -Path parameter reads it the same way and drops it: for 'Pay`*' the drive hands
+        # back the object named 'Pay*'. Such a name takes the literal route as well.
+        $isPattern = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($objectDN) -or
+            $objectDN.Contains('`')
+        if ($isPattern) {
             $adObject = Get-ADObject -Identity $objectDN -Properties nTSecurityDescriptor -ErrorAction Stop
             $acl = $adObject.nTSecurityDescriptor
         } else {
