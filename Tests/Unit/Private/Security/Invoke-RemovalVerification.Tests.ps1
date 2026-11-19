@@ -14,6 +14,7 @@ BeforeAll {
     function Invoke-ADOperationWithRetry { param([scriptblock]$ScriptBlock, $MaxRetries, $OperationName, $ObjectContext, $CorrelationId) }
 
     . "$PSScriptRoot\..\..\..\..\Private\Security\Invoke-RemovalVerification.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
 
     $script:dn = 'CN=Test,DC=contoso,DC=com'

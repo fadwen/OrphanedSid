@@ -14,6 +14,7 @@
 BeforeAll {
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Set-ModifiedACL.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Set-DirectoryObjectAcl.ps1"
 
@@ -34,9 +35,6 @@ BeforeAll {
             [System.Security.AccessControl.AccessControlType]::Allow)
         $script:acl.AddAccessRule($rule)
     }
-
-    # On PowerShell 7 the Access property the function counts comes from this module's type data
-    Import-Module Microsoft.PowerShell.Security
 }
 
 Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {

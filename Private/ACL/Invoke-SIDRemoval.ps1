@@ -148,15 +148,10 @@ function Invoke-SIDRemoval {
             throw "ACL parameter cannot be null or empty."
         }
 
-        # Validate that ACL has the expected structure for an actual ACL object
-        if (-not ($ACL.PSObject.Properties.Name -contains "Access")) {
-            # For enterprise security, require proper ACL structure
-            if ($ACL.PSObject.Properties.Name -contains "InvalidProperty") {
-                throw "Invalid ACL object structure. ACL must have Access property."
-            }
-            # Add empty Access property for valid but minimal ACL objects
-            $ACL | Add-Member -MemberType NoteProperty -Name "Access" -Value @() -Force
-        }
+        # The rules are read once, with GetAccessRules() for a directory security descriptor. An
+        # object whose rules cannot be read ends the function here. It used to be given an empty
+        # Access property, and the removal then found nothing to remove and reported success.
+        $accessRules = @(Get-AclAccessRule -Acl $ACL)
 
         Write-StructuredLog "Starting ACL SID removal for $($AllowedSIDs.Count) SIDs (Object: $ObjectDN, WhatIf: $WhatIfMode)" -Level Debug -CorrelationId $CorrelationId
 
@@ -166,13 +161,13 @@ function Invoke-SIDRemoval {
         $removedSIDs = [System.Collections.Generic.List[string]]::new()
         $failedSIDs = [System.Collections.Generic.List[string]]::new()
 
-        # Store original ACL access count for reporting (after ensuring Access property exists)
-        $originalAccessCount = $workingACL.Access.Count
+        # Store original ACL access count for reporting
+        $originalAccessCount = $accessRules.Count
 
         # Find SIDs in ACL that ARE in the allowed list (these are orphaned SIDs to be removed).
         # Only explicit entries: an inherited entry comes from a parent object and cannot be removed
         # from this one, so it is neither removed nor counted.
-        $acesToRemove = $workingACL.Access | Where-Object {
+        $acesToRemove = $accessRules | Where-Object {
             -not $_.IsInherited -and $AllowedSIDs -contains $_.IdentityReference.Value
         }
 
@@ -229,7 +224,7 @@ function Invoke-SIDRemoval {
             RulesFound = $foundSIDs.Count  # Number of orphaned SIDs found for removal
             RulesRemoved = $removedSIDs.Count
             ProcessedSIDs = $removedSIDs.ToArray()  # Alias for RemovedSIDs
-            PreservedSIDs = @($workingACL.Access | Where-Object { $AllowedSIDs -notcontains $_.IdentityReference.Value } | ForEach-Object { $_.IdentityReference.Value })  # SIDs that were in ACL but not removed (preserved)
+            PreservedSIDs = @($accessRules | Where-Object { $AllowedSIDs -notcontains $_.IdentityReference.Value } | ForEach-Object { $_.IdentityReference.Value })  # SIDs that were in ACL but not removed (preserved)
             RulesProcessed = $originalAccessCount  # For performance tests - total rules processed
             PartialSuccess = ($removedSIDs.Count -gt 0 -and $failedSIDs.Count -gt 0)  # Some succeeded, some failed
             SuccessfulSIDs = $removedSIDs.ToArray()  # Alias for removed SIDs

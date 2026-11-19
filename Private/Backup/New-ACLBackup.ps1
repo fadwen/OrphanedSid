@@ -241,7 +241,8 @@ function New-ACLBackup {
             }
 
             # Validate ACL contains access entries
-            if (-not $ACL.Access -or $ACL.Access.Count -eq 0) {
+            $entryCount = @(Get-AclAccessRule -Acl $ACL).Count
+            if ($entryCount -eq 0) {
                 Write-StructuredLog "ACL object contains no access entries to backup for $($ObjectDN.Trim())" -Level Warning -CorrelationId $CorrelationId
                 # Continue with backup even if empty - might be intentional
             }
@@ -327,7 +328,7 @@ function New-ACLBackup {
                 ScriptVersion = Get-OrphanedSidModuleVersion
                 ValidationSignature = "PSSecurityBackup_v2.1"
                 BackupMethod = "New-ACLBackup"
-                ACLEntryCount = $ACL.Access.Count
+                ACLEntryCount = $entryCount
                 Platform = if ($PSVersionTable.Platform) { $PSVersionTable.Platform } else { "Windows" }
                 PSEdition = $PSVersionTable.PSEdition
             }
@@ -355,7 +356,7 @@ function New-ACLBackup {
 
             # Success logging with comprehensive details
             $writtenFile = Get-Item -LiteralPath $backupFile
-            Write-StructuredLog "Successfully backed up ACL to: $backupFile (Size: $($writtenFile.Length) bytes, Entries: $($ACL.Access.Count), Hash: $($verifyData.SDDLHash.Substring(0,8))...)" -Level Information -CorrelationId $CorrelationId
+            Write-StructuredLog "Successfully backed up ACL to: $backupFile (Size: $($writtenFile.Length) bytes, Entries: $entryCount, Hash: $($verifyData.SDDLHash.Substring(0,8))...)" -Level Information -CorrelationId $CorrelationId
 
             # The full path, so the removal result and its audit entry can name the file to restore from
             return $writtenFile.FullName

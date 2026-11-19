@@ -112,6 +112,17 @@ contains `[`, `]`, `*` or `?`. Do not replace that with `-LiteralPath`: on Windo
 `Cannot find path '//RootDSE/...'`, while on PowerShell 7 it works, so only a 5.1 run against a
 real domain notices.
 
+### The removal reads access rules with `Get-AclAccessRule`, not from `.Access`
+
+`.Access` is not a member of the .NET security descriptor. PowerShell adds it from type data, and
+on PowerShell 7 a runspace that a host application creates with `[powershell]::Create()` does not
+have it. The removal once read `.Access` there, saw a descriptor with no rules, wrote nothing and
+reported success. `Get-AclAccessRule` calls `GetAccessRules()` on the descriptor, which exists
+everywhere and does not turn each SID into an account name. Removal, verification and the entry
+count of a backup all go through it. A removal that finds fewer entries than it was asked to
+remove is a failure, never "nothing to do": discovery only hands over SIDs that hold an explicit
+entry on the object.
+
 ### Backups are Clixml with a hash, and nothing else reads them
 
 `New-ACLBackup` writes `<DN sanitized>_<yyyyMMdd_HHmmss>[_<n>].xml` with the SDDL, its SHA256, the

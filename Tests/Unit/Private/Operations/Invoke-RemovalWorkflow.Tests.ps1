@@ -117,15 +117,53 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             $result.FailedSIDs | Should -Be @($script:sid2)
         }
 
-        It "Succeeds without writing the ACL when nothing needed removing" {
+        It "Fails, without writing the ACL, when the entry reported for removal is not on the object (#121)" {
             Mock Invoke-SIDRemoval { [PSCustomObject]@{ RemovedSIDs = @(); FailedSIDs = @(); ModifiedACL = $script:modifiedAcl } }
 
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1
 
-            $result.Success | Should -Be $true
+            $result.Success | Should -Be $false
             $result.ActualRemovals | Should -Be 0
+            $result.ErrorMessage | Should -BeLike "No explicit entry was found on the object for 1 of 1 SID(s)*$($script:sid1)"
             Should -Invoke Set-ModifiedACL -Times 0 -Exactly
             Should -Invoke Invoke-RemovalVerification -Times 0 -Exactly
+            Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and @($SecurityContext.SIDsNotFound) -contains $script:sid1
+            }
+        }
+
+        It "Fails when only some of the entries reported for removal are on the object, and still removes those (#121)" {
+            Mock Invoke-SecurityValidation {
+                [PSCustomObject]@{ IsValid = $true; RiskLevel = 'Low'; AllowedSIDs = @($script:sid1, $script:sid2); BlockedSIDs = @(); Issues = @() }
+            }
+
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1, $script:sid2
+
+            $result.Success | Should -Be $false
+            $result.ActualRemovals | Should -Be 1
+            $result.RemovedSIDs | Should -Be @($script:sid1)
+            $result.ErrorMessage | Should -BeLike "No explicit entry was found on the object for 1 of 2 SID(s)*$($script:sid2)"
+            Should -Invoke Set-ModifiedACL -Times 1 -Exactly
+        }
+
+        It "Fails when every entry failed to be removed, and writes nothing (#121)" {
+            Mock Invoke-SIDRemoval { [PSCustomObject]@{ RemovedSIDs = @(); FailedSIDs = @($script:sid1); ModifiedACL = $script:modifiedAcl } }
+
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1
+
+            $result.Success | Should -Be $false
+            $result.FailedRemovals | Should -Be 1
+            $result.ErrorMessage | Should -Be "The entry could not be removed for: $($script:sid1)"
+            Should -Invoke Set-ModifiedACL -Times 0 -Exactly
+        }
+
+        It "Does not treat an entry as missing under -WhatIfMode, where nothing is removed by design" {
+            Mock Invoke-SIDRemoval { [PSCustomObject]@{ RemovedSIDs = @(); FailedSIDs = @(); ModifiedACL = $script:modifiedAcl } }
+
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1 -WhatIfMode
+
+            $result.Success | Should -Be $true
+            $result.ErrorMessage | Should -BeNullOrEmpty
         }
 
         It "Reports the intended removals as a count" {

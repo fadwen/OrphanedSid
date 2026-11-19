@@ -140,7 +140,7 @@ function Invoke-RemovalVerification {
         # Check for remaining orphaned SIDs. Only explicit entries count: an inherited entry for the
         # same SID belongs to a parent object and is not removed here.
         $remainingOrphanedSIDs = @()
-        foreach ($ace in $verificationACL.Access) {
+        foreach ($ace in @(Get-AclAccessRule -Acl $verificationACL)) {
             if (-not $ace.IsInherited -and $AllowedSIDs -contains $ace.IdentityReference.Value) {
                 $remainingOrphanedSIDs += $ace.IdentityReference.Value
             }

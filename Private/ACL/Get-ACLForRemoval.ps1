@@ -141,7 +141,7 @@ function Get-ACLForRemoval {
             throw "Failed to retrieve ACL for $ObjectDistinguishedName"
         }
 
-        Write-StructuredLog "Successfully retrieved ACL for $ObjectDistinguishedName (Access rules: $($acl.Access.Count))" -Level Verbose -CorrelationId $CorrelationId
+        Write-StructuredLog "Successfully retrieved ACL for $ObjectDistinguishedName (Access rules: $(@(Get-AclAccessRule -Acl $acl).Count))" -Level Verbose -CorrelationId $CorrelationId
         return $acl
     }
     catch {
