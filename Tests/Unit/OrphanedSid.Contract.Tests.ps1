@@ -126,6 +126,30 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'Classes' {
+        It 'Declares no static member in any class (#125)' {
+            # On Windows PowerShell 5.1 a static method of a PowerShell class fails with a
+            # NullReferenceException once another runspace of the process has imported the module
+            # and been closed. An instance and its methods keep working. A host application with a
+            # runspace pool reaches that state, and no test in this process can: closing a second
+            # runspace here would break every later test that uses the class.
+            $classes = @(foreach ($path in $script:FileAsts.Keys) {
+                    $script:FileAsts[$path].FindAll(
+                        { param($node) $node -is [System.Management.Automation.Language.TypeDefinitionAst] }, $true)
+                })
+            $static = @(foreach ($class in $classes) {
+                    foreach ($member in $class.Members) {
+                        if ($member.IsStatic) {
+                            "$($class.Name).$($member.Name)"
+                        }
+                    }
+                })
+
+            $classes.Count | Should -BeGreaterThan 0
+            $static | Should -BeNullOrEmpty -Because ($static -join '; ')
+        }
+    }
+
     Context 'Calls between module functions' {
         It 'Names only parameters the callee declares' {
             # A unit test that mocks the callee with loose parameters accepts any name; the module does

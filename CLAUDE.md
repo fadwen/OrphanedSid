@@ -79,11 +79,21 @@ run. `Stop-OrphanedSidSession` clears all of them except `$script:Config` and
 swallowed, and `process` and `end` run with no configuration. No ordinary Pester test can see
 this, because every test runs inside a `try`; `Tests/Integration/OrphanedSidStartupFailure.Tests.ps1`
 runs each command in a process of its own for that reason. It has to be a process and not a second
-runspace: on Windows PowerShell 5.1, once another runspace has imported the module and been
-closed, the static `[ScriptConfiguration]::LoadFromFile()` fails in the first one with a
-`NullReferenceException`, and every later test that passes `-ConfigPath` fails with it (#125).
+runspace: the cases assert the exit code of the host, under `-File` and under `-Command`.
 The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
+
+### The classes have no static member
+
+On Windows PowerShell 5.1, once another runspace of the process has imported the module and been
+closed, a static method of a PowerShell class fails in the first runspace with a
+`NullReferenceException`. A new instance and its instance methods keep working there, and
+PowerShell 7 does not fail at all. `[ScriptConfiguration]::LoadFromFile()` was static, so a host
+application with a runspace pool lost `-ConfigPath` for the rest of the process (#125). It is an
+instance method now, called as `[ScriptConfiguration]::new().LoadFromFile($path)`. The contract
+test fails on a static member in `Classes/`. The behaviour itself is covered by one case of
+`OrphanedSidStartupFailure.Tests.ps1`, in a process of its own: closing a second runspace inside
+the Pester process would break every later test that touches the class on Windows PowerShell 5.1.
 
 ### A fatal error of a public command ends the calling script, against ERR-11
 

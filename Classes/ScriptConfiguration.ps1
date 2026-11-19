@@ -61,14 +61,21 @@ class ScriptConfiguration {
         $this.MaxLogFileSizeMB = 10
     }
 
-    static [ScriptConfiguration]LoadFromFile([string]$configPath) {
+    # Applies the settings of a JSON file to this configuration and returns it. A setting that the
+    # file leaves out keeps the value it has. Call it on a new instance:
+    # [ScriptConfiguration]::new().LoadFromFile($path)
+    #
+    # It is an instance method on purpose, and the classes of this module have no static member.
+    # On Windows PowerShell 5.1 a static method of a PowerShell class fails with a
+    # NullReferenceException once another runspace of the process has imported the module and
+    # been closed. A new instance and its methods keep working there.
+    [ScriptConfiguration] LoadFromFile([string]$configPath) {
         if (-not (Test-Path -LiteralPath $configPath)) {
             throw "Configuration file not found: $configPath"
         }
 
         try {
             $configData = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-            $config = [ScriptConfiguration]::new()
 
             # Validation with proper error handling
             if ($configData.WellKnownSIDPatterns) {
@@ -81,7 +88,7 @@ class ScriptConfiguration {
                         throw "Invalid regex pattern in WellKnownSIDPatterns: $pattern"
                     }
                 }
-                $config.WellKnownSIDPatterns = $configData.WellKnownSIDPatterns
+                $this.WellKnownSIDPatterns = $configData.WellKnownSIDPatterns
             }
 
             if ($configData.ProtectedSIDs) {
@@ -91,7 +98,7 @@ class ScriptConfiguration {
                         throw "Invalid SID format in ProtectedSIDs: $sid"
                     }
                 }
-                $config.ProtectedSIDs = $configData.ProtectedSIDs
+                $this.ProtectedSIDs = $configData.ProtectedSIDs
             }
 
             # Tested for presence, not truth: 0 must reach the range check, not be read as unset
@@ -99,22 +106,22 @@ class ScriptConfiguration {
                 if ($configData.BatchSize -lt 1 -or $configData.BatchSize -gt 1000) {
                     throw "BatchSize must be between 1 and 1000, got: $($configData.BatchSize)"
                 }
-                $config.BatchSize = $configData.BatchSize
+                $this.BatchSize = $configData.BatchSize
             }
 
             if ($null -ne $configData.MemoryCheckInterval) {
                 if ($configData.MemoryCheckInterval -lt 1 -or $configData.MemoryCheckInterval -gt 1000) {
                     throw "MemoryCheckInterval must be between 1 and 1000, got: $($configData.MemoryCheckInterval)"
                 }
-                $config.MemoryCheckInterval = $configData.MemoryCheckInterval
+                $this.MemoryCheckInterval = $configData.MemoryCheckInterval
             }
 
-            if ($configData.LogLevel) { $config.LogLevel = $configData.LogLevel }
-            if ($configData.LogFilePath) { $config.LogFilePath = $configData.LogFilePath }
-            if ($null -ne $configData.EnableLogFileRotation) { $config.EnableLogFileRotation = $configData.EnableLogFileRotation }
-            if ($configData.MaxLogFileSizeMB) { $config.MaxLogFileSizeMB = $configData.MaxLogFileSizeMB }
+            if ($configData.LogLevel) { $this.LogLevel = $configData.LogLevel }
+            if ($configData.LogFilePath) { $this.LogFilePath = $configData.LogFilePath }
+            if ($null -ne $configData.EnableLogFileRotation) { $this.EnableLogFileRotation = $configData.EnableLogFileRotation }
+            if ($configData.MaxLogFileSizeMB) { $this.MaxLogFileSizeMB = $configData.MaxLogFileSizeMB }
 
-            return $config
+            return $this
 
         } catch {
             throw "Failed to load configuration from $configPath : $($_.Exception.Message)"

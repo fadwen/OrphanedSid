@@ -7,10 +7,11 @@
 # A command called directly from a test therefore behaves correctly even when a command called
 # from a prompt or a scheduled script does not.
 #
-# A second runspace in this process would be cheaper and is not usable: on Windows PowerShell 5.1,
-# once another runspace has imported the module and been closed, the static method
-# [ScriptConfiguration]::LoadFromFile() fails in this one with a NullReferenceException, and every
-# later test that passes -ConfigPath fails with it.
+# A second runspace in this process would be cheaper and is not usable. The cases assert the exit
+# code of the host, under -File and under -Command, which only a process has. And one case closes
+# a second runspace that imported the module (#125): on Windows PowerShell 5.1 that is the state
+# in which a static method of a class of the module fails with a NullReferenceException, and in
+# the Pester process it would last for every test that follows.
 
 BeforeAll {
     $script:RepositoryRoot = (Resolve-Path -LiteralPath (Join-Path -Path $PSScriptRoot -ChildPath '..\..')).Path
@@ -155,6 +156,30 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
 
             $run = Invoke-InNewProcess -Command $command
 
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
+            $run.DirectoryReads | Should-BeGreaterThan 0
+        }
+    }
+
+    Context 'After another runspace that imported the module is closed (#125)' {
+        It 'Loads the -ConfigPath file and reads the directory' {
+            # On Windows PowerShell 5.1 this is the state in which a static method of a class of
+            # the module fails. PowerShell 7 does not fail there, so this case can only fail on
+            # Windows PowerShell 5.1.
+            $fault = @(
+                '$manifestPath = Join-Path -Path (Get-Module -Name OrphanedSid).ModuleBase -ChildPath ''OrphanedSid.psd1'''
+                '$other = [powershell]::Create()'
+                '$null = $other.AddCommand(''Microsoft.PowerShell.Core\Import-Module'').AddParameter(''Name'', $manifestPath).Invoke()'
+                'if ($other.HadErrors) { throw ''The second runspace could not import the module.'' }'
+                '$other.Dispose()'
+            ) -join "`r`n"
+            $config = ConvertTo-Literal -Text $script:ValidConfig
+            $command = "Find-OrphanedSid $script:Common -ConfigPath $config"
+
+            $run = Invoke-InNewProcess -Command $command -Fault $fault
+
+            ($run.Text -like '*Object reference not set*') | Should-BeFalse
             $run.ReachedEnd | Should-BeTrue
             $run.ExitCode | Should-Be 0
             $run.DirectoryReads | Should-BeGreaterThan 0

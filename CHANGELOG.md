@@ -103,6 +103,12 @@ All notable changes to this module are recorded here. Format follows
 - The root of a domain with a single label, such as `DC=corp`, is accepted as a search base. It
   was refused, and it is the default search base, so in such a domain every run needed an
   explicit `-SearchBase`. ([#134](https://github.com/fadwen/OrphanedSid/issues/134))
+- On Windows PowerShell 5.1, `-ConfigPath` works in an application that hosts PowerShell with
+  more than one runspace. Once a second runspace had imported the module and been closed,
+  `Find-OrphanedSid` and `Remove-OrphanedSid` failed with
+  `Object reference not set to an instance of an object` whenever `-ConfigPath` was given, for
+  the rest of the process. A console session and PowerShell 7 were not affected.
+  ([#125](https://github.com/fadwen/OrphanedSid/issues/125))
 
 ## [1.1.0] - 2026-11-11
 

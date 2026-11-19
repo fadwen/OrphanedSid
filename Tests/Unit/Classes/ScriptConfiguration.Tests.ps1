@@ -148,7 +148,27 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
         }
     }
 
-    Context 'LoadFromFile Static Method Tests' {
+    Context 'LoadFromFile' {
+        It 'Returns the instance it was called on, with the settings of the file applied' {
+            $file = New-ConfigFile -Content @{ LogLevel = 'Error' }
+            $config = [ScriptConfiguration]::new()
+
+            $result = $config.LoadFromFile($file)
+
+            [object]::ReferenceEquals($result, $config) | Should -BeTrue
+            $config.LogLevel | Should -Be 'Error'
+        }
+
+        It 'Keeps a value this instance already has when the file leaves the setting out' {
+            $file = New-ConfigFile -Content @{ LogLevel = 'Error' }
+            $config = [ScriptConfiguration]::new()
+            $config.BatchSize = 7
+
+            $null = $config.LoadFromFile($file)
+
+            $config.BatchSize | Should -Be 7
+        }
+
         It 'Should load every setting from a valid file' {
             $file = New-ConfigFile -Content @{
                 WellKnownSIDPatterns  = @('^S-1-1-0$', '^S-1-5-18$')
@@ -161,7 +181,7 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
                 MaxLogFileSizeMB      = 20
             }
 
-            $config = [ScriptConfiguration]::LoadFromFile($file)
+            $config = [ScriptConfiguration]::new().LoadFromFile($file)
 
             $config.WellKnownSIDPatterns | Should -Be @('^S-1-1-0$', '^S-1-5-18$')
             $config.ProtectedSIDs | Should -Be @('S-1-5-32-544', 'S-1-5-18')
@@ -176,7 +196,7 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
         It 'Still loads a file that carries the removed EnableDetailedLogging key, and ignores it (#43)' {
             $file = New-ConfigFile -Content @{ EnableDetailedLogging = $true; LogLevel = 'Error' }
 
-            $config = [ScriptConfiguration]::LoadFromFile($file)
+            $config = [ScriptConfiguration]::new().LoadFromFile($file)
 
             $config.LogLevel | Should -Be 'Error'
             $config.PSObject.Properties.Name | Should -Not -Contain 'EnableDetailedLogging'
@@ -185,7 +205,7 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
         It 'Should keep defaults for settings the file leaves out' {
             $file = New-ConfigFile -Content @{ LogLevel = 'Warning' }
 
-            $config = [ScriptConfiguration]::LoadFromFile($file)
+            $config = [ScriptConfiguration]::new().LoadFromFile($file)
 
             $config.LogLevel | Should -Be 'Warning'
             $config.BatchSize | Should -Be 50
@@ -196,10 +216,10 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
         It 'Accepts a MemoryCheckInterval anywhere in the 1-1000 range the validator allows' {
             # The loader once stopped at 100 while ValidateConfiguration and the documentation said 1-1000
             $file = New-ConfigFile -Content @{ MemoryCheckInterval = 500 }
-            [ScriptConfiguration]::LoadFromFile($file).MemoryCheckInterval | Should -Be 500
+            [ScriptConfiguration]::new().LoadFromFile($file).MemoryCheckInterval | Should -Be 500
 
             $file = New-ConfigFile -Content @{ MemoryCheckInterval = 1001 }
-            { [ScriptConfiguration]::LoadFromFile($file) } | Should -Throw -ExpectedMessage '*MemoryCheckInterval must be between 1 and 1000, got: 1001*'
+            { [ScriptConfiguration]::new().LoadFromFile($file) } | Should -Throw -ExpectedMessage '*MemoryCheckInterval must be between 1 and 1000, got: 1001*'
         }
 
         It 'Should reject <Name>' -ForEach @(
@@ -211,20 +231,20 @@ Describe 'ScriptConfiguration Class Tests' -Tag 'Unit', 'Classes', 'ScriptConfig
         ) {
             $file = New-ConfigFile -Content $Content
 
-            { [ScriptConfiguration]::LoadFromFile($file) } | Should -Throw -ExpectedMessage "Failed to load configuration from $file : $Message"
+            { [ScriptConfiguration]::new().LoadFromFile($file) } | Should -Throw -ExpectedMessage "Failed to load configuration from $file : $Message"
         }
 
         It 'Should throw naming the path for a non-existent file' {
             $missing = Join-Path $TestDrive 'NonExistent\config.json'
 
-            { [ScriptConfiguration]::LoadFromFile($missing) } | Should -Throw -ExpectedMessage "Configuration file not found: $missing"
+            { [ScriptConfiguration]::new().LoadFromFile($missing) } | Should -Throw -ExpectedMessage "Configuration file not found: $missing"
         }
 
         It 'Should throw naming the path for an invalid JSON file' {
             $invalidConfigFile = Join-Path $TestDrive 'invalid-config.json'
             '{ invalid json }' | Out-File $invalidConfigFile -Encoding UTF8
 
-            { [ScriptConfiguration]::LoadFromFile($invalidConfigFile) } | Should -Throw -ExpectedMessage "Failed to load configuration from $invalidConfigFile : *"
+            { [ScriptConfiguration]::new().LoadFromFile($invalidConfigFile) } | Should -Throw -ExpectedMessage "Failed to load configuration from $invalidConfigFile : *"
         }
     }
 }

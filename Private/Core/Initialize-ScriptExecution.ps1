@@ -266,7 +266,7 @@ function Initialize-ScriptExecution {
             $configLoadError = $null
             $script:Config = if ($configFromFile) {
                 try {
-                    [ScriptConfiguration]::LoadFromFile($ConfigPath)
+                    [ScriptConfiguration]::new().LoadFromFile($ConfigPath)
                 }
                 catch {
                     $configLoadError = $_
