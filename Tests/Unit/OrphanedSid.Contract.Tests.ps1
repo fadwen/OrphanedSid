@@ -177,6 +177,39 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'The pattern for the attribute that names a component (#134)' {
+        It 'Is the same in the validator and in the three checks on the restore path' {
+            # The class of an object sets the attribute that names it, so the four places that check
+            # the start of a name take any attribute. When one of them accepts less than the others,
+            # an object is reported and never cleaned, or backed up and never restored. The unit
+            # tests dot-source these files one at a time, so the pattern is written out in each of
+            # them and compared here.
+            $isString = {
+                param($node)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+            }
+            $assignment = $script:Definitions['Test-ValidDistinguishedName'].Ast.Find({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left.Extent.Text -eq '$attributeName'
+                }, $true)
+            $assignment | Should -Not -BeNullOrEmpty
+            $pattern = $assignment.Right.Find($isString, $true).Value
+            # A pattern that came out empty would be found in every string
+            $pattern | Should -Match '^\(.+\)$'
+
+            $different = @(foreach ($name in 'Invoke-RestoreWorkflow', 'Get-RestorationTarget', 'Test-BackupIntegrity') {
+                    $holders = @($script:Definitions[$name].Ast.FindAll($isString, $true) |
+                            Where-Object { $_.Value.Contains("^$pattern=") })
+                    if ($holders.Count -eq 0) {
+                        "$name in $($script:Definitions[$name].File)"
+                    }
+                })
+
+            $different | Should -BeNullOrEmpty -Because "no string there starts with ^$pattern= : $($different -join '; ')"
+        }
+    }
+
     Context 'Fresh import' {
         BeforeAll {
             Import-Module "$script:ModuleRoot\OrphanedSid.psd1" -Force

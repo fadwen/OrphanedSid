@@ -114,7 +114,13 @@ function Test-ValidDistinguishedName {
             # is set by its class, so none is refused here. That a DC= component is present is
             # checked below, component by component. A comma before it is not required: the root
             # of a domain with a single label, such as DC=corp, has none.
-            $attributeName = '([a-z][a-z0-9.-]*|\d+(\.\d+)+)'
+            #
+            # The directory takes three spellings of an attribute: its name (OU), its dotted number
+            # (2.5.4.11) and that number after "OID." (OID.2.5.4.11). The dot inside a name is there
+            # for the third, so the pattern is wider than the LDAP grammar on purpose.
+            # Invoke-RestoreWorkflow, Get-RestorationTarget and Test-BackupIntegrity hold the same
+            # pattern, and the contract tests fail when one of the four differs.
+            $attributeName ='([a-z][a-z0-9.-]*|\d+(\.\d+)+)'
             if (-not ($DistinguishedName -match "^$attributeName\s*=.+$")) {
                 Write-StructuredLog "Distinguished Name validation failed: Invalid format structure" -Level Debug -Component 'DNValidator' -CorrelationId $CorrelationId
                 return $false
