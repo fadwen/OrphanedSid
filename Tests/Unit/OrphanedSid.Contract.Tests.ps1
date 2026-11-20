@@ -150,12 +150,12 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
 
         It 'Calls no function of the module from a class (#159)' {
-            # A method of a class runs in the scope its class was defined in, and the test files
-            # that dot-source a class define it a second time, outside the module. When a method
-            # called a private function, the three integration cases that export a CSV failed in
-            # four of eight CI jobs, each with a shuffled order of its own, with the function
-            # not recognized, and passed in declaration order. Which order does it was not
-            # found. A method that calls cmdlets only cannot fail that way.
+            # The test files that dot-source a class define it a second time, outside the
+            # module. Measured on PowerShell 7 with a method that called a private function: when
+            # a test file imports the module, a second one dot-sources the class and a third then
+            # runs the module, the method fails with the function not recognized. In declaration
+            # order that does not happen, and in CI, which shuffles, four of eight jobs failed. A
+            # method that calls cmdlets only cannot fail that way.
             $calls = @(foreach ($path in $script:FileAsts.Keys) {
                     $relative = $path.Substring($script:ModuleRoot.Length + 1)
                     $classes = $script:FileAsts[$path].FindAll(

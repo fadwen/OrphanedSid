@@ -364,8 +364,9 @@ class StreamingResultsManager : System.IDisposable {
                 # -NoTypeInformation is passed on Windows PowerShell only: without it 5.1 writes a
                 # #TYPE line, and PowerShell 7.7 warns about the switch. Export-ResultCsv makes
                 # the same decision for the functions of the module. A method does not call it:
-                # a method of a class runs where the class was defined, and in CI the method
-                # did not find that private function. A method calls cmdlets only.
+                # once a test file has dot-sourced this class beside the imported module, the
+                # method no longer finds a private function on PowerShell 7. A method calls
+                # cmdlets only.
                 $exportParameters = @{
                     LiteralPath = $outputPath
                     Encoding = 'UTF8'

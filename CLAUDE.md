@@ -97,16 +97,23 @@ the Pester process would break every later test that touches the class on Window
 
 ### A class method calls cmdlets only, never a function of the module
 
-A method of a PowerShell class runs in the scope its class was defined in. Two test files
-dot-source `Classes/StreamingResultsManager.ps1`, which defines the class a second time outside
-the module. When `ExportToCsv()` called a private function, `Export-ResultCsv`, the three
-integration cases that write a CSV failed in four of eight CI jobs with
-`The term 'Export-ResultCsv' is not recognized`, and passed in the other four and in declaration
-order (#159). CI shuffles the suite, and which order does it was not found. What a method and a
-function both need is therefore written in both, with a test for each, as the decision about
-`-NoTypeInformation` is in `ExportToCsv()` and in `Export-ResultCsv`. The contract test fails on
-a call from a class to a function of the module. Run the suite shuffled before trusting it:
-`$cfg.Run.Shuffle = $true`, as CI does.
+Two test files dot-source `Classes/StreamingResultsManager.ps1`, which defines the class a second
+time in the process, outside the module. With two definitions, the scope a method runs in is not
+always the scope of the code that called it, and the two editions differ. Both were measured
+(#159), with one test file that imports the module, then one that dot-sources the class:
+
+- On PowerShell 7 the module then uses the class of the test file. When `ExportToCsv()` called a
+  private function, `Export-ResultCsv`, a later `Find-OrphanedSid -OutputPath` failed with
+  `The term 'Export-ResultCsv' is not recognized`. Windows PowerShell 5.1 passed.
+- On Windows PowerShell 5.1 the test file gets methods that run in the module. A `Mock` of
+  `Export-Csv` that the test file set was not seen by the method. PowerShell 7 saw it.
+
+Neither happens in declaration order. CI shuffles, and each failed in about half of its jobs. So
+a method calls cmdlets only, and the contract test fails on a call from a class to a function of
+the module. What a method and a function both need is written in both, as the decision about
+`-NoTypeInformation` is in `ExportToCsv()` and in `Export-ResultCsv`. And a test does not mock a
+command for a method of a class: it asserts what the method wrote, or reads the syntax tree. Run
+the suite shuffled before trusting it, `$cfg.Run.Shuffle = $true`, as CI does.
 
 ### A fatal error of a public command ends the calling script, against ERR-11
 
