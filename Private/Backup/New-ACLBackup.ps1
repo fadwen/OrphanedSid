@@ -231,15 +231,22 @@ function New-ACLBackup {
     )
 
     process {
+        Write-StructuredLog "Starting ACL backup creation for: $ObjectDN" -Level Debug -CorrelationId $CorrelationId
+
+        # Checked before the try: nothing has been written yet, so there is nothing for the catch
+        # below to clean up
+        if ([string]::IsNullOrWhiteSpace($ObjectDN.Trim())) {
+            Write-StructuredLog "ObjectDN parameter cannot be empty or whitespace" -Level Error -CorrelationId $CorrelationId
+            $exception = [System.ArgumentException]::new('ObjectDN parameter cannot be empty or whitespace')
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'DistinguishedNameEmpty', $category, $ObjectDN)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+
+        # Read by the catch, which removes a file that was only partly written
+        $backupFile = $null
         try {
-            Write-StructuredLog "Starting ACL backup creation for: $ObjectDN" -Level Debug -CorrelationId $CorrelationId
-
-            # Comprehensive input validation following security best practices
-            if ([string]::IsNullOrWhiteSpace($ObjectDN.Trim())) {
-                Write-StructuredLog "ObjectDN parameter cannot be empty or whitespace" -Level Error -CorrelationId $CorrelationId
-                throw "ObjectDN parameter cannot be empty or whitespace"
-            }
-
             # Validate ACL contains access entries
             $entryCount = @(Get-AclAccessRule -Acl $ACL).Count
             if ($entryCount -eq 0) {
@@ -274,9 +281,15 @@ function New-ACLBackup {
                 $marker = "_${dnHash}_truncated"
                 $prefixLength = $maxNameLength - $marker.Length
                 if ($prefixLength -lt 16) {
+                    # Raised from inside the try, so the catch below is passed by. It has nothing
+                    # to do here: the failure is logged on the line before, and no file exists yet.
                     $message = "Backup folder path is too long to hold a backup file within the 260-character limit: $BackupPath"
                     Write-StructuredLog $message -Level Error -CorrelationId $CorrelationId
-                    throw $message
+                    $exception = [System.IO.PathTooLongException]::new($message)
+                    $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+                    $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                        $exception, 'BackupPathTooLong', $category, $BackupPath)
+                    $PSCmdlet.ThrowTerminatingError($errorRecord)
                 }
                 $safeName = $safeName.Substring(0, $prefixLength) + $marker
                 Write-StructuredLog "Filename truncated for length: $safeName" -Level Debug -CorrelationId $CorrelationId
@@ -339,14 +352,24 @@ function New-ACLBackup {
 
                 # Immediate integrity verification to ensure backup authenticity
                 $verifyData = Import-Clixml -LiteralPath $backupFile -ErrorAction Stop
+                $mismatch = $null
                 if ($verifyData.SDDLHash -cne $backupData.SDDLHash) {
-                    Remove-Item -LiteralPath $backupFile -Force -ErrorAction SilentlyContinue
-                    throw "Backup integrity check failed - SHA256 hash mismatch detected"
+                    $mismatch = 'SHA256 hash'
+                } elseif ($verifyData.ObjectDN.Trim() -ne $ObjectDN.Trim()) {
+                    $mismatch = 'ObjectDN'
                 }
 
-                if ($verifyData.ObjectDN.Trim() -ne $ObjectDN.Trim()) {
+                if ($null -ne $mismatch) {
+                    # Raised from inside the try, so the catch below is passed by: the file is
+                    # removed and the failure is logged here, as the catch would have done
                     Remove-Item -LiteralPath $backupFile -Force -ErrorAction SilentlyContinue
-                    throw "Backup integrity check failed - ObjectDN mismatch detected"
+                    $message = "Backup integrity check failed - $mismatch mismatch detected"
+                    Write-StructuredLog "Failed to create ACL backup for $($ObjectDN.Trim()) : $message" -Level Error -CorrelationId $CorrelationId
+                    $exception = [System.IO.InvalidDataException]::new($message)
+                    $category = [System.Management.Automation.ErrorCategory]::InvalidData
+                    $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                        $exception, 'BackupIntegrityCheckFailed', $category, $backupFile)
+                    $PSCmdlet.ThrowTerminatingError($errorRecord)
                 }
             }
             else {
@@ -379,7 +402,7 @@ function New-ACLBackup {
                 Write-StructuredLog "Cleaned up partial backup file: $backupFile" -Level Debug -CorrelationId $CorrelationId
             }
 
-            throw
+            $PSCmdlet.ThrowTerminatingError($_)
         }
     }
 }

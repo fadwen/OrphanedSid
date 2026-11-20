@@ -66,9 +66,16 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         }
 
         It 'Throws for a whitespace ObjectDN and writes nothing' {
-            { New-ACLBackup -ObjectDN '   ' -ACL $script:acl -BackupPath $script:backupDir } |
-                Should -Throw -ExpectedMessage '*cannot be empty or whitespace*'
+            $expected = @{
+                ErrorId         = 'DistinguishedNameEmpty,New-ACLBackup'
+                ExpectedMessage = 'ObjectDN parameter cannot be empty or whitespace'
+                ExceptionType   = [System.ArgumentException]
+            }
+            { New-ACLBackup -ObjectDN '   ' -ACL $script:acl -BackupPath $script:backupDir } | Should -Throw @expected
             Test-Path $script:backupDir | Should -BeFalse
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq 'ObjectDN parameter cannot be empty or whitespace'
+            }
         }
     }
 
@@ -220,8 +227,15 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         It 'Refuses a backup folder too long to hold any backup file' {
             $tooDeep = 'C:\' + ('p' * 230)
 
+            $expected = @{
+                ErrorId         = 'BackupPathTooLong,New-ACLBackup'
+                ExpectedMessage = "Backup folder path is too long to hold a backup file within the 260-character limit: $tooDeep"
+                ExceptionType   = [System.IO.PathTooLongException]
+            }
             { New-ACLBackup -ObjectDN ('CN=' + ('w' * 100) + ',DC=contoso,DC=com') -ACL $script:acl -BackupPath $tooDeep } |
-                Should -Throw '*Backup folder path is too long to hold a backup file within the 260-character limit*'
+                Should -Throw @expected
+            # Logged once, where the check is made: the error leaves the function from there
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' }
         }
 
         It 'Backs up an ACL with no entries and warns' {
@@ -255,17 +269,31 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
         It 'Deletes the file and throws when the stored hash does not read back' {
             Mock Import-Clixml { [PSCustomObject]@{ SDDLHash = 'different'; ObjectDN = $script:dn } }
 
-            { New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir } |
-                Should -Throw -ExpectedMessage '*hash mismatch*'
+            $expected = @{
+                ErrorId         = 'BackupIntegrityCheckFailed,New-ACLBackup'
+                ExpectedMessage = 'Backup integrity check failed - SHA256 hash mismatch detected'
+                ExceptionType   = [System.IO.InvalidDataException]
+            }
+            { New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir -CorrelationId 'bk-4' } |
+                Should -Throw @expected
             @(Get-ChildItem $script:backupDir -File).Count | Should -Be 0
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'bk-4' -and
+                $Message -eq "Failed to create ACL backup for $($script:dn) : Backup integrity check failed - SHA256 hash mismatch detected"
+            }
         }
 
         It 'Deletes the file and throws when the stored DN does not read back' {
             $expectedSddl = $script:acl.GetSecurityDescriptorSddlForm([System.Security.AccessControl.AccessControlSections]::All)
             Mock Import-Clixml { [PSCustomObject]@{ SDDLHash = (Get-Sha256Base64 -Text $expectedSddl); ObjectDN = 'CN=Other,DC=contoso,DC=com' } }
 
+            $expected = @{
+                ErrorId         = 'BackupIntegrityCheckFailed,New-ACLBackup'
+                ExpectedMessage = 'Backup integrity check failed - ObjectDN mismatch detected'
+                ExceptionType   = [System.IO.InvalidDataException]
+            }
             { New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir } |
-                Should -Throw -ExpectedMessage '*ObjectDN mismatch*'
+                Should -Throw @expected
             @(Get-ChildItem $script:backupDir -File).Count | Should -Be 0
         }
     }

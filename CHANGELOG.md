@@ -127,7 +127,8 @@ All notable changes to this module are recorded here. Format follows
   the rest of the process. A console session and PowerShell 7 were not affected.
   ([#125](https://github.com/fadwen/OrphanedSid/issues/125))
 - When `Remove-OrphanedSid` cannot write the changed ACL of an object, the log file has one
-  `Failed to apply ACL changes` entry at Error level for it. It had two with the same text.
+  `Failed to apply ACL changes` entry at Error level for it. It had two with the same text. A
+  `-BackupPath` that is too long to hold a backup file is likewise logged once for each object.
   ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 
 ## [1.1.0] - 2026-11-11
