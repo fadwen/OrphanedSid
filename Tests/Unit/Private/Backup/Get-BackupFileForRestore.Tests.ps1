@@ -12,7 +12,7 @@
 #>
 
 BeforeAll {
-    . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Get-BackupFileForRestore.ps1"
 
     function New-BackupFile {
         param([string]$Folder, [string]$ObjectDN, [datetime]$WrittenAt)

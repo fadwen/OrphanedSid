@@ -18,7 +18,7 @@
 .NOTES
     Author: Jeffrey Stuhr
     Module: Find-UnknownSID.RestoreOperations
-    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1
+    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1
     Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
@@ -178,6 +178,10 @@ function Invoke-RestoreWorkflow {
 
         if (-not (Get-Command Set-ObjectACL -ErrorAction SilentlyContinue)) {
             . $PSScriptRoot\Restore-ACLOperation.ps1
+        }
+
+        if (-not (Get-Command Get-BackupFileForRestore -ErrorAction SilentlyContinue)) {
+            . $PSScriptRoot\Get-BackupFileForRestore.ps1
         }
     }
 
@@ -610,134 +614,6 @@ function Restore-IndividualObject {
     }
     catch {
         return (& $newFailedResult $_.Exception.Message)
-    }
-}
-
-
-function Get-BackupFileForRestore {
-    <#
-    .SYNOPSIS
-        Selects the backup files in a folder that a restore of a target applies.
-
-    .DESCRIPTION
-        Reads the ObjectDN that each backup file in the folder records and selects the files of
-        the target. For an organizational unit or a domain, the target is every object at or
-        under it, and the restore is a bulk one. For any other object it is that object alone.
-        Of several backups of one object, the most recent is selected.
-
-        A file that cannot be read is reported with a warning and left out. A folder that holds
-        no backup file, and a single object that has no backup in the folder, each end the
-        function with a terminating error.
-
-    .PARAMETER TargetObjectDN
-        Distinguished name of the object, or of the container, to restore.
-
-    .PARAMETER BackupPath
-        Full path of the folder that holds the backup files.
-
-    .EXAMPLE
-        PS> Get-BackupFileForRestore -TargetObjectDN 'OU=Sales,DC=contoso,DC=com' -BackupPath 'C:\Backups'
-
-        Selects the most recent backup of every object at or under the Sales unit.
-
-    .EXAMPLE
-        PS> Get-BackupFileForRestore -TargetObjectDN 'CN=Finance,OU=Groups,DC=contoso,DC=com' -BackupPath 'C:\Backups'
-
-        Selects the most recent backup of the Finance group, and fails when the folder holds none.
-
-    .INPUTS
-        None. This function does not accept pipeline input.
-
-    .OUTPUTS
-        RestoreBackupSelection. An object with the properties RestoreMode, which is Single or
-        Bulk, and BackupFiles, the full paths of the selected files.
-    #>
-
-    [CmdletBinding()]
-    [OutputType('RestoreBackupSelection')]
-    param(
-        [Parameter(Mandatory)]
-        [string]$TargetObjectDN,
-
-        [Parameter(Mandatory)]
-        [string]$BackupPath
-    )
-
-    # Get all XML backup files in the directory
-    $allBackupFiles = @(Get-ChildItem -LiteralPath $BackupPath -Filter "*.xml" -File)
-
-    if ($allBackupFiles.Count -eq 0) {
-        $exception = [System.IO.FileNotFoundException]::new("No backup files found in directory: $BackupPath")
-        $category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
-        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
-            $exception, 'BackupFilesNotFound', $category, $BackupPath)
-        $PSCmdlet.ThrowTerminatingError($errorRecord)
-    }
-
-    Write-Verbose "Found $($allBackupFiles.Count) backup files in $BackupPath"
-
-    # Convert to file paths immediately to avoid PowerShell collection issues
-    $allBackupFilePaths = @()
-    foreach ($file in $allBackupFiles) {
-        if ($file -and $file.FullName) {
-            $allBackupFilePaths += $file.FullName
-        }
-    }
-
-    Write-Verbose "Successfully collected $($allBackupFilePaths.Count) valid file paths"
-
-    # Read the ObjectDN each backup records. A file name cannot identify the object: it is the
-    # sanitized DN, so CN=User1 is a prefix of a CN_User10 backup, and the same CN recurs in
-    # every OU that holds one.
-    $backupIndex = foreach ($backupFilePath in $allBackupFilePaths) {
-        try {
-            Write-Verbose "Processing backup file: $backupFilePath"
-            $backupMetadata = Import-Clixml -LiteralPath $backupFilePath -ErrorAction Stop
-            [PSCustomObject]@{
-                Path      = $backupFilePath
-                ObjectDN  = [string]$backupMetadata.ObjectDN
-                WrittenAt = (Get-Item -LiteralPath $backupFilePath).LastWriteTime
-            }
-        } catch {
-            Write-Warning "Failed to process backup file '$backupFilePath': $($_.Exception.Message)"
-        }
-    }
-    $backupIndex = @($backupIndex | Where-Object { $_.ObjectDN })
-    $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
-
-    if ($TargetObjectDN -match '^(OU|DC)=') {
-        # Bulk restore mode - every object at or under the container. The comma anchors the
-        # suffix, so OU=Sales does not take in OU=PreSales.
-        $restoreMode = "Bulk"
-        $inScope = @($backupIndex | Where-Object {
-                $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) -or
-                $_.ObjectDN.EndsWith(",$TargetObjectDN", $ignoreCase)
-            })
-    } else {
-        # Single restore mode - only backups of exactly this object
-        $restoreMode = "Single"
-        $inScope = @($backupIndex | Where-Object { $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) })
-        if ($inScope.Count -eq 0) {
-            $message = "No backup files found for object $TargetObjectDN in path $BackupPath"
-            $exception = [System.IO.FileNotFoundException]::new($message)
-            $category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
-            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
-                $exception, 'BackupNotFoundForObject', $category, $TargetObjectDN)
-            $PSCmdlet.ThrowTerminatingError($errorRecord)
-        }
-    }
-
-    # One backup per object, the most recent, so two runs in one folder cannot restore an
-    # object twice in an arbitrary order
-    $backupFiles = @(foreach ($group in ($inScope | Group-Object { $_.ObjectDN.ToUpperInvariant() })) {
-            @($group.Group | Sort-Object WrittenAt -Descending)[0].Path
-        })
-    Write-Verbose "Matched $($backupFiles.Count) backup files for $TargetObjectDN"
-
-    [PSCustomObject]@{
-        PSTypeName = 'RestoreBackupSelection'
-        RestoreMode = $restoreMode
-        BackupFiles = $backupFiles
     }
 }
 
