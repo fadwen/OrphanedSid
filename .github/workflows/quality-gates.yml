@@ -105,10 +105,16 @@ jobs:
 
           $result = Invoke-Pester -Configuration $cfg
 
-          # A file that fails discovery contributes nothing to FailedCount, so both are checked.
-          if ($result.FailedCount -gt 0 -or $result.FailedContainersCount -gt 0) {
-              throw ("$($result.FailedCount) test(s) and $($result.FailedContainersCount) " +
-                  "container(s) failed under shuffle seed $seed.")
+          # The result as a whole is what counts. A BeforeAll or AfterAll that fails leaves the
+          # count of failed tests and of failed files at 0 with the result Failed, and a run that
+          # finds no test file returns nothing at all.
+          if ($null -eq $result -or $result.TotalCount -eq 0) {
+              throw 'Pester ran no tests.'
+          }
+          if ($result.Result -ne 'Passed') {
+              throw ("Pester result is '$($result.Result)': $($result.FailedCount) test(s), " +
+                  "$($result.FailedBlocksCount) block(s) and $($result.FailedContainersCount) " +
+                  "file(s) failed under shuffle seed $seed.")
           }
 
           # 80% is the standards' floor. The suite measures about 93% since every test was rewritten
@@ -175,8 +181,15 @@ jobs:
           $cfg.Run.ShuffleSeed = $seed
           Write-Host "Pester shuffle seed: $seed"
           $result = Invoke-Pester -Configuration $cfg
-          if ($result.FailedCount -gt 0 -or $result.FailedContainersCount -gt 0) {
-              throw "$($result.FailedCount) test(s) failed under Windows PowerShell 5.1, shuffle seed $seed."
+          # The same two checks as the PowerShell 7 job. This job has no coverage gate behind
+          # them, so a run with no tests would otherwise pass.
+          if ($null -eq $result -or $result.TotalCount -eq 0) {
+              throw 'Pester ran no tests under Windows PowerShell 5.1.'
+          }
+          if ($result.Result -ne 'Passed') {
+              throw ("Pester result is '$($result.Result)' under Windows PowerShell 5.1: " +
+                  "$($result.FailedCount) test(s), $($result.FailedBlocksCount) block(s) and " +
+                  "$($result.FailedContainersCount) file(s) failed, shuffle seed $seed.")
           }
 
   help:
