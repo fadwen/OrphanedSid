@@ -361,14 +361,19 @@ class StreamingResultsManager : System.IDisposable {
             Write-Verbose "WhatIf: Would export $($allResults.Count) results to $outputPath"
         } else {
             if ($allResults.Count -gt 0) {
-                # Export-ResultCsv decides whether -NoTypeInformation is passed: Windows PowerShell
-                # needs it, and PowerShell 7.7 warns about it. A file that cannot be written is
-                # passed on with throw, which is what a class method has: there is no $PSCmdlet.
-                try {
-                    Export-ResultCsv -InputObject $allResults -LiteralPath $outputPath
-                } catch {
-                    throw
+                # -NoTypeInformation is passed on Windows PowerShell only: without it 5.1 writes a
+                # #TYPE line, and PowerShell 7.7 warns about the switch. Export-ResultCsv makes
+                # the same decision for the functions of the module. A method does not call it:
+                # a method of a class runs where the class was defined, and in CI the method
+                # did not find that private function. A method calls cmdlets only.
+                $exportParameters = @{
+                    LiteralPath = $outputPath
+                    Encoding = 'UTF8'
                 }
+                if ($global:PSVersionTable.PSVersion -lt [version]'6.0') {
+                    $exportParameters['NoTypeInformation'] = $true
+                }
+                $allResults | Export-Csv @exportParameters
                 Write-Verbose "Exported $($allResults.Count) results to $outputPath"
                 $written = $true
             }

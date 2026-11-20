@@ -127,8 +127,10 @@ Describe 'Export-ResultCsv' -Tag 'Unit', 'Reporting', 'Private' {
     }
 
     Context 'The callers of Export-Csv' {
-        It 'Is the only place in Classes, Private and Public that calls Export-Csv' {
-            # A call elsewhere would have to decide about -NoTypeInformation again
+        It 'Is one of the two places in Classes, Private and Public that call Export-Csv' {
+            # A call elsewhere would have to decide about -NoTypeInformation again. The second
+            # place is the method of StreamingResultsManager: a method of a class calls no
+            # function of the module, so it makes the decision itself, and its own test holds it.
             $moduleRoot = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..\..\..").Path
             $calls = foreach ($folder in 'Classes', 'Private', 'Public') {
                 $folderPath = Join-Path -Path $moduleRoot -ChildPath $folder
@@ -147,10 +149,11 @@ Describe 'Export-ResultCsv' -Tag 'Unit', 'Reporting', 'Private' {
                     }
                 }
             }
-            $calls = @($calls)
+            $callers = @($calls | ForEach-Object { ($_ -split ':')[0] } | Sort-Object)
 
-            $calls | Should-BeCollection -Count 1
-            $calls[0] | Should-BeLikeString 'Export-ResultCsv.ps1:*'
+            $callers | Should-BeCollection -Count 2
+            $callers[0] | Should-BeString 'Export-ResultCsv.ps1'
+            $callers[1] | Should-BeString 'StreamingResultsManager.ps1'
         }
     }
 
