@@ -226,7 +226,15 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             # makes the call outside a try carries on with its next line, where a throw in the same
             # place would have unwound it. So a function that is moved to ThrowTerminatingError()
             # needs every call to it in a try body, and a new call outside one fails here.
-            $raising = @($script:Definitions.Keys | Where-Object {
+            #
+            # A call inside a script block takes the try that the block is written in when the block
+            # is handed straight to a command, as the retry blocks are. Measured on both editions:
+            # while the command runs the block, that try is still on the call stack and catches the
+            # error, whether or not the command has a try of its own. A block that is kept, in a
+            # variable for one, can run after that try has ended, where nothing catches the error;
+            # a try outside such a block does not count. A command that stores the block it is
+            # handed and runs it later cannot be seen here.
+            $raising =@($script:Definitions.Keys | Where-Object {
                     $script:Definitions[$_].Ast.Extent.Text -match '\$PSCmdlet\.ThrowTerminatingError\('
                 })
             $outside = @(foreach ($path in $script:FileAsts.Keys) {
@@ -238,13 +246,18 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                         }, $true)
                     foreach ($call in $calls) {
                         $inTry = $false
+                        $inKeptBlock = $false
                         $previous = $call
                         $owner = $call.Parent
                         while ($null -ne $owner -and
                             $owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
                             if ($owner -is [System.Management.Automation.Language.TryStatementAst] -and
-                                $owner.Body -eq $previous) {
+                                $owner.Body -eq $previous -and -not $inKeptBlock) {
                                 $inTry = $true
+                            }
+                            if ($owner -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -and
+                                $owner.Parent -isnot [System.Management.Automation.Language.CommandAst]) {
+                                $inKeptBlock = $true
                             }
                             $previous = $owner
                             $owner = $owner.Parent

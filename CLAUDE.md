@@ -123,7 +123,12 @@ leaves the function at once, so a `catch` that logs, cleans up or builds a faile
 passed by. And it ends only the statement that called the function: a caller that does not make
 the call inside a `try` carries on with its next line, where a `throw` would have unwound it. So
 before a statement is replaced, check what the function's own `catch` does. That every call to a
-function which raises this way sits inside a `try` is checked by the contract tests.
+function which raises this way sits inside a `try` is checked by the contract tests. A call inside
+a script block counts with the `try` the block is written in, as long as the block is handed
+straight to a command: that `try` was measured to catch the error while the command runs the
+block. A block kept in a variable can run after the `try` has ended, so it needs a `try` of its
+own. In a block handed to another function of the module, `$PSCmdlet` is that function's, and an
+error raised there carries its name in the error ID.
 
 ### Results are emitted before cleanup
 
