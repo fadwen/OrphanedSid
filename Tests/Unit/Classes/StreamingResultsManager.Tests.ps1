@@ -5,8 +5,6 @@ BeforeAll {
 
     . "$ModuleRoot\Classes\OrphanedSIDResult.ps1"
     . "$ModuleRoot\Classes\StreamingResultsManager.ps1"
-    # ExportToCsv writes its file through this function
-    . "$ModuleRoot\Private\Reporting\Export-ResultCsv.ps1"
 
     function New-TestDirectoryPath {
         Join-Path $TestDrive "StreamingResults_$([guid]::NewGuid().ToString('N'))"
@@ -326,6 +324,28 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             @(Import-Csv -Path $csv).OrphanedSID | Should -Be @(1..3 | ForEach-Object { "S-1-5-21-1-2-3-$_" })
             $manager.Dispose()
         }
+        It "Should pass -NoTypeInformation to Export-Csv on Windows PowerShell and on no other edition (#159)" {
+            # Windows PowerShell 5.1 writes a #TYPE line without the switch, and PowerShell 7.7
+            # writes a warning with it
+            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
+            1..2 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
+            $csv = Join-Path $TestDrive "switch_$([guid]::NewGuid().ToString('N')).csv"
+            $onWindowsPowerShell = $PSVersionTable.PSVersion -lt [version]'6.0'
+            Mock Export-Csv { }
+
+            $manager.ExportToCsv($csv) | Should -Be $true
+
+            # A mock in a pipeline is counted once for each object that reaches it: two rows here
+            Should -Invoke Export-Csv -Times 2 -Exactly -ParameterFilter {
+                $LiteralPath -eq $csv -and
+                $PesterBoundParameters.ContainsKey('NoTypeInformation') -eq $onWindowsPowerShell
+            }
+            Should -Invoke Export-Csv -Times 0 -Exactly -ParameterFilter {
+                $PesterBoundParameters.ContainsKey('NoTypeInformation') -ne $onWindowsPowerShell
+            }
+            $manager.Dispose()
+        }
+
         It "Should not create a CSV when there are no results" {
             $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
             $csv = Join-Path $TestDrive "empty_$([guid]::NewGuid().ToString('N')).csv"
