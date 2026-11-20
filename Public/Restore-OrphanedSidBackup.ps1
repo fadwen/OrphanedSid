@@ -151,9 +151,9 @@ function Restore-OrphanedSidBackup {
                     Write-StructuredLog "WhatIf: results would be exported to $OutputPath; no file was written" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
                 else {
-                    $allResults |
-                        Select-Object Success, TargetObjectDN, EntriesRestored, ErrorMessage, CorrelationId |
-                        Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
+                    $rows = @($allResults |
+                            Select-Object Success, TargetObjectDN, EntriesRestored, ErrorMessage, CorrelationId)
+                    Export-ResultCsv -InputObject $rows -LiteralPath $OutputPath
                     Write-StructuredLog "Restore results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
             }

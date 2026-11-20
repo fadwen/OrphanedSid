@@ -48,6 +48,12 @@ All notable changes to this module are recorded here. Format follows
   the SIDs that were not. Such a result was `Success = True` before, so automation that counts
   failures by `Success` will count these. The help of `Remove-OrphanedSid` describes it.
   ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- The CSV file of `-OutputPath` is written without the `-NoTypeInformation` switch of
+  `Export-Csv` on PowerShell 7, where the switch has no effect. PowerShell 7.7 declares it
+  obsolete and writes a warning for each call that passes it, so a run with `-OutputPath` would
+  have shown a warning there. Windows PowerShell 5.1 still gets the switch, without which it
+  writes a `#TYPE` line. The file is the same as before on both editions.
+  ([#159](https://github.com/fadwen/OrphanedSid/issues/159))
 
 ### Fixed
 

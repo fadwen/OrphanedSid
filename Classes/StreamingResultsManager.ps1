@@ -361,7 +361,14 @@ class StreamingResultsManager : System.IDisposable {
             Write-Verbose "WhatIf: Would export $($allResults.Count) results to $outputPath"
         } else {
             if ($allResults.Count -gt 0) {
-                $allResults | Export-Csv -LiteralPath $outputPath -NoTypeInformation -Encoding UTF8
+                # Export-ResultCsv decides whether -NoTypeInformation is passed: Windows PowerShell
+                # needs it, and PowerShell 7.7 warns about it. A file that cannot be written is
+                # passed on with throw, which is what a class method has: there is no $PSCmdlet.
+                try {
+                    Export-ResultCsv -InputObject $allResults -LiteralPath $outputPath
+                } catch {
+                    throw
+                }
                 Write-Verbose "Exported $($allResults.Count) results to $outputPath"
                 $written = $true
             }

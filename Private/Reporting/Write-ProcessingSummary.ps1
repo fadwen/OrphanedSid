@@ -262,7 +262,8 @@ function Write-ProcessingSummary {
                             $exported = $ProcessingResults.StreamingManager.ExportToCsv($OutputPath)
                         } elseif ($hasRestoreResults) {
                             if (-not $WhatIfPreference) {
-                                $ProcessingResults.RestoreResults | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
+                                $restoreRows = @($ProcessingResults.RestoreResults)
+                                Export-ResultCsv -InputObject $restoreRows -LiteralPath $OutputPath
                                 $exported = $true
                             }
                         }

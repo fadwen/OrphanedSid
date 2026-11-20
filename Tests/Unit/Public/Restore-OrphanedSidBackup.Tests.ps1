@@ -162,6 +162,9 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
             $rows.Count | Should -Be 1
             $rows[0].TargetObjectDN | Should -Be 'CN=A,DC=contoso,DC=com'
             $rows[0].EntriesRestored | Should -Be '3'
+            # Import-Csv skips a #TYPE line, so the first line is read as text (#159)
+            @(Get-Content -LiteralPath $csv -TotalCount 1)[0] |
+                Should -Be '"Success","TargetObjectDN","EntriesRestored","ErrorMessage","CorrelationId"'
             Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Restore results exported to: $csv" }
         }
 

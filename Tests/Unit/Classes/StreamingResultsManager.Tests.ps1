@@ -5,6 +5,8 @@ BeforeAll {
 
     . "$ModuleRoot\Classes\OrphanedSIDResult.ps1"
     . "$ModuleRoot\Classes\StreamingResultsManager.ps1"
+    # ExportToCsv writes its file through this function
+    . "$ModuleRoot\Private\Reporting\Export-ResultCsv.ps1"
 
     function New-TestDirectoryPath {
         Join-Path $TestDrive "StreamingResults_$([guid]::NewGuid().ToString('N'))"
@@ -307,6 +309,8 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $rows = @(Import-Csv -Path $csv)
             $rows.Count | Should -Be 3
             $rows.ObjectDN | Should -Be @('CN=Object1,DC=contoso,DC=com', 'CN=Object2,DC=contoso,DC=com', 'CN=Object3,DC=contoso,DC=com')
+            # Import-Csv skips a #TYPE line, so the first line is read as text (#159)
+            @(Get-Content -LiteralPath $csv -TotalCount 1)[0] | Should -BeLike '"ObjectDN",*'
             $manager.Dispose()
         }
 
