@@ -212,7 +212,8 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
 
         It 'Ends before any object is read, with the reason, when the backup folder may not be created (#161)' {
             # New-Item only writes its error here. Adding a folder to -BackupPath is denied for
-            # this case, and allowed again afterwards so that the test drive can be removed.
+            # this case, and allowed again afterwards. The entry does not keep the folder from
+            # being removed with the test drive.
             $root = Join-Path $TestDrive "NoNewFolders-$([guid]::NewGuid().ToString('N'))"
             New-Item -Path $root -ItemType Directory | Out-Null
             $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name

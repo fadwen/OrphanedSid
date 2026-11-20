@@ -271,6 +271,9 @@ as an error and skipped; input that yields no usable DN stops the command.
 A name is compared with the names the backups record without regard to letter case and to blanks
 after a comma or around an equals sign, so it can be typed as
 'CN=Alice, OU=Sales, DC=contoso, DC=com'.
+An escaped character has to be written the way the backup records it: 'CN=Doe\, Jane' and
+'CN=Doe\2C Jane' are two spellings of one name, and they are compared as two names here.
+Use the name as Find-OrphanedSid or Remove-OrphanedSid reported it.
 
 ```yaml
 Type: System.Object[]

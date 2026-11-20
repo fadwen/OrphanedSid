@@ -336,7 +336,8 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
 
         It 'Ends with BackupFolderNotCreated, and the reason, when the parent denies new folders (#161)' {
             # Nothing but the log is mocked: adding a folder to the parent is denied for this
-            # case, and allowed again afterwards so that the test drive can be removed
+            # case, and allowed again afterwards. The entry does not keep the folder from being
+            # removed with the test drive.
             $parent = Join-Path $TestDrive "NoNewFolders-$([guid]::NewGuid().ToString('N'))"
             $null = New-Item -Path $parent -ItemType Directory
             $folder = Join-Path $parent 'Backup'
