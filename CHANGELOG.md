@@ -54,6 +54,11 @@ All notable changes to this module are recorded here. Format follows
   have shown a warning there. Windows PowerShell 5.1 still gets the switch, without which it
   writes a `#TYPE` line. The file is the same as before on both editions.
   ([#159](https://github.com/fadwen/OrphanedSid/issues/159))
+- The result of `Remove-OrphanedSid` for an object whose changed ACL could not be written says
+  why: `ErrorMessage` is `Failed to apply ACL changes: Access is denied`, where it was
+  `Failed to apply ACL changes` and the reason stood only in the log. Automation that compares
+  the whole text has to allow for the reason after it.
+  ([#177](https://github.com/fadwen/OrphanedSid/issues/177))
 
 ### Fixed
 

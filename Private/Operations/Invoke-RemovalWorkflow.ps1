@@ -288,7 +288,14 @@ function Invoke-RemovalWorkflow {
                     }
                 } else {
                     $result.Success = $false
-                    $result.ErrorMessage = "Failed to apply ACL changes"
+                    # The reason of the failed write goes into the result. It was only in the log,
+                    # so a reader of the results had to look the object up there. A write that was
+                    # declined at a prompt has no reason to give.
+                    $writeFailure = $applicationSuccess.ErrorMessage
+                    $result.ErrorMessage = 'Failed to apply ACL changes'
+                    if ($writeFailure) {
+                        $result.ErrorMessage = "Failed to apply ACL changes: $writeFailure"
+                    }
                     Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "ACL modification application failed" -Outcome 'Failure' -CorrelationId $CorrelationId -SecurityContext @{
                         Operation = 'RemoveOrphanedSIDs'
                         TargetObjectDN = $ObjectDistinguishedName

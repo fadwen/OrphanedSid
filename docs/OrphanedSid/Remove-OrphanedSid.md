@@ -465,7 +465,9 @@ backup written before the change. Its folder is the one to pass to `Restore-Orph
 `Success` is false when an entry could not be removed, when the changed ACL could not be written
 or verified, and when an entry that was reported for removal was no longer on the object.
 `ErrorMessage` says which, and in the last case names the SIDs; the entries that were found are
-still removed, and `ActualRemovals` is then lower than `IntendedRemovals`.
+still removed, and `ActualRemovals` is then lower than `IntendedRemovals`. For an ACL that could
+not be written, `ErrorMessage` is `Failed to apply ACL changes:` followed by the reason, such as
+`Access is denied`.
 
 `NotFoundSIDs` lists the SIDs of that last case: entries that discovery reported and that were
 no longer on the object, for example because someone else removed them in the meantime.

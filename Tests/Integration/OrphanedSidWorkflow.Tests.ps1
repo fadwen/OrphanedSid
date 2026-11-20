@@ -469,6 +469,22 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Shared_*' -Recurse).Count | Should -Be 0
         }
 
+        It 'Says in each result why the changed ACL could not be written (#177)' {
+            Mock -ModuleName OrphanedSid Set-Acl -ParameterFilter { $Path -like 'AD:*' } { throw 'Access is denied' }
+
+            $results = @(Invoke-RemoveOrphanedSid -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+
+            # The unit and the group below it each hold the orphaned entry
+            $results.Count | Should -Be 2
+            foreach ($result in $results) {
+                $result.Success | Should -BeFalse
+                $result.ErrorMessage | Should -Be 'Failed to apply ACL changes: Access is denied'
+            }
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+        }
+
         It 'Leaves an orphaned entry that is only inherited, and backs nothing up (#46)' {
             $dn = "CN=Child,OU=Finance,$script:DomainDN"
             # ID marks the entry as inherited from a parent object
