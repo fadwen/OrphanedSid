@@ -646,9 +646,10 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
         }
 
         It 'Ends with the reason, before it reads an object, when the backup folder may not be created (#161)' {
-            # Adding a folder to -BackupPath is denied for this case, and allowed again afterwards
-            # so that the test drive can be removed. The variable is not named $identity: the
-            # mock of Get-ADObject above reads a variable of that name as its parameter.
+            # Adding a folder to -BackupPath is denied for this case, and allowed again afterwards.
+            # The entry does not keep the folder from being removed with the test drive. The
+            # variable is not named $identity: the mock of Get-ADObject above reads a variable
+            # of that name as its parameter.
             $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
             $null = & icacls.exe $script:BackupRoot /deny "${account}:(AD,WD)"
             # A log of its own: the other tests of this context write to remove.log
