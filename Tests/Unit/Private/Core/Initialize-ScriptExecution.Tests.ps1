@@ -20,7 +20,7 @@ BeforeAll {
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Initialize-LoggingSystem { param($CorrelationId, $LogLevel, [switch]$SuppressConsoleOutput) }
-    function Initialize-LogDirectory { param($LogPath, $RotateAboveMB) }
+    function Initialize-LogDirectory { param($LogPath, $RotateAboveMB, [switch]$RefuseSystemFolder) }
     function Initialize-MemoryManager { param($MaxMemoryMB, $CheckInterval, $CorrelationId, [switch]$WhatIf) }
 }
 
@@ -228,6 +228,29 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Initialize-LogDirectory -Times 1 -Exactly
             Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -eq 'C:\Logs\from-config.log' -and $RotateAboveMB -eq 10 }
             $result.LogPath | Should -Be 'C:\Logs\from-config.log'
+        }
+
+        It 'Asks for a system folder to be refused for a path from the file, and for no other (#162)' {
+            # Whoever can edit the file would otherwise choose a file in a system folder for a
+            # privileged run to append to. A path on the command line is the operator's own.
+            $cfg = Join-Path $script:workDir 'logpath-refuse.json'
+            @{ LogFilePath = 'C:\Logs\from-config.log' } | ConvertTo-Json | Set-Content $cfg
+
+            $defaultLog = "$($script:workDir)\default.log"
+            $null = Initialize-ScriptExecution -ConfigPath $cfg -LogPath $defaultLog -UseConfigLogPath
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter {
+                $LogPath -eq 'C:\Logs\from-config.log' -and $RefuseSystemFolder
+            }
+
+            Initialize-ScriptExecution -ConfigPath $cfg -LogPath "$($script:workDir)\param.log" | Out-Null
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter {
+                $LogPath -eq "$($script:workDir)\param.log" -and -not $RefuseSystemFolder
+            }
+
+            Initialize-ScriptExecution -LogPath "$($script:workDir)\no-config.log" | Out-Null
+            Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter {
+                $LogPath -eq "$($script:workDir)\no-config.log" -and -not $RefuseSystemFolder
+            }
         }
 
         It "Keeps -LogPath over the file's LogFilePath without -UseConfigLogPath (#90)" {
