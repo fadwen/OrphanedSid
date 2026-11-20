@@ -75,7 +75,8 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
         }
 
         It 'Finds a backup that records its name with blanks around the separators' {
-            $file = New-BackupFile -Folder $script:folder -ObjectDN 'CN=Alice, OU=Sales, DC=contoso, DC=com' -WrittenAt (Get-Date).AddMinutes(-1)
+            $recorded = 'CN=Alice, OU=Sales, DC=contoso, DC=com'
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $recorded -WrittenAt (Get-Date).AddMinutes(-1)
 
             $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
 

@@ -6,8 +6,9 @@ function Get-BackupFileForRestore {
     .DESCRIPTION
     Reads the ObjectDN that each backup file in the folder records and selects the files of the
     target. The names are compared without regard to letter case and to blanks around their
-    separators (ConvertTo-NormalizedDistinguishedName). A file name cannot identify the object: it is the sanitized distinguished name, so
-    CN=User1 is a prefix of a CN_User10 backup, and the same CN recurs in every OU that holds one.
+    separators (ConvertTo-NormalizedDistinguishedName). A file name cannot identify the object:
+    it is the sanitized distinguished name, so CN=User1 is a prefix of a CN_User10 backup, and the
+    same CN recurs in every OU that holds one.
 
     For an organizational unit or a domain, the target is every object at or under it, and the
     restore is a bulk one. For any other object it is that object alone. Of several backups of one
@@ -87,9 +88,10 @@ function Get-BackupFileForRestore {
         try {
             Write-Verbose "Processing backup file: $backupFilePath"
             $backupMetadata = Import-Clixml -LiteralPath $backupFilePath -ErrorAction Stop
+            $recordedName = [string]$backupMetadata.ObjectDN
             [PSCustomObject]@{
                 Path = $backupFilePath
-                ObjectDN = ConvertTo-NormalizedDistinguishedName -DistinguishedName ([string]$backupMetadata.ObjectDN)
+                ObjectDN = ConvertTo-NormalizedDistinguishedName -DistinguishedName $recordedName
                 WrittenAt = $backupFile.LastWriteTime
             }
         } catch {

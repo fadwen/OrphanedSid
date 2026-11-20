@@ -23,10 +23,12 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
 
         It 'Returns one string, also for text with a component that is not attribute=value' {
             # The components that were made before the bad one must not come out as well
-            $result = @(ConvertTo-NormalizedDistinguishedName -DistinguishedName 'CN=Alice, OU=Sales,,DC=contoso,DC=com')
+            $typed = 'CN=Alice, OU=Sales,,DC=contoso,DC=com'
+
+            $result = @(ConvertTo-NormalizedDistinguishedName -DistinguishedName $typed)
 
             $result | Should-BeCollection -Count 1
-            $result[0] | Should-BeString 'CN=Alice, OU=Sales,,DC=contoso,DC=com' -CaseSensitive
+            $result[0] | Should-BeString $typed -CaseSensitive
         }
     }
 
@@ -35,11 +37,18 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
             @{ Name = 'CN=Alice,OU=Sales,DC=contoso,DC=com'; Expected = 'CN=Alice,OU=Sales,DC=contoso,DC=com' }
             @{ Name = 'CN=Alice, OU=Sales, DC=contoso, DC=com'; Expected = 'CN=Alice,OU=Sales,DC=contoso,DC=com' }
             @{ Name = 'CN =Alice,OU=Sales,DC=contoso,DC=com'; Expected = 'CN=Alice,OU=Sales,DC=contoso,DC=com' }
-            @{ Name = '  CN = Alice , OU = Sales , DC = contoso , DC = com  '; Expected = 'CN=Alice,OU=Sales,DC=contoso,DC=com' }
+            @{
+                Name = '  CN = Alice , OU = Sales , DC = contoso , DC = com  '
+                Expected = 'CN=Alice,OU=Sales,DC=contoso,DC=com'
+            }
             @{ Name = 'DC=corp'; Expected = 'DC=corp' }
-            @{ Name = 'OID.2.5.4.11 = Sales, DC=contoso,DC=com'; Expected = 'OID.2.5.4.11=Sales,DC=contoso,DC=com' }
+            @{
+                Name = 'OID.2.5.4.11 = Sales, DC=contoso,DC=com'
+                Expected = 'OID.2.5.4.11=Sales,DC=contoso,DC=com'
+            }
         ) {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should-BeString $Expected -CaseSensitive
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name |
+                Should-BeString $Expected -CaseSensitive
         }
 
         It 'Leaves the letter case as it was typed' {
@@ -48,7 +57,9 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
         }
 
         It 'Leaves the blanks inside a value alone' {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName 'OU = Domain  Controllers , DC=contoso,DC=com' |
+            $typed = 'OU = Domain  Controllers , DC=contoso,DC=com'
+
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $typed |
                 Should-BeString 'OU=Domain  Controllers,DC=contoso,DC=com' -CaseSensitive
         }
 
@@ -91,7 +102,8 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
                 Expected = 'CN=Ends\\,DC=contoso,DC=com'
             }
         ) {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should-BeString $Expected -CaseSensitive
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name |
+                Should-BeString $Expected -CaseSensitive
         }
     }
 
@@ -102,7 +114,8 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
             @{ Name = ' =Alice, DC=contoso,DC=com'; Expected = '=Alice, DC=contoso,DC=com' }
             @{ Name = 'C:\Backups\file.xml'; Expected = 'C:\Backups\file.xml' }
         ) {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should-BeString $Expected -CaseSensitive
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name |
+                Should-BeString $Expected -CaseSensitive
         }
     }
 }

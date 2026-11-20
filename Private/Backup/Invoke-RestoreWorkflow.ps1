@@ -186,7 +186,8 @@ function Invoke-RestoreWorkflow {
         }
 
         if (-not (Get-Command ConvertTo-NormalizedDistinguishedName -ErrorAction SilentlyContinue)) {
-            . (Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Utilities\ConvertTo-NormalizedDistinguishedName.ps1')
+            $utilitiesPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Utilities'
+            . (Join-Path -Path $utilitiesPath -ChildPath 'ConvertTo-NormalizedDistinguishedName.ps1')
         }
     }
 
