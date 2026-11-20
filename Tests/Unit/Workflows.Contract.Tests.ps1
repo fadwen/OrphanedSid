@@ -99,6 +99,29 @@ Describe 'Workflow files' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'Actions and reusable workflows' {
+        It 'Pins what <Name> uses to a commit ID or a version tag (#154)' -ForEach $workflows {
+            # A reference at a branch runs whatever the branch holds on the day (CIC-09). A
+            # workflow of this repository, written as ./path, has no reference to check.
+            $atBranch = foreach ($line in [System.IO.File]::ReadAllLines($FullName)) {
+                if ($line -match '^\s*(-\s+)?uses:\s*(?<target>[^\s#]+)') {
+                    $target = $Matches['target']
+                    if ($target.StartsWith('./')) {
+                        continue
+                    }
+
+                    $reference = ($target -split '@', 2)[1]
+                    if ($reference -notmatch '^[0-9a-f]{40}$' -and $reference -notmatch '^v\d+(\.\d+){0,2}$') {
+                        $target
+                    }
+                }
+            }
+            $atBranch = @($atBranch)
+
+            $atBranch.Count | Should-Be 0 -Because "found $($atBranch -join '; ')"
+        }
+    }
+
     Context 'Run scripts' {
         It 'Writes no expression into a run script of <Name> (#167)' -ForEach $workflows {
             $lines = [System.IO.File]::ReadAllLines($FullName)
