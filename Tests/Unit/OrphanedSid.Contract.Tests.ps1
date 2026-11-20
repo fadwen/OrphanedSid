@@ -148,6 +148,32 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             $classes.Count | Should -BeGreaterThan 0
             $static | Should -BeNullOrEmpty -Because ($static -join '; ')
         }
+
+        It 'Calls no function of the module from a class (#159)' {
+            # A method of a class runs in the scope its class was defined in, and the test files
+            # that dot-source a class define it a second time, outside the module. When a method
+            # called a private function, the three integration cases that export a CSV failed in
+            # four of eight CI jobs, each with a shuffled order of its own, with the function
+            # not recognized, and passed in declaration order. Which order does it was not
+            # found. A method that calls cmdlets only cannot fail that way.
+            $calls = @(foreach ($path in $script:FileAsts.Keys) {
+                    $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                    $classes = $script:FileAsts[$path].FindAll(
+                        { param($node) $node -is [System.Management.Automation.Language.TypeDefinitionAst] }, $true)
+                    foreach ($class in $classes) {
+                        $commands = $class.FindAll(
+                            { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true)
+                        foreach ($command in $commands) {
+                            $name = $command.GetCommandName()
+                            if ($name -and $script:Definitions.ContainsKey($name)) {
+                                "$name at ${relative}:$($command.Extent.StartLineNumber)"
+                            }
+                        }
+                    }
+                })
+
+            $calls | Should -BeNullOrEmpty -Because ($calls -join '; ')
+        }
     }
 
     Context 'Terminating errors raised with throw or Write-Error -ErrorAction Stop (#130)' {
