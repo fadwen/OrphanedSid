@@ -305,9 +305,10 @@ function New-ACLBackup {
                 $backupFile = Join-Path $BackupPath "${safeName}_${timestamp}_$sequence.xml"
             }
 
-            # Ensure backup directory exists with proper error handling
-            if (-not (Test-Path -LiteralPath $BackupPath)) {
-                New-Item -Path $BackupPath -ItemType Directory -Force | Out-Null
+            # A folder that cannot be made is raised by Initialize-BackupFolder, with the reason,
+            # and enters the catch below. Left to the export, it was logged as created and then
+            # reported as a part of the path that could not be found.
+            if (Initialize-BackupFolder -Path $BackupPath) {
                 Write-StructuredLog "Created backup directory: $BackupPath" -Level Information -CorrelationId $CorrelationId
             }
 

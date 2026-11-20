@@ -144,8 +144,10 @@ function Remove-OrphanedSid {
                 $effectiveBackupPath = Join-Path -Path (Get-Location).Path -ChildPath 'Backup'
             }
             $effectiveBackupPath = Join-Path -Path $effectiveBackupPath -ChildPath (Get-Date -Format 'yyyyMMdd_HHmmss')
-            if (-not $WhatIfPreference -and -not (Test-Path -LiteralPath $effectiveBackupPath)) {
-                New-Item -Path $effectiveBackupPath -ItemType Directory -Force | Out-Null
+            # A folder that cannot be made ends the command here, before any object is read: a
+            # removal that cannot write a backup has nothing to do. The folder is made by a
+            # function of its own so that its error enters the catch below.
+            if (-not $WhatIfPreference -and (Initialize-BackupFolder -Path $effectiveBackupPath)) {
                 Write-StructuredLog "Created backup folder: $effectiveBackupPath" -Level Information -Component 'Main' -CorrelationId $CorrelationId
             }
 

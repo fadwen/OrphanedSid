@@ -26,7 +26,9 @@ Remove-OrphanedSid -SearchBase "OU=Users,DC=contoso,DC=com"
 The parent of `-BackupPath` must already exist; the folder itself and the per-run timestamped
 subfolder are created when the run starts, after the confirmation prompt, and the log records
 `Created backup folder: <path>`. Each run
-gets its own subfolder, so repeated runs never overwrite one another.
+gets its own subfolder, so repeated runs never overwrite one another. When the subfolder cannot
+be created, the command ends with the error `BackupFolderNotCreated` before it reads any object,
+and the message gives the reason.
 
 Under `-WhatIf` no backup folder or file is written, because no ACL is changed.
 

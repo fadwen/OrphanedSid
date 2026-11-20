@@ -568,7 +568,9 @@ discovered entries as CSV.</maml:para>
           <maml:para>Folder that receives the per-run backup subfolder.
 Defaults to .\Backup under the current
 directory.
-The parent folder must exist; the backup folder itself is created.</maml:para>
+The parent folder must exist; the backup folder itself is created.
+When the folder for the run cannot be created, the command ends with the error
+BackupFolderNotCreated before it reads any object, and its message gives the reason.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>

@@ -53,6 +53,7 @@ failures have an ID of their own:
 | `ConfigurationInvalid` | `System.IO.InvalidDataException` | The `-ConfigPath` file was loaded and its settings do not validate, for example a `LogLevel` that is not one of the six level names |
 | `SearchBaseNotUsable` | `System.ArgumentException` | `-SearchBase` was given to `Find-OrphanedSid` or `Remove-OrphanedSid` and held no usable distinguished name |
 | `RestoreTargetNotUsable` | `System.ArgumentException` | `-TargetObjectDN` of `Restore-OrphanedSidBackup` held no usable distinguished name |
+| `BackupFolderNotCreated` | `System.IO.IOException` | `Remove-OrphanedSid` could not create the folder for the backups of the run, so it read no object and removed nothing. The message names the folder and gives the reason; when the file system raised an error, it is the inner exception |
 
 ```powershell
 try {

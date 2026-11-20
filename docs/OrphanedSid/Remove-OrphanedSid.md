@@ -90,6 +90,8 @@ Folder that receives the per-run backup subfolder.
 Defaults to .\Backup under the current
 directory.
 The parent folder must exist; the backup folder itself is created.
+When the folder for the run cannot be created, the command ends with the error
+BackupFolderNotCreated before it reads any object, and its message gives the reason.
 
 ```yaml
 Type: System.String

@@ -619,6 +619,76 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             }
             @(Get-ChildItem -Path $script:BackupRoot -Filter '*.xml' -Recurse).Count | Should -Be 0
         }
+
+        It 'Ends with the reason, before it reads an object, when the backup folder may not be created (#161)' {
+            # Adding a folder to -BackupPath is denied for this case, and allowed again afterwards
+            # so that the test drive can be removed. The variable is not named $identity: the
+            # mock of Get-ADObject above reads a variable of that name as its parameter.
+            $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $script:BackupRoot /deny "${account}:(AD,WD)"
+            # A log of its own: the other tests of this context write to remove.log
+            $logPath = Join-Path $TestDrive "remove-$([guid]::NewGuid().ToString('N')).log"
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                BackupPath            = $script:BackupRoot
+                LogPath               = $logPath
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            try {
+                $caught = $null
+                try {
+                    $null = Remove-OrphanedSid @parameters
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $script:BackupRoot /remove:d $account
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'BackupFolderNotCreated,Remove-OrphanedSid'
+            $caught.Exception.InnerException | Should -BeOfType [System.UnauthorizedAccessException]
+            Should -Invoke -ModuleName OrphanedSid Get-ADObject -Times 0 -Exactly -ParameterFilter { $SearchBase }
+            Should -Invoke -ModuleName OrphanedSid Set-Acl -Times 0 -Exactly
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+            $log = Get-Content -LiteralPath $logPath -Raw
+            $log | Should -Not -Match 'Created backup'
+            $failure = '\[Error\] \[Main\] \[[^\]]+\] Removal failed: The backup folder .+ could not be created: '
+            $log | Should -Match $failure
+        }
+
+        It 'Ends before it reads an object when a part of the backup path is a file (#161)' {
+            # The default folder is .\Backup, and in this working folder that name is a file.
+            # New-Item returns nothing and reports no error for the folder below it.
+            Set-Content -LiteralPath (Join-Path $script:BackupRoot 'Backup') -Value 'not a folder' -Encoding ascii
+            $logPath = Join-Path $TestDrive "remove-$([guid]::NewGuid().ToString('N')).log"
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                LogPath               = $logPath
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $priorLocation = Get-Location
+            Set-Location -LiteralPath $script:BackupRoot
+            try {
+                $expected = @{
+                    ErrorId         = 'BackupFolderNotCreated,Remove-OrphanedSid'
+                    ExpectedMessage = '*A part of the path may be a file.'
+                }
+                { Remove-OrphanedSid @parameters } | Should -Throw @expected
+            } finally {
+                Set-Location $priorLocation
+            }
+
+            Should -Invoke -ModuleName OrphanedSid Get-ADObject -Times 0 -Exactly -ParameterFilter { $SearchBase }
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+            Get-Content -LiteralPath $logPath -Raw | Should -Not -Match 'Created backup'
+        }
     }
 
     Context 'Scale' -Tag 'Performance' {

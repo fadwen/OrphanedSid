@@ -168,6 +168,13 @@ All notable changes to this module are recorded here. Format follows
   `Invalid target object DN format` for a blank before the equals sign. The target and the
   names that the backups record are now compared in one spelling.
   ([#150](https://github.com/fadwen/OrphanedSid/issues/150))
+- `Remove-OrphanedSid` ends with the error `BackupFolderNotCreated`, before it reads any object,
+  when it cannot create the folder for the backups of the run, and the message gives the reason,
+  such as `Access to the path ... is denied`. The log said `Created backup folder` for a folder
+  that was not there, the command went on to every object, and each removal then failed with
+  `Could not find a part of the path`. Nothing was removed in that state, and nothing is now;
+  what changes is what the operator is told and when.
+  ([#161](https://github.com/fadwen/OrphanedSid/issues/161))
 
 ### Security
 
