@@ -81,7 +81,8 @@ function Set-ModifiedACL {
         USE CASE: Validation and approval workflows
 
     .OUTPUTS
-        ACLApplicationResult. An object with these properties:
+        ACLApplicationResult. A PSCustomObject that carries this type name; the module has no class
+        of the name. Its properties:
         - Success: True when the ACL was written. False when the write failed, and under -WhatIf.
         - ErrorMessage: the message of the error that the write raised; null otherwise
         - Verified: True when the ACL could be read back after the write
