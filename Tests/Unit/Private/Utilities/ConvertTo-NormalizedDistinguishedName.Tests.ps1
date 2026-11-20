@@ -18,15 +18,15 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
 
     Context 'Parameter Validation' {
         It 'Returns an empty string for an empty string' {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName '' | Should -BeExactly ''
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName '' | Should-BeString '' -CaseSensitive
         }
 
         It 'Returns one string, also for text with a component that is not attribute=value' {
             # The components that were made before the bad one must not come out as well
             $result = @(ConvertTo-NormalizedDistinguishedName -DistinguishedName 'CN=Alice, OU=Sales,,DC=contoso,DC=com')
 
-            $result.Count | Should -Be 1
-            $result[0] | Should -BeExactly 'CN=Alice, OU=Sales,,DC=contoso,DC=com'
+            $result | Should-BeCollection -Count 1
+            $result[0] | Should-BeString 'CN=Alice, OU=Sales,,DC=contoso,DC=com' -CaseSensitive
         }
     }
 
@@ -39,22 +39,22 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
             @{ Name = 'DC=corp'; Expected = 'DC=corp' }
             @{ Name = 'OID.2.5.4.11 = Sales, DC=contoso,DC=com'; Expected = 'OID.2.5.4.11=Sales,DC=contoso,DC=com' }
         ) {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should -BeExactly $Expected
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should-BeString $Expected -CaseSensitive
         }
 
         It 'Leaves the letter case as it was typed' {
             ConvertTo-NormalizedDistinguishedName -DistinguishedName 'cn=alice, ou=SALES,dc=Contoso,dc=com' |
-                Should -BeExactly 'cn=alice,ou=SALES,dc=Contoso,dc=com'
+                Should-BeString 'cn=alice,ou=SALES,dc=Contoso,dc=com' -CaseSensitive
         }
 
         It 'Leaves the blanks inside a value alone' {
             ConvertTo-NormalizedDistinguishedName -DistinguishedName 'OU = Domain  Controllers , DC=contoso,DC=com' |
-                Should -BeExactly 'OU=Domain  Controllers,DC=contoso,DC=com'
+                Should-BeString 'OU=Domain  Controllers,DC=contoso,DC=com' -CaseSensitive
         }
 
         It 'Takes only the first equals sign of a component as the separator' {
             ConvertTo-NormalizedDistinguishedName -DistinguishedName 'CN = a = b , DC=contoso,DC=com' |
-                Should -BeExactly 'CN=a = b,DC=contoso,DC=com'
+                Should-BeString 'CN=a = b,DC=contoso,DC=com' -CaseSensitive
         }
     }
 
@@ -91,7 +91,7 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
                 Expected = 'CN=Ends\\,DC=contoso,DC=com'
             }
         ) {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should -BeExactly $Expected
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should-BeString $Expected -CaseSensitive
         }
     }
 
@@ -102,7 +102,7 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
             @{ Name = ' =Alice, DC=contoso,DC=com'; Expected = '=Alice, DC=contoso,DC=com' }
             @{ Name = 'C:\Backups\file.xml'; Expected = 'C:\Backups\file.xml' }
         ) {
-            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should -BeExactly $Expected
+            ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name | Should-BeString $Expected -CaseSensitive
         }
     }
 }
