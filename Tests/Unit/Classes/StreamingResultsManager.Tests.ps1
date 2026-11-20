@@ -326,24 +326,50 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
         }
         It "Should pass -NoTypeInformation to Export-Csv on Windows PowerShell and on no other edition (#159)" {
             # Windows PowerShell 5.1 writes a #TYPE line without the switch, and PowerShell 7.7
-            # writes a warning with it
-            $manager = [StreamingResultsManager]::new((New-TestDirectoryPath), 2, $false)
-            1..2 | ForEach-Object { $manager.AddResult((New-TestResult -Number $_)) }
-            $csv = Join-Path $TestDrive "switch_$([guid]::NewGuid().ToString('N')).csv"
-            $onWindowsPowerShell = $PSVersionTable.PSVersion -lt [version]'6.0'
-            Mock Export-Csv { }
+            # writes a warning with it. What 5.1 writes is held by the first line of the file, in
+            # the case above. That no other edition gets the switch is read from the syntax tree
+            # and not seen through a mock of Export-Csv: on Windows PowerShell 5.1, when another
+            # test file has imported the module before this one runs, the method does not see a
+            # mock that is set here, and such a case failed in three of four CI jobs.
+            $tokens = $null
+            $parseErrors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                "$ModuleRoot\Classes\StreamingResultsManager.ps1", [ref]$tokens, [ref]$parseErrors)
+            $method = $ast.Find({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.FunctionMemberAst] -and
+                    $node.Name -eq 'ExportToCsv'
+                }, $true)
+            $exports = @($method.FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.CommandAst] -and
+                        $node.GetCommandName() -eq 'Export-Csv'
+                    }, $true))
+            $assignments = @($method.FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                        $node.Left.Extent.Text -like '*NoTypeInformation*'
+                    }, $true))
 
-            $manager.ExportToCsv($csv) | Should -Be $true
-
-            # A mock in a pipeline is counted once for each object that reaches it: two rows here
-            Should -Invoke Export-Csv -Times 2 -Exactly -ParameterFilter {
-                $LiteralPath -eq $csv -and
-                $PesterBoundParameters.ContainsKey('NoTypeInformation') -eq $onWindowsPowerShell
+            # One call, and the switch is not written on it
+            $exports.Count | Should -Be 1
+            $written = @($exports[0].CommandElements | Where-Object {
+                    $_ -is [System.Management.Automation.Language.CommandParameterAst] -and
+                    $_.ParameterName -like 'NoType*'
+                })
+            $written.Count | Should -Be 0
+            # It is added to the splatted parameters in one place, inside an if statement whose
+            # condition is the edition
+            $assignments.Count | Should -Be 1
+            $condition = $assignments[0].Parent
+            while ($condition -and $condition -isnot [System.Management.Automation.Language.IfStatementAst]) {
+                $condition = $condition.Parent
             }
-            Should -Invoke Export-Csv -Times 0 -Exactly -ParameterFilter {
-                $PesterBoundParameters.ContainsKey('NoTypeInformation') -ne $onWindowsPowerShell
-            }
-            $manager.Dispose()
+            $condition | Should -Not -BeNullOrEmpty
+            $condition.Clauses.Count | Should -Be 1
+            $condition.ElseClause | Should -BeNullOrEmpty
+            $expected = '$global:PSVersionTable.PSVersion -lt [version]''6.0'''
+            $condition.Clauses[0].Item1.Extent.Text | Should -Be $expected
         }
 
         It "Should not create a CSV when there are no results" {
