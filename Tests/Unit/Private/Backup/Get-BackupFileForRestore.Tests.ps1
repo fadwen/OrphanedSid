@@ -147,7 +147,9 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
 
         It 'Ends with the error of the file system for a folder that cannot be listed (#156)' {
             # The folder holds a backup of the object. Reading it is denied for this case, and
-            # allowed again afterwards so that the test drive can be removed.
+            # allowed again afterwards so that the test drive can be removed. A run that is
+            # killed before the finally leaves the folder under %TEMP% with the entry on it:
+            # icacls <folder> /reset removes the entry, and the folder can then be deleted.
             New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
             $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
             $null = & icacls.exe $script:folder /deny "${identity}:(RD)"
