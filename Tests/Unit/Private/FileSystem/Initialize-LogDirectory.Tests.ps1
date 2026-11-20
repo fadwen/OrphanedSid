@@ -273,6 +273,20 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             Test-Path -LiteralPath $script:TestRoot | Should -BeFalse
         }
 
+        It "Should fall back for a path in a system folder when asked to refuse one (#162)" {
+            $systemFolder = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+            $inSystemFolder = Join-Path $systemFolder "OrphanedSidProbe-$([guid]::NewGuid().ToString('N'))\run.log"
+
+            $result = Initialize-LogDirectory -LogPath $inSystemFolder -RefuseSystemFolder
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like 'Log directory initialization failed: *is inside the system folder*'
+            }
+            $script:LogFileInitialized | Should -BeFalse
+            Test-Path -LiteralPath (Split-Path $inSystemFolder -Parent) | Should -BeFalse
+        }
+
         It "Should throw when not even the fallback path can be built" {
             Mock Get-Location { throw 'No current location' }
 
@@ -406,6 +420,74 @@ Describe "Resolve-LogPath" -Tag "Unit", "Private", "FileSystem" {
 
     It "Should take a network path" {
         Resolve-LogPath -LogPath '\\server\share\logs\run.log' | Should -Be '\\server\share\logs\run.log'
+    }
+
+    Context 'With -RefuseSystemFolder, for a path that a configuration file names (#162)' {
+        BeforeAll {
+            $script:windowsFolder = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+            $script:programFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
+        }
+
+        It 'Should end with LogPathInSystemFolder for a path under <Folder>' -ForEach @(
+            @{ Folder = 'Windows' }
+            @{ Folder = 'ProgramFiles' }
+            @{ Folder = 'ProgramFilesX86' }
+        ) {
+            $systemFolder = [Environment]::GetFolderPath([Environment+SpecialFolder]$Folder)
+            $path = Join-Path $systemFolder 'OrphanedSid\Logs\run.log'
+
+            $expected = @{
+                ErrorId         = 'LogPathInSystemFolder,Resolve-LogPath'
+                ExpectedMessage = "The log path '$path' is inside the system folder '$systemFolder'.*"
+                ExceptionType   = [System.ArgumentException]
+            }
+            { Resolve-LogPath -LogPath $path -RefuseSystemFolder } | Should -Throw @expected
+        }
+
+        It 'Should refuse the folder in another letter case and through ..' {
+            $path = $script:windowsFolder.ToLowerInvariant() + '\Temp\..\System32\drivers\etc\run.log'
+
+            { Resolve-LogPath -LogPath $path -RefuseSystemFolder } |
+                Should -Throw -ErrorId 'LogPathInSystemFolder,Resolve-LogPath'
+        }
+
+        It 'Should refuse the Program Files folder under its short name' {
+            # GetFullPath writes the short name out in full. A volume can have short names
+            # switched off, and then there is none to test with.
+            $shortName = Join-Path (Split-Path $script:programFiles -Qualifier) 'PROGRA~1'
+            $resolvesToProgramFiles = (Test-Path -LiteralPath $shortName) -and
+                ([System.IO.Path]::GetFullPath($shortName) -eq $script:programFiles)
+            if (-not $resolvesToProgramFiles) {
+                Set-ItResult -Skipped -Because 'this volume has no short name for Program Files'
+                return
+            }
+
+            { Resolve-LogPath -LogPath (Join-Path $shortName 'OrphanedSid\run.log') -RefuseSystemFolder } |
+                Should -Throw -ErrorId 'LogPathInSystemFolder,Resolve-LogPath'
+        }
+
+        It 'Should take a folder whose name only begins like a system folder: <Suffix>' -ForEach @(
+            @{ Suffix = 'Logs' }
+            @{ Suffix = ' Data' }
+            @{ Suffix = '-servers' }
+        ) {
+            # C:\WindowsLogs is not inside C:\Windows
+            $path = "$($script:windowsFolder)$Suffix\run.log"
+
+            Resolve-LogPath -LogPath $path -RefuseSystemFolder | Should -Be $path
+        }
+
+        It 'Should take a path outside every system folder' {
+            $path = Join-Path (Get-Item -LiteralPath $TestDrive).FullName 'Logs\run.log'
+
+            Resolve-LogPath -LogPath $path -RefuseSystemFolder | Should -Be $path
+        }
+
+        It 'Should take a path under a system folder without the switch, as -LogPath is the operator''s choice' {
+            $path = Join-Path $script:windowsFolder 'Temp\OrphanedSid\run.log'
+
+            Resolve-LogPath -LogPath $path | Should -Be $path
+        }
     }
 
     It "Should end with LogPathNotFileSystem for a path of another provider" {

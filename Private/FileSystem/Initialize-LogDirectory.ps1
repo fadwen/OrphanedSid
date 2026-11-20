@@ -50,6 +50,11 @@ function Initialize-LogDirectory {
         holds only earlier runs. The outcome is left in $script:LogRotation (From, To, SizeMB, or
         Error) for the caller to log once logging is set up. 0, the default, never rotates.
 
+    .PARAMETER RefuseSystemFolder
+        Refuses a path inside the Windows or Program Files folders, and falls back to the current
+        location as for any other path that cannot be used. Set for a path that a configuration
+        file names: see Resolve-LogPath.
+
     .EXAMPLE
         PS> Initialize-LogDirectory -LogPath "C:\Logs\script.log"
 
@@ -77,7 +82,7 @@ function Initialize-LogDirectory {
         Bypasses WhatIf mode for log file operations to ensure logging works during -WhatIf runs.
 
         SECURITY CONSIDERATIONS:
-        - Writes where the operator's path says; the path is not checked against a list of folders
+        - Writes where the operator's path says. Only with -RefuseSystemFolder is a folder refused
         - Creates directories with inherited permissions
         - Tests write access before setting as active log path
 
@@ -100,7 +105,10 @@ function Initialize-LogDirectory {
 
         [Parameter()]
         [ValidateRange(0, [int]::MaxValue)]
-        [int]$RotateAboveMB = 0
+        [int]$RotateAboveMB = 0,
+
+        [Parameter()]
+        [switch]$RefuseSystemFolder
     )
 
     begin {
@@ -117,7 +125,7 @@ function Initialize-LogDirectory {
     process {
         try {
             # Validate and normalize the log path
-            $resolvedPath = Resolve-LogPath -LogPath $LogPath
+            $resolvedPath = Resolve-LogPath -LogPath $LogPath -RefuseSystemFolder:$RefuseSystemFolder
 
             # Create directory structure
             $logDirectory = Split-Path -Parent $resolvedPath
@@ -200,8 +208,21 @@ function Resolve-LogPath {
         file system path (LogPathNotFileSystem), and a file or folder name with a character that
         the file system does not allow (LogPathInvalidCharacters).
 
+        With -RefuseSystemFolder, a path inside the Windows folder or a Program Files folder also
+        ends the function, with LogPathInSystemFolder. That is for a path that comes from a
+        configuration file: a scheduled run under a privileged account appends to the file that
+        the configuration names, so whoever can edit the configuration would choose a file in
+        those folders for it. A path on the command line is the choice of the person who runs
+        the command, with that person's own rights, and is not refused.
+
     .PARAMETER LogPath
         Log file path to resolve
+
+    .PARAMETER RefuseSystemFolder
+        Refuses a path inside the folders that [Environment]::GetFolderPath() gives for Windows,
+        ProgramFiles and ProgramFilesX86. A short name such as C:\PROGRA~1 is written out in
+        full before the comparison. A link or a junction that leads into such a folder is not
+        followed.
 
     .EXAMPLE
         PS> Resolve-LogPath -LogPath ".\logs\script.log"
@@ -224,7 +245,10 @@ function Resolve-LogPath {
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [string]$LogPath
+        [string]$LogPath,
+
+        [Parameter()]
+        [switch]$RefuseSystemFolder
     )
 
     # Handle empty or whitespace-only paths. Trimmed into a plain variable first: assigning '' to
@@ -274,6 +298,34 @@ function Resolve-LogPath {
             $errorRecord = [System.Management.Automation.ErrorRecord]::new(
                 $exception, 'LogPathInvalidCharacters', $category, $resolvedPath)
             $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+    }
+
+    # A path that a configuration file names may not lie in a system folder (SEC-12). The words
+    # in the path are not what is compared: the folders are the ones this system reports, and
+    # GetFullPath writes a short name such as C:\PROGRA~1 out in full first. The separator after
+    # the folder keeps C:\WindowsLogs apart from C:\Windows.
+    if ($RefuseSystemFolder) {
+        $fullPath = [System.IO.Path]::GetFullPath($resolvedPath)
+        $systemFolders = @(
+            [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+            [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
+            [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+            # What a 32-bit process is given as ProgramFiles is the x86 folder
+            $env:ProgramW6432
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+        foreach ($systemFolder in $systemFolders) {
+            $folderRoot = $systemFolder.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+            if ($fullPath.StartsWith($folderRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $message = "The log path '$fullPath' is inside the system folder '$systemFolder'. A log " +
+                    'path that a configuration file names may not lie there. To write there, name the ' +
+                    'path with -LogPath.'
+                $exception = [System.ArgumentException]::new($message)
+                $category = [System.Management.Automation.ErrorCategory]::SecurityError
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'LogPathInSystemFolder', $category, $fullPath)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
+            }
         }
     }
 
