@@ -101,6 +101,13 @@ Describe 'ConvertTo-NormalizedDistinguishedName' -Tag 'Unit', 'Utilities', 'Priv
                 Name = 'CN=Ends\\ , DC=contoso,DC=com'
                 Expected = 'CN=Ends\\,DC=contoso,DC=com'
             }
+            @{
+                # The help of Restore-OrphanedSidBackup says that the two spellings of one
+                # escaped comma are compared as two names
+                Case = 'a comma that is escaped as \2C, without turning it into \,'
+                Name = 'CN=Doe\2C Jane, OU=Staff,DC=contoso,DC=com'
+                Expected = 'CN=Doe\2C Jane,OU=Staff,DC=contoso,DC=com'
+            }
         ) {
             ConvertTo-NormalizedDistinguishedName -DistinguishedName $Name |
                 Should-BeString $Expected -CaseSensitive
