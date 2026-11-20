@@ -240,7 +240,7 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
 | `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent |
-| `LogFilePath` | string | null | the run's log file when `-LogPath` is not given; resolved, created and rotated like `-LogPath` |
+| `LogFilePath` | string | null | the run's log file when `-LogPath` is not given; resolved, created and rotated like `-LogPath`, and refused when it lies in the Windows folder or a Program Files folder |
 | `EnableLogFileRotation` | bool | true | |
 | `MaxLogFileSizeMB` | int | 10 | |
 
