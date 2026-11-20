@@ -341,7 +341,9 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
 
         It 'New-LogDirectory ends with LogDirectoryNotCreated for a folder it is not allowed to create (#156)' {
             # Nothing is mocked: adding a folder to the parent is denied for this case, and
-            # allowed again afterwards so that the test drive can be removed
+            # allowed again afterwards so that the test drive can be removed. A run that is
+            # killed before the finally leaves the folder under %TEMP% with the entry on it:
+            # icacls <folder> /reset removes the entry, and the folder can then be deleted.
             $null = New-Item -Path $script:TestRoot -ItemType Directory -Force
             $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
             $null = & icacls.exe $script:TestRoot /deny "${identity}:(AD,WD)"
