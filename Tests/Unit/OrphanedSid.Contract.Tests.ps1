@@ -277,7 +277,7 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             # The module predates that rule. A change that replaces some of these statements lowers the
             # number here in the same commit, and a change that adds one fails. When the number
             # reaches 0, this case stays, as the check that none comes back.
-            $recorded = 28
+            $recorded = 16
             $others = @($script:OldFormStatements | Where-Object { -not $_.PassesErrorRecord })
             $byFile = ($others | Group-Object -Property File | Sort-Object -Property Count -Descending |
                     ForEach-Object { "$($_.Count) in $($_.Name)" }) -join '; '

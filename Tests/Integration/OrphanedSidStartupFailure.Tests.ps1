@@ -264,6 +264,58 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
             $run.DirectoryReads | Should-Be 0
         }
 
+        It 'Raises <Case> with the error ID <ErrorId>, which a catch can tell apart (#130)' -ForEach @(
+            @{
+                Case = 'a configuration file that loads and does not validate'; CommandName = 'Find-OrphanedSid'
+                Config = 'Invalid'; SearchBase = "'OU=Finance,DC=lab,DC=test'"; Extra = ''
+                ErrorId = 'ConfigurationInvalid'; Type = 'System.IO.InvalidDataException'; Category = 'InvalidData'
+            }
+            @{
+                Case = 'a configuration file with a value out of range'; CommandName = 'Remove-OrphanedSid'
+                Config = 'OutOfRange'; SearchBase = "'OU=Finance,DC=lab,DC=test'"; Extra = ' -Force'
+                ErrorId = 'ConfigurationFileNotLoaded'; Type = 'System.IO.InvalidDataException'; Category = 'InvalidData'
+            }
+            @{
+                Case = 'a search base that holds no usable name'; CommandName = 'Find-OrphanedSid'
+                Config = ''; SearchBase = '42'; Extra = ''
+                ErrorId = 'SearchBaseNotUsable'; Type = 'System.ArgumentException'; Category = 'InvalidArgument'
+            }
+            @{
+                Case = 'a restore target that holds no usable name'; CommandName = 'Restore-OrphanedSidBackup'
+                Config = ''; SearchBase = ''; Extra = ''
+                ErrorId = 'RestoreTargetNotUsable'; Type = 'System.ArgumentException'; Category = 'InvalidArgument'
+            }
+        ) {
+            # The catch is the one Documentation/Automation.md shows, with the ID of the case.
+            $outOfRange = Join-Path -Path $script:WorkFolder -ChildPath 'out-of-range.json'
+            Set-Content -LiteralPath $outOfRange -Value '{ "BatchSize": 5000 }' -Encoding ascii
+
+            $arguments = "-LogPath $script:LogLiteral -SuppressConsoleOutput$Extra"
+            if ($CommandName -eq 'Restore-OrphanedSidBackup') {
+                $arguments = "-TargetObjectDN 42 -BackupPath $script:BackupLiteral -Force $arguments"
+            } else {
+                $arguments = "-SearchBase $SearchBase $arguments"
+            }
+            if ($Config -eq 'Invalid') {
+                $arguments += " -ConfigPath $(ConvertTo-Literal -Text $script:InvalidConfig)"
+            } elseif ($Config -eq 'OutOfRange') {
+                $arguments += " -ConfigPath $(ConvertTo-Literal -Text $outOfRange)"
+            }
+            # -ErrorAction SilentlyContinue silences the error that an unusable item of the input
+            # gets by itself, so that the output holds only what the catch writes
+            $command = "try { $CommandName $arguments -ErrorAction SilentlyContinue } catch { " +
+                "if (`$_.FullyQualifiedErrorId -like '$ErrorId,*') { " +
+                '''TOLD APART: '' + $_.FullyQualifiedErrorId + '' | '' + $_.Exception.GetType().FullName + ' +
+                ''' | '' + $_.CategoryInfo.Category } else { ''OTHER: '' + $_.FullyQualifiedErrorId } }'
+
+            $run = Invoke-InNewProcess -Command $command
+
+            $run.Text | Should-BeLikeString "*TOLD APART: $ErrorId,$CommandName | $Type | $Category*"
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
+            $run.DirectoryReads | Should-Be 0
+        }
+
         It 'Hands the error to a catch around the call and lets the script carry on' {
             # Documentation/Automation.md names try and catch as the way to handle a critical error.
             $config = ConvertTo-Literal -Text $script:InvalidConfig

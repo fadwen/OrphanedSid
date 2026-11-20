@@ -240,6 +240,27 @@ function Invoke-MainProcessingLogic {
     }
 
     process {
+        # What a critical error leaves behind before it is raised again. The catch at the end of
+        # this block runs it, and so does the catch of the discovery inside the try: raised from
+        # there with ThrowTerminatingError(), the error passes the catch at the end by.
+        $recordCriticalError = {
+            param([System.Management.Automation.ErrorRecord]$Failure)
+
+            $script:Statistics.CriticalErrors++
+            Write-StructuredLog "Critical error in main processing: $($Failure.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
+        }
+
+        # What an error of one object leaves behind: the object is counted as an error and the run
+        # moves on to the next one. The catch at the end of the block that handles an object runs
+        # it, and so does the catch of the removal inside that block, which returns from the block
+        # after its audit entry and no longer raises the error again to get there.
+        $recordObjectError = {
+            param([object]$FailedObject, [System.Management.Automation.ErrorRecord]$Failure)
+
+            $script:Statistics.ProcessingErrors++
+            Write-StructuredLog "Error processing object $($FailedObject.DistinguishedName): $($Failure.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
+        }
+
         try {
             # Process each search base
             foreach ($searchPath in $SearchBase) {
@@ -270,7 +291,8 @@ function Invoke-MainProcessingLogic {
                         ErrorMessage = $_.Exception.Message
                         Operation = 'Get-ADObjectsSequential'
                     } -CorrelationId $CorrelationId
-                    throw
+                    & $recordCriticalError $_
+                    $PSCmdlet.ThrowTerminatingError($_)
                 }
 
                 # Ensure $adObjects is always treated as an array for consistent counting
@@ -448,7 +470,8 @@ function Invoke-MainProcessingLogic {
                                                 OrphanedSIDs = $sidList
                                                 ErrorMessage = $_.Exception.Message
                                             } -CorrelationId $CorrelationId
-                                            throw
+                                            & $recordObjectError $currentObject $_
+                                            return
                                         }
                                     } else {
                                         Write-StructuredLog "WhatIf: Would remove orphaned SIDs: $sidList from $objectDN" -Level Verbose -Component 'MainProcessing' -CorrelationId $CorrelationId
@@ -479,10 +502,9 @@ function Invoke-MainProcessingLogic {
                         }
                     }
                     catch {
-                        # Detection retries are exhausted, or removal failed. Either way the object
-                        # is counted as an error and the run moves on to the next one.
-                        $script:Statistics.ProcessingErrors++
-                        Write-StructuredLog "Error processing object $($currentObject.DistinguishedName): $($_.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
+                        # Detection retries are exhausted, or a step of the object failed. Either way
+                        # the object is counted as an error and the run moves on to the next one.
+                        & $recordObjectError $currentObject $_
                     }
                 }
 
@@ -518,9 +540,8 @@ function Invoke-MainProcessingLogic {
 
         }
         catch {
-            $script:Statistics.CriticalErrors++
-            Write-StructuredLog "Critical error in main processing: $($_.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
-            throw
+            & $recordCriticalError $_
+            $PSCmdlet.ThrowTerminatingError($_)
         }
     }
 }

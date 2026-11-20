@@ -86,9 +86,9 @@ function Restore-OrphanedSidBackup {
 
     end {
         try {
-            if ($targets.Count -eq 0) {
-                throw 'No usable restore target in the input. Pass distinguished names, or objects with a DistinguishedName property.'
-            }
+            # The check is a function of its own so that its error enters the catch below, which
+            # is what ends the calling script.
+            Assert-DistinguishedNameInput -DistinguishedName $targets -InputKind RestoreTarget
             $targetList = $targets -join ', '
             if (-not $PSCmdlet.ShouldProcess($targetList, "Restore ACLs from backup folder $BackupPath")) {
                 if (-not $WhatIfPreference) {

@@ -170,11 +170,18 @@ function Start-OrphanedSidSession {
         UseConfigLogLevel     = $useConfigLogLevel
         SuppressConsoleOutput = $SuppressConsoleOutput
     }
-    $initResults = Initialize-ScriptExecution @initParams
+    # Initialize-ScriptExecution raises its failures with ThrowTerminatingError(), which ends only
+    # the statement that called it when no try is on the call stack. In this try, a failure ends
+    # this function too, with the same error.
+    try {
+        $initResults = Initialize-ScriptExecution @initParams
+    } catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
 
-    # Initialize-ScriptExecution reports a failure with throw, which a caller's
-    # -ErrorAction SilentlyContinue swallows when no try encloses this call. It then returns
-    # nothing, and the assignments below would clear the module's state without any error.
+    # Initialize-ScriptExecution returns its results or raises an error. Should it ever do
+    # neither, the assignments below would clear the module's state without any error, and
+    # processing would start with no configuration.
     if ($null -eq $initResults) {
         $message = "The session for $CommandName could not be initialized. " +
             'The log file or the errors above give the reason.'

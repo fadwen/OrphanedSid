@@ -49,6 +49,10 @@ failures have an ID of their own:
 | Error ID | Exception type | Meaning |
 |----------|----------------|---------|
 | `ActiveDirectoryModuleMissing` | `System.InvalidOperationException` | The ActiveDirectory PowerShell module is not installed on this computer |
+| `ConfigurationFileNotLoaded` | `System.IO.InvalidDataException` | The `-ConfigPath` file could not be read as JSON, or it holds a value that is refused when the file is loaded, such as a `BatchSize` outside 1 to 1000. The message gives the reason |
+| `ConfigurationInvalid` | `System.IO.InvalidDataException` | The `-ConfigPath` file was loaded and its settings do not validate, for example a `LogLevel` that is not one of the six level names |
+| `SearchBaseNotUsable` | `System.ArgumentException` | `-SearchBase` was given to `Find-OrphanedSid` or `Remove-OrphanedSid` and held no usable distinguished name |
+| `RestoreTargetNotUsable` | `System.ArgumentException` | `-TargetObjectDN` of `Restore-OrphanedSidBackup` held no usable distinguished name |
 
 ```powershell
 try {
@@ -62,8 +66,9 @@ try {
 }
 ```
 
-Every other critical error still arrives as a `RuntimeException` whose error ID is the text of
-its message, so those can only be told apart by that text for now.
+Every other critical error is passed on as it was raised, with its exception type and the first
+part of its error ID. A failure that the module reports without an ID of its own has the text of
+its message, or the name of its exception type, there, so it can only be told apart by its message.
 
 ### Pipeline Output
 

@@ -107,7 +107,7 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
 
         It 'Refuses input with no usable DN and restores nothing' {
             { [PSCustomObject]@{ Name = 'NoDN' } | Restore-OrphanedSidBackup -BackupPath $script:backupDir -Force -ErrorAction SilentlyContinue } |
-                Should -Throw '*No usable restore target*'
+                Should -Throw '*No usable restore target*' -ErrorId 'RestoreTargetNotUsable,Restore-OrphanedSidBackup'
 
             Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 0 -Exactly
         }

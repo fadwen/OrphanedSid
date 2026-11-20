@@ -103,7 +103,7 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
 
         It 'Refuses input with no usable DN and removes nothing (#79)' {
             { [PSCustomObject]@{ Name = 'NoDN' } | Remove-OrphanedSid -Force -ErrorAction SilentlyContinue } |
-                Should -Throw '*No usable search base*'
+                Should -Throw '*No usable search base*' -ErrorId 'SearchBaseNotUsable,Remove-OrphanedSid'
 
             Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 0 -Exactly
             Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 0 -Exactly

@@ -118,11 +118,13 @@ function Remove-OrphanedSid {
 
     end {
         try {
+            # Input that held no usable DN must never widen a removal to the whole domain.
+            # The check is a function of its own so that its error enters the catch below, which
+            # is what ends the calling script.
+            if ($searchBaseGiven) {
+                Assert-DistinguishedNameInput -DistinguishedName $searchBases -InputKind SearchBase
+            }
             if ($searchBases.Count -eq 0) {
-                if ($searchBaseGiven) {
-                    # Input that held no usable DN must never widen a removal to the whole domain
-                    throw 'No usable search base in the input. Pass distinguished names, or objects with a DistinguishedName property; the domain root is used only when -SearchBase is not given at all.'
-                }
                 Write-Warning 'No search base specified. Using the current domain root.'
                 $searchBases.Add((Get-ADDomain).DistinguishedName)
             }
