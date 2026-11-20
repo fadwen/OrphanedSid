@@ -108,7 +108,11 @@ is the way to handle it. Replacing the call changes that contract, so it is a ch
 in a release, not a tidy-up. The exception covers these six lines only. Every other `throw` and
 `Write-Error -ErrorAction Stop` directly in an advanced function is an ordinary violation of
 ERR-11, to be replaced and not copied (#130). `Tests/Unit/OrphanedSid.Contract.Tests.ps1` counts
-both kinds by syntax tree. The six must stay six and stay in `Public/`. The others have a
+both kinds by syntax tree. A statement inside a script block that the function hands to a
+command, such as `ForEach-Object` or a retry, counts too: a caller's
+`-ErrorAction SilentlyContinue` was measured to swallow it like one written directly in the
+function. Only the script block of an attribute, such as a `ValidateScript`, is left out.
+The six must stay six and stay in `Public/`. The others have a
 recorded number: a change that replaces some of them lowers it in the same commit, and a change
 that adds one fails.
 
