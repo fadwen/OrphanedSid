@@ -404,6 +404,31 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @(Select-String -Path $mine -Pattern 'Module Version:' -SimpleMatch).Count | Should -Be 1
             @(Select-String -Path $mine -Pattern 'Discovery completed' -SimpleMatch).Count | Should -Be 1
         }
+
+        It 'Refuses a LogFilePath in a system folder and logs in the current folder (#162)' {
+            # Whoever can edit the file would otherwise choose a file that a privileged run appends to
+            $systemFolder = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+            $inSystemFolder = Join-Path $systemFolder "OrphanedSidProbe-$([guid]::NewGuid().ToString('N'))\run.log"
+            @{ LogFilePath = $inSystemFolder } | ConvertTo-Json | Set-Content $script:cfg
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                ConfigPath            = $script:cfg
+                SuppressConsoleOutput = $true
+                WarningVariable       = 'warnings'
+                WarningAction         = 'SilentlyContinue'
+            }
+
+            $results = @(Find-OrphanedSid @parameters)
+
+            # The run goes on, and its log is the fallback file in the current folder
+            $results.Count | Should -BeGreaterThan 0
+            Test-Path -LiteralPath (Split-Path $inSystemFolder -Parent) | Should -BeFalse
+            @($warnings | Where-Object { "$_" -like '*is inside the system folder*' }).Count | Should -Be 1
+            $fallback = @(Get-ChildItem -LiteralPath $script:runDir -Filter 'OrphanedSid_*.log')
+            $fallback.Count | Should -Be 1
+            @(Select-String -LiteralPath $fallback[0].FullName -Pattern 'Discovery completed' -SimpleMatch).Count |
+                Should -Be 1
+        }
     }
 
     Context '-MaxRetries reaches the directory lookups (#89)' {
