@@ -169,6 +169,15 @@ All notable changes to this module are recorded here. Format follows
   names that the backups record are now compared in one spelling.
   ([#150](https://github.com/fadwen/OrphanedSid/issues/150))
 
+### Security
+
+- `Tools/Generate-OrphanedSIDs.ps1`, the script in the repository that fills a lab domain with
+  test accounts, gives each account a random password that it keeps nowhere. It gave every
+  account the same password, which is written in the script. The script deletes its accounts at
+  the end of a run, so only an account that an interrupted run left behind still has that
+  password; delete such an account. The script is not part of the published module.
+  ([#155](https://github.com/fadwen/OrphanedSid/issues/155))
+
 ## [1.1.0] - 2026-11-11
 
 ### Changed

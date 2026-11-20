@@ -15,10 +15,6 @@
     #                                         Mock bodies named after the commands they replace.
     #   PSAvoidUsingEmptyCatchBlock           Teardown that must not fail the test on cleanup.
     #   PSUseUsingScopeModifierInNewRunspaces Tests that exercise runspace-related code paths.
-    #   PSAvoidUsingConvertToSecureStringWithPlainText, PSAvoidUsingUsernameAndPasswordParams,
-    #   PSAvoidUsingPlainTextForPassword      Tools/Generate-OrphanedSIDs.ps1 seeds a disposable
-    #                                         lab domain with throwaway credentials.
-    #   PSAvoidUsingInvokeExpression          The same lab script builds AD filters dynamically.
     #   PSAvoidUsingWriteHost                 The lab script is interactive console output.
     #   PSUseSingularNouns                    Helper names such as New-ADMocks describe a set.
     #   PSUseSupportsShouldProcess, PSShouldProcess, PSAvoidOverwritingBuiltInCmdlets,
@@ -26,6 +22,10 @@
     #                                         commands they replace.
     #   PSPossibleIncorrectComparisonWithNull Assertions written as `$value -ne $null` read as the
     #                                         test intends; the collection case does not apply.
+    #
+    # The rules about passwords in plain text and about Invoke-Expression are not on the list. They
+    # were, for the lab script, which now makes a random password for each account and calls
+    # dsacls with an argument list.
     Severity     = @('Error', 'Warning')
     ExcludeRules = @(
         'PSReviewUnusedParameter'
@@ -34,10 +34,6 @@
         'PSUseShouldProcessForStateChangingFunctions'
         'PSAvoidUsingEmptyCatchBlock'
         'PSUseUsingScopeModifierInNewRunspaces'
-        'PSAvoidUsingConvertToSecureStringWithPlainText'
-        'PSAvoidUsingUsernameAndPasswordParams'
-        'PSAvoidUsingPlainTextForPassword'
-        'PSAvoidUsingInvokeExpression'
         'PSAvoidUsingWriteHost'
         'PSUseSingularNouns'
         'PSUseSupportsShouldProcess'
