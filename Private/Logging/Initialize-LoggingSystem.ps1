@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Core logging system initialization for Find-UnknownSID operations
+    Core logging system initialization for OrphanedSid operations
 
 .DESCRIPTION
     Provides centralized logging system state management with correlation tracking
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-05
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For logging initialization issues: .\Troubleshooting\Common\Common-Issues.md
@@ -71,11 +69,6 @@ function Initialize-LoggingSystem {
         This function must be called before other logging operations.
         Call Initialize-LogDirectory separately for path and directory setup.
         Uses script-scoped variables for state management across modules.
-
-        PERFORMANCE CHARACTERISTICS:
-        - Execution time: <10ms
-        - Memory usage: Minimal (state variables only)
-        - Dependencies: None
 
         TROUBLESHOOTING:
         - Correlation ID validation ensures proper tracking

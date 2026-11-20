@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Analysis Module for Find-UnknownSID Solution
+    SID Analysis Module for the OrphanedSid module
 
 .DESCRIPTION
     This module provides comprehensive SID analysis and categorization functionality
-    for the Find-UnknownSID enterprise solution. It focuses exclusively on analyzing
+    for the OrphanedSid module. It focuses exclusively on analyzing
     Security Identifiers to determine their source, context, and characteristics.
 
     This module follows the single-responsibility principle by focusing exclusively
@@ -30,8 +30,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     MODULE DESIGN:
@@ -114,20 +112,12 @@ function Get-SIDAnalysis {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
 
         SECURITY CONSIDERATIONS:
         - Uses secure SID format validation to prevent injection attacks
         - Implements comprehensive pattern matching for accurate categorization
         - Provides risk-based assessment for security decision making
         - Integrates with enterprise security policies and compliance requirements
-
-        PERFORMANCE CHARACTERISTICS:
-        - Optimized for batch processing with pipeline support
-        - Efficient pattern matching with compiled regex where applicable
-        - Minimal memory footprint for large-scale operations
-        - Average processing time: <10ms per SID
 
         TROUBLESHOOTING:
         - For invalid SID formats: Returns analysis with "Invalid" source and high risk

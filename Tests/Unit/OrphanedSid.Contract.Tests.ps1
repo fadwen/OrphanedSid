@@ -355,6 +355,22 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             }
             @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
         }
+
+        It 'Holds no <What> in the shipping files (#158)' -ForEach @(
+            # Help written before the module had measurements or its present name. A maintainer
+            # reads it as fact: a rate of 50 to 200 objects a second stood where 8 was measured.
+            @{ What = 'section of performance figures'; Pattern = 'PERFORMANCE CHARACTERISTICS' }
+            @{ What = 'version line in help'; Pattern = '^\s*#?\s*Version:\s*\d' }
+            @{ What = 'date of a last update'; Pattern = '^\s*#?\s*Last Updated:' }
+            @{ What = 'mention of the old name Find-UnknownSID'; Pattern = 'Find-UnknownSID' }
+        ) {
+            $folders = "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public"
+            $shippingFiles = Get-ChildItem -Path $folders -Filter *.ps1 -Recurse -File
+            $found = @($shippingFiles | Select-String -Pattern $Pattern |
+                    ForEach-Object { "$($_.Filename):$($_.LineNumber)" })
+
+            $found | Should -BeNullOrEmpty -Because ($found -join '; ')
+        }
     }
 
     Context 'The pattern for the attribute that names a component (#134)' {

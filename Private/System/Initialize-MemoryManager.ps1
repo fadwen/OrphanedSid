@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Memory Manager Instance Management Module for Find-UnknownSID Enterprise Solution
+    Memory Manager Instance Management Module for the OrphanedSid module
 
 .DESCRIPTION
     Provides focused memory manager instance creation and configuration functionality including:
@@ -24,7 +24,7 @@
     - For configuration: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
 .COMPONENT
-    Find-UnknownSID Memory Manager Initialization System
+    OrphanedSid Memory Manager Initialization System
 
 .FUNCTIONALITY
     - Memory manager instance creation

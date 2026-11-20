@@ -17,8 +17,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -97,10 +95,6 @@ function Invoke-SIDRemoval {
         - FailedSIDs: Array of SIDs that failed removal with error details
 
     .NOTES
-        PERFORMANCE CHARACTERISTICS:
-        - Processing Rate: 100-500 ACEs/second depending on ACL complexity
-        - Memory Usage: Minimal - works with existing ACL objects in place
-        - ACL Modification: Direct manipulation for optimal performance
 
         DESIGN PRINCIPLES:
         - Pure function with no external dependencies

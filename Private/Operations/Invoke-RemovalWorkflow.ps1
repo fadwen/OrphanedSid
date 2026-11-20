@@ -17,8 +17,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -113,12 +111,6 @@ function Invoke-RemovalWorkflow {
         - Security-first approach with validation gates
         - Enterprise audit trail with correlation tracking
         - Flexible backup and verification options
-
-        PERFORMANCE CHARACTERISTICS:
-        - Processing Time: 500ms-2s per object depending on complexity
-        - Memory Usage: Optimized with efficient object handling
-        - Reliability: Multi-layer validation and verification
-        - Scalability: Designed for enterprise-scale operations
 
         SECURITY CONTROLS:
         - Multi-layer security validation before any changes

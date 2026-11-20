@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Orphaned Detection and Cache Management Module for Find-UnknownSID Solution
+    SID Orphaned Detection and Cache Management Module for the OrphanedSid module
 
 .DESCRIPTION
     This module provides comprehensive SID orphaned detection and cache management
-    functionality for the Find-UnknownSID enterprise solution. It focuses exclusively
+    functionality for the OrphanedSid module. It focuses exclusively
     on identifying orphaned SIDs and managing validation cache for performance.
 
     This module follows the single-responsibility principle by focusing exclusively
@@ -30,8 +30,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     MODULE DESIGN:
@@ -165,13 +163,6 @@ function Test-OrphanedSID {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Uses caching to improve performance for repeated queries
-        - Multiple fallback methods ensure comprehensive validation
-        - Typical execution time: 50-200ms for uncached, <5ms for cached
 
         TROUBLESHOOTING:
         - For validation errors: .\Troubleshooting\Security\Orphaned-SID-Issues.md
@@ -476,12 +467,6 @@ function Clear-SIDValidationCache {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Instant operation regardless of cache size
-        - No impact on other module functions
 
         TROUBLESHOOTING:
         - For cache issues: .\Troubleshooting\Security\Orphaned-SID-Issues.md
@@ -559,12 +544,6 @@ function Get-SIDValidationCacheStat {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Very fast operation (simple counting)
-        - No impact on cache contents or performance
 
         TROUBLESHOOTING:
         - For cache analysis: .\Troubleshooting\Security\Orphaned-SID-Issues.md

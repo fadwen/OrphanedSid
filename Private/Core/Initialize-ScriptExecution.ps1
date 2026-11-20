@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Script execution initialization module for Find-UnknownSID
+    Script execution initialization module for OrphanedSid
 
 .DESCRIPTION
     Provides comprehensive script initialization capabilities including configuration
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For initialization issues: .\Troubleshooting\Common\Common-Issues.md
@@ -182,12 +180,6 @@ function Initialize-ScriptExecution {
         - Log files should be protected with appropriate file permissions
         - Memory management prevents denial-of-service scenarios
         - Correlation IDs enable security event tracking
-
-        PERFORMANCE CHARACTERISTICS:
-        - Initialization typically completes in 1-3 seconds
-        - Memory overhead: ~50MB for management structures
-        - Configuration loading scales with complexity
-        - Log rotation occurs automatically based on size limits
 
         TROUBLESHOOTING:
         - For initialization failures: .\Troubleshooting\Common\Common-Issues.md

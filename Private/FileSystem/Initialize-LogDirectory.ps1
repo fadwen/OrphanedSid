@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Log directory and path management for Find-UnknownSID operations
+    Log directory and path management for OrphanedSid operations
 
 .DESCRIPTION
     Handles log path validation, directory creation, and permissions validation
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-05
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For path resolution issues: .\Troubleshooting\Common\Common-Issues.md
@@ -80,11 +78,6 @@ function Initialize-LogDirectory {
         - Writes where the operator's path says; the path is not checked against a list of folders
         - Creates directories with inherited permissions
         - Tests write access before setting as active log path
-
-        PERFORMANCE CHARACTERISTICS:
-        - Execution time: 10-50ms depending on directory creation
-        - Memory usage: Minimal
-        - File system impact: Creates directories and test file
 
         TROUBLESHOOTING:
         - Path resolution handles relative and absolute paths

@@ -16,8 +16,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -92,11 +90,6 @@ function Set-ModifiedACL {
         - Retry logic with exponential backoff for transient failures
         - Comprehensive error handling and logging
         - ShouldProcess support for safe operations
-
-        PERFORMANCE CHARACTERISTICS:
-        - Application Time: 100-500ms per object typically
-        - Retry Logic: Up to 3 attempts with backoff
-        - Memory Usage: Minimal - direct ACL application
 
         SECURITY CONSIDERATIONS:
         - Requires appropriate AD permissions for ACL modification

@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Memory Statistics and Reporting Module for Find-UnknownSID Enterprise Solution
+    Memory Statistics and Reporting Module for the OrphanedSid module
 
 .DESCRIPTION
     Provides focused memory statistics collection and reporting functionality including:
@@ -25,7 +25,7 @@
     - For reporting issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
 
 .COMPONENT
-    Find-UnknownSID Memory Statistics System
+    OrphanedSid Memory Statistics System
 
 .FUNCTIONALITY
     - Memory usage statistics collection

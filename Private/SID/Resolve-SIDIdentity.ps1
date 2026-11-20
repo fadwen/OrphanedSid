@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Identity Resolution Module for Find-UnknownSID Solution
+    SID Identity Resolution Module for the OrphanedSid module
 
 .DESCRIPTION
     This focused module handles all SID identity resolution, validation, and translation
-    for the Find-UnknownSID enterprise solution. It processes various identity reference
+    for the OrphanedSid module. It processes various identity reference
     types and performs comprehensive SID validation to detect orphaned accounts.
 
     SINGLE RESPONSIBILITY:
@@ -30,8 +30,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -134,12 +132,6 @@ function Test-AccessRuleForOrphanedSID {
         - Graceful handling of translation failures (indicates orphaned accounts)
         - Detailed logging for troubleshooting and audit purposes
         - Safe property access with null checking
-
-        PERFORMANCE CHARACTERISTICS:
-        - Optimized for single access rule processing
-        - Efficient identity reference type detection
-        - Minimal memory allocation for string operations
-        - Fast validation using cached well-known SID lists
     #>
 
     [CmdletBinding()]

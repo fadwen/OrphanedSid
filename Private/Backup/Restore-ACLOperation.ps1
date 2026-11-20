@@ -15,9 +15,7 @@
 
 .NOTES
     Author: Jeffrey Stuhr
-    Module: Find-UnknownSID.RestoreOperations
     Dependencies: ActiveDirectory module, validated backup data
-    Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
     - Requires appropriate Active Directory permissions
@@ -99,11 +97,6 @@ function Set-ObjectACL {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-        PERFORMANCE CHARACTERISTICS:
-        - Average ACL application: 50-100ms per object
-        - Verification adds 20-30ms overhead
-        - Memory usage: ~1MB per concurrent operation
 
         SECURITY CONSIDERATIONS:
         - Requires Modify Permissions permission on target object
