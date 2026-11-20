@@ -57,9 +57,21 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
             { Set-ModifiedACL -ACL $script:acl -ObjectDN '' } | Should -Throw
         }
 
-        It 'Throws for a whitespace ObjectDN' {
-            { Set-ModifiedACL -ACL $script:acl -ObjectDN '   ' } |
-                Should -Throw -ExpectedMessage '*cannot be empty or whitespace*'
+        It 'Throws for a whitespace ObjectDN, and writes nothing' {
+            $expected = @{
+                ErrorId         = 'DistinguishedNameEmpty,Set-ModifiedACL'
+                ExpectedMessage = 'ObjectDN parameter cannot be empty or whitespace'
+                ExceptionType   = [System.ArgumentException]
+            }
+            { Set-ModifiedACL -ACL $script:acl -ObjectDN '   ' } | Should -Throw @expected
+            Should -Invoke Set-Acl -Times 0 -Exactly
+        }
+
+        It 'Throws for an ACL argument that holds no object, and writes nothing' {
+            # An empty string passes ValidateNotNull and is still no ACL
+            { Set-ModifiedACL -ACL '' -ObjectDN $script:dn } |
+                Should -Throw -ErrorId 'AclMissing,Set-ModifiedACL' -ExpectedMessage 'ACL parameter must not be null'
+            Should -Invoke Set-Acl -Times 0 -Exactly
         }
 
         # A refused name ends the function whatever it looks like. The two cases differ in that: the
@@ -186,8 +198,8 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
 
             Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn -CorrelationId 'fail-1' | Out-Null
 
-            # Once where the write fails and once where the outer handler builds the failed result
-            Should -Invoke Write-StructuredLog -Times 2 -Exactly -ParameterFilter {
+            # Once, where the catch of the function builds the failed result
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Error' -and $CorrelationId -eq 'fail-1' -and
                 $Message -eq "Failed to apply ACL changes to $($script:dn) : boom"
             }

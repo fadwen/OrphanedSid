@@ -124,31 +124,32 @@ function Set-ModifiedACL {
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
-    try {
-        Write-StructuredLog "Starting ACL application to $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
+    Write-StructuredLog "Starting ACL application to $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
 
-        # Validate ACL parameter before processing
-        if (-not $ACL) {
-            throw "ACL parameter must not be null"
-        }
-
-        # Validate ObjectDN parameter
-        if ([string]::IsNullOrWhiteSpace($ObjectDN.Trim())) {
-            throw "ObjectDN parameter cannot be empty or whitespace"
-        }
-
+    # The arguments are checked before the try, and a bad one ends the function with an error. The
+    # catch below turns a failure of the write into a result, and these are not such a failure.
+    $refusal = $null
+    if (-not $ACL) {
+        $refusal = 'AclMissing'
+        $message = 'ACL parameter must not be null'
+    } elseif ([string]::IsNullOrWhiteSpace($ObjectDN.Trim())) {
+        $refusal = 'DistinguishedNameEmpty'
+        $message = 'ObjectDN parameter cannot be empty or whitespace'
+    } elseif (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDN -CorrelationId $CorrelationId)) {
         # The check is of the form of the name only. Whether the object exists is settled by the
-        # write below, which fails with the directory's own error. ThrowTerminatingError() leaves
-        # the function at once: the catch at the end of this function does not receive the error.
-        if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDN -CorrelationId $CorrelationId)) {
-            $message = "The distinguished name was refused because it is not well formed: $ObjectDN"
-            $exception = [System.ArgumentException]::new($message)
-            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
-            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
-                $exception, 'DistinguishedNameRefused', $category, $ObjectDN)
-            $PSCmdlet.ThrowTerminatingError($errorRecord)
-        }
+        # write below, which fails with the directory's own error.
+        $refusal = 'DistinguishedNameRefused'
+        $message = "The distinguished name was refused because it is not well formed: $ObjectDN"
+    }
 
+    if ($null -ne $refusal) {
+        $exception = [System.ArgumentException]::new($message)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new($exception, $refusal, $category, $ObjectDN)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
+    try {
         $ruleCount = @(Get-AclAccessRule -Acl $ACL).Count
         Write-StructuredLog "ACL contains $ruleCount access rules for application" -Level Debug -CorrelationId $CorrelationId
 
@@ -159,22 +160,14 @@ function Set-ModifiedACL {
         # calling this function, so nothing here touches the backup folder.
 
         if ($PSCmdlet.ShouldProcess($ObjectDN, "Apply modified ACL")) {
-            try {
-                # Use retry logic for reliable AD operations
-                Invoke-ADOperationWithRetry -ScriptBlock {
-                    Set-DirectoryObjectAcl -DistinguishedName $ObjectDN -AclObject $ACL
-                } -MaxRetries 3 -CorrelationId $CorrelationId
+            # Use retry logic for reliable AD operations. A write that fails goes to the catch at
+            # the end of the function, which logs it and returns it as a failed result.
+            Invoke-ADOperationWithRetry -ScriptBlock {
+                Set-DirectoryObjectAcl -DistinguishedName $ObjectDN -AclObject $ACL
+            } -MaxRetries 3 -CorrelationId $CorrelationId
 
-                Write-StructuredLog "Successfully applied ACL changes to $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
-                $success = $true
-            }
-            catch {
-                $errorMessage = $_.Exception.Message
-                Write-StructuredLog "Failed to apply ACL changes to $ObjectDN : $errorMessage" -Level Error -CorrelationId $CorrelationId
-                
-                # Let the outer catch handle the error gracefully
-                throw $_.Exception
-            }
+            Write-StructuredLog "Successfully applied ACL changes to $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
+            $success = $true
         }
         else {
             Write-StructuredLog "ACL modification skipped due to WhatIf mode for $ObjectDN" -Level Verbose -CorrelationId $CorrelationId
@@ -232,14 +225,7 @@ function Set-ModifiedACL {
     catch {
         $errorMessage = $_.Exception.Message
         Write-StructuredLog "Failed to apply ACL changes to $ObjectDN : $errorMessage" -Level Error -CorrelationId $CorrelationId
-        
-        # A missing ACL and an empty name end the function. A name that is not well formed ends it
-        # too and does not come through here: it is raised above with ThrowTerminatingError(),
-        # which passes this catch by. Only a failure of the write itself is returned as a result.
-        if ($errorMessage -match "parameter cannot be empty|parameter must not be null") {
-            throw $_.Exception
-        }
-        
+
         # Return error result object for operational errors
         return [PSCustomObject]@{
             PSTypeName = 'ACLApplicationResult'

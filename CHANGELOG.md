@@ -126,6 +126,9 @@ All notable changes to this module are recorded here. Format follows
   `Object reference not set to an instance of an object` whenever `-ConfigPath` was given, for
   the rest of the process. A console session and PowerShell 7 were not affected.
   ([#125](https://github.com/fadwen/OrphanedSid/issues/125))
+- When `Remove-OrphanedSid` cannot write the changed ACL of an object, the log file has one
+  `Failed to apply ACL changes` entry at Error level for it. It had two with the same text.
+  ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 
 ## [1.1.0] - 2026-11-11
 

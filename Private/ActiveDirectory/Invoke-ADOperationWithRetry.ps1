@@ -94,7 +94,7 @@ function Invoke-ADOperationWithRetry {
 
             Write-ADOperationSecurityLog -OperationName $OperationName -Outcome 'Failure' -SecurityContext $failureContext -CorrelationId $CorrelationId
 
-            throw
+            $PSCmdlet.ThrowTerminatingError($_)
         }
     }
 }

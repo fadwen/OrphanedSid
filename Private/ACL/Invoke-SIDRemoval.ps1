@@ -135,19 +135,28 @@ function Invoke-SIDRemoval {
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
+    # The arguments are checked before the try. Each check ends the function with an error of its
+    # own, and it is the caller that logs it: the catch below is for a failure of the removal.
+    foreach ($sid in $AllowedSIDs) {
+        if ($sid -notmatch '^S-\d+-\d+(-\d+)*$') {
+            $message = "Invalid SID format: $sid. SIDs must follow the pattern S-X-Y-Z..."
+            $exception = [System.ArgumentException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'SidFormatInvalid', $category, $sid)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+    }
+
+    if (-not $ACL) {
+        $exception = [System.ArgumentException]::new('ACL parameter cannot be null or empty.')
+        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'AclMissing', $category, $ObjectDN)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
     try {
-        # Validate SID format for all provided SIDs
-        foreach ($sid in $AllowedSIDs) {
-            if ($sid -notmatch '^S-\d+-\d+(-\d+)*$') {
-                throw "Invalid SID format: $sid. SIDs must follow the pattern S-X-Y-Z..."
-            }
-        }
-
-        # Validate ACL object structure
-        if (-not $ACL) {
-            throw "ACL parameter cannot be null or empty."
-        }
-
         # The rules are read once, with GetAccessRules() for a directory security descriptor. An
         # object whose rules cannot be read ends the function here. It used to be given an empty
         # Access property, and the removal then found nothing to remove and reported success.
@@ -245,7 +254,7 @@ function Invoke-SIDRemoval {
     }
     catch {
         Write-StructuredLog "Error in ACL SID removal processing: $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
-        throw
+        $PSCmdlet.ThrowTerminatingError($_)
     }
 }
 

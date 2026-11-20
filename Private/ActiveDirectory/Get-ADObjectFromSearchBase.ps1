@@ -73,12 +73,18 @@ function Get-ADObjectFromSearchBase {
         # Ensure nTSecurityDescriptor is always included
         $allProperties = @($Properties) + @('nTSecurityDescriptor') | Sort-Object -Unique
 
-        # A transient failure is retried; one that persists is thrown, so Get-ADObjectsSequential
+        # A transient failure is retried; one that persists is raised, so Get-ADObjectsSequential
         # counts the search base as failed, warns, and records it in the security log. Swallowing it
-        # here once made an unreadable search base count as a successful one with no objects.
-        $objects = Invoke-ADOperationWithRetry -ScriptBlock {
-            Get-ADObject -SearchBase $SearchBase -Filter * -Properties $allProperties -ErrorAction Stop
-        } -MaxRetries ($MaxRetries + 1) -OperationName 'Get-ADObject-SearchBase' -ObjectContext $SearchBase -CorrelationId $CorrelationId
+        # here once made an unreadable search base count as a successful one with no objects. The
+        # retry raises with ThrowTerminatingError(), which ends only the statement that called it:
+        # without this try the lines below would run with nothing read.
+        try {
+            $objects = Invoke-ADOperationWithRetry -ScriptBlock {
+                Get-ADObject -SearchBase $SearchBase -Filter * -Properties $allProperties -ErrorAction Stop
+            } -MaxRetries ($MaxRetries + 1) -OperationName 'Get-ADObject-SearchBase' -ObjectContext $SearchBase -CorrelationId $CorrelationId
+        } catch {
+            $PSCmdlet.ThrowTerminatingError($_)
+        }
 
         # Output to pipeline for efficiency
         if ($objects) {

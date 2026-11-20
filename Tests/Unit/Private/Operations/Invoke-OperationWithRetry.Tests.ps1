@@ -63,6 +63,27 @@ Describe "Invoke-OperationWithRetry" -Tag "Unit", "Operations" {
             Should -Invoke Start-Sleep -Times 3 -Exactly
         }
 
+        It "Passes on the error of the operation with its exception type, category and error ID" {
+            $operation = {
+                $exception = [System.UnauthorizedAccessException]::new('Access is denied')
+                $category = [System.Management.Automation.ErrorCategory]::PermissionDenied
+                throw [System.Management.Automation.ErrorRecord]::new($exception, 'ReadRefused', $category, 'OU=Sales')
+            }
+
+            $caught = $null
+            try {
+                Invoke-OperationWithRetry -ScriptBlock $operation
+            } catch {
+                $caught = $_
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.Exception | Should -BeOfType [System.UnauthorizedAccessException]
+            $caught.FullyQualifiedErrorId | Should -Be 'ReadRefused,Invoke-OperationWithRetry'
+            $caught.CategoryInfo.Category | Should -Be 'PermissionDenied'
+            $caught.TargetObject | Should -Be 'OU=Sales'
+        }
+
         It "Uses three attempts by default" {
             { Invoke-OperationWithRetry -ScriptBlock { $script:attempts++; throw 'domain controller busy' } } | Should -Throw
 

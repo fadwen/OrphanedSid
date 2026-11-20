@@ -45,13 +45,25 @@ Describe 'Get-ACLForRemoval' -Tag 'Unit', 'ACL', 'Private' {
         }
 
         It 'Throws for a whitespace distinguished name' {
-            { Get-ACLForRemoval -ObjectDistinguishedName '  ' } |
-                Should -Throw -ExpectedMessage '*cannot be empty or whitespace*'
+            $expected = @{
+                ErrorId         = 'DistinguishedNameEmpty,Get-ACLForRemoval'
+                ExpectedMessage = '*cannot be empty or whitespace*'
+                ExceptionType   = [System.ArgumentException]
+            }
+            { Get-ACLForRemoval -ObjectDistinguishedName '  ' } | Should -Throw @expected
+            Should -Invoke Get-Acl -Times 0 -Exactly
         }
 
         It 'Throws for a filesystem path offered as a distinguished name' {
-            { Get-ACLForRemoval -ObjectDistinguishedName 'C:\Windows\System32' } |
-                Should -Throw -ExpectedMessage '*got filesystem path*'
+            $expected = @{
+                ErrorId         = 'DistinguishedNameIsFilePath,Get-ACLForRemoval'
+                ExpectedMessage = '*got filesystem path: C:\Windows\System32'
+                ExceptionType   = [System.ArgumentException]
+            }
+            { Get-ACLForRemoval -ObjectDistinguishedName 'C:\Windows\System32' } | Should -Throw @expected
+            Should -Invoke Get-Acl -Times 0 -Exactly
+            # The name is not handed to the validator once it is seen to be a file path
+            Should -Invoke Test-ValidDistinguishedName -Times 0 -Exactly
         }
 
         It 'Throws for a name that is refused as not well formed, and reads nothing' {
@@ -63,7 +75,8 @@ Describe 'Get-ACLForRemoval' -Tag 'Unit', 'ACL', 'Private' {
             }
             { Get-ACLForRemoval -ObjectDistinguishedName 'OU=NoDomain' } | Should -Throw @expected
             Should -Invoke Get-Acl -Times 0 -Exactly
-            # The error leaves the function without passing its catch, which is what logs at Error
+            # The name is refused before the read, so the catch that logs a failed read is not
+            # reached: the caller logs the refusal
             Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Error' }
         }
     }
@@ -113,11 +126,19 @@ Describe 'Get-ACLForRemoval' -Tag 'Unit', 'ACL', 'Private' {
     }
 
     Context 'Failures' {
-        It 'Throws when the read returns nothing' {
+        It 'Throws when the read returns nothing, and logs it at Error level' {
             Mock Get-Acl { $null }
 
-            { Get-ACLForRemoval -ObjectDistinguishedName $script:dn } |
-                Should -Throw -ExpectedMessage '*Failed to retrieve ACL*'
+            $expected = @{
+                ErrorId         = 'AclNotReturned,Get-ACLForRemoval'
+                ExpectedMessage = "Failed to retrieve ACL for $($script:dn)"
+                ExceptionType   = [System.InvalidOperationException]
+            }
+            { Get-ACLForRemoval -ObjectDistinguishedName $script:dn -CorrelationId 'read-4' } |
+                Should -Throw @expected
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like 'Failed to retrieve ACL for*' -and $CorrelationId -eq 'read-4'
+            }
         }
 
         It 'Rethrows a read failure after logging it at Error level' {

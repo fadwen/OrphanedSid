@@ -124,9 +124,16 @@ function Invoke-RemovalVerification {
     try {
         Write-StructuredLog "Starting removal verification for $ObjectDN (Verifying $($AllowedSIDs.Count) SIDs)" -Level Debug -CorrelationId $CorrelationId
 
-        # Validate parameters
+        # A name that is empty is reported as every other failure of this function is: as a
+        # verification that did not succeed, which is the result the catch below builds.
         if ([string]::IsNullOrWhiteSpace($ObjectDN.Trim())) {
-            throw "ObjectDN parameter cannot be empty or whitespace"
+            $errorMessage = 'Verification error: ObjectDN parameter cannot be empty or whitespace'
+            Write-StructuredLog "Verification error for $ObjectDN : $errorMessage" -Level Error -CorrelationId $CorrelationId
+            return [PSCustomObject]@{
+                Success = $false
+                ErrorMessage = $errorMessage
+                RemainingOrphanedSIDs = @()
+            }
         }
 
         # Brief pause for AD replication consistency

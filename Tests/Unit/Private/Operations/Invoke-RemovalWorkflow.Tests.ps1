@@ -256,8 +256,14 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
 
             $result.Success | Should -Be $false
             $result.ErrorMessage | Should -Be 'Workflow failed: Failed to create ACL backup - aborting removal operation'
+            $result.ProcessingTime | Should -BeOfType [TimeSpan]
             Should -Invoke Invoke-SIDRemoval -Times 0 -Exactly
             Should -Invoke Set-ModifiedACL -Times 0 -Exactly
+            # Reported as an error of a step is: one audit entry with the reason
+            Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and
+                $SecurityContext.Error -eq 'Failed to create ACL backup - aborting removal operation'
+            }
         }
 
         It "Takes no backup when no backup path is given" {
@@ -311,6 +317,19 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
             $result.ErrorMessage | Should -Be 'Verification failed: 1 of 1 SIDs still present'
             Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
                 $Outcome -eq 'Failure' -and "$($SecurityContext.RemainingOrphanedSIDs)" -eq $script:sid1
+            }
+        }
+
+        It "Reports a name of only spaces as a failed result, and reads nothing" {
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName '   ' -OrphanedSIDs $script:sid1 -CorrelationId 'wf-empty'
+
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Be 'Workflow failed: ObjectDN parameter cannot be empty or whitespace'
+            $result.ProcessingTime | Should -BeOfType [TimeSpan]
+            Should -Invoke Get-ACLForRemoval -Times 0 -Exactly
+            Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and $CorrelationId -eq 'wf-empty' -and
+                $SecurityContext.Error -eq 'ObjectDN parameter cannot be empty or whitespace'
             }
         }
 
