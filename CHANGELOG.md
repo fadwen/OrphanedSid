@@ -161,6 +161,13 @@ All notable changes to this module are recorded here. Format follows
   no other sign of the reason. A log folder that cannot be created is now reported as that in
   the warning before the log falls back to the current folder; it was reported as missing write
   permissions. ([#156](https://github.com/fadwen/OrphanedSid/issues/156))
+- `Restore-OrphanedSidBackup` finds the backup of a target that is typed with a blank after a
+  comma or around an equals sign, such as `CN=Alice, OU=Sales, DC=contoso, DC=com`. Active
+  Directory accepts a name spelled that way, and the restore answered
+  `No backup files found for object ...` although the folder held a backup of the object, or
+  `Invalid target object DN format` for a blank before the equals sign. The target and the
+  names that the backups record are now compared in one spelling.
+  ([#150](https://github.com/fadwen/OrphanedSid/issues/150))
 
 ## [1.1.0] - 2026-11-11
 

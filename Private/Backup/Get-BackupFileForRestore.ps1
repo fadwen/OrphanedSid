@@ -5,7 +5,8 @@ function Get-BackupFileForRestore {
 
     .DESCRIPTION
     Reads the ObjectDN that each backup file in the folder records and selects the files of the
-    target. A file name cannot identify the object: it is the sanitized distinguished name, so
+    target. The names are compared without regard to letter case and to blanks around their
+    separators (ConvertTo-NormalizedDistinguishedName). A file name cannot identify the object: it is the sanitized distinguished name, so
     CN=User1 is a prefix of a CN_User10 backup, and the same CN recurs in every OU that holds one.
 
     For an organizational unit or a domain, the target is every object at or under it, and the
@@ -88,7 +89,7 @@ function Get-BackupFileForRestore {
             $backupMetadata = Import-Clixml -LiteralPath $backupFilePath -ErrorAction Stop
             [PSCustomObject]@{
                 Path = $backupFilePath
-                ObjectDN = [string]$backupMetadata.ObjectDN
+                ObjectDN = ConvertTo-NormalizedDistinguishedName -DistinguishedName ([string]$backupMetadata.ObjectDN)
                 WrittenAt = $backupFile.LastWriteTime
             }
         } catch {
@@ -98,18 +99,22 @@ function Get-BackupFileForRestore {
     $backupIndex = @($backupIndex | Where-Object { $_.ObjectDN })
     $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
 
-    if ($TargetObjectDN -match '^(OU|DC)=') {
+    # The names are compared as text, so both sides are in one spelling: the target here, and the
+    # name of each backup above. A target typed with a blank after a comma found no backup.
+    $targetName = ConvertTo-NormalizedDistinguishedName -DistinguishedName $TargetObjectDN
+
+    if ($targetName -match '^(OU|DC)=') {
         # Every object at or under the container. The comma anchors the suffix, so OU=Sales does
         # not take in OU=PreSales.
         $restoreMode = 'Bulk'
         $inScope = @($backupIndex | Where-Object {
-                $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) -or
-                $_.ObjectDN.EndsWith(",$TargetObjectDN", $ignoreCase)
+                $_.ObjectDN.Equals($targetName, $ignoreCase) -or
+                $_.ObjectDN.EndsWith(",$targetName", $ignoreCase)
             })
     } else {
         # Only backups of exactly this object
         $restoreMode = 'Single'
-        $inScope = @($backupIndex | Where-Object { $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) })
+        $inScope = @($backupIndex | Where-Object { $_.ObjectDN.Equals($targetName, $ignoreCase) })
         if ($inScope.Count -eq 0) {
             $message = "No backup files found for object $TargetObjectDN in path $BackupPath"
             $exception = [System.IO.FileNotFoundException]::new($message)

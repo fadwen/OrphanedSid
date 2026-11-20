@@ -268,6 +268,9 @@ Accepts pipeline input. A string is used as the DN; any other object contributes
 DistinguishedName property, so the output of Get-ADObject, and Import-Csv rows with a
 DistinguishedName column, can be piped directly. An item with no DistinguishedName is reported
 as an error and skipped; input that yields no usable DN stops the command.
+A name is compared with the names the backups record without regard to letter case and to blanks
+after a comma or around an equals sign, so it can be typed as
+'CN=Alice, OU=Sales, DC=contoso, DC=com'.
 
 ```yaml
 Type: System.Object[]

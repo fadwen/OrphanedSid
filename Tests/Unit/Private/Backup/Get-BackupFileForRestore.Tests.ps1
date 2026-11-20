@@ -13,6 +13,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Get-BackupFileForRestore.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\ConvertTo-NormalizedDistinguishedName.ps1"
 
     function New-BackupFile {
         param([string]$Folder, [string]$ObjectDN, [datetime]$WrittenAt)
@@ -59,6 +60,28 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
             @($result.BackupFiles)[0] | Should -Be $file
         }
 
+        It 'Finds the backup of a target that is typed as <Spelling> (#150)' -ForEach @(
+            @{ Spelling = 'CN=Alice, OU=Sales, DC=contoso, DC=com' }
+            @{ Spelling = 'CN =Alice,OU=Sales,DC=contoso,DC=com' }
+            @{ Spelling = 'cn = alice , ou = sales , dc = contoso , dc = com' }
+        ) {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $Spelling -BackupPath $script:folder
+
+            $result.RestoreMode | Should -Be 'Single'
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $file
+        }
+
+        It 'Finds a backup that records its name with blanks around the separators' {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN 'CN=Alice, OU=Sales, DC=contoso, DC=com' -WrittenAt (Get-Date).AddMinutes(-1)
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+
+            @($result.BackupFiles)[0] | Should -Be $file
+        }
+
         It 'Ends with BackupNotFoundForObject when the folder holds only backups of other objects' {
             New-BackupFile -Folder $script:folder -ObjectDN $script:bob -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
 
@@ -85,6 +108,17 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
             $result.RestoreMode | Should -Be 'Bulk'
             @($result.BackupFiles).Count | Should -Be 3
             @($result.BackupFiles | Sort-Object) | Should -Be @($ofSales, $ofAlice, $ofBob | Sort-Object)
+        }
+
+        It 'Takes a container that is typed with blanks around its separators as a container (#150)' {
+            $ofAlice = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-2)
+            New-BackupFile -Folder $script:folder -ObjectDN $script:carol -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
+
+            $result = Get-BackupFileForRestore -TargetObjectDN 'OU = Sales, DC=contoso, DC=com' -BackupPath $script:folder
+
+            $result.RestoreMode | Should -Be 'Bulk'
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $ofAlice
         }
 
         It 'Selects nothing, without an error, when no backup is of an object in the container' {

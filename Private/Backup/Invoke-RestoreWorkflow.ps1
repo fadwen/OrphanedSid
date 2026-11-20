@@ -18,7 +18,8 @@
 .NOTES
     Author: Jeffrey Stuhr
     Module: Find-UnknownSID.RestoreOperations
-    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1
+    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1,
+        Utilities\ConvertTo-NormalizedDistinguishedName.ps1
     Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
@@ -183,14 +184,20 @@ function Invoke-RestoreWorkflow {
         if (-not (Get-Command Get-BackupFileForRestore -ErrorAction SilentlyContinue)) {
             . $PSScriptRoot\Get-BackupFileForRestore.ps1
         }
+
+        if (-not (Get-Command ConvertTo-NormalizedDistinguishedName -ErrorAction SilentlyContinue)) {
+            . (Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Utilities\ConvertTo-NormalizedDistinguishedName.ps1')
+        }
     }
 
     process {
         Write-Verbose "Starting restore workflow for target: $TargetObjectDN"
         Write-Verbose "Starting restore workflow"
         
-        # Trim and sanitize input first
-        $TargetObjectDN = $TargetObjectDN.Trim()
+        # The target is brought into the spelling that the directory returns, without blanks
+        # around its separators: it is compared with the names that the backups record, and the
+        # directory accepts a name that is typed as 'CN=Alice, OU=Sales, DC=contoso, DC=com'.
+        $TargetObjectDN = ConvertTo-NormalizedDistinguishedName -DistinguishedName $TargetObjectDN
         
         # Validate target DN format after trimming. The attribute that names an object is set by
         # its class, so any attribute name is taken, as Test-ValidDistinguishedName does.

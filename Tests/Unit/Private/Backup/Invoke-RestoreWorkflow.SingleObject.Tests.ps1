@@ -17,6 +17,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Get-BackupFileForRestore.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\ConvertTo-NormalizedDistinguishedName.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
@@ -52,6 +53,21 @@ Describe 'Invoke-RestoreWorkflow single-object restore' -Tag 'Unit', 'Backup', '
 
         $result.Success | Should -BeTrue
         Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $file -and $TargetObjectDN -eq $script:host1 }
+    }
+
+    It 'Restores from the backup when the target is typed as <Spelling> (#150)' -ForEach @(
+        @{ Spelling = 'CN=EdgeCase Orphan Host 1, OU=Orphaned, DC=contoso, DC=com' }
+        @{ Spelling = 'CN =EdgeCase Orphan Host 1,OU=Orphaned,DC=contoso,DC=com' }
+        @{ Spelling = '  CN = EdgeCase Orphan Host 1 , OU = Orphaned , DC = contoso , DC = com  ' }
+    ) {
+        $file = New-BackupFile -Folder $script:folder -ObjectDN $script:host1 -WrittenAt (Get-Date).AddMinutes(-5)
+
+        $result = Invoke-RestoreWorkflow -TargetObjectDN $Spelling -BackupPath $script:folder -Confirm:$false
+
+        $result.Success | Should -BeTrue
+        Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter {
+            $BackupFile -eq $file -and $TargetObjectDN -eq $script:host1
+        }
     }
 
     It 'Restores from the one matching backup when the folder holds backups of other objects too' {
