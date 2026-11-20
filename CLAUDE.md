@@ -149,7 +149,9 @@ attribute in the schema: a `locality` is `L=...` and an `organization` is `O=...
 be reported and never cleaned (#134). The four places now take any attribute name or dotted
 number, with the same pattern, and a change to one of them is a change to all four:
 `Test-ValidDistinguishedName`, `Invoke-RestoreWorkflow`, `Get-RestorationTarget` and
-`Test-BackupIntegrity`. `Invoke-RestoreWorkflow` still decides between one object and a whole
+`Test-BackupIntegrity`. The contract tests fail when one of them holds a different pattern. The
+dot inside a name is deliberate: the directory was measured to take `OU=`, `2.5.4.11=` and
+`OID.2.5.4.11=` for the same object. `Invoke-RestoreWorkflow` still decides between one object and a whole
 subtree by `OU=` or `DC=`, so a container named otherwise is restored as one object, as a `CN=`
 container is.
 
