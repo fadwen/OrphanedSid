@@ -147,7 +147,11 @@ function Set-ObjectACL {
         $requiredProperties = @('SDDL', 'ObjectDN', 'ValidationSignature')
         foreach ($prop in $requiredProperties) {
             if (-not $BackupData.PSObject.Properties[$prop]) {
-                throw "Backup data missing required property: $prop"
+                $exception = [System.IO.InvalidDataException]::new("Backup data missing required property: $prop")
+                $category = [System.Management.Automation.ErrorCategory]::InvalidData
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'BackupDataPropertyMissing', $category, $prop)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
         }
     }

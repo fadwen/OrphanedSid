@@ -18,6 +18,13 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- The error that `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` raise
+  when the ActiveDirectory PowerShell module is not installed has an error ID, an exception type
+  and a category of its own: `ActiveDirectoryModuleMissing`, `System.InvalidOperationException`
+  and `NotInstalled`. It was a `WriteErrorException` with the category `NotSpecified` and an
+  error ID that named that exception type. The message is unchanged. A script that matched the
+  old exception type or error ID has to match the new one; `Documentation/Automation.md` shows
+  how. ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 - A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
   is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
   someone else removed in the meantime, and a run that removed some entries and did not find

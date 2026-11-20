@@ -191,12 +191,20 @@ function Invoke-RestoreWorkflow {
         # Validate target DN format after trimming. The attribute that names an object is set by
         # its class, so any attribute name is taken, as Test-ValidDistinguishedName does.
         if (-not ($TargetObjectDN -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=')) {
-            throw "Invalid target object DN format"
+            $exception = [System.ArgumentException]::new('Invalid target object DN format')
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'RestoreTargetNameInvalid', $category, $TargetObjectDN)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
         
         # Validate that either BackupFile or BackupPath is specified
         if (-not $BackupFile -and -not $BackupPath) {
-            throw "Either BackupFile or BackupPath must be specified"
+            $exception = [System.ArgumentException]::new('Either BackupFile or BackupPath must be specified')
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'BackupSourceMissing', $category, $TargetObjectDN)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
 
         # Validate file/path existence and security
@@ -209,12 +217,20 @@ function Invoke-RestoreWorkflow {
             $allowedExtensions = @('.xml', '.clixml')
             $fileExtension = [System.IO.Path]::GetExtension($BackupFile).ToLower()
             if ($fileExtension -notin $allowedExtensions) {
-                throw "Invalid file extension. Only .xml and .clixml files are allowed"
+                $exception = [System.ArgumentException]::new('Invalid file extension. Only .xml and .clixml files are allowed')
+                $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'BackupFileExtensionInvalid', $category, $BackupFile)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
             
             # Check if file exists
             if (-not (Test-Path -LiteralPath $BackupFile -PathType Leaf)) {
-                throw "Backup file not found: $BackupFile"
+                $exception = [System.IO.FileNotFoundException]::new("Backup file not found: $BackupFile")
+                $category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'BackupFileNotFound', $category, $BackupFile)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
         }
 
@@ -225,7 +241,11 @@ function Invoke-RestoreWorkflow {
             
             # Check if directory exists
             if (-not (Test-Path -LiteralPath $BackupPath -PathType Container)) {
-                throw "Backup directory not found: $BackupPath"
+                $exception = [System.IO.DirectoryNotFoundException]::new("Backup directory not found: $BackupPath")
+                $category = [System.Management.Automation.ErrorCategory]::ObjectNotFound
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'BackupDirectoryNotFound', $category, $BackupPath)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
         }
 

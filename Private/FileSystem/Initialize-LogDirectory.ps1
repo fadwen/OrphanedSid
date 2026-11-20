@@ -230,16 +230,11 @@ function Resolve-LogPath {
     # SECURITY: Validate against directory traversal BEFORE path resolution
     if ($LogPath.Contains('..')) {
         Write-Warning "Potential directory traversal detected in path: $LogPath"
-        throw "Invalid path: Directory traversal not allowed"
-    }
-
-    # Additional security validations for dangerous patterns
-    $dangerousPatterns = @('system32', 'windows', 'program files', '\.\.\.')
-    foreach ($pattern in $dangerousPatterns) {
-        if ($LogPath -match $pattern -and $LogPath.Contains('..')) {
-            Write-Warning "Dangerous path pattern detected: $LogPath"
-            throw "Invalid path: Potentially dangerous path pattern not allowed"
-        }
+        $exception = [System.ArgumentException]::new('Invalid path: Directory traversal not allowed')
+        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'LogPathTraversal', $category, $LogPath)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 
     # Convert to absolute path
@@ -285,7 +280,12 @@ function Resolve-LogPath {
     
     if (-not $isAllowedPath) {
         Write-Warning "Path outside allowed directories: $resolvedPath"
-        throw "Invalid path: Path must be within script directory, temp, or approved log directories"
+        $message = 'Invalid path: Path must be within script directory, temp, or approved log directories'
+        $exception = [System.ArgumentException]::new($message)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'LogPathOutsideAllowedDirectories', $category, $resolvedPath)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 
     Write-Verbose "Log path resolved to: $resolvedPath"

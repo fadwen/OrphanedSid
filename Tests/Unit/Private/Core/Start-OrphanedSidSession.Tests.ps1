@@ -60,8 +60,11 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
         It 'Stops with installation guidance when the ActiveDirectory module is not installed' {
             Mock Get-Module { $null }
 
-            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -RequireActiveDirectory } |
-                Should -Throw -ExpectedMessage '*ActiveDirectory PowerShell module is not available*Rsat.ActiveDirectory*'
+            $expected = @{
+                ErrorId         = 'ActiveDirectoryModuleMissing,Start-OrphanedSidSession'
+                ExpectedMessage = '*ActiveDirectory PowerShell module is not available*Rsat.ActiveDirectory*'
+            }
+            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -RequireActiveDirectory } | Should -Throw @expected
             Should -Invoke Initialize-ScriptExecution -Times 0 -Exactly
         }
 

@@ -276,14 +276,15 @@ Describe "Resolve-LogPath" -Tag "Unit", "Private", "FileSystem" {
     }
 
     It "Should reject a path containing '..'" {
-        { Resolve-LogPath -LogPath 'C:\Logs\..\Windows\run.log' } | Should -Throw -ExpectedMessage 'Invalid path: Directory traversal not allowed'
+        { Resolve-LogPath -LogPath 'C:\Logs\..\Windows\run.log' } |
+            Should -Throw -ErrorId 'LogPathTraversal,Resolve-LogPath'
     }
 
     It "Should reject a log path under <Location>" -ForEach @(
         @{ Location = 'System32'; Path = 'C:\Windows\System32\run.log' }
         @{ Location = 'Program Files'; Path = 'C:\Program Files\App\run.log' }
     ) {
-        { Resolve-LogPath -LogPath $Path } | Should -Throw -ExpectedMessage '*Path must be within script directory*'
+        { Resolve-LogPath -LogPath $Path } | Should -Throw -ErrorId 'LogPathOutsideAllowedDirectories,Resolve-LogPath'
     }
 
     It "Should accept a path under Windows\Temp" {

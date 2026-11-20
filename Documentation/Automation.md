@@ -42,6 +42,29 @@ In the `catch`, `$_` is the error that ended the run. `$found` is not assigned w
 so the example tests a flag of its own and does not read `$found`: a failed run must not be taken
 for a run that found nothing.
 
+A script that needs to tell one critical error from another reads `$_.FullyQualifiedErrorId` in
+the `catch`. It holds an error ID, a comma, and the name of the command that was called. These
+failures have an ID of their own:
+
+| Error ID | Exception type | Meaning |
+|----------|----------------|---------|
+| `ActiveDirectoryModuleMissing` | `System.InvalidOperationException` | The ActiveDirectory PowerShell module is not installed on this computer |
+
+```powershell
+try {
+    $found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -SuppressConsoleOutput)
+} catch {
+    if ($_.FullyQualifiedErrorId -like 'ActiveDirectoryModuleMissing,*') {
+        Write-Warning 'Install RSAT: Active Directory PowerShell on this computer.'
+    } else {
+        Write-Warning "Discovery did not finish: $($_.Exception.Message)"
+    }
+}
+```
+
+Every other critical error still arrives as a `RuntimeException` whose error ID is the text of
+its message, so those can only be told apart by that text for now.
+
 ### Pipeline Output
 
 | Command | Writes to the pipeline |

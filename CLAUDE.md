@@ -112,6 +112,15 @@ both kinds by syntax tree. The six must stay six and stay in `Public/`. The othe
 recorded number: a change that replaces some of them lowers it in the same commit, and a change
 that adds one fails.
 
+Replacing one is not a matter of swapping the statement. Two things were measured on PowerShell 7
+and Windows PowerShell 5.1. An error raised with `$PSCmdlet.ThrowTerminatingError()` inside a
+`try`, or from a `catch` nested in it, does not enter the `catch` of that same function: it
+leaves the function at once, so a `catch` that logs, cleans up or builds a failed result is
+passed by. And it ends only the statement that called the function: a caller that does not make
+the call inside a `try` carries on with its next line, where a `throw` would have unwound it. So
+before a statement is replaced, check what the function's own `catch` does. That every call to a
+function which raises this way sits inside a `try` is checked by the contract tests.
+
 ### Results are emitted before cleanup
 
 `Find-OrphanedSid` reads results back from the streaming batch files with `GetAllResults()` before

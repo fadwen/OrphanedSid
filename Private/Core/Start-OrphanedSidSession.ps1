@@ -111,7 +111,11 @@ function Start-OrphanedSidSession {
             $message = 'The ActiveDirectory PowerShell module is not available. Install RSAT: Active Directory ' +
                 'PowerShell (Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0) ' +
                 'and run the command again.'
-            Write-Error $message -ErrorAction Stop
+            $exception = [System.InvalidOperationException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::NotInstalled
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'ActiveDirectoryModuleMissing', $category, 'ActiveDirectory')
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
         if (-not (Get-Module -Name ActiveDirectory)) {
             Import-Module -Name ActiveDirectory -ErrorAction Stop

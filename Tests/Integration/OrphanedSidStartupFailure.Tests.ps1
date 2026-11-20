@@ -242,6 +242,28 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
             $run.DirectoryReads | Should-Be 0
         }
 
+        It 'Raises a missing ActiveDirectory module with an error ID, a type and a category of its own (#130)' {
+            # The session helper asks Get-Module whether the module is installed. Here it is told no.
+            # The catch is the one Documentation/Automation.md shows for telling this error apart.
+            $fault = 'function global:Get-Module { [CmdletBinding()] ' +
+                'param([Parameter(Position = 0)]$Name, [switch]$ListAvailable, [switch]$All) ' +
+                'if ($Name -eq ''ActiveDirectory'') { return } ' +
+                'Microsoft.PowerShell.Core\Get-Module @PSBoundParameters }'
+            $command = "try { Find-OrphanedSid $script:Common } catch { " +
+                'if ($_.FullyQualifiedErrorId -like ''ActiveDirectoryModuleMissing,*'') { ' +
+                '''TOLD APART: '' + $_.FullyQualifiedErrorId + '' | '' + $_.Exception.GetType().FullName + ' +
+                ''' | '' + $_.CategoryInfo.Category } else { ''OTHER: '' + $_.FullyQualifiedErrorId } }'
+
+            $run = Invoke-InNewProcess -Command $command -Fault $fault
+
+            $expected = '*TOLD APART: ActiveDirectoryModuleMissing,Find-OrphanedSid | ' +
+                'System.InvalidOperationException | NotInstalled*'
+            $run.Text | Should-BeLikeString $expected
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
+            $run.DirectoryReads | Should-Be 0
+        }
+
         It 'Hands the error to a catch around the call and lets the script carry on' {
             # Documentation/Automation.md names try and catch as the way to handle a critical error.
             $config = ConvertTo-Literal -Text $script:InvalidConfig

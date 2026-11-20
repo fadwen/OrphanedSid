@@ -205,12 +205,50 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             @($exceptions | Where-Object { $_.File -notlike 'Public*' }).Count | Should -Be 0
         }
 
+        It 'Calls every function that raises with ThrowTerminatingError from inside a try' {
+            # ThrowTerminatingError() ends only the statement that called the function. A caller that
+            # makes the call outside a try carries on with its next line, where a throw in the same
+            # place would have unwound it. So a function that is moved to ThrowTerminatingError()
+            # needs every call to it in a try body, and a new call outside one fails here.
+            $raising = @($script:Definitions.Keys | Where-Object {
+                    $script:Definitions[$_].Ast.Extent.Text -match '\$PSCmdlet\.ThrowTerminatingError\('
+                })
+            $outside = @(foreach ($path in $script:FileAsts.Keys) {
+                    $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                    $calls = $script:FileAsts[$path].FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.CommandAst] -and
+                            $node.GetCommandName() -in $raising
+                        }, $true)
+                    foreach ($call in $calls) {
+                        $inTry = $false
+                        $previous = $call
+                        $owner = $call.Parent
+                        while ($null -ne $owner -and
+                            $owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                            if ($owner -is [System.Management.Automation.Language.TryStatementAst] -and
+                                $owner.Body -eq $previous) {
+                                $inTry = $true
+                            }
+                            $previous = $owner
+                            $owner = $owner.Parent
+                        }
+                        if (-not $inTry) {
+                            "$($call.GetCommandName()) at ${relative}:$($call.Extent.StartLineNumber)"
+                        }
+                    }
+                })
+
+            $raising.Count | Should -BeGreaterThan 5
+            $outside | Should -BeNullOrEmpty -Because ($outside -join '; ')
+        }
+
         It 'Has exactly the recorded number of other such statements, which may only go down' {
             # ERR-11 of the standards: an advanced function ends with $PSCmdlet.ThrowTerminatingError().
             # The module predates that rule. A change that replaces some of these statements lowers the
             # number here in the same commit, and a change that adds one fails. When the number
             # reaches 0, this case stays, as the check that none comes back.
-            $recorded = 73
+            $recorded = 62
             $others = @($script:OldFormStatements | Where-Object { -not $_.PassesErrorRecord })
             $byFile = ($others | Group-Object -Property File | Sort-Object -Property Count -Descending |
                     ForEach-Object { "$($_.Count) in $($_.Name)" }) -join '; '
