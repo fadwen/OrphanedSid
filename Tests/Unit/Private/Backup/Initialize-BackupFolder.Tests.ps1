@@ -131,7 +131,8 @@ Describe 'Initialize-BackupFolder' -Tag 'Unit', 'Backup', 'Private' {
                 $errorRecord = { Initialize-BackupFolder -Path $folder } |
                     Should-Throw -FullyQualifiedErrorId $script:errorId -ExceptionType ([System.IO.IOException])
             } finally {
-                # Without this, Pester cannot remove the test drive
+                # Tidiness only: the entry does not keep the folder from being removed with the
+                # test drive
                 $null = & icacls.exe $parent /remove:d $account
             }
 
