@@ -8,6 +8,13 @@ All notable changes to this module are recorded here. Format follows
 
 ### Added
 
+- `Restore-OrphanedSidBackup` has a `-BackupFile` parameter, which restores one object from one
+  backup file that is given by name, in place of the folder given as `-BackupPath`. The file has
+  to be a backup of the object that `-TargetObjectDN` names; a file of another object gives a
+  result with `Success = False` that says which object the file is of, and nothing is written.
+  A container is restored as one object, without the objects under it. The two parameters are
+  not given together, and `-BackupPath` and the other parameters keep their positions.
+  ([#160](https://github.com/fadwen/OrphanedSid/issues/160))
 - A `RemovalOperationResult` has a `NotFoundSIDs` property. It lists the SIDs that discovery
   reported and that held no explicit entry on the object when `Remove-OrphanedSid` came to remove
   them, for example because someone else removed the entry in the meantime. Such a result was

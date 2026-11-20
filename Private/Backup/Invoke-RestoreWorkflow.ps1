@@ -377,9 +377,19 @@ function Invoke-RestoreWorkflow {
                     $workflowSteps[-1].FailedRestores++
                     $workflowSteps[-1].ProcessedObjects++
 
+                    # A file that was given by name was given for this target, so the result is
+                    # the target's: Restore-OrphanedSidBackup returns one result for each target,
+                    # and its CSV has a row for it. For a file that was found in a folder, the
+                    # object is known only as far as the file could be read.
+                    $failedTarget = "Unknown (from $fileToProcess)"
+                    if ($BackupFile) {
+                        $failedTarget = $TargetObjectDN
+                    }
+
                     $failedResult = [PSCustomObject]@{
                         Success = $false
-                        TargetObjectDN = "Unknown (from $fileToProcess)"
+                        TargetObjectDN = $failedTarget
+                        EntriesRestored = 0
                         ErrorMessage = $fileFailure
                         BackupFile = $fileToProcess
                         CorrelationId = $CorrelationId

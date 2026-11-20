@@ -67,6 +67,9 @@ Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConso
 - **OutputPath**: the parent directory must exist.
 - **BackupPath**: for `Restore-OrphanedSidBackup` the directory must exist; for
   `Remove-OrphanedSid` its parent must exist.
+- **BackupFile**: for `Restore-OrphanedSidBackup` the file must exist. A file that is a backup
+  of another object than `-TargetObjectDN`, or whose extension is not `.xml` or `.clixml`, is
+  refused in the result of the restore, and nothing is written.
 - **ConfigPath**: the file must exist; `ScriptConfiguration.LoadFromFile` validates every key it
   reads (regex patterns must compile, protected SIDs must match `^S-1-\d+(-\d+)*$`, numeric ranges
   are enforced).
@@ -185,9 +188,9 @@ for integrity checking. If the backup fails the removal is aborted
 `<BackupPath>\<yyyyMMdd_HHmmss>\`, with `-BackupPath` defaulting to `.\Backup` under the current
 directory. Under `-WhatIf` no backup is written because no change is made.
 
-`Restore-OrphanedSidBackup -TargetObjectDN <DN> -BackupPath <folder>` validates each backup file
-with `Test-BackupIntegrity`, including the hash, before `Set-ObjectACL`
-(`Private\Backup\Restore-ACLOperation.ps1`) rewrites the ACL. See
+`Restore-OrphanedSidBackup -TargetObjectDN <DN> -BackupPath <folder>`, and the same command with
+`-BackupFile <file>`, validates each backup file with `Test-BackupIntegrity`, including the hash,
+before `Set-ObjectACL` (`Private\Backup\Restore-ACLOperation.ps1`) rewrites the ACL. See
 [Backup-Restore-Issues.md](../Common/Backup-Restore-Issues.md).
 
 ## Module Integrity

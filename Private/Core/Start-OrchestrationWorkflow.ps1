@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -141,6 +141,11 @@ function Start-OrchestrationWorkflow {
                     # Map BackupPath
                     if ($Parameters.ContainsKey('BackupPath')) {
                         $restoreParams.BackupPath = $Parameters.BackupPath
+                    }
+
+                    # Map BackupFile: one backup file by name, in place of the folder
+                    if ($Parameters.ContainsKey('BackupFile')) {
+                        $restoreParams.BackupFile = $Parameters.BackupFile
                     }
 
                     # Map CorrelationId

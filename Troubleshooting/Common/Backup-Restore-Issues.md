@@ -129,7 +129,8 @@ validation steps and prints `What if: Performing the operation "Apply ACL from b
 
 Note that `Restore-OrphanedSidBackup -BackupPath` names the **timestamped subfolder**
 (`D:\ACLBackups\20250702_103631`), not the root given to `Remove-OrphanedSid`; discovery does not
-recurse.
+recurse. `-BackupFile` names one `.xml` file in such a folder and restores the one object that
+the file is a backup of, which has to be the object given as `-TargetObjectDN`.
 
 ## Critical Backup Issues
 

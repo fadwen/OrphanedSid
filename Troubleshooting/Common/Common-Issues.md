@@ -12,9 +12,9 @@ domain root is used with a warning; given but holding no usable DN, the command 
 `-OutputPath`, `-IncludeInherited`, `-MaxRetries` (1-10, default 3), `-ConfigPath`,
 `-MaxMemoryUsageMB` (100-16384, default 1024), `-PreserveTempFiles`, `-LogPath`, `-CorrelationId`, `-LogLevel` (`Critical`, `Error`, `Warning`, `Information`, `Debug`,
 `Verbose`; default `Information`) and `-SuppressConsoleOutput`. `Remove-OrphanedSid` adds
-`-BackupPath` and `-Force`. `Restore-OrphanedSidBackup` takes `-TargetObjectDN`, a mandatory
-`-BackupPath`, `-Force`, `-OutputPath`, `-LogPath`, `-CorrelationId`, `-LogLevel` and
-`-SuppressConsoleOutput`. The two commands that change Active Directory also take `-WhatIf` and
+`-BackupPath` and `-Force`. `Restore-OrphanedSidBackup` takes `-TargetObjectDN`, one of
+`-BackupPath` (a folder) and `-BackupFile` (one backup file), `-Force`, `-OutputPath`,
+`-LogPath`, `-CorrelationId`, `-LogLevel` and `-SuppressConsoleOutput`. The two commands that change Active Directory also take `-WhatIf` and
 `-Confirm`. There is no `-Credential`; every command runs as the current user.
 
 Each command writes its results to the pipeline as objects: one `OrphanedSIDResult` per orphaned

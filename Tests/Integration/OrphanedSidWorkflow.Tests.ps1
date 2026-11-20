@@ -1109,6 +1109,107 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
             Get-TrusteeSid -DN $dn | Should -Contain $script:SecondOrphanSid
         }
+
+        It 'Puts back one object from its backup file, and leaves the object below it as the removal left it (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $below = "CN=Payroll,OU=Finance,$script:DomainDN"
+            $file = @($removed | Where-Object { $_.ObjectDN -eq $dn })[0].BackupFile
+            $file | Should -Exist
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $file
+                LogPath               = Join-Path $TestDrive 'restore-file.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters)
+
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeTrue
+            $result[0].TargetObjectDN | Should -Be $dn
+            $result[0].BackupFile | Should -Be $file
+            $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            # From the folder, a restore of the OU puts back the group below it as well
+            Get-TrusteeSid -DN $below | Should -Not -Contain $script:OrphanSid
+            (Get-Content -LiteralPath $parameters.LogPath -Raw) | Should -Match ([regex]::Escape("Backup source: $file"))
+        }
+
+        It 'Refuses a backup file of another object, restores nothing, and names the target in its result (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $below = "CN=Payroll,OU=Finance,$script:DomainDN"
+            $fileOfOther = @($removed | Where-Object { $_.ObjectDN -eq $below })[0].BackupFile
+            $afterRemoval = @{ $dn = $script:Directory[$dn].Sddl; $below = $script:Directory[$below].Sddl }
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $fileOfOther
+                LogPath               = Join-Path $TestDrive 'restore-other.log'
+                OutputPath            = Join-Path $TestDrive 'restore-other.csv'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters -WarningAction SilentlyContinue)
+
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeFalse
+            $result[0].TargetObjectDN | Should -Be $dn
+            $result[0].ErrorMessage | Should -Be "Backup file $fileOfOther is a backup of '$below', not of '$dn'"
+            $script:Directory[$dn].Sddl | Should -Be $afterRemoval[$dn]
+            $script:Directory[$below].Sddl | Should -Be $afterRemoval[$below]
+            $rows = @(Import-Csv -Path $parameters.OutputPath)
+            $rows.Count | Should -Be 1
+            $rows[0].Success | Should -Be 'False'
+            $rows[0].TargetObjectDN | Should -Be $dn
+            $rows[0].EntriesRestored | Should -Be '0'
+        }
+
+        It 'Changes nothing under -WhatIf with a backup file (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $file = @($removed | Where-Object { $_.ObjectDN -eq $dn })[0].BackupFile
+            $afterRemoval = $script:Directory[$dn].Sddl
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $file
+                LogPath               = Join-Path $TestDrive 'restore-file-whatif.log'
+                SuppressConsoleOutput = $true
+                WhatIf                = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters)
+
+            $result.Count | Should -Be 1
+            $result[0].TargetObjectDN | Should -Be $dn
+            $script:Directory[$dn].Sddl | Should -Be $afterRemoval
+        }
+
+        It 'Returns a failed result, and restores nothing, for a backup file that is not .xml or .clixml (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $file = @($removed | Where-Object { $_.ObjectDN -eq $dn })[0].BackupFile
+            $renamed = Join-Path $TestDrive "backup-$([guid]::NewGuid().ToString('N')).bak"
+            Copy-Item -LiteralPath $file -Destination $renamed
+            $afterRemoval = $script:Directory[$dn].Sddl
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $renamed
+                LogPath               = Join-Path $TestDrive 'restore-file-extension.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters)
+
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeFalse
+            $result[0].TargetObjectDN | Should -Be $dn
+            $result[0].ErrorMessage | Should -Be 'Invalid file extension. Only .xml and .clixml files are allowed'
+            $script:Directory[$dn].Sddl | Should -Be $afterRemoval
+        }
+
         It 'Reports a failed write once, with one prefix (#51)' {
             $null = Invoke-RemoveOrphanedSid
             $dn = "OU=Finance,$script:DomainDN"

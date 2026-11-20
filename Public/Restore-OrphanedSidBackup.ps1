@@ -2,19 +2,23 @@ function Restore-OrphanedSidBackup {
     <#
     .EXTERNALHELP OrphanedSid-Help.xml
     .SYNOPSIS
-        Restores Active Directory ACLs from a backup folder written by Remove-OrphanedSid.
+        Restores Active Directory ACLs from a backup folder or file written by Remove-OrphanedSid.
     #>
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High', DefaultParameterSetName = 'BackupPath')]
     [OutputType('RestoreWorkflowResult')]
     param(
+        # The positions are written out. With one parameter set PowerShell gave them by the
+        # order of declaration; with two it gives none, and a call that passes the target and
+        # the folder by position would no longer bind. They are the positions the command had.
+
         # [object[]], not [string[]]: by-property binding asks an AD object for 'TargetObjectDN'
         # before the aliases, the AD adapter answers with an empty collection, and binding failed.
         # Each item is read by ConvertTo-DistinguishedName instead.
-        [Parameter(Mandatory, ValueFromPipeline)]
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
         [Alias('DistinguishedName', 'SearchBase')]
         [object[]]$TargetObjectDN,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ParameterSetName = 'BackupPath', Position = 1)]
         [ValidateScript({
             if (-not (Test-Path -LiteralPath $_ -PathType Container)) {
                 throw "Backup folder not found: $_"
@@ -23,10 +27,22 @@ function Restore-OrphanedSidBackup {
         })]
         [string]$BackupPath,
 
+        # One backup file by name, in place of the folder. The workflow refuses a file that is a
+        # backup of another object than the target, so the target is asked for here as well.
+        # It has no position: the second value by position is the folder.
+        [Parameter(Mandatory, ParameterSetName = 'BackupFile')]
+        [ValidateScript({
+            if (-not (Test-Path -LiteralPath $_ -PathType Leaf)) {
+                throw "Backup file not found: $_"
+            }
+            $true
+        })]
+        [string]$BackupFile,
+
         [Parameter()]
         [switch]$Force,
 
-        [Parameter()]
+        [Parameter(Position = 2)]
         [ValidateScript({
             $directory = Split-Path -Parent $_
             if (-not $directory) { $directory = (Get-Location).Path }
@@ -37,13 +53,13 @@ function Restore-OrphanedSidBackup {
         })]
         [string]$OutputPath,
 
-        [Parameter()]
+        [Parameter(Position = 3)]
         [string]$LogPath,
 
-        [Parameter()]
+        [Parameter(Position = 4)]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString(),
 
-        [Parameter()]
+        [Parameter(Position = 5)]
         [ValidateSet('Critical', 'Error', 'Warning', 'Information', 'Debug', 'Verbose')]
         [string]$LogLevel = 'Information',
 
@@ -90,7 +106,14 @@ function Restore-OrphanedSidBackup {
             # is what ends the calling script.
             Assert-DistinguishedNameInput -DistinguishedName $targets -InputKind RestoreTarget
             $targetList = $targets -join ', '
-            if (-not $PSCmdlet.ShouldProcess($targetList, "Restore ACLs from backup folder $BackupPath")) {
+            $fromFile = $PSCmdlet.ParameterSetName -eq 'BackupFile'
+            $backupSource = $BackupPath
+            $sourceKind = 'folder'
+            if ($fromFile) {
+                $backupSource = $BackupFile
+                $sourceKind = 'file'
+            }
+            if (-not $PSCmdlet.ShouldProcess($targetList, "Restore ACLs from backup $sourceKind $backupSource")) {
                 if (-not $WhatIfPreference) {
                     Write-StructuredLog "Restore declined at the confirmation prompt for: $targetList" -Level Warning -Component 'Main' -CorrelationId $CorrelationId
                     return
@@ -103,8 +126,12 @@ function Restore-OrphanedSidBackup {
 
                 $restoreParameters = @{
                     TargetObjectDN = $target
-                    BackupPath     = $BackupPath
                     CorrelationId  = $CorrelationId
+                }
+                if ($fromFile) {
+                    $restoreParameters.BackupFile = $BackupFile
+                } else {
+                    $restoreParameters.BackupPath = $BackupPath
                 }
                 if ($WhatIfPreference) {
                     $restoreParameters.WhatIf = $true
@@ -143,7 +170,7 @@ function Restore-OrphanedSidBackup {
             if ($entries -gt 0) {
                 Write-StructuredLog "Total ACL entries restored: $entries" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             }
-            Write-StructuredLog "Backup source: $BackupPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+            Write-StructuredLog "Backup source: $backupSource" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
 
             if ($OutputPath -and $allResults.Count -gt 0) {
                 # Export-Csv honours the inherited $WhatIfPreference and writes nothing under -WhatIf

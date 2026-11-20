@@ -4,7 +4,7 @@ external help file: OrphanedSid-Help.xml
 HelpUri: ''
 Locale: en-US
 Module Name: OrphanedSid
-ms.date: 11/08/2026
+ms.date: 11/20/2026
 PlatyPS schema version: 2024-05-01
 title: Restore-OrphanedSidBackup
 ---
@@ -13,11 +13,11 @@ title: Restore-OrphanedSidBackup
 
 ## SYNOPSIS
 
-Restores Active Directory ACLs from a backup folder written by Remove-OrphanedSid.
+Restores Active Directory ACLs from a backup folder or file written by Remove-OrphanedSid.
 
 ## SYNTAX
 
-### __AllParameterSets
+### BackupPath (Default)
 
 ```
 Restore-OrphanedSidBackup [-TargetObjectDN] <Object[]> [-BackupPath] <string>
@@ -25,11 +25,19 @@ Restore-OrphanedSidBackup [-TargetObjectDN] <Object[]> [-BackupPath] <string>
  [-Force] [-SuppressConsoleOutput] [-WhatIf] [-Confirm]
 ```
 
+### BackupFile
+
+```
+Restore-OrphanedSidBackup [-TargetObjectDN] <Object[]> [[-OutputPath] <string>]
+ [[-LogPath] <string>] [[-CorrelationId] <string>] [[-LogLevel] <string>] -BackupFile <string>
+ [-Force] [-SuppressConsoleOutput] [-WhatIf] [-Confirm]
+```
+
 ## DESCRIPTION
 
-Reads the Clixml backup files in -BackupPath, validates each one (format, object DN, SDDL
-and its SHA256 hash), applies the saved security descriptor to the object, and reads the
-ACL back to verify the result.
+Reads the Clixml backup files in -BackupPath, or the one file given as -BackupFile, validates
+each one (format, object DN, SDDL and its SHA256 hash), applies the saved security descriptor
+to the object, and reads the ACL back to verify the result.
 
 -TargetObjectDN decides the scope.
 A container (a DN that starts with OU= or DC=, such as an OU or the domain root) restores every
@@ -40,6 +48,12 @@ restores only backups whose recorded object DN equals
 Either way each object is restored once, from its most recent backup in the folder.
 -BackupPath is the folder that holds the .xml files, normally one timestamped run
 folder under the Remove-OrphanedSid backup root.
+
+-BackupFile names one backup file in place of the folder, and restores one object from it.
+The file has to be a backup of the object that -TargetObjectDN names: a file of another object
+is refused, and nothing is written.
+With -BackupFile a container is restored as one object, and the objects under it are left as
+they are.
 
 The command has ConfirmImpact High: it asks once before writing anything.
 -WhatIf previews
@@ -78,13 +92,30 @@ OUTPUT: One result per object; an object that run did not change, such as one wi
 unverified entries, has no backup in the folder and comes back with Success False
 USE CASE: Targeted rollback driven by the removal's own CSV
 
+### EXAMPLE 4
+
+Restore-OrphanedSidBackup -TargetObjectDN 'CN=SRV01,OU=Servers,DC=contoso,DC=com' -BackupFile 'D:\ADBackups\20260703_104232\CN_SRV01_OU_Servers_DC_contoso_DC_com_20260703_104232.xml' -Force
+
+DESCRIPTION: Restores SRV01 from one backup file that is given by name
+OUTPUT: One result for SRV01; when the file is a backup of another object, Success is False
+and ErrorMessage says which object the file is of
+USE CASE: Restoring one object from a chosen backup, such as a file that was copied out of its
+run folder
+
 ## PARAMETERS
 
-### -BackupPath
+### -BackupFile
 
-Folder containing the backup .xml files.
+One backup file to restore from, in place of -BackupPath.
 Must exist.
 A relative path is resolved against the current location.
+The file has to be a backup of the object that -TargetObjectDN names: the name that the file
+records is compared with the target without regard to letter case and to blanks after a comma
+or around an equals sign.
+A file of another object, and a file whose extension is not .xml or .clixml, give a result with
+Success False, and nothing is written.
+Only that one object is restored, also when it is a container.
+The parameter has no position and is given by name.
 
 ```yaml
 Type: System.String
@@ -92,7 +123,31 @@ DefaultValue: ''
 SupportsWildcards: false
 Aliases: []
 ParameterSets:
-- Name: (All)
+- Name: BackupFile
+  Position: Named
+  IsRequired: true
+  ValueFromPipeline: false
+  ValueFromPipelineByPropertyName: false
+  ValueFromRemainingArguments: false
+DontShow: false
+AcceptedValues: []
+HelpMessage: ''
+```
+
+### -BackupPath
+
+Folder containing the backup .xml files.
+Must exist.
+A relative path is resolved against the current location.
+To restore from one file, give -BackupFile in its place; the two are not given together.
+
+```yaml
+Type: System.String
+DefaultValue: ''
+SupportsWildcards: false
+Aliases: []
+ParameterSets:
+- Name: BackupPath
   Position: 1
   IsRequired: true
   ValueFromPipeline: false
@@ -329,6 +384,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 Distinguished names as strings, or objects with a `DistinguishedName` property: the output of
 `Get-ADOrganizationalUnit` or `Get-ADObject`, or `Import-Csv` rows with that column.
+
 ## OUTPUTS
 
 ### RestoreWorkflowResult
@@ -344,6 +400,10 @@ stops before choosing any backup: it writes the error
 `Restore workflow failed for <DN> : No backup files found in directory: <path> - CorrelationId: <id>`,
 and the result's
 `ErrorMessage` reads `No backup files found in directory: <path>`.
+With `-BackupFile` the result is that object's restore result. When the file is a backup of
+another object, `TargetObjectDN` is the target that was asked for and `ErrorMessage` reads
+`Backup file <path> is a backup of '<DN in the file>', not of '<target>'`.
+
 ## NOTES
 
 Author: Jeffrey Stuhr
@@ -355,7 +415,6 @@ each target object.
 
 TROUBLESHOOTING:
 - Backups and restores: https://github.com/fadwen/OrphanedSid/blob/main/Troubleshooting/Common/Backup-Restore-Issues.md
-
 
 ## RELATED LINKS
 

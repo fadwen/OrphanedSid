@@ -88,8 +88,9 @@ Each backup is one file written with `Export-Clixml`, so it is a CliXML document
 
 ### Using Restore-OrphanedSidBackup
 
-`-BackupPath` is mandatory and must be the folder that directly contains the `.xml` files,
-normally one of the timestamped subfolders; the search is not recursive. `-TargetObjectDN`
+`-BackupPath` must be the folder that directly contains the `.xml` files, normally one of the
+timestamped subfolders; the search is not recursive. `-BackupFile` names one backup file in
+its place. One of the two is mandatory, and they are not given together. `-TargetObjectDN`
 (aliases `DistinguishedName` and `SearchBase`, pipeline input accepted) names the object or
 objects to restore.
 
@@ -105,7 +106,16 @@ Restore-OrphanedSidBackup -TargetObjectDN @("CN=User1,CN=Users,DC=contoso,DC=com
 
 # Restore every backed-up object under an OU
 Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPath "C:\Backups\20250127_143022"
+
+# Restore one object from one backup file
+Restore-OrphanedSidBackup -TargetObjectDN "CN=User1,CN=Users,DC=contoso,DC=com" -BackupFile "C:\Backups\20250127_143022\CN_User1_CN_Users_DC_contoso_DC_com_20250127_143022.xml"
 ```
+
+With `-BackupFile` the file has to be a backup of the object that `-TargetObjectDN` names. A
+file of another object is refused: the result has `Success` False, its `ErrorMessage` reads
+`Backup file <path> is a backup of '<DN in the file>', not of '<target>'`, and nothing is
+written. Only that one object is restored, also when it is an OU: the objects under it are left
+as they are. The selection below applies to `-BackupPath`.
 
 The command processes each `-TargetObjectDN` value in turn and selects backup files as follows:
 
@@ -141,8 +151,8 @@ Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPa
 
 `Restore-OrphanedSidBackup` hands each target to `Start-OrchestrationWorkflow -OperationType
 'Restore'`, which calls `Invoke-RestoreWorkflow` (`Private/Backup/Invoke-RestoreWorkflow.ps1`)
-with `-TargetObjectDN`, `-BackupPath`, `-VerifyRestoration` and the run's `-CorrelationId`
-(plus `-WhatIf` when the command was given it). For each selected file `Restore-IndividualObject`
+with `-TargetObjectDN`, `-BackupPath` or `-BackupFile`, `-VerifyRestoration` and the run's
+`-CorrelationId` (plus `-WhatIf` when the command was given it). For each selected file `Restore-IndividualObject`
 validates the backup, validates the target, and calls `Set-ObjectACL`
 (`Private/Backup/Restore-ACLOperation.ps1`), which rebuilds the security descriptor from the
 stored SDDL and applies it with `Set-Acl` on the `AD:` drive.

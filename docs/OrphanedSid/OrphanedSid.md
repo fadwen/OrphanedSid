@@ -28,5 +28,5 @@ Removes orphaned access control entries from Active Directory objects after back
 
 ### [Restore-OrphanedSidBackup](Restore-OrphanedSidBackup.md)
 
-Restores Active Directory ACLs from a backup folder written by Remove-OrphanedSid.
+Restores Active Directory ACLs from a backup folder or file written by Remove-OrphanedSid.
 
