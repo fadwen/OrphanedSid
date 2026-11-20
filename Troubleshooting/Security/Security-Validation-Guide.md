@@ -56,9 +56,12 @@ Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConso
   accepted. A failing value stops `Invoke-MainProcessingLogic` with a parameter validation error.
 - **Object names during removal**: the same function checks the name of each object before its
   ACL is read or written. A name that fails ends that object with
-  `The distinguished name was refused because it is not well formed`, and the log entry of the
-  `DNValidator` component names the check that failed. Whether the object exists is not part of
-  that check; a missing object fails with the directory's own error.
+  `The distinguished name was refused because it is not well formed`. The check that failed is
+  named in a log entry of the `DNValidator` component with the correlation ID of the run. For a
+  name that is too long or that holds a control character it is a warning. For every other check
+  it is a `Debug` entry, which is in the log file only when the run has `-LogLevel Debug` or
+  `-LogLevel Verbose`. Whether the object exists is not part of that check; a missing object
+  fails with the directory's own error.
 - **OutputPath**: the parent directory must exist.
 - **BackupPath**: for `Restore-OrphanedSidBackup` the directory must exist; for
   `Remove-OrphanedSid` its parent must exist.
