@@ -89,7 +89,8 @@ function Invoke-SIDRemoval {
         USE CASE: Enterprise automation with full logging and tracking
 
     .OUTPUTS
-        SIDRemovalResult. An object with these properties:
+        SIDRemovalResult. A PSCustomObject that carries this type name; the module has no class of
+        the name. Its properties:
         - ModifiedACL: the ACL object after the removal
         - RemovedSIDs: the SIDs whose entries were removed
         - FailedSIDs: the SIDs whose removal raised an error

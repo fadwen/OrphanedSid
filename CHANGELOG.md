@@ -162,9 +162,12 @@ All notable changes to this module are recorded here. Format follows
   `D:\Logs\windows-servers\run.log`, and when it held two dots, such as `..\Logs\run.log`. The
   command warned, finished, and wrote its log to the current folder under another name. A path is
   now read as any cmdlet reads one, and whether its folder can be used is decided by creating the
-  folder and writing to it. A path on a drive that does not exist, a path that is not a file
-  system path and a name with a character that no file can have still send the log to the
-  current folder, each with a warning that says why.
+  folder and writing to it. One folder check is left, and it is for `LogFilePath` only: a path
+  from the configuration file that lies inside the Windows folder or a Program Files folder, as
+  the system reports them, is refused, so that whoever can edit the file does not choose a file
+  there for a privileged run to append to. A path on a drive that does not exist, a path that is
+  not a file system path and a name with a character that no file can have still send the log to
+  the current folder, as a refused `LogFilePath` does, each with a warning that says why.
   ([#149](https://github.com/fadwen/OrphanedSid/issues/149))
 - `Restore-OrphanedSidBackup` reports a backup folder that the running account may not read with
   the error of the file system, `Access to the path ... is denied`. It reported
