@@ -147,7 +147,11 @@ function Set-ObjectACL {
         $requiredProperties = @('SDDL', 'ObjectDN', 'ValidationSignature')
         foreach ($prop in $requiredProperties) {
             if (-not $BackupData.PSObject.Properties[$prop]) {
-                throw "Backup data missing required property: $prop"
+                $exception = [System.IO.InvalidDataException]::new("Backup data missing required property: $prop")
+                $category = [System.Management.Automation.ErrorCategory]::InvalidData
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'BackupDataPropertyMissing', $category, $prop)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
         }
     }
@@ -296,25 +300,11 @@ function Get-RestorationTarget {
         try {
             $issues = @()
 
-            # Validate DN format (strict validation for security)
-            if (-not ($TargetObjectDN -match '^(CN|OU|DC)=.+')) {
+            # The attribute that names an object is set by its class, so any attribute name is
+            # taken, as Test-ValidDistinguishedName does. Whether the object exists is settled
+            # by the lookup below.
+            if (-not ($TargetObjectDN -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=.+')) {
                 $issues += "Invalid DN format: $TargetObjectDN"
-            }
-
-            # Check for potentially malicious input patterns
-            $maliciousPatterns = @(
-                '\.\.\/',           # Directory traversal
-                '[A-Za-z]:\\',      # Windows paths
-                '<script',          # Script injection
-                'DROP\s+TABLE',     # SQL injection
-                'javascript:'       # JavaScript protocol
-            )
-            
-            foreach ($pattern in $maliciousPatterns) {
-                if ($TargetObjectDN -match $pattern) {
-                    $issues += "Invalid DN format: $TargetObjectDN"
-                    break
-                }
             }
 
             # Check if object exists

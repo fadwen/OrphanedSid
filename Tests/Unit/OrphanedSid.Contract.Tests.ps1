@@ -126,6 +126,166 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'Classes' {
+        It 'Declares no static member in any class (#125)' {
+            # On Windows PowerShell 5.1 a static method of a PowerShell class fails with a
+            # NullReferenceException once another runspace of the process has imported the module
+            # and been closed. An instance and its methods keep working. A host application with a
+            # runspace pool reaches that state, and no test in this process can: closing a second
+            # runspace here would break every later test that uses the class.
+            $classes = @(foreach ($path in $script:FileAsts.Keys) {
+                    $script:FileAsts[$path].FindAll(
+                        { param($node) $node -is [System.Management.Automation.Language.TypeDefinitionAst] }, $true)
+                })
+            $static = @(foreach ($class in $classes) {
+                    foreach ($member in $class.Members) {
+                        if ($member.IsStatic) {
+                            "$($class.Name).$($member.Name)"
+                        }
+                    }
+                })
+
+            $classes.Count | Should -BeGreaterThan 0
+            $static | Should -BeNullOrEmpty -Because ($static -join '; ')
+        }
+    }
+
+    Context 'Terminating errors raised with throw or Write-Error -ErrorAction Stop (#130)' {
+        BeforeAll {
+            # Every throw statement and every Write-Error ... -ErrorAction Stop that an advanced
+            # function of Private or Public runs. One inside a script block that the function hands
+            # to a command, such as ForEach-Object or a retry, is counted too: under a caller's
+            # -ErrorAction SilentlyContinue it is swallowed like one written directly in the function,
+            # which was measured on both editions. A class method has no $PSCmdlet, and the script
+            # block of an attribute, such as a ValidateScript, reports a bad value by throwing; these
+            # two are not counted. -ErrorAction is matched in both of its spellings, with a space and
+            # with a colon. A Write-Error that takes it from a splatted hashtable is not seen.
+            $script:OldFormStatements = @(foreach ($path in $script:FileAsts.Keys) {
+                    $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                    if ($relative -like 'Classes*') {
+                        continue
+                    }
+                    $nodes = $script:FileAsts[$path].FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.ThrowStatementAst] -or
+                            ($node -is [System.Management.Automation.Language.CommandAst] -and
+                                $node.GetCommandName() -eq 'Write-Error' -and
+                                $node.Extent.Text -match '-(ErrorAction|EA)(\s+|:\s*)[''"]?Stop')
+                        }, $true)
+                    foreach ($node in $nodes) {
+                        $inAttribute = $false
+                        $owner = $node.Parent
+                        while ($null -ne $owner -and
+                            $owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                            if ($owner -is [System.Management.Automation.Language.AttributeAst]) {
+                                $inAttribute = $true
+                            }
+                            $owner = $owner.Parent
+                        }
+                        if ($null -eq $owner -or $inAttribute) {
+                            continue
+                        }
+                        # [CmdletBinding()] makes a function advanced, and so does a [Parameter()]
+                        # attribute on one of its parameters
+                        $paramBlock = $owner.Body.ParamBlock
+                        $isAdvanced = $false
+                        if ($null -ne $paramBlock) {
+                            $attributeNames = @($paramBlock.Attributes | ForEach-Object { $_.TypeName.Name }) +
+                                @($paramBlock.Parameters | ForEach-Object { $_.Attributes } |
+                                        ForEach-Object { $_.TypeName.Name })
+                            $isAdvanced = @($attributeNames |
+                                    Where-Object { $_ -in 'CmdletBinding', 'Parameter' }).Count -gt 0
+                        }
+                        if (-not $isAdvanced) {
+                            continue
+                        }
+                        [PSCustomObject]@{
+                            Place = "${relative}:$($node.Extent.StartLineNumber)"
+                            File = $relative
+                            # The form of the six catch lines of the public commands; see CLAUDE.md
+                            PassesErrorRecord = $node -is [System.Management.Automation.Language.CommandAst] -and
+                                $node.Extent.Text -match '-ErrorRecord\b'
+                        }
+                    }
+                })
+        }
+
+        It 'Keeps the recorded exception to the six catch lines of the three public commands' {
+            # Write-Error -ErrorRecord $_ -ErrorAction Stop in the catch of begin and of end. CLAUDE.md,
+            # "A fatal error of a public command ends the calling script, against ERR-11", says why
+            # these lines are an exception and that it covers nothing else.
+            $exceptions = @($script:OldFormStatements | Where-Object PassesErrorRecord)
+
+            $exceptions.Count | Should -Be 6 -Because ($exceptions.Place -join '; ')
+            @($exceptions | Group-Object -Property File).Count | Should -Be 3
+            @($exceptions | Where-Object { $_.File -notlike 'Public*' }).Count | Should -Be 0
+        }
+
+        It 'Calls every function that raises with ThrowTerminatingError from inside a try' {
+            # ThrowTerminatingError() ends only the statement that called the function. A caller that
+            # makes the call outside a try carries on with its next line, where a throw in the same
+            # place would have unwound it. So a function that is moved to ThrowTerminatingError()
+            # needs every call to it in a try body, and a new call outside one fails here.
+            #
+            # A call inside a script block takes the try that the block is written in when the block
+            # is handed straight to a command, as the retry blocks are. Measured on both editions:
+            # while the command runs the block, that try is still on the call stack and catches the
+            # error, whether or not the command has a try of its own. A block that is kept, in a
+            # variable for one, can run after that try has ended, where nothing catches the error;
+            # a try outside such a block does not count. A command that stores the block it is
+            # handed and runs it later cannot be seen here.
+            $raising =@($script:Definitions.Keys | Where-Object {
+                    $script:Definitions[$_].Ast.Extent.Text -match '\$PSCmdlet\.ThrowTerminatingError\('
+                })
+            $outside = @(foreach ($path in $script:FileAsts.Keys) {
+                    $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                    $calls = $script:FileAsts[$path].FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.CommandAst] -and
+                            $node.GetCommandName() -in $raising
+                        }, $true)
+                    foreach ($call in $calls) {
+                        $inTry = $false
+                        $inKeptBlock = $false
+                        $previous = $call
+                        $owner = $call.Parent
+                        while ($null -ne $owner -and
+                            $owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                            if ($owner -is [System.Management.Automation.Language.TryStatementAst] -and
+                                $owner.Body -eq $previous -and -not $inKeptBlock) {
+                                $inTry = $true
+                            }
+                            if ($owner -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -and
+                                $owner.Parent -isnot [System.Management.Automation.Language.CommandAst]) {
+                                $inKeptBlock = $true
+                            }
+                            $previous = $owner
+                            $owner = $owner.Parent
+                        }
+                        if (-not $inTry) {
+                            "$($call.GetCommandName()) at ${relative}:$($call.Extent.StartLineNumber)"
+                        }
+                    }
+                })
+
+            $raising.Count | Should -BeGreaterThan 5
+            $outside | Should -BeNullOrEmpty -Because ($outside -join '; ')
+        }
+
+        It 'Has exactly the recorded number of other such statements, which may only go down' {
+            # ERR-11 of the standards: an advanced function ends with $PSCmdlet.ThrowTerminatingError().
+            # The module predates that rule. A change that replaces some of these statements lowers the
+            # number here in the same commit, and a change that adds one fails. When the number
+            # reaches 0, this case stays, as the check that none comes back.
+            $recorded = 63
+            $others = @($script:OldFormStatements | Where-Object { -not $_.PassesErrorRecord })
+            $byFile = ($others | Group-Object -Property File | Sort-Object -Property Count -Descending |
+                    ForEach-Object { "$($_.Count) in $($_.Name)" }) -join '; '
+
+            $others.Count | Should -Be $recorded -Because "the statements are: $byFile"
+        }
+    }
+
     Context 'Calls between module functions' {
         It 'Names only parameters the callee declares' {
             # A unit test that mocks the callee with loose parameters accepts any name; the module does
@@ -150,6 +310,39 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                 }
             }
             @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
+        }
+    }
+
+    Context 'The pattern for the attribute that names a component (#134)' {
+        It 'Is the same in the validator and in the three checks on the restore path' {
+            # The class of an object sets the attribute that names it, so the four places that check
+            # the start of a name take any attribute. When one of them accepts less than the others,
+            # an object is reported and never cleaned, or backed up and never restored. The unit
+            # tests dot-source these files one at a time, so the pattern is written out in each of
+            # them and compared here.
+            $isString = {
+                param($node)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+            }
+            $assignment = $script:Definitions['Test-ValidDistinguishedName'].Ast.Find({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left.Extent.Text -eq '$attributeName'
+                }, $true)
+            $assignment | Should -Not -BeNullOrEmpty
+            $pattern = $assignment.Right.Find($isString, $true).Value
+            # A pattern that came out empty would be found in every string
+            $pattern | Should -Match '^\(.+\)$'
+
+            $different = @(foreach ($name in 'Invoke-RestoreWorkflow', 'Get-RestorationTarget', 'Test-BackupIntegrity') {
+                    $holders = @($script:Definitions[$name].Ast.FindAll($isString, $true) |
+                            Where-Object { $_.Value.Contains("^$pattern=") })
+                    if ($holders.Count -eq 0) {
+                        "$name in $($script:Definitions[$name].File)"
+                    }
+                })
+
+            $different | Should -BeNullOrEmpty -Because "no string there starts with ^$pattern= : $($different -join '; ')"
         }
     }
 

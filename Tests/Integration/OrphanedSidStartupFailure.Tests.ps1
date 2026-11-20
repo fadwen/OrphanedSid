@@ -7,10 +7,11 @@
 # A command called directly from a test therefore behaves correctly even when a command called
 # from a prompt or a scheduled script does not.
 #
-# A second runspace in this process would be cheaper and is not usable: on Windows PowerShell 5.1,
-# once another runspace has imported the module and been closed, the static method
-# [ScriptConfiguration]::LoadFromFile() fails in this one with a NullReferenceException, and every
-# later test that passes -ConfigPath fails with it.
+# A second runspace in this process would be cheaper and is not usable. The cases assert the exit
+# code of the host, under -File and under -Command, which only a process has. And one case closes
+# a second runspace that imported the module (#125): on Windows PowerShell 5.1 that is the state
+# in which a static method of a class of the module fails with a NullReferenceException, and in
+# the Pester process it would last for every test that follows.
 
 BeforeAll {
     $script:RepositoryRoot = (Resolve-Path -LiteralPath (Join-Path -Path $PSScriptRoot -ChildPath '..\..')).Path
@@ -161,6 +162,30 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
         }
     }
 
+    Context 'After another runspace that imported the module is closed (#125)' {
+        It 'Loads the -ConfigPath file and reads the directory' {
+            # On Windows PowerShell 5.1 this is the state in which a static method of a class of
+            # the module fails. PowerShell 7 does not fail there, so this case can only fail on
+            # Windows PowerShell 5.1.
+            $fault = @(
+                '$manifestPath = Join-Path -Path (Get-Module -Name OrphanedSid).ModuleBase -ChildPath ''OrphanedSid.psd1'''
+                '$other = [powershell]::Create()'
+                '$null = $other.AddCommand(''Microsoft.PowerShell.Core\Import-Module'').AddParameter(''Name'', $manifestPath).Invoke()'
+                'if ($other.HadErrors) { throw ''The second runspace could not import the module.'' }'
+                '$other.Dispose()'
+            ) -join "`r`n"
+            $config = ConvertTo-Literal -Text $script:ValidConfig
+            $command = "Find-OrphanedSid $script:Common -ConfigPath $config"
+
+            $run = Invoke-InNewProcess -Command $command -Fault $fault
+
+            ($run.Text -like '*Object reference not set*') | Should-BeFalse
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
+            $run.DirectoryReads | Should-BeGreaterThan 0
+        }
+    }
+
     Context 'Error Handling' {
         It '<CommandName> ends the script with the configuration error and reads nothing from the directory, with <Handling>' -ForEach @(
             @{ CommandName = 'Find-OrphanedSid'; Prefix = ''; Suffix = ''; Handling = 'the default error action' }
@@ -214,6 +239,28 @@ Describe 'A public command whose session cannot start' -Tag 'Integration', 'Publ
             $run.ReachedEnd | Should-BeFalse
             $run.ExitCode | Should-Be 1
             $run.Text | Should-BeLikeString '*No usable search base in the input*'
+            $run.DirectoryReads | Should-Be 0
+        }
+
+        It 'Raises a missing ActiveDirectory module with an error ID, a type and a category of its own (#130)' {
+            # The session helper asks Get-Module whether the module is installed. Here it is told no.
+            # The catch is the one Documentation/Automation.md shows for telling this error apart.
+            $fault = 'function global:Get-Module { [CmdletBinding()] ' +
+                'param([Parameter(Position = 0)]$Name, [switch]$ListAvailable, [switch]$All) ' +
+                'if ($Name -eq ''ActiveDirectory'') { return } ' +
+                'Microsoft.PowerShell.Core\Get-Module @PSBoundParameters }'
+            $command = "try { Find-OrphanedSid $script:Common } catch { " +
+                'if ($_.FullyQualifiedErrorId -like ''ActiveDirectoryModuleMissing,*'') { ' +
+                '''TOLD APART: '' + $_.FullyQualifiedErrorId + '' | '' + $_.Exception.GetType().FullName + ' +
+                ''' | '' + $_.CategoryInfo.Category } else { ''OTHER: '' + $_.FullyQualifiedErrorId } }'
+
+            $run = Invoke-InNewProcess -Command $command -Fault $fault
+
+            $expected = '*TOLD APART: ActiveDirectoryModuleMissing,Find-OrphanedSid | ' +
+                'System.InvalidOperationException | NotInstalled*'
+            $run.Text | Should-BeLikeString $expected
+            $run.ReachedEnd | Should-BeTrue
+            $run.ExitCode | Should-Be 0
             $run.DirectoryReads | Should-Be 0
         }
 

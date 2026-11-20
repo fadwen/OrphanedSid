@@ -9,6 +9,10 @@ class RemovalOperationResult {
     [string[]]$RemovedSIDs
     [string[]]$FailedSIDs
     [string[]]$BlockedSIDs
+    # SIDs that discovery reported and that held no explicit entry on the object when the removal
+    # read it, for example because someone else removed the entry in the meantime. They are not
+    # in FailedSIDs: nothing was attempted for them.
+    [string[]]$NotFoundSIDs
     [bool]$Success
     [string]$ErrorMessage
     [System.TimeSpan]$ProcessingTime
@@ -24,6 +28,7 @@ class RemovalOperationResult {
         $this.RemovedSIDs = @()
         $this.FailedSIDs = @()
         $this.BlockedSIDs = @()
+        $this.NotFoundSIDs = @()
         $this.Success = $false
         $this.ErrorMessage = $null
         $this.ProcessingTime = [System.TimeSpan]::Zero

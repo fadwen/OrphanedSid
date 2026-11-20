@@ -68,7 +68,11 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             $partial = New-TestBackup
             $partial.PSObject.Properties.Remove($Property)
 
-            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $partial } | Should -Throw "*Backup data missing required property: $Property*"
+            $expected = @{
+                ErrorId         = 'BackupDataPropertyMissing,Set-ObjectACL'
+                ExpectedMessage = "Backup data missing required property: $Property"
+            }
+            { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $partial } | Should -Throw @expected
             Should -Invoke Get-RestorationTarget -Times 0 -Exactly
             Should -Invoke Set-Acl -Times 0 -Exactly
         }

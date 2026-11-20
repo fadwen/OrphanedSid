@@ -78,29 +78,46 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             @{ BadDN = "<script>alert('xss')</script>" }
             @{ BadDN = "'; DROP TABLE users; --" }
         ) {
-            { Invoke-RestoreWorkflow -TargetObjectDN $BadDN -BackupFile $script:singleFile } | Should -Throw "*Invalid target object DN format*"
+            { Invoke-RestoreWorkflow -TargetObjectDN $BadDN -BackupFile $script:singleFile } |
+                Should -Throw -ErrorId 'RestoreTargetNameInvalid,Invoke-RestoreWorkflow'
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
         }
 
+        It "Should take a TargetObjectDN that is named by another attribute: <Name> (#134)" -ForEach @(
+            @{ Name = 'L=Springfield,OU=Test,DC=company,DC=com' }
+            @{ Name = 'O=Acme,L=Springfield,OU=Test,DC=company,DC=com' }
+        ) {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $Name
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $Name -BackupFile $file
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $TargetObjectDN -eq $Name }
+        }
+
         It "Should require either BackupFile or BackupPath" {
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN } | Should -Throw "*Either BackupFile or BackupPath must be specified*"
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN } |
+                Should -Throw -ErrorId 'BackupSourceMissing,Invoke-RestoreWorkflow'
         }
 
         It "Should report a BackupFile that does not exist with its full path" {
             $missing = Join-Path $script:folder 'nonexistent.xml'
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $missing } | Should -Throw "*Backup file not found: $missing*"
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $missing } |
+                Should -Throw -ErrorId 'BackupFileNotFound,Invoke-RestoreWorkflow' -ExpectedMessage "*Backup file not found: $missing*"
         }
 
         It "Should report a BackupPath that does not exist" {
             $missing = Join-Path $script:folder 'NoSuchFolder'
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $missing } | Should -Throw "*Backup directory not found: $missing*"
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupPath $missing } |
+                Should -Throw -ErrorId 'BackupDirectoryNotFound,Invoke-RestoreWorkflow' -ExpectedMessage "*Backup directory not found: $missing*"
         }
 
         It "Should refuse a backup file whose extension is not .xml or .clixml" {
             $exe = Join-Path $script:folder 'malicious.exe'
             'dummy content' | Out-File $exe -Force
 
-            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $exe } | Should -Throw "*Invalid file extension. Only .xml and .clixml files are allowed*"
+            { Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $exe } |
+                Should -Throw -ErrorId 'BackupFileExtensionInvalid,Invoke-RestoreWorkflow'
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
         }
 

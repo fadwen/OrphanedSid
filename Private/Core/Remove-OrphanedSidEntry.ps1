@@ -170,6 +170,7 @@ function Remove-OrphanedSidEntry {
         - RemovedSIDs: Array of successfully removed SIDs
         - FailedSIDs: Array of SIDs that failed removal
         - BlockedSIDs: Array of SIDs blocked by security policies
+        - NotFoundSIDs: Array of SIDs that held no explicit entry on the object any more
         - Success: Overall operation success status
         - ErrorMessage: Detailed error information if applicable
         - ProcessingTime: Duration of the removal operation

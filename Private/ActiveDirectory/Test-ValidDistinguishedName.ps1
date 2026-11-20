@@ -5,9 +5,7 @@
     Distinguished Name validation module for Active Directory operations
 
 .DESCRIPTION
-    Provides comprehensive validation of Active Directory Distinguished Names
-    with security filtering, format validation, and LDAP compliance checking.
-    Focused solely on DN validation and security protection.
+    Checks that a string has the form of an Active Directory distinguished name.
 
 .NOTES
     Author: Jeffrey Stuhr
@@ -25,102 +23,66 @@
 function Test-ValidDistinguishedName {
     <#
     .SYNOPSIS
-        Validates Distinguished Name format with comprehensive security checks
+    Tests whether a string has the form of an Active Directory distinguished name.
 
     .DESCRIPTION
-        Performs comprehensive validation of Active Directory Distinguished Names
-        including format validation, length checks, and security character filtering
-        to prevent injection attacks and ensure proper AD object referencing.
+    Checks the form of the name and nothing else. The name is not empty, is at most 1024 characters
+    long and holds no control character. Every component is the name of an attribute, an equals
+    sign and a value, and at least one component is DC=. A comma that is escaped with a backslash,
+    or that sits inside a quoted value, does not end a component.
 
-        BUSINESS VALUE:
-        - Prevents security vulnerabilities through malformed DN injection
-        - Ensures data integrity in Active Directory operations
-        - Provides consistent validation across all AD interactions
-        - Supports compliance requirements for access control validation
-        - Enables secure automation of AD management tasks
+    The attribute that names an object is set by the class of the object in the schema. CN, OU and
+    DC are the common ones; a locality is L= and an organization is O=. The function therefore
+    takes any attribute name, and a dotted number, and does not hold a list of them.
 
-        SECURITY FEATURES:
-        - Injection attack prevention through character filtering
-        - Buffer overflow protection via length validation
-        - Component structure validation for proper LDAP format
-        - Domain component verification for valid AD context
-        - Comprehensive logging for security audit requirements
+    The function does not look the object up, and it does not refuse a character because a shell,
+    a browser or a database gives it a meaning. A distinguished name is passed to the Active
+    Directory cmdlets as one argument, so an ampersand, a semicolon, a pipe, a backtick, two
+    hyphens, a percent sign and a run of dots are ordinary characters in it: an organizational unit
+    named 'R&D' has the distinguished name 'OU=R&D,...'. Refusing such a name would leave an object
+    that Find-OrphanedSid reports and Remove-OrphanedSid can never clean.
+
+    Each refusal is written to the log with its reason: at Warning for a name that is too long or
+    holds a control character, and at Debug for the others.
 
     .PARAMETER DistinguishedName
-        [String] (Mandatory) The Distinguished Name string to validate.
-        Accepts pipeline input for batch validation operations.
-
-        VALIDATION RULES:
-        - Maximum length: 1024 characters (LDAP standard)
-        - Must contain at least one domain component (DC=)
-        - Components must follow CN=, OU=, or DC= format
-        - No dangerous characters allowed (<>:"/\|?*\x00-\x1f\x7f-\x9f)
-        - Each component must have non-empty value after equals sign
-
-        SECURITY CONTEXT:
-        Input validation is critical for preventing LDAP injection attacks
-        and ensuring proper Active Directory object identification.
+    The string to test. An empty or missing value gives $false.
 
     .PARAMETER CorrelationId
-        [String] (Optional) Correlation ID for tracking validation requests.
-        Auto-generated if not provided for audit trail purposes.
+    Correlation ID for the log entries. A new GUID is used when none is given.
+
+    .EXAMPLE
+    Test-ValidDistinguishedName -DistinguishedName 'OU=Users,DC=contoso,DC=com'
+
+    Returns $true.
+
+    .EXAMPLE
+    Test-ValidDistinguishedName -DistinguishedName 'OU=R&D,DC=contoso,DC=com'
+
+    Returns $true. The ampersand is an ordinary character in a distinguished name.
+
+    .EXAMPLE
+    Test-ValidDistinguishedName -DistinguishedName 'O=Acme,L=Springfield,DC=contoso,DC=com'
+
+    Returns $true. An organization and a locality are named by the attributes O and L.
+
+    .EXAMPLE
+    'CN=User1,DC=contoso,DC=com', 'OU=Sales' | Test-ValidDistinguishedName
+
+    Returns $true and then $false. The second name has no DC= component.
+
+    .INPUTS
+    System.String. You can pipe names to this function.
 
     .OUTPUTS
-        [Bool] Returns $true if DN is valid and secure, $false otherwise.
-        All validation failures are logged with appropriate detail level.
-
-    .EXAMPLE
-        PS> Test-ValidDistinguishedName -DistinguishedName "OU=Users,DC=contoso,DC=com"
-
-        DESCRIPTION: Validates a standard organizational unit DN
-        OUTPUT: $true for valid DN format
-        USE CASE: Parameter validation for AD operations
-        SECURITY: Confirms DN meets security and format requirements
-
-    .EXAMPLE
-        PS> Test-ValidDistinguishedName -DistinguishedName "CN=Invalid<>Name,DC=test,DC=com"
-
-        DESCRIPTION: Tests DN with invalid characters
-        OUTPUT: $false due to forbidden characters
-        SECURITY: Prevents potential injection attacks through malformed DNs
-        COMPLIANCE: Supports security audit requirements
-
-    .EXAMPLE
-        PS> @("CN=User1,DC=test,DC=com", "OU=Invalid") | Test-ValidDistinguishedName
-
-        DESCRIPTION: Batch validation of multiple DNs via pipeline
-        OUTPUT: Array of boolean results for each DN
-        INTEGRATION: Enables bulk validation for large operations
-        PERFORMANCE: Processes multiple DNs efficiently
+    System.Boolean. $true when the string has the form of a distinguished name.
 
     .NOTES
-        Author: Jeffrey Stuhr
-        Blog: https://www.techbyjeff.net
-        LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-        SECURITY CONSIDERATIONS:
-        - Filters dangerous characters that could be used in injection attacks
-        - Enforces maximum length to prevent buffer overflow scenarios
-        - Validates proper DN component structure (CN, OU, DC)
-        - Ensures DN contains at least one domain component
-        - Logs security validation events for audit compliance
-
-        PERFORMANCE CHARACTERISTICS:
-        - Validation typically completes in <1ms per DN
-        - Regex operations optimized for common DN patterns
-        - Memory usage: ~1KB per validation operation
-        - Scales linearly with DN length and complexity
-
-        TROUBLESHOOTING:
-        - For DN validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
-        - For AD object access: .\Troubleshooting\Common\Common-Issues.md
-        - For performance tuning: .\Troubleshooting\Performance\Performance-Tuning.md
-
-        KNOWN LIMITATIONS:
-        - Does not validate DN against actual AD objects (existence check)
-        - Unicode characters in DN values may require additional validation
-        - Escaped characters in DN components are not fully validated
-        - Custom schema extensions may require additional validation rules
+    AUTHOR:
+    - Author: Jeffrey Stuhr
+    - Blog: https://techbyjeff.net
+    - LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
+    - Bluesky: https://bsky.app/profile/techbyjeff.net
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -148,44 +110,26 @@ function Test-ValidDistinguishedName {
                 return $false
             }
 
-            # Basic format validation - must contain DC component and proper structure
-            # Make case-insensitive and allow for various valid DN formats
-            if (-not ($DistinguishedName -match '(?i)^(CN|OU|DC)\s*=.+,\s*DC\s*=.+$')) {
+            # The name starts with an attribute and an equals sign. Which attribute names an object
+            # is set by its class, so none is refused here. That a DC= component is present is
+            # checked below, component by component. A comma before it is not required: the root
+            # of a domain with a single label, such as DC=corp, has none.
+            #
+            # The directory takes three spellings of an attribute: its name (OU), its dotted number
+            # (2.5.4.11) and that number after "OID." (OID.2.5.4.11). The dot inside a name is there
+            # for the third, so the pattern is wider than the LDAP grammar on purpose.
+            # Invoke-RestoreWorkflow, Get-RestorationTarget and Test-BackupIntegrity hold the same
+            # pattern, and the contract tests fail when one of the four differs.
+            $attributeName ='([a-z][a-z0-9.-]*|\d+(\.\d+)+)'
+            if (-not ($DistinguishedName -match "^$attributeName\s*=.+$")) {
                 Write-StructuredLog "Distinguished Name validation failed: Invalid format structure" -Level Debug -Component 'DNValidator' -CorrelationId $CorrelationId
                 return $false
             }
 
-            # Security validation - check for specific injection patterns
-            $injectionPatterns = @(
-                '\$\(',           # PowerShell subexpression $(...)
-                '`\$',            # PowerShell variable expansion `$
-                ';',              # Command separator
-                '&',              # Command separator  
-                '\|',             # Pipe operator
-                '`',              # PowerShell backtick
-                '%[0-9A-Fa-f]',   # URL encoded characters like %00
-                '\x00',           # Null bytes
-                '<script',        # Script injection
-                'javascript:',    # JavaScript injection
-                'vbscript:',      # VBScript injection
-                '\.\.\/',         # Path traversal (specific pattern)
-                '\.\.\.',         # Multiple dots for traversal
-                'DROP\s+TABLE',   # SQL injection
-                'UNION\s+SELECT', # SQL injection
-                '--',             # SQL comments
-                '/\*',            # SQL comments
-                '\*/'             # SQL comments
-            )
-            
-            foreach ($pattern in $injectionPatterns) {
-                if ($DistinguishedName -match $pattern) {
-                    Write-StructuredLog "Distinguished Name validation failed: Contains dangerous characters: $pattern" -Level Warning -Component 'DNValidator' -CorrelationId $CorrelationId
-                    return $false
-                }
-            }
-            
-            # Additional dangerous characters (but allow escaped sequences)
-            # Control characters and other dangerous chars
+            # The directory writes a control character in a name as an escape, such as \0A, so a
+            # raw one is not part of a name that the directory returned. No other character is
+            # refused: a distinguished name reaches the Active Directory cmdlets as one argument,
+            # and names such as 'R&D' exist.
             if ($DistinguishedName -match '[\x00-\x1f\x7f-\x9f]') {
                 Write-StructuredLog "Distinguished Name validation failed: Contains control characters" -Level Warning -Component 'DNValidator' -CorrelationId $CorrelationId
                 return $false
@@ -222,7 +166,7 @@ function Test-ValidDistinguishedName {
 
                 # Each component must have format: TYPE=VALUE (case-insensitive)
                 # Handle quoted values and escaped characters - ensure single equals sign
-                if (-not ($component -match '(?i)^(CN|OU|DC)\s*=[^=].*$')) {
+                if (-not ($component -match "^$attributeName\s*=[^=].*$")) {
                     Write-StructuredLog "Distinguished Name validation failed: Invalid component format: $component" -Level Debug -Component 'DNValidator' -CorrelationId $CorrelationId
                     return $false
                 }

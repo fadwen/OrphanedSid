@@ -137,14 +137,16 @@ function Set-ModifiedACL {
             throw "ObjectDN parameter cannot be empty or whitespace"
         }
 
-        # Security validation - detect path traversal attempts
-        if ($ObjectDN -match '\.\..*System32') {
-            throw "Path traversal detected in ObjectDN: $ObjectDN"
-        }
-
-        # Validate that the target object exists (mock implementation will handle this)
+        # The check is of the form of the name only. Whether the object exists is settled by the
+        # write below, which fails with the directory's own error. ThrowTerminatingError() leaves
+        # the function at once: the catch at the end of this function does not receive the error.
         if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDN -CorrelationId $CorrelationId)) {
-            throw "Target path not found: $ObjectDN"
+            $message = "The distinguished name was refused because it is not well formed: $ObjectDN"
+            $exception = [System.ArgumentException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'DistinguishedNameRefused', $category, $ObjectDN)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
 
         $ruleCount = @(Get-AclAccessRule -Acl $ACL).Count
@@ -231,15 +233,10 @@ function Set-ModifiedACL {
         $errorMessage = $_.Exception.Message
         Write-StructuredLog "Failed to apply ACL changes to $ObjectDN : $errorMessage" -Level Error -CorrelationId $CorrelationId
         
-        # For security violations and input validation errors, rethrow the error immediately
-        # Parameter validation (empty/null/whitespace) and malicious patterns should throw
-        if ($errorMessage -match "path traversal|parameter cannot be empty|parameter must not be null") {
-            throw $_.Exception
-        }
-        
-        # DN format validation and malicious DN patterns should also throw
-        if ($errorMessage -match "Target path not found" -and ($ObjectDN -match "C:\\|^[^=,]+$|<script>|'; DROP|etc/passwd|password")) {
-            # Invalid DN format patterns and malicious patterns should throw
+        # A missing ACL and an empty name end the function. A name that is not well formed ends it
+        # too and does not come through here: it is raised above with ThrowTerminatingError(),
+        # which passes this catch by. Only a failure of the write itself is returned as a result.
+        if ($errorMessage -match "parameter cannot be empty|parameter must not be null") {
             throw $_.Exception
         }
         

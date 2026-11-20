@@ -79,11 +79,21 @@ run. `Stop-OrphanedSidSession` clears all of them except `$script:Config` and
 swallowed, and `process` and `end` run with no configuration. No ordinary Pester test can see
 this, because every test runs inside a `try`; `Tests/Integration/OrphanedSidStartupFailure.Tests.ps1`
 runs each command in a process of its own for that reason. It has to be a process and not a second
-runspace: on Windows PowerShell 5.1, once another runspace has imported the module and been
-closed, the static `[ScriptConfiguration]::LoadFromFile()` fails in the first one with a
-`NullReferenceException`, and every later test that passes `-ConfigPath` fails with it (#125).
+runspace: the cases assert the exit code of the host, under `-File` and under `-Command`.
 The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
+
+### The classes have no static member
+
+On Windows PowerShell 5.1, once another runspace of the process has imported the module and been
+closed, a static method of a PowerShell class fails in the first runspace with a
+`NullReferenceException`. A new instance and its instance methods keep working there, and
+PowerShell 7 does not fail at all. `[ScriptConfiguration]::LoadFromFile()` was static, so a host
+application with a runspace pool lost `-ConfigPath` for the rest of the process (#125). It is an
+instance method now, called as `[ScriptConfiguration]::new().LoadFromFile($path)`. The contract
+test fails on a static member in `Classes/`. The behaviour itself is covered by one case of
+`OrphanedSidStartupFailure.Tests.ps1`, in a process of its own: closing a second runspace inside
+the Pester process would break every later test that touches the class on Windows PowerShell 5.1.
 
 ### A fatal error of a public command ends the calling script, against ERR-11
 
@@ -97,7 +107,28 @@ command line whatever the error action is, that the process exits with 1, and th
 is the way to handle it. Replacing the call changes that contract, so it is a change to announce
 in a release, not a tidy-up. The exception covers these six lines only. Every other `throw` and
 `Write-Error -ErrorAction Stop` directly in an advanced function is an ordinary violation of
-ERR-11, to be replaced and not copied (#130).
+ERR-11, to be replaced and not copied (#130). `Tests/Unit/OrphanedSid.Contract.Tests.ps1` counts
+both kinds by syntax tree. A statement inside a script block that the function hands to a
+command, such as `ForEach-Object` or a retry, counts too: a caller's
+`-ErrorAction SilentlyContinue` was measured to swallow it like one written directly in the
+function. Only the script block of an attribute, such as a `ValidateScript`, is left out.
+The six must stay six and stay in `Public/`. The others have a
+recorded number: a change that replaces some of them lowers it in the same commit, and a change
+that adds one fails.
+
+Replacing one is not a matter of swapping the statement. Two things were measured on PowerShell 7
+and Windows PowerShell 5.1. An error raised with `$PSCmdlet.ThrowTerminatingError()` inside a
+`try`, or from a `catch` nested in it, does not enter the `catch` of that same function: it
+leaves the function at once, so a `catch` that logs, cleans up or builds a failed result is
+passed by. And it ends only the statement that called the function: a caller that does not make
+the call inside a `try` carries on with its next line, where a `throw` would have unwound it. So
+before a statement is replaced, check what the function's own `catch` does. That every call to a
+function which raises this way sits inside a `try` is checked by the contract tests. A call inside
+a script block counts with the `try` the block is written in, as long as the block is handed
+straight to a command: that `try` was measured to catch the error while the command runs the
+block. A block kept in a variable can run after the `try` has ended, so it needs a `try` of its
+own. In a block handed to another function of the module, `$PSCmdlet` is that function's, and an
+error raised there carries its name in the error ID.
 
 ### Results are emitted before cleanup
 
@@ -121,6 +152,30 @@ removal. The domain SID is read once per run in `Invoke-MainProcessingLogic` and
 removal; without it every domain SID is rated
 `Unknown Domain` and the run logs `Could not determine the current domain SID`.
 
+### A distinguished name is checked for its form, never for "dangerous" characters
+
+`Test-ValidDistinguishedName` once refused `&`, `;`, `|`, a backtick, `--`, `%`, `...`,
+`<script`, `DROP TABLE` and more, and `Get-ACLForRemoval` refused `..`. Those lists are written
+for text that reaches a shell, a browser or a SQL query. A distinguished name reaches none of
+them: it is one argument to the Active Directory cmdlets. Discovery reads names from the
+directory and does not ask the validator, so `OU=R&D` was reported by `Find-OrphanedSid` and
+refused by `Remove-OrphanedSid` with `Target path not found`, for ever (#128). The same goes for
+the restore: `Get-RestorationTarget` must accept every name a removal accepts, or a backup exists
+that cannot be put back. A check that looks like hardening here is a way to strand entries, so
+add one only for a name that Active Directory itself cannot hold.
+
+The same holds for the attribute that names a component. The validator and three checks on the
+restore path once accepted only `CN=`, `OU=` and `DC=`. The class of an object sets that
+attribute in the schema: a `locality` is `L=...` and an `organization` is `O=...`, and both could
+be reported and never cleaned (#134). The four places now take any attribute name or dotted
+number, with the same pattern, and a change to one of them is a change to all four:
+`Test-ValidDistinguishedName`, `Invoke-RestoreWorkflow`, `Get-RestorationTarget` and
+`Test-BackupIntegrity`. The contract tests fail when one of them holds a different pattern. The
+dot inside a name is deliberate: the directory was measured to take `OU=`, `2.5.4.11=` and
+`OID.2.5.4.11=` for the same object. `Invoke-RestoreWorkflow` still decides between one object and a whole
+subtree by `OU=` or `DC=`, so a container named otherwise is restored as one object, as a `CN=`
+container is.
+
 ### Paths are literal, and directory security descriptors go through two helpers
 
 A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-BackupPath`,
@@ -128,12 +183,17 @@ A file path held in a variable is passed with `-LiteralPath`. `[` and `]` in `-B
 a removal once ran to the end with only the header in its log. `Get-DirectoryObjectAcl` and
 `Set-DirectoryObjectAcl` are the only callers of `Get-Acl` and `Set-Acl` on the `AD:` drive. They
 use `-Path` for an ordinary name, and the `nTSecurityDescriptor` attribute for a name that
-contains `[`, `]`, `*`, `?` or a backtick. The backtick is not an oversight: `-Path` reads it as
-an escape and drops it, so for ``OU=Pay`*`` the drive hands back the descriptor of `OU=Pay*`, a
-different object. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
+contains `[`, `]`, `*`, `?`, a backtick or a backslash. The backtick is not an oversight: `-Path`
+reads it as an escape and drops it, so for ``OU=Pay`*`` the drive hands back the descriptor of
+`OU=Pay*`, a different object. Do not replace that with `-LiteralPath`: on Windows PowerShell 5.1
 `Get-Acl -LiteralPath` fails on the `AD:` drive for every object, with
 `Cannot find path '//RootDSE/...'`, while on PowerShell 7 it works, so only a 5.1 run against a
-real domain notices.
+real domain notices. The backslash is there for the same edition. The directory escapes `,` `+`
+`=` `"` `<` `>` `;` `\` and a leading `#` with one, so a group named `Doe, Jane` is
+`CN=Doe\, Jane`, and on Windows PowerShell 5.1 the drive fails for every such name with
+`The object name has bad syntax` (#133). The tests cannot see either failure by themselves: the
+fake directory in `Tests/Integration/OrphanedSidWorkflow.Tests.ps1` fails the way 5.1 was measured
+to, and has to be kept that way.
 
 ### The removal reads access rules with `Get-AclAccessRule`, not from `.Access`
 

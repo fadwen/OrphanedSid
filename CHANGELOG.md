@@ -6,8 +6,25 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- A `RemovalOperationResult` has a `NotFoundSIDs` property. It lists the SIDs that discovery
+  reported and that held no explicit entry on the object when `Remove-OrphanedSid` came to remove
+  them, for example because someone else removed the entry in the meantime. Such a result was
+  already `Success = False`, and the SIDs were named only in the text of `ErrorMessage`.
+  `FailedSIDs` still lists the entries that were on the object and could not be removed. When a
+  run has such results, the removal summary in the log counts them on a line of its own, under
+  `Failed removals`. ([#129](https://github.com/fadwen/OrphanedSid/issues/129))
+
 ### Changed
 
+- The error that `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` raise
+  when the ActiveDirectory PowerShell module is not installed has an error ID, an exception type
+  and a category of its own: `ActiveDirectoryModuleMissing`, `System.InvalidOperationException`
+  and `NotInstalled`. It was a `WriteErrorException` with the category `NotSpecified` and an
+  error ID that named that exception type. The message is unchanged. A script that matched the
+  old exception type or error ID has to match the new one; `Documentation/Automation.md` shows
+  how. ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 - A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
   is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
   someone else removed in the meantime, and a run that removed some entries and did not find
@@ -30,8 +47,7 @@ All notable changes to this module are recorded here. Format follows
     `AD:` drive returned the security descriptor of the object named without the backtick,
     `OU=Pay*`. `Find-OrphanedSid` reported its orphaned entries under that other object and not
     under its own name. Such a name is now read through the attribute as well and is reported
-    correctly. It still cannot be cleaned, for another reason
-    ([#128](https://github.com/fadwen/OrphanedSid/issues/128)).
+    correctly.
   - `-BackupPath` with brackets failed every removal with `Unable to find the specified file`.
   - `-LogPath` with brackets let the removal run and wrote only the header of the log.
   - `-OutputPath` with brackets wrote no CSV and reported nothing.
@@ -73,6 +89,43 @@ All notable changes to this module are recorded here. Format follows
   whatever the error action is, and `powershell.exe` or `pwsh` exits with code 1, so the step
   fails without it. The guide now says that, and shows how a caller handles such an error with
   `try`/`catch` and carries on. ([#131](https://github.com/fadwen/OrphanedSid/pull/131))
+- On Windows PowerShell 5.1, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` now reach an
+  object whose name contains a comma, `+`, `=`, `"`, `<`, `>`, `;`, a backslash or a leading `#`.
+  Active Directory escapes those characters with a backslash, so a group named `Doe, Jane` is
+  `CN=Doe\, Jane`, and on that edition the `AD:` drive does not read or write such a name. Every
+  removal from such an object failed with `The object name has bad syntax`, although
+  `Find-OrphanedSid` reported its entries. The security descriptor of such an object is now read
+  and written through its `nTSecurityDescriptor` attribute, on both editions. PowerShell 7 was
+  not affected. ([#133](https://github.com/fadwen/OrphanedSid/issues/133))
+- An object whose name, or whose parent's name, contains `&`, `;`, `|`, a backtick, `--`, `/*`,
+  `..` or `%` followed by a hexadecimal digit can now be cleaned, restored and used as a search
+  base. An organizational unit named `R&D` is the plain case. `Find-OrphanedSid` reported the
+  orphaned entries of such an object, `Remove-OrphanedSid` failed for it with
+  `Target path not found`, although the object exists, and `-SearchBase 'OU=R&D,...'` was
+  rejected at parameter validation. The module refused those characters as "injection patterns".
+  A distinguished name is passed to Active Directory as one argument, where they are ordinary
+  characters, so the name is now checked for its form only. `Restore-OrphanedSidBackup` had a
+  shorter list of the same kind, which refused a target whose name contains `../`, `<script`,
+  `javascript:`, `DROP TABLE` or a drive letter and a backslash; that list is gone too.
+  ([#128](https://github.com/fadwen/OrphanedSid/issues/128))
+- A name that is refused because it is not well formed is now reported as
+  `The distinguished name was refused because it is not well formed`, and no longer as
+  `Target path not found`. ([#128](https://github.com/fadwen/OrphanedSid/issues/128))
+- An object that is named by an attribute other than `CN`, `OU` or `DC`, and everything below
+  it, can now be cleaned, restored and used as a search base. An object of class `locality` is
+  `L=...` and one of class `organization` is `O=...`; `Find-OrphanedSid` reported their orphaned
+  entries, and `Remove-OrphanedSid` refused them. Any attribute name is now accepted in a
+  distinguished name, by the removal and by the three checks of the restore.
+  ([#134](https://github.com/fadwen/OrphanedSid/issues/134))
+- The root of a domain with a single label, such as `DC=corp`, is accepted as a search base. It
+  was refused, and it is the default search base, so in such a domain every run needed an
+  explicit `-SearchBase`. ([#134](https://github.com/fadwen/OrphanedSid/issues/134))
+- On Windows PowerShell 5.1, `-ConfigPath` works in an application that hosts PowerShell with
+  more than one runspace. Once a second runspace had imported the module and been closed,
+  `Find-OrphanedSid` and `Remove-OrphanedSid` failed with
+  `Object reference not set to an instance of an object` whenever `-ConfigPath` was given, for
+  the rest of the process. A console session and PowerShell 7 were not affected.
+  ([#125](https://github.com/fadwen/OrphanedSid/issues/125))
 
 ## [1.1.0] - 2026-11-11
 

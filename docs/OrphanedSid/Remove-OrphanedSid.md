@@ -454,7 +454,8 @@ Distinguished names as strings, or objects with a `DistinguishedName` property: 
 
 One object per object with orphaned entries to remove, covering all of them, including an
 object whose removal failed (`Success` false), with `ObjectDN`, `IntendedRemovals`,
-`ActualRemovals`, `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `Success`, `ErrorMessage`,
+`ActualRemovals`, `FailedRemovals`, `RemovedSIDs`, `FailedSIDs`, `BlockedSIDs`, `NotFoundSIDs`, `Success`,
+`ErrorMessage`,
 `ProcessingTime`, `CorrelationId`, `SecurityValidation` and `BackupFile`, the full path of the
 backup written before the change. Its folder is the one to pass to `Restore-OrphanedSidBackup
 -BackupPath`. `BackupFile` is empty under `-WhatIf` and when the removal stopped before the backup.
@@ -463,6 +464,12 @@ backup written before the change. Its folder is the one to pass to `Restore-Orph
 or verified, and when an entry that was reported for removal was no longer on the object.
 `ErrorMessage` says which, and in the last case names the SIDs; the entries that were found are
 still removed, and `ActualRemovals` is then lower than `IntendedRemovals`.
+
+`NotFoundSIDs` lists the SIDs of that last case: entries that discovery reported and that were
+no longer on the object, for example because someone else removed them in the meantime.
+`FailedSIDs` lists the entries that were on the object and could not be removed. A result with
+`NotFoundSIDs` and no `FailedSIDs`, whose `ErrorMessage` names only those SIDs, left nothing
+behind that a second run would find. `NotFoundSIDs` is empty under `-WhatIf`.
 ## NOTES
 
 Author: Jeffrey Stuhr

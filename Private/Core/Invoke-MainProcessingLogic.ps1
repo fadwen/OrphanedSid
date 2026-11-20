@@ -197,7 +197,13 @@ function Invoke-MainProcessingLogic {
         # StreamingResultsManager class is loaded via SecureClassImporter in main script
         # Verify it's available before proceeding
         if (-not ([System.Management.Automation.PSTypeName]'StreamingResultsManager').Type) {
-            throw "StreamingResultsManager class not available - ensure SecureClassImporter loaded all classes successfully"
+            $message = 'StreamingResultsManager class not available - ' +
+                'ensure SecureClassImporter loaded all classes successfully'
+            $exception = [System.InvalidOperationException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'StreamingResultsManagerMissing', $category, 'StreamingResultsManager')
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }        # Initialize streaming results manager instead of in-memory arrays
         $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "OrphanedSid-$CorrelationId"
 

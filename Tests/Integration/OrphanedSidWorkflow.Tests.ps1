@@ -164,7 +164,9 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
         Mock -ModuleName OrphanedSid Get-ADObject {
             if ($SearchBase) {
                 foreach ($dn in @($script:Directory.Keys)) {
-                    if ($dn -like "*$SearchBase") {
+                    # Not -like: a search base is a name, and one with a backtick or a bracket would
+                    # be read as a pattern
+                    if ($dn.EndsWith([string]$SearchBase, [System.StringComparison]::OrdinalIgnoreCase)) {
                         [PSCustomObject]@{
                             DistinguishedName    = $dn
                             Name                 = ($dn -split ',')[0] -replace '^\w+='
@@ -208,6 +210,10 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             } elseif ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn)) {
                 return
             }
+            # Measured on Windows PowerShell 5.1: the drive does not read a name in which the
+            # directory escaped a character with a backslash (#133). PowerShell 7 reads it; the
+            # fake behaves like the edition that fails.
+            if ($dn.Contains('\')) { throw 'The object name has bad syntax' }
             if (-not $script:Directory.Contains($dn)) { throw "Cannot find path '$Path' dn=[$dn] count=$($script:Directory.Count) keys=$(@($script:Directory.Keys) -join '|')" }
             Get-DirectoryAcl -DN $dn
         }
@@ -219,10 +225,11 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             if ([System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($dn) -or $dn.Contains('`')) {
                 throw "Set-Acl -Path was called with a name that contains wildcard characters: $dn"
             }
+            if ($dn.Contains('\')) { throw 'The object name has bad syntax' }
             $script:Directory[$dn].Sddl = $AclObject.GetSecurityDescriptorSddlForm('All')
         }
 
-        # The attribute route the module takes for a name with wildcard characters
+        # The attribute route the module takes for a name with wildcard characters or a backslash
         Mock -ModuleName OrphanedSid Set-ADObject {
             $dn = [string]$Identity
             if (-not $script:Directory.Contains($dn)) { throw "Directory object not found: $dn" }
@@ -546,6 +553,41 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @(Get-LogCorrelationId -Path $log | Where-Object { $_ -ne 'RUN-42R' } | Select-Object -Unique) | Should -Be @()
         }
 
+        It 'Lists an entry that was gone when the removal read the object in NotFoundSIDs (#129)' {
+            # Someone else removes the entry between discovery and removal. Discovery makes the
+            # first read of the object through the AD: drive, and the removal makes the second.
+            $script:GoneTarget = "CN=Payroll,OU=Finance,$script:DomainDN"
+            $script:GoneReads = 0
+            Mock -ModuleName OrphanedSid Get-Acl -ParameterFilter { $Path -eq "AD:\$script:GoneTarget" } {
+                $script:GoneReads++
+                if ($script:GoneReads -eq 2) {
+                    $entry = "(A;;RPWP;;;$script:OrphanSid)"
+                    $script:Directory[$script:GoneTarget].Sddl = $script:Directory[$script:GoneTarget].Sddl.Replace($entry, '')
+                }
+                Get-DirectoryAcl -DN $script:GoneTarget
+            }
+
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            $script:GoneReads | Should -BeGreaterThan 1
+            $result = @($results | Where-Object ObjectDN -eq $script:GoneTarget)
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeFalse
+            $result[0].NotFoundSIDs | Should -Be @($script:OrphanSid)
+            $result[0].FailedSIDs.Count | Should -Be 0
+            $result[0].ActualRemovals | Should -Be 0
+
+            # The expression Documentation/Automation.md gives for telling such a result apart
+            $failed = @($results | Where-Object { -not $_.Success })
+            $alreadyGone = @($failed | Where-Object { $_.NotFoundSIDs.Count -gt 0 -and $_.FailedSIDs.Count -eq 0 })
+            $alreadyGone.Count | Should -Be 1
+            $alreadyGone[0].ObjectDN | Should -Be $script:GoneTarget
+
+            $summary = @(Get-Content -LiteralPath (Join-Path $TestDrive 'remove.log')) -match 'no longer on the object'
+            @($summary).Count | Should -Be 1
+            $summary[0] | Should -BeLike '*Of the failed removals, with an entry that was no longer on the object: 1 (1 SID(s))*'
+        }
+
         It 'Leaves an object with no orphaned ACE untouched' {
             $null = Invoke-RemoveOrphanedSid
 
@@ -709,6 +751,204 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             # The file protects the SID that is otherwise reported, so its absence shows the file was read
             $results.OrphanedSID | Should -Not -Contain $script:OrphanSid
             $results.OrphanedSID | Should -Contain $script:FailingSid
+        }
+    }
+
+    Context 'A character in an object name that another interpreter gives a meaning (#128)' {
+        BeforeEach {
+            # The loop variables must not be called $name or $dn: the cases below receive $Name from
+            # -ForEach, and a variable of that name set here would replace it in every case.
+            $containerNames = @(
+                'R&D', 'Ops | Support', 'Tick`Name', 'Smith--Jones', '100%Cotton', 'Misc...', 'Sales\; Marketing'
+            )
+            foreach ($containerName in $containerNames) {
+                $containerDN = "OU=$containerName,OU=Finance,$script:DomainDN"
+                $script:Directory[$containerDN] =
+                    New-DirectoryObject -DN $containerDN -ObjectClass 'organizationalUnit' -Trustee $script:LiveSid, $script:OrphanSid
+                $script:OriginalSddl[$containerDN] = $script:Directory[$containerDN].Sddl
+            }
+            $script:BelowDN = "CN=Below,OU=R&D,OU=Finance,$script:DomainDN"
+            $script:Directory[$script:BelowDN] =
+                New-DirectoryObject -DN $script:BelowDN -ObjectClass 'group' -Trustee $script:LiveSid, $script:OrphanSid
+            $script:OriginalSddl[$script:BelowDN] = $script:Directory[$script:BelowDN].Sddl
+            $script:OddDNs = @(
+                foreach ($containerName in $containerNames) {
+                    "OU=$containerName,OU=Finance,$script:DomainDN"
+                }
+                $script:BelowDN
+            )
+        }
+
+        # One removal run for all eight objects: a run takes several seconds, whatever it finds.
+        It 'Removes the orphaned entry from each such object, and from an object below one' {
+            $targets = @($script:OddDNs)
+            $targets.Count | Should -Be 8
+
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            # Each line names an object that was not cleaned, with the error the removal gave for it
+            $notCleaned = @(foreach ($target in $targets) {
+                    $result = @($results | Where-Object ObjectDN -eq $target)
+                    $trustees = @(Get-TrusteeSid -DN $target)
+                    $cleaned = $result.Count -eq 1 -and $result[0].Success -and $result[0].ActualRemovals -eq 1 -and
+                        $trustees -notcontains $script:OrphanSid -and $trustees -contains $script:LiveSid
+                    if (-not $cleaned) {
+                        "$target [$(@($result.ErrorMessage) -join '; ')]"
+                    }
+                })
+            $notCleaned | Should -BeNullOrEmpty
+        }
+
+        It 'Takes the container named <Name> as the search base' -ForEach @(
+            @{ Name = 'R&D'; Expected = 2 }
+            @{ Name = 'Ops | Support'; Expected = 1 }
+            @{ Name = 'Tick`Name'; Expected = 1 }
+            @{ Name = 'Smith--Jones'; Expected = 1 }
+            @{ Name = '100%Cotton'; Expected = 1 }
+            @{ Name = 'Misc...'; Expected = 1 }
+            @{ Name = 'Sales\; Marketing'; Expected = 1 }
+        ) {
+            $dn = "OU=$Name,OU=Finance,$script:DomainDN"
+            $log = Join-Path $TestDrive 'find-base.log'
+
+            $results = @(Find-OrphanedSid -SearchBase $dn -LogPath $log -SuppressConsoleOutput)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            $orphaned.Count | Should -Be $Expected
+            @($orphaned | Where-Object ObjectDN -eq $dn).Count | Should -Be 1
+        }
+
+        It 'Restores an object below a container named R&D from its backup' {
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $script:BelowDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $script:BelowDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-below.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $script:BelowDN | Should -Contain $script:OrphanSid
+        }
+    }
+
+    Context 'An object that is named by an attribute other than CN, OU or DC (#134)' {
+        BeforeEach {
+            $script:LocalityDN = "L=Springfield,OU=Finance,$script:DomainDN"
+            $script:OrganizationDN = "O=Acme,$script:LocalityDN"
+            $script:DepotDN = "OU=Depot,$script:OrganizationDN"
+            $classes = @{
+                $script:LocalityDN = 'locality'
+                $script:OrganizationDN = 'organization'
+                $script:DepotDN = 'organizationalUnit'
+            }
+            foreach ($entry in $classes.GetEnumerator()) {
+                $script:Directory[$entry.Key] =
+                    New-DirectoryObject -DN $entry.Key -ObjectClass $entry.Value -Trustee $script:LiveSid, $script:OrphanSid
+                $script:OriginalSddl[$entry.Key] = $script:Directory[$entry.Key].Sddl
+            }
+        }
+
+        It 'Removes the orphaned entry from a locality, an organization below it and a unit below that' {
+            $targets = @($script:LocalityDN, $script:OrganizationDN, $script:DepotDN)
+
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            # Each line names an object that was not cleaned, with the error the removal gave for it
+            $notCleaned = @(foreach ($target in $targets) {
+                    $result = @($results | Where-Object ObjectDN -eq $target)
+                    $trustees = @(Get-TrusteeSid -DN $target)
+                    $cleaned = $result.Count -eq 1 -and $result[0].Success -and $result[0].ActualRemovals -eq 1 -and
+                        $trustees -notcontains $script:OrphanSid -and $trustees -contains $script:LiveSid
+                    if (-not $cleaned) {
+                        "$target [$(@($result.ErrorMessage) -join '; ')]"
+                    }
+                })
+            $notCleaned | Should -BeNullOrEmpty
+        }
+
+        It 'Takes a locality as the search base' {
+            $log = Join-Path $TestDrive 'find-locality.log'
+
+            $results = @(Find-OrphanedSid -SearchBase $script:LocalityDN -LogPath $log -SuppressConsoleOutput)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            $orphaned.Count | Should -Be 3
+            @($orphaned | Where-Object ObjectDN -eq $script:LocalityDN).Count | Should -Be 1
+        }
+
+        It 'Restores <Case> from its backup' -ForEach @(
+            @{ Case = 'a locality'; Target = 'LocalityDN' }
+            @{ Case = 'an organization below a locality'; Target = 'OrganizationDN' }
+        ) {
+            $targetDN = Get-Variable -Name $Target -Scope Script -ValueOnly
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $targetDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $targetDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-locality.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $targetDN | Should -Contain $script:OrphanSid
+        }
+    }
+
+    Context 'A character that the directory escapes in an object name (#133)' {
+        BeforeEach {
+            $script:EscapedDN = 'CN=Doe\, Jane,OU=Finance,' + $script:DomainDN
+            $script:Directory[$script:EscapedDN] =
+                New-DirectoryObject -DN $script:EscapedDN -ObjectClass 'group' -Trustee $script:LiveSid, $script:OrphanSid
+            $script:OriginalSddl[$script:EscapedDN] = $script:Directory[$script:EscapedDN].Sddl
+        }
+
+        It 'Reports the orphaned entry of an object whose name holds an escaped comma' {
+            $results = @(Invoke-FindOrphanedSid)
+
+            $orphaned = @($results | Where-Object VerificationStatus -eq 'Orphaned')
+            @($orphaned | Where-Object ObjectDN -eq $script:EscapedDN).Count | Should -Be 1
+        }
+
+        It 'Removes the orphaned entry from an object whose name holds an escaped comma, and backs it up' {
+            $results = @(Invoke-RemoveOrphanedSid)
+
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Not -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Contain $script:LiveSid
+            $result = @($results | Where-Object ObjectDN -eq $script:EscapedDN)
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeTrue
+            $result[0].ActualRemovals | Should -Be 1
+            Test-Path -LiteralPath $result[0].BackupFile -PathType Leaf | Should -BeTrue
+        }
+
+        It 'Restores an object whose name holds an escaped comma from its backup' {
+            $null = Invoke-RemoveOrphanedSid
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Not -Contain $script:OrphanSid
+            $backupFolder = (Get-ChildItem -LiteralPath $script:BackupRoot -Directory | Select-Object -First 1).FullName
+
+            $parameters = @{
+                TargetObjectDN        = $script:EscapedDN
+                BackupPath            = $backupFolder
+                LogPath               = Join-Path $TestDrive 'restore-escaped.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Contain $script:OrphanSid
+            Get-TrusteeSid -DN $script:EscapedDN | Should -Contain $script:LiveSid
         }
     }
 

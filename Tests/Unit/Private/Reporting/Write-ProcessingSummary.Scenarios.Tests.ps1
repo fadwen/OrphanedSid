@@ -199,6 +199,27 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Removal operations attempted: 3' }
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Successful removals: 2' }
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Failed removals: 1' }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like '*no longer on the object*' }
+        }
+
+        It 'Counts the failed removals in which an entry was no longer on the object, and their SIDs (#129)' {
+            $results = New-DiscoveryResults
+            $results.RemovalResults = @(
+                [PSCustomObject]@{ ObjectDN = 'CN=A,DC=contoso,DC=com'; Success = $true; NotFoundSIDs = @() }
+                [PSCustomObject]@{ ObjectDN = 'CN=B,DC=contoso,DC=com'; Success = $false; NotFoundSIDs = @('S-1-5-21-1-2-3-1001') }
+                [PSCustomObject]@{
+                    ObjectDN = 'CN=C,DC=contoso,DC=com'; Success = $false
+                    NotFoundSIDs = @('S-1-5-21-1-2-3-1002', 'S-1-5-21-1-2-3-1003')
+                }
+                [PSCustomObject]@{ ObjectDN = 'CN=D,DC=contoso,DC=com'; Success = $false; NotFoundSIDs = @() }
+            )
+
+            Write-ProcessingSummary -ProcessingResults $results
+
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Failed removals: 3' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Of the failed removals, with an entry that was no longer on the object: 2 (3 SID(s))'
+            }
         }
     }
 

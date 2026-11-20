@@ -49,10 +49,21 @@ Remove-OrphanedSid -SearchBase "OU=Test,DC=contoso,DC=com" -Force -SuppressConso
 ## Input Validation
 
 - **SearchBase**: each value is checked by `Test-ValidDistinguishedName`
-  (`Private\ActiveDirectory\Test-ValidDistinguishedName.ps1`) before processing. It requires the
-  form `(CN|OU|DC)=...,DC=...`, rejects control characters and a set of injection patterns, and
-  validates each component. A failing value stops `Invoke-MainProcessingLogic` with a parameter
-  validation error.
+  (`Private\ActiveDirectory\Test-ValidDistinguishedName.ps1`) before processing. It requires
+  components of the form `attribute=value` with at least one `DC=` component, rejects control
+  characters, and validates each component. The attribute may be any attribute name, because the
+  class of an object decides which one names it: a locality is `L=...` and an organization is
+  `O=...`. It checks the form of the name only: `&`, `;`, `|`, a backtick, `--`, `%` and dots are
+  ordinary characters in a distinguished name, and a name such as `OU=R&D,DC=contoso,DC=com` is
+  accepted. A failing value stops `Invoke-MainProcessingLogic` with a parameter validation error.
+- **Object names during removal**: the same function checks the name of each object before its
+  ACL is read or written. A name that fails ends that object with
+  `The distinguished name was refused because it is not well formed`. The check that failed is
+  named in a log entry of the `DNValidator` component with the correlation ID of the run. For a
+  name that is too long or that holds a control character it is a warning. For every other check
+  it is a `Debug` entry, which is in the log file only when the run has `-LogLevel Debug` or
+  `-LogLevel Verbose`. Whether the object exists is not part of that check; a missing object
+  fails with the directory's own error.
 - **OutputPath**: the parent directory must exist.
 - **BackupPath**: for `Restore-OrphanedSidBackup` the directory must exist; for
   `Remove-OrphanedSid` its parent must exist.

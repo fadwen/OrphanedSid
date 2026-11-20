@@ -42,6 +42,29 @@ In the `catch`, `$_` is the error that ended the run. `$found` is not assigned w
 so the example tests a flag of its own and does not read `$found`: a failed run must not be taken
 for a run that found nothing.
 
+A script that needs to tell one critical error from another reads `$_.FullyQualifiedErrorId` in
+the `catch`. It holds an error ID, a comma, and the name of the command that was called. These
+failures have an ID of their own:
+
+| Error ID | Exception type | Meaning |
+|----------|----------------|---------|
+| `ActiveDirectoryModuleMissing` | `System.InvalidOperationException` | The ActiveDirectory PowerShell module is not installed on this computer |
+
+```powershell
+try {
+    $found = @(Find-OrphanedSid -SearchBase 'DC=contoso,DC=com' -SuppressConsoleOutput)
+} catch {
+    if ($_.FullyQualifiedErrorId -like 'ActiveDirectoryModuleMissing,*') {
+        Write-Warning 'Install RSAT: Active Directory PowerShell on this computer.'
+    } else {
+        Write-Warning "Discovery did not finish: $($_.Exception.Message)"
+    }
+}
+```
+
+Every other critical error still arrives as a `RuntimeException` whose error ID is the text of
+its message, so those can only be told apart by that text for now.
+
 ### Pipeline Output
 
 | Command | Writes to the pipeline |
@@ -52,6 +75,21 @@ for a run that found nothing.
 
 `$found = @(Find-OrphanedSid ...)` captures the findings directly. `-OutputPath` writes the same
 data to CSV in addition.
+
+A `RemovalOperationResult` with `Success = False` names what went wrong in two lists. `FailedSIDs`
+holds the entries that were on the object and could not be removed. `NotFoundSIDs` holds the
+entries that discovery reported and that were no longer on the object, for example because
+someone else removed them between the two steps. A script that retries or alerts on failures can
+treat a result differently when `FailedSIDs` is empty and `NotFoundSIDs` is not:
+
+```powershell
+$results = @(Remove-OrphanedSid -SearchBase 'OU=Test,DC=contoso,DC=com' -Force -SuppressConsoleOutput)
+$failed = @($results | Where-Object { -not $_.Success })
+$alreadyGone = @($failed | Where-Object { $_.NotFoundSIDs.Count -gt 0 -and $_.FailedSIDs.Count -eq 0 })
+```
+
+Such a result can still carry another failure, such as a changed ACL that could not be written;
+`ErrorMessage` then names it before the entries that were not found.
 
 ## Parameters for Unattended Runs
 
