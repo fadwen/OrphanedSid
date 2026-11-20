@@ -76,8 +76,9 @@ function Get-ADObjectFromSearchBase {
         # A transient failure is retried; one that persists is raised, so Get-ADObjectsSequential
         # counts the search base as failed, warns, and records it in the security log. Swallowing it
         # here once made an unreadable search base count as a successful one with no objects. The
-        # retry raises with ThrowTerminatingError(), which ends only the statement that called it:
-        # without this try the lines below would run with nothing read.
+        # retry raises with ThrowTerminatingError(), which goes to the nearest try on the call
+        # stack. Called by code that has none, and without this try, it would end only the
+        # statement below, and the lines after it would run with nothing read.
         try {
             $objects = Invoke-ADOperationWithRetry -ScriptBlock {
                 Get-ADObject -SearchBase $SearchBase -Filter * -Properties $allProperties -ErrorAction Stop
