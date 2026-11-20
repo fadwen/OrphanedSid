@@ -90,7 +90,12 @@ jobs:
       - name: Stage and verify (no publish)
         if: ${{ inputs.dryRun || !startsWith(github.ref, 'refs/tags/') }}
         shell: pwsh
-        run: ./Build/Publish-Module.ps1 -WhatIf
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./Build/Publish-Module.ps1 -WhatIf
+          # On the summary page of the run, so that a rehearsal is not taken for a release
+          $summary = 'Rehearsal: the package was staged and verified. Nothing was published.'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary -Encoding utf8
 
       - name: Publish
         if: ${{ startsWith(github.ref, 'refs/tags/') && !inputs.dryRun }}
