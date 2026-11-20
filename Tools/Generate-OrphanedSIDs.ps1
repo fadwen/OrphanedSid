@@ -82,6 +82,10 @@ function New-TestPassword {
         if ($index -lt $characterSets.Count) {
             $characters = $characterSets[$index]
         }
+        # A byte has 256 values. The 64 characters of all sets divide that evenly, and so do the
+        # 8 digits, so those positions are uniform. The sets of 24, 25 and 7 do not: their first
+        # 16, 6 and 4 characters are each a little more likely than the rest. That is left as it
+        # is, for the passwords of accounts that the same run deletes.
         $password.AppendChar($characters[$randomBytes[$index] % $characters.Length])
     }
     $password.MakeReadOnly()
