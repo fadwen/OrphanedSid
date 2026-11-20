@@ -15,12 +15,14 @@ BeforeAll {
     $toolPath = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..\..\Tools\Generate-OrphanedSIDs.ps1").Path
     $tokens = $null
     $parseErrors = $null
-    $script:ToolAst = [System.Management.Automation.Language.Parser]::ParseFile($toolPath, [ref]$tokens, [ref]$parseErrors)
+    $script:ToolAst = [System.Management.Automation.Language.Parser]::ParseFile(
+        $toolPath, [ref]$tokens, [ref]$parseErrors)
     $script:ParseErrors = @($parseErrors)
 
     $definition = $script:ToolAst.Find({
             param($node)
-            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-TestPassword'
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'New-TestPassword'
         }, $true)
     . ([scriptblock]::Create($definition.Extent.Text))
 
