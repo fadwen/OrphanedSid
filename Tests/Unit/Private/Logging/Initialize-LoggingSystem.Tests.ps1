@@ -108,10 +108,16 @@ Describe "Initialize-LoggingSystem" -Tag @('Unit', 'Logging', 'Initialization') 
     Context "Error Handling" {
         
         It "Should report a failure while setting state as a terminating error" {
-            # The verbose line inside the try block fails; the catch rewraps it with -ErrorAction Stop
+            # The verbose line inside the try block fails; the catch raises it again under an error
+            # ID of its own, with the cause as the inner exception
             Mock Write-Verbose { throw "System error" } -ParameterFilter { $Message -eq 'Logging system state initialized successfully' }
 
-            { Initialize-LoggingSystem } | Should -Throw -ExpectedMessage '*Failed to initialize logging system state: System error*'
+            $expected = @{
+                ErrorId         = 'LoggingStateNotInitialized,Initialize-LoggingSystem'
+                ExpectedMessage = 'Failed to initialize logging system state: System error'
+                ExceptionType   = [System.InvalidOperationException]
+            }
+            { Initialize-LoggingSystem } | Should -Throw @expected
         }
     }
 }

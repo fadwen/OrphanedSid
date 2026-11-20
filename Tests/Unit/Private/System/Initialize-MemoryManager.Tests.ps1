@@ -132,8 +132,13 @@ Describe "Initialize-MemoryManager" -Tag 'Unit' {
         It "Should log the failure at Error level and stop with the reason" {
             Mock Write-StructuredLog { throw 'log sink unavailable' } -ParameterFilter { $Level -eq 'Information' }
 
+            $expected = @{
+                ErrorId         = 'MemoryManagerNotInitialized,Initialize-MemoryManager'
+                ExpectedMessage = 'Memory manager initialization failed: log sink unavailable'
+                ExceptionType   = [System.InvalidOperationException]
+            }
             { Initialize-MemoryManager -MaxMemoryMB 1024 -CheckInterval 25 -CorrelationId 'fail-id' } |
-                Should -Throw -ExpectedMessage 'Memory manager initialization failed: log sink unavailable'
+                Should -Throw @expected
 
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Error' -and $Message -eq 'Failed to initialize memory manager: log sink unavailable' -and $CorrelationId -eq 'fail-id'

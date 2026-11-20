@@ -36,6 +36,11 @@ All notable changes to this module are recorded here. Format follows
   error ID. The messages are unchanged, and each still ends the calling script. A script that
   matched the old error ID has to match the new one; `Documentation/Automation.md` lists them.
   ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
+- A step of the module's own start-up that fails, such as the set-up of the log or of the memory
+  manager, raises an error with an ID of its own as well. Such an error was a
+  `WriteErrorException` with the category `NotSpecified`, or a `RuntimeException`. None of them
+  is expected in normal use; `Documentation/Automation.md` names them.
+  ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 - A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
   is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
   someone else removed in the meantime, and a run that removed some entries and did not find

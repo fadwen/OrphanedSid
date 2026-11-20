@@ -308,7 +308,7 @@ function Write-ProcessingSummary {
         }
         catch {
             Write-StructuredLog "Error generating processing summary: $($_.Exception.Message)" -Level Error -Component 'Summary' -CorrelationId $CorrelationId
-            throw
+            $PSCmdlet.ThrowTerminatingError($_)
         }
     }
 }

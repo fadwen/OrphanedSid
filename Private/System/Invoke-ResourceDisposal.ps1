@@ -153,7 +153,12 @@ function Invoke-ResourceCleanup {
         }
         catch {
             Write-StructuredLog "Resource cleanup operation failed: $($_.Exception.Message)" -Level Error -Component $script:MemoryManagementConfig.LogComponent -CorrelationId $CorrelationId
-            Write-Error "Resource cleanup failed: $($_.Exception.Message)" -ErrorAction Stop
+            $message = "Resource cleanup failed: $($_.Exception.Message)"
+            $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'ResourceCleanupFailed', $category, $null)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
     }
 

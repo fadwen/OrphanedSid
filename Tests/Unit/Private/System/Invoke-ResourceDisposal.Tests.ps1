@@ -160,6 +160,23 @@ Describe 'Invoke-ResourceCleanup' -Tag 'Unit', 'System' {
     }
 
     Context 'Correlation tracking' {
+        It 'Logs at Error level and ends with ResourceCleanupFailed when the cleanup cannot start' {
+            Mock Write-StructuredLog { throw 'log sink unavailable' } -ParameterFilter {
+                $Message -eq 'Starting resource cleanup and disposal...'
+            }
+
+            $expected = @{
+                ErrorId         = 'ResourceCleanupFailed,Invoke-ResourceCleanup'
+                ExpectedMessage = 'Resource cleanup failed: log sink unavailable'
+                ExceptionType   = [System.InvalidOperationException]
+            }
+            { Invoke-ResourceCleanup -CorrelationId 'rc-fail' } | Should -Throw @expected
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'rc-fail' -and
+                $Message -eq 'Resource cleanup operation failed: log sink unavailable'
+            }
+        }
+
         It 'Passes the supplied CorrelationId to every log entry' {
             Invoke-ResourceCleanup -AdditionalResources @($script:probe) -CorrelationId 'corr-123'
 

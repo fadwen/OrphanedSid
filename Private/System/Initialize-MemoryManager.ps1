@@ -143,7 +143,12 @@ function Initialize-MemoryManager {
         }
         catch {
             Write-StructuredLog "Failed to initialize memory manager: $($_.Exception.Message)" -Level Error -Component $script:MemoryManagementConfig.LogComponent -CorrelationId $CorrelationId
-            Write-Error "Memory manager initialization failed: $($_.Exception.Message)" -ErrorAction Stop
+            $message = "Memory manager initialization failed: $($_.Exception.Message)"
+            $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'MemoryManagerNotInitialized', $category, $MaxMemoryMB)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
     }
 

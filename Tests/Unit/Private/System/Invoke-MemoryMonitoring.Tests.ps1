@@ -210,8 +210,9 @@ Describe "Invoke-MemoryCheck" -Tag 'Unit' {
         It "Should log a Warning and rethrow when the memory reading fails" {
             Mock Get-ProcessWorkingSetByte { throw "Insufficient memory" }
 
+            # The error of the reading is passed on, and its error ID ends in the name of this function
             { Invoke-MemoryCheck -MemoryManager $script:mockMemoryManager -CorrelationId 'err-id' } |
-                Should -Throw -ExpectedMessage 'Insufficient memory'
+                Should -Throw -ExpectedMessage 'Insufficient memory' -ErrorId '*,Invoke-MemoryCheck'
 
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Warning' -and $Message -eq 'Memory check operation failed: Insufficient memory' -and
@@ -293,7 +294,12 @@ Describe "Test-MemoryThreshold" -Tag 'Unit' {
         It "Should stop with a message naming the failure" {
             Mock Get-CurrentMemoryUsage { throw 'counter unavailable' }
 
-            { Test-MemoryThreshold -ThresholdMB 1024 } | Should -Throw -ExpectedMessage 'Memory threshold test failed: counter unavailable'
+            $expected = @{
+                ErrorId         = 'MemoryThresholdTestFailed,Test-MemoryThreshold'
+                ExpectedMessage = 'Memory threshold test failed: counter unavailable'
+                ExceptionType   = [System.InvalidOperationException]
+            }
+            { Test-MemoryThreshold -ThresholdMB 1024 } | Should -Throw @expected
         }
     }
 }

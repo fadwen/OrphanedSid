@@ -285,7 +285,16 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
         It 'Logs at Error level and rethrows when the results cannot be summarised' {
             $broken = [PSCustomObject]@{ TotalObjectsProcessed = 1; ProcessingDuration = 'not a timespan' }
 
-            { Write-ProcessingSummary -ProcessingResults $broken -CorrelationId 'sum-err' } | Should -Throw
+            $caught = $null
+            try {
+                Write-ProcessingSummary -ProcessingResults $broken -CorrelationId 'sum-err'
+            } catch {
+                $caught = $_
+            }
+
+            # The error of the step is passed on, and its error ID ends in the name of this function
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -BeLike '*,Write-ProcessingSummary'
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Error generating processing summary:*' -and $CorrelationId -eq 'sum-err' }
         }
     }
