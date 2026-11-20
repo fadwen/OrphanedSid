@@ -109,4 +109,28 @@ Describe 'Workflow files' -Tag 'Unit', 'Contract' {
             $found.Count | Should-Be 0 -Because $reason
         }
     }
+
+    Context 'Tool versions' {
+        It 'Installs PlatyPS in release.yml at the version that quality-gates.yml names (#154)' {
+            # The release builds the compiled help again. The help job compared the committed
+            # file with a build of the version it names, so another version here would ship
+            # help that no gate has read. The number is written in each file, and nothing but
+            # this case holds the two together.
+            $repositoryRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+            $githubFolder = Join-Path -Path $repositoryRoot -ChildPath '.github'
+            $workflowFolder = Join-Path -Path $githubFolder -ChildPath 'workflows'
+            $gatesPath = Join-Path -Path $workflowFolder -ChildPath 'quality-gates.yml'
+            $releasePath = Join-Path -Path $workflowFolder -ChildPath 'release.yml'
+
+            $named = [regex]::Matches(
+                [System.IO.File]::ReadAllText($gatesPath), "(?m)^\s*PLATYPS_VERSION:\s*'([^']+)'\s*$")
+            $installed = [regex]::Matches(
+                [System.IO.File]::ReadAllText($releasePath),
+                "Install-PSResource\s+-Name\s+Microsoft\.PowerShell\.PlatyPS\s+-Version\s+'([^']+)'")
+
+            $named.Count | Should-Be 1 -Because 'quality-gates.yml names the version once, in env'
+            $installed.Count | Should-Be 1 -Because 'release.yml installs PlatyPS in one step'
+            $installed[0].Groups[1].Value | Should-BeString $named[0].Groups[1].Value -CaseSensitive
+        }
+    }
 }
