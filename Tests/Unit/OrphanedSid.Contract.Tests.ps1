@@ -152,10 +152,14 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
 
     Context 'Terminating errors raised with throw or Write-Error -ErrorAction Stop (#130)' {
         BeforeAll {
-            # Every throw statement and every Write-Error ... -ErrorAction Stop that sits directly in an
-            # advanced function of Private or Public. A class method and a plain script block, such
-            # as a ValidateScript, may throw, and are not counted.
-            $language = 'System.Management.Automation.Language'
+            # Every throw statement and every Write-Error ... -ErrorAction Stop that an advanced
+            # function of Private or Public runs. One inside a script block that the function hands
+            # to a command, such as ForEach-Object or a retry, is counted too: under a caller's
+            # -ErrorAction SilentlyContinue it is swallowed like one written directly in the function,
+            # which was measured on both editions. A class method has no $PSCmdlet, and the script
+            # block of an attribute, such as a ValidateScript, reports a bad value by throwing; these
+            # two are not counted. -ErrorAction is matched in both of its spellings, with a space and
+            # with a colon. A Write-Error that takes it from a splatted hashtable is not seen.
             $script:OldFormStatements = @(foreach ($path in $script:FileAsts.Keys) {
                     $relative = $path.Substring($script:ModuleRoot.Length + 1)
                     if ($relative -like 'Classes*') {
@@ -166,20 +170,32 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                             $node -is [System.Management.Automation.Language.ThrowStatementAst] -or
                             ($node -is [System.Management.Automation.Language.CommandAst] -and
                                 $node.GetCommandName() -eq 'Write-Error' -and
-                                $node.Extent.Text -match '-(ErrorAction|EA)\s+[''"]?Stop')
+                                $node.Extent.Text -match '-(ErrorAction|EA)(\s+|:\s*)[''"]?Stop')
                         }, $true)
                     foreach ($node in $nodes) {
+                        $inAttribute = $false
                         $owner = $node.Parent
                         while ($null -ne $owner -and
-                            $owner.GetType().FullName -notin "$language.FunctionDefinitionAst", "$language.ScriptBlockExpressionAst") {
+                            $owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                            if ($owner -is [System.Management.Automation.Language.AttributeAst]) {
+                                $inAttribute = $true
+                            }
                             $owner = $owner.Parent
                         }
-                        if ($owner -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                        if ($null -eq $owner -or $inAttribute) {
                             continue
                         }
+                        # [CmdletBinding()] makes a function advanced, and so does a [Parameter()]
+                        # attribute on one of its parameters
                         $paramBlock = $owner.Body.ParamBlock
-                        $isAdvanced = $null -ne $paramBlock -and
-                            @($paramBlock.Attributes | Where-Object { $_.TypeName.Name -eq 'CmdletBinding' }).Count -gt 0
+                        $isAdvanced = $false
+                        if ($null -ne $paramBlock) {
+                            $attributeNames = @($paramBlock.Attributes | ForEach-Object { $_.TypeName.Name }) +
+                                @($paramBlock.Parameters | ForEach-Object { $_.Attributes } |
+                                        ForEach-Object { $_.TypeName.Name })
+                            $isAdvanced = @($attributeNames |
+                                    Where-Object { $_ -in 'CmdletBinding', 'Parameter' }).Count -gt 0
+                        }
                         if (-not $isAdvanced) {
                             continue
                         }
@@ -248,7 +264,7 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             # The module predates that rule. A change that replaces some of these statements lowers the
             # number here in the same commit, and a change that adds one fails. When the number
             # reaches 0, this case stays, as the check that none comes back.
-            $recorded = 62
+            $recorded = 63
             $others = @($script:OldFormStatements | Where-Object { -not $_.PassesErrorRecord })
             $byFile = ($others | Group-Object -Property File | Sort-Object -Property Count -Descending |
                     ForEach-Object { "$($_.Count) in $($_.Name)" }) -join '; '
@@ -281,6 +297,39 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                 }
             }
             @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
+        }
+    }
+
+    Context 'The pattern for the attribute that names a component (#134)' {
+        It 'Is the same in the validator and in the three checks on the restore path' {
+            # The class of an object sets the attribute that names it, so the four places that check
+            # the start of a name take any attribute. When one of them accepts less than the others,
+            # an object is reported and never cleaned, or backed up and never restored. The unit
+            # tests dot-source these files one at a time, so the pattern is written out in each of
+            # them and compared here.
+            $isString = {
+                param($node)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+            }
+            $assignment = $script:Definitions['Test-ValidDistinguishedName'].Ast.Find({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left.Extent.Text -eq '$attributeName'
+                }, $true)
+            $assignment | Should -Not -BeNullOrEmpty
+            $pattern = $assignment.Right.Find($isString, $true).Value
+            # A pattern that came out empty would be found in every string
+            $pattern | Should -Match '^\(.+\)$'
+
+            $different = @(foreach ($name in 'Invoke-RestoreWorkflow', 'Get-RestorationTarget', 'Test-BackupIntegrity') {
+                    $holders = @($script:Definitions[$name].Ast.FindAll($isString, $true) |
+                            Where-Object { $_.Value.Contains("^$pattern=") })
+                    if ($holders.Count -eq 0) {
+                        "$name in $($script:Definitions[$name].File)"
+                    }
+                })
+
+            $different | Should -BeNullOrEmpty -Because "no string there starts with ^$pattern= : $($different -join '; ')"
         }
     }
 
