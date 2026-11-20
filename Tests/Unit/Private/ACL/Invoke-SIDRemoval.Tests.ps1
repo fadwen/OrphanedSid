@@ -139,37 +139,42 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
 
             $result.PSTypeNames | Should -Contain 'SIDRemovalResult'
             $result.Success | Should -BeTrue
-            $result.SIDFound | Should -BeTrue
             $result.RemovedSIDs | Should -Be @($script:orphan1, $script:orphan2)
             $result.FoundSIDs | Should -Be @($script:orphan1, $script:orphan2)
             $result.FailedSIDs | Should -BeNullOrEmpty
-            $result.RulesFound | Should -Be 2
-            $result.RulesRemoved | Should -Be 2
-            $result.RulesProcessed | Should -Be 3
-            $result.PreservedSIDs | Should -Be @($script:keep)
-            $result.DryRun | Should -BeFalse
-            $result.CorrelationId | Should -Be 'rm-1'
+            $result.ErrorMessage | Should -BeNullOrEmpty
             $result.ModifiedACL | Should -Be $script:acl
             $script:acl.Removed | Should -Be @($script:orphan1, $script:orphan2)
             @($script:acl.Access).Count | Should -Be 1
+            @($script:acl.Access)[0].IdentityReference.Value | Should -Be $script:keep
+        }
+
+        It 'Returns the fields that the workflow reads and that it found out, and no other (#157)' {
+            # The result once carried a fixed duration of 100 milliseconds, fixed memory figures,
+            # a sentence that the removal had completed successfully also when it had not, and
+            # several fields under two names
+            $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan1 -ObjectDN $script:dn
+
+            $expected = 'ErrorMessage', 'FailedSIDs', 'FoundSIDs', 'ModifiedACL', 'RemovedSIDs', 'Success'
+            @($result.PSObject.Properties.Name | Sort-Object) | Should -Be $expected
         }
 
         It 'Leaves an ACL alone when none of the allowed SIDs appear in it' {
             $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs 'S-1-5-21-111-222-333-7777'
 
             $result.Success | Should -BeTrue
-            $result.SIDFound | Should -BeFalse
-            $result.RulesFound | Should -Be 0
+            $result.FoundSIDs | Should -BeNullOrEmpty
             $result.RemovedSIDs | Should -BeNullOrEmpty
-            $result.PreservedSIDs.Count | Should -Be 3
             $script:acl.Removed.Count | Should -Be 0
+            @($script:acl.Access).Count | Should -Be 3
         }
 
         It 'Removes only the allowed SIDs, not every unresolved one' {
             $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan2
 
             $result.RemovedSIDs | Should -Be @($script:orphan2)
-            $result.PreservedSIDs | Should -Be @($script:keep, $script:orphan1)
+            @($script:acl.Access | ForEach-Object { $_.IdentityReference.Value }) |
+                Should -Be @($script:keep, $script:orphan1)
         }
 
         It 'Reports a SID once when it holds several ACEs' {
@@ -181,7 +186,7 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
             $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1
 
             $result.RemovedSIDs | Should -Be @($script:orphan1)
-            $result.RulesRemoved | Should -Be 1
+            $result.FoundSIDs | Should -Be @($script:orphan1)
             $acl.Removed.Count | Should -Be 2
             @($acl.Access).Count | Should -Be 0
         }
@@ -214,11 +219,8 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
         It 'Reports what it would remove and changes nothing' {
             $result = Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs $script:orphan1, $script:orphan2 -WhatIfMode
 
-            $result.DryRun | Should -BeTrue
-            $result.SIDFound | Should -BeTrue
             $result.FoundSIDs | Should -Be @($script:orphan1, $script:orphan2)
             $result.RemovedSIDs | Should -BeNullOrEmpty
-            $result.RulesRemoved | Should -Be 0
             $result.Success | Should -BeTrue
             $script:acl.Removed.Count | Should -Be 0
             @($script:acl.Access).Count | Should -Be 3
@@ -237,16 +239,18 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
             $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1, $script:orphan2
 
             $result.Success | Should -BeFalse
-            $result.PartialSuccess | Should -BeTrue
             $result.FailedSIDs | Should -Be @($script:orphan1)
             $result.RemovedSIDs | Should -Be @($script:orphan2)
-            $result.ErrorMessage | Should -Be 'Access denied during removal'
+            # The message of the error that was caught, with the SID it was caught for. It was
+            # the fixed text 'Access denied during removal', whatever the error had been.
+            $result.ErrorMessage | Should -BeLike "$($script:orphan1): *denied*"
+            $result.ErrorMessage | Should -Not -BeLike "*$($script:orphan2)*"
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
                 $Level -eq 'Error' -and $Message -like "FAILED to process SID $($script:orphan1)*denied*"
             }
         }
 
-        It 'Reports no partial success when every removal failed' {
+        It 'Reports every SID with its own error when every removal failed' {
             $acl = New-TestAcl -FailFor $script:orphan1, $script:orphan2 -Aces @(
                 (New-TestAce -Sid $script:orphan1)
                 (New-TestAce -Sid $script:orphan2)
@@ -255,9 +259,12 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
             $result = Invoke-SIDRemoval -ACL $acl -AllowedSIDs $script:orphan1, $script:orphan2
 
             $result.Success | Should -BeFalse
-            $result.PartialSuccess | Should -BeFalse
             $result.FailedSIDs.Count | Should -Be 2
             $result.RemovedSIDs | Should -BeNullOrEmpty
+            $messages = @($result.ErrorMessage -split '; ')
+            $messages.Count | Should -Be 2
+            $messages[0] | Should -BeLike "$($script:orphan1): *"
+            $messages[1] | Should -BeLike "$($script:orphan2): *"
         }
     }
 }

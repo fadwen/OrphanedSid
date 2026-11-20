@@ -81,8 +81,12 @@ function Set-ModifiedACL {
         USE CASE: Validation and approval workflows
 
     .OUTPUTS
-        [bool] True if ACL was successfully applied, False otherwise.
-        Detailed status information is available through structured logging.
+        ACLApplicationResult. An object with these properties:
+        - Success: True when the ACL was written. False when the write failed, and under -WhatIf.
+        - ErrorMessage: the message of the error that the write raised; null otherwise
+        - Verified: True when the ACL could be read back after the write
+        - VerificationError: the message of the error that the read-back raised; null otherwise
+        A write that fails is returned as a result with Success False, not raised as an error.
 
     .NOTES
         RELIABILITY FEATURES:
@@ -103,7 +107,7 @@ function Set-ModifiedACL {
     #>
 
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([bool])]
+    [OutputType('ACLApplicationResult')]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNull()]
@@ -146,9 +150,7 @@ function Set-ModifiedACL {
         $ruleCount = @(Get-AclAccessRule -Acl $ACL).Count
         Write-StructuredLog "ACL contains $ruleCount access rules for application" -Level Debug -CorrelationId $CorrelationId
 
-        $startTime = Get-Date
         $success = $false
-        $errorMessage = $null
         # The backup is the caller's job: Invoke-RemovalWorkflow writes it with New-ACLBackup before
         # calling this function, so nothing here touches the backup folder.
 
@@ -167,9 +169,6 @@ function Set-ModifiedACL {
             $success = $false
         }
 
-        $endTime = Get-Date
-        $duration = $endTime - $startTime
-        
         # Perform verification by attempting to read the ACL back
         $verified = $false
         $verificationError = $null
@@ -188,67 +187,28 @@ function Set-ModifiedACL {
             }
         }
         
+        # Success is what the workflow reads. Verified says whether the ACL could be read back,
+        # which is logged above as well.
         return [PSCustomObject]@{
             PSTypeName = 'ACLApplicationResult'
             Success = $success
-            Path = $ObjectDN  # Use Path instead of ObjectDN to match test expectations
-            CorrelationId = $CorrelationId
-            Duration = $duration
-            Timestamp = $endTime
-            ErrorMessage = $errorMessage
-            # Additional properties for enterprise functionality
+            ErrorMessage = $null
             Verified = $verified
             VerificationError = $verificationError
-            RulesApplied = if ($success) { $ruleCount } else { 0 }
-            AccessEntriesApplied = if ($success) { $ruleCount } else { 0 }  # Alias for tests
-            TroubleshootingInfo = if (-not $success) { "Check ACL permissions and network connectivity for path: $ObjectDN" } else { $null }
-            NetworkError = $false  # For simplicity, assume network is always OK unless explicitly failing
-            ComplianceValidation = "ACL operation compliant with enterprise security policies"
-            AuditTrail = "ACL modified for $ObjectDN at $($endTime.ToString('yyyy-MM-dd HH:mm:ss')) with correlation $CorrelationId"
-            # Performance and audit properties for enterprise tests
-            PerformanceMetrics = @{
-                Duration = $duration
-                StartTime = $startTime
-                EndTime = $endTime
-                Success = $success
-            }
-            SecurityAudit = "ACL modification operation logged with correlation ID: $CorrelationId"
         }
     }
     catch {
         $errorMessage = $_.Exception.Message
         Write-StructuredLog "Failed to apply ACL changes to $ObjectDN : $errorMessage" -Level Error -CorrelationId $CorrelationId
 
-        # Return error result object for operational errors
+        # A write that failed is a result, not an error: the workflow reports it for this object
+        # and goes on to the next. The message is that of the error that was caught.
         return [PSCustomObject]@{
             PSTypeName = 'ACLApplicationResult'
             Success = $false
-            Path = $ObjectDN
-            CorrelationId = $CorrelationId
-            Duration = [TimeSpan]::Zero
-            Timestamp = Get-Date
             ErrorMessage = $errorMessage
-            ErrorCategory = "OperationalError"
-            BackupCreated = $false
-            BackupPath = $null
-            BackupError = $errorMessage
-            BackupCorrelationId = $CorrelationId  # Always use current correlation ID
             Verified = $false
             VerificationError = $null
-            RulesApplied = 0
-            AccessEntriesApplied = 0
-            TroubleshootingInfo = "Check ACL permissions and network connectivity for path: $ObjectDN"
-            NetworkError = if ($errorMessage -match "network|connectivity|timeout") { $true } else { $false }
-            ComplianceValidation = $null  # Null for failed operations
-            AuditTrail = "ACL modification failed for $ObjectDN at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') with correlation $CorrelationId"
-            # Performance and audit properties for enterprise tests
-            PerformanceMetrics = @{
-                Duration = [TimeSpan]::Zero
-                StartTime = Get-Date
-                EndTime = Get-Date
-                Success = $false
-            }
-            SecurityAudit = "ACL modification operation failed with correlation ID: $CorrelationId"
         }
     }
 }

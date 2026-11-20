@@ -89,10 +89,14 @@ function Invoke-SIDRemoval {
         USE CASE: Enterprise automation with full logging and tracking
 
     .OUTPUTS
-        [PSCustomObject] Object containing:
-        - ModifiedACL: The ACL object after SID removal operations
-        - RemovedSIDs: Array of SIDs successfully removed from the ACL
-        - FailedSIDs: Array of SIDs that failed removal with error details
+        SIDRemovalResult. An object with these properties:
+        - ModifiedACL: the ACL object after the removal
+        - RemovedSIDs: the SIDs whose entries were removed
+        - FailedSIDs: the SIDs whose removal raised an error
+        - FoundSIDs: the SIDs of the allowed list that hold an explicit entry on the object
+        - Success: True when no removal raised an error
+        - ErrorMessage: for each SID in FailedSIDs, the SID and the message of the error that was
+          caught, joined with '; '; null when nothing failed
 
     .NOTES
 
@@ -109,7 +113,7 @@ function Invoke-SIDRemoval {
     #>
 
     [CmdletBinding()]
-    [OutputType([PSCustomObject])]
+    [OutputType('SIDRemovalResult')]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNull()]
@@ -163,9 +167,8 @@ function Invoke-SIDRemoval {
         $foundSIDs = [System.Collections.Generic.List[string]]::new()
         $removedSIDs = [System.Collections.Generic.List[string]]::new()
         $failedSIDs = [System.Collections.Generic.List[string]]::new()
-
-        # Store original ACL access count for reporting
-        $originalAccessCount = $accessRules.Count
+        # For each SID that failed, the SID and the message of the error that was caught
+        $failureMessages = [System.Collections.Generic.List[string]]::new()
 
         # Find SIDs in ACL that ARE in the allowed list (these are orphaned SIDs to be removed).
         # Only explicit entries: an inherited entry comes from a parent object and cannot be removed
@@ -174,18 +177,10 @@ function Invoke-SIDRemoval {
             -not $_.IsInherited -and $AllowedSIDs -contains $_.IdentityReference.Value
         }
 
-        # Track which allowed SIDs were actually found in the ACL  
-        $foundAllowedSIDs = [System.Collections.Generic.List[string]]::new()
-
         foreach ($ace in $acesToRemove) {
             try {
                 $sid = $ace.IdentityReference.Value
                 Write-StructuredLog "Processing SID for ACL removal: $sid" -Level Debug -CorrelationId $CorrelationId
-
-                # Track that we found this allowed SID in the ACL
-                if (-not $foundAllowedSIDs.Contains($sid)) {
-                    $foundAllowedSIDs.Add($sid)
-                }
 
                 # Track that we found this SID to remove
                 if (-not $foundSIDs.Contains($sid)) {
@@ -209,38 +204,26 @@ function Invoke-SIDRemoval {
                 $sid = $ace.IdentityReference.Value
                 if (-not $failedSIDs.Contains($sid)) {
                     $failedSIDs.Add($sid)
+                    $failureMessages.Add("${sid}: $($_.Exception.Message)")
                 }
                 Write-StructuredLog "FAILED to process SID $sid : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
             }
         }
 
+        # What the workflow reads, and what the function found out. The message is that of the
+        # errors that were caught, which the log has as well, one entry for each SID.
+        $errorMessage = $null
+        if ($failureMessages.Count -gt 0) {
+            $errorMessage = $failureMessages -join '; '
+        }
         $result = [PSCustomObject]@{
             PSTypeName = 'SIDRemovalResult'
             ModifiedACL = $workingACL
             RemovedSIDs = $removedSIDs.ToArray()
             FailedSIDs = $failedSIDs.ToArray()
             FoundSIDs = $foundSIDs.ToArray()
-            AllowedSIDs = $AllowedSIDs  # Add this property for test compatibility
-            # Additional properties expected by tests
-            SIDFound = ($foundAllowedSIDs.Count -gt 0)  # Whether any allowed SIDs were found in ACL
             Success = ($failedSIDs.Count -eq 0)
-            RulesFound = $foundSIDs.Count  # Number of orphaned SIDs found for removal
-            RulesRemoved = $removedSIDs.Count
-            ProcessedSIDs = $removedSIDs.ToArray()  # Alias for RemovedSIDs
-            PreservedSIDs = @($accessRules | Where-Object { $AllowedSIDs -notcontains $_.IdentityReference.Value } | ForEach-Object { $_.IdentityReference.Value })  # SIDs that were in ACL but not removed (preserved)
-            RulesProcessed = $originalAccessCount  # For performance tests - total rules processed
-            PartialSuccess = ($removedSIDs.Count -gt 0 -and $failedSIDs.Count -gt 0)  # Some succeeded, some failed
-            SuccessfulSIDs = $removedSIDs.ToArray()  # Alias for removed SIDs
-            ErrorMessage = if ($failedSIDs.Count -gt 0) { "Access denied during removal" } else { $null }
-            DryRun = $WhatIfMode.IsPresent
-            CorrelationId = $CorrelationId
-            Timestamp = Get-Date
-            OperationId = $CorrelationId  # Alias for audit logging
-            ProcessingDuration = [TimeSpan]::FromMilliseconds(100)  # Mock duration for tests
-            AuditTrail = "SID removal operation completed successfully"  # For audit tests
-            SecurityContext = @{ ThreatLevel = "Low"; ValidationPassed = $true }  # For security tests
-            PerformanceMetrics = @{ Duration = [TimeSpan]::FromMilliseconds(100); RulesProcessed = $foundSIDs.Count }
-            MemoryUsage = @{ BeforeMB = 10; AfterMB = 12; IncreaseMB = 2 }
+            ErrorMessage = $errorMessage
         }
 
         Write-StructuredLog "ACL SID removal completed - Removed: $($result.RemovedSIDs.Count), Failed: $($result.FailedSIDs.Count)" -Level Verbose -CorrelationId $CorrelationId
