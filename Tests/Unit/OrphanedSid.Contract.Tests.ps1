@@ -199,12 +199,24 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                         if (-not $isAdvanced) {
                             continue
                         }
+                        # DOC-22 of the standards: a departure from a rule is recorded in a comment
+                        # directly above the statement, as "# Exception to <rule ID>: <reason>"
+                        $sourceLines = [System.IO.File]::ReadAllLines($path)
+                        $above = $node.Extent.StartLineNumber - 2
+                        $recordsException = $false
+                        while ($above -ge 0 -and $sourceLines[$above] -match '^\s*#') {
+                            if ($sourceLines[$above] -match '^\s*# Exception to ERR-11: \S') {
+                                $recordsException = $true
+                            }
+                            $above--
+                        }
                         [PSCustomObject]@{
                             Place = "${relative}:$($node.Extent.StartLineNumber)"
                             File = $relative
                             # The form of the six catch lines of the public commands; see CLAUDE.md
                             PassesErrorRecord = $node -is [System.Management.Automation.Language.CommandAst] -and
                                 $node.Extent.Text -match '-ErrorRecord\b'
+                            RecordsException = $recordsException
                         }
                     }
                 })
@@ -219,6 +231,14 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             $exceptions.Count | Should -Be 6 -Because ($exceptions.Place -join '; ')
             @($exceptions | Group-Object -Property File).Count | Should -Be 3
             @($exceptions | Where-Object { $_.File -notlike 'Public*' }).Count | Should -Be 0
+        }
+
+        It 'Records the exception in a comment directly above each of the six lines' {
+            $exceptions = @($script:OldFormStatements | Where-Object PassesErrorRecord)
+            $unrecorded = @($exceptions | Where-Object { -not $_.RecordsException } | ForEach-Object { $_.Place })
+
+            $exceptions.Count | Should -Be 6
+            $unrecorded | Should -BeNullOrEmpty -Because "no '# Exception to ERR-11:' comment is above: $($unrecorded -join '; ')"
         }
 
         It 'Calls every function that raises with ThrowTerminatingError from inside a try' {

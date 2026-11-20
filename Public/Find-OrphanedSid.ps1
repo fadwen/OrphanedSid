@@ -77,10 +77,10 @@ function Find-OrphanedSid {
         try {
             $null = Start-OrphanedSidSession @sessionParams
         } catch {
-            # Raised the way the end block raises its failures, so that it ends the calling script
-            # as well. Left to propagate, a throw from start-up followed the caller's error action:
-            # under SilentlyContinue it was swallowed here, and process and end then ran with no
-            # configuration.
+            # Exception to ERR-11: a failure of the start-up ends the calling script, as a failure
+            # in the end block does and as Documentation/Automation.md tells callers.
+            # ThrowTerminatingError() would end this command only, and a script with no try
+            # around the call would carry on with its next line.
             Write-Error -ErrorRecord $_ -ErrorAction Stop
         }
 
@@ -133,6 +133,10 @@ function Find-OrphanedSid {
         catch {
             if ($script:Statistics) { $script:Statistics.CriticalErrors++ }
             Write-StructuredLog "Discovery failed: $($_.Exception.Message)" -Level Error -Component 'Main' -CorrelationId $CorrelationId
+            # Exception to ERR-11: a critical error ends the calling script whatever its error
+            # action is, as Documentation/Automation.md tells callers. ThrowTerminatingError()
+            # would end this command only, and a script with no try around the call would carry
+            # on with its next line.
             Write-Error -ErrorRecord $_ -ErrorAction Stop
         }
         finally {

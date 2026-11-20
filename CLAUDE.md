@@ -112,7 +112,9 @@ when one is added. A statement inside a script block that the function hands to 
 as `ForEach-Object` or a retry, counts too: a caller's `-ErrorAction SilentlyContinue` was
 measured to swallow it like one written directly in the function. The script block of an
 attribute, such as a `ValidateScript`, is left out, and so is a class method, which has no
-`$PSCmdlet`. The six must stay six and stay in `Public/`.
+`$PSCmdlet`. The six must stay six and stay in `Public/`. Each carries the comment that DOC-22
+of the standards asks for, `# Exception to ERR-11: <reason>`, directly above it, and the contract
+tests fail when one is missing.
 
 Writing `$PSCmdlet.ThrowTerminatingError()` where a `throw` would have gone is not enough. Two
 things were measured on PowerShell 7 and Windows PowerShell 5.1. An error raised with it inside a
