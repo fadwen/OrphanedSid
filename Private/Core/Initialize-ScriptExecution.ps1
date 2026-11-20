@@ -286,10 +286,20 @@ function Initialize-ScriptExecution {
             # The file's LogFilePath is chosen here, before anything is written, and goes through the
             # same resolution, refusal and rotation as -LogPath. Swapping it in after setup once split
             # a run across two files and overrode -LogPath given on the command line.
+            # A path from the file is refused when it lies in a system folder: whoever can edit
+            # the file would otherwise choose a file there for a privileged run to append to. A
+            # path from the command line is the operator's own choice.
+            $logPathFromFile = $false
             if ($UseConfigLogPath -and -not [string]::IsNullOrWhiteSpace($script:Config.LogFilePath)) {
                 $targetLogPath = $script:Config.LogFilePath
+                $logPathFromFile = $true
             }
-            $null = Initialize-LogDirectory -LogPath $targetLogPath -RotateAboveMB $rotateAboveMB
+            $logDirectoryParameters = @{
+                LogPath = $targetLogPath
+                RotateAboveMB = $rotateAboveMB
+                RefuseSystemFolder = $logPathFromFile
+            }
+            $null = Initialize-LogDirectory @logDirectoryParameters
 
             if ($script:LogRotation) {
                 if ($script:LogRotation.Error) {
