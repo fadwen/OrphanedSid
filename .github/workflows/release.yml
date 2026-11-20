@@ -64,12 +64,18 @@ jobs:
       - name: Verify the tag matches ModuleVersion
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
+        env:
+          # As a variable, so that the name of the tag is never part of the script. A tag name
+          # may hold a quote and a semicolon, and GitHub writes an expression into a script as
+          # text before PowerShell reads it.
+          TAG_NAME: ${{ github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = '${{ github.ref_name }}' -replace '^v', ''
+          $tag = $env:TAG_NAME -replace '^v', ''
           $manifest = (Test-ModuleManifest ./OrphanedSid.psd1).Version.ToString()
           if ($tag -ne $manifest) {
-              throw "Tag '${{ github.ref_name }}' resolves to $tag but the manifest declares $manifest. Bump ModuleVersion and retag."
+              throw ("Tag '$env:TAG_NAME' resolves to $tag but the manifest declares $manifest. " +
+                  'Bump ModuleVersion and retag.')
           }
           Write-Host "Tag and manifest agree on $manifest."
 
