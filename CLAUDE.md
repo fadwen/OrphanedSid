@@ -105,25 +105,43 @@ carries on with its next line and `powershell -File` exits with 0, which was mea
 `Documentation/Automation.md` tells callers that a critical error ends the calling script or
 command line whatever the error action is, that the process exits with 1, and that `try`/`catch`
 is the way to handle it. Replacing the call changes that contract, so it is a change to announce
-in a release, not a tidy-up. The exception covers these six lines only. Every other `throw` and
-`Write-Error -ErrorAction Stop` directly in an advanced function is an ordinary violation of
-ERR-11, to be replaced and not copied (#130). `Tests/Unit/OrphanedSid.Contract.Tests.ps1` counts
-both kinds by syntax tree. A statement inside a script block that the function hands to a
-command, such as `ForEach-Object` or a retry, counts too: a caller's
-`-ErrorAction SilentlyContinue` was measured to swallow it like one written directly in the
-function. Only the script block of an attribute, such as a `ValidateScript`, is left out.
-The six must stay six and stay in `Public/`. The others have a
-recorded number: a change that replaces some of them lowers it in the same commit, and a change
-that adds one fails.
+in a release, not a tidy-up. The exception covers these six lines only. No other `throw` and no
+other `Write-Error -ErrorAction Stop` is left in an advanced function of `Private/` or `Public/`
+(#130). `Tests/Unit/OrphanedSid.Contract.Tests.ps1` finds both kinds by syntax tree and fails
+when one is added. A statement inside a script block that the function hands to a command, such
+as `ForEach-Object` or a retry, counts too: a caller's `-ErrorAction SilentlyContinue` was
+measured to swallow it like one written directly in the function. The script block of an
+attribute, such as a `ValidateScript`, is left out, and so is a class method, which has no
+`$PSCmdlet`. The six must stay six and stay in `Public/`. Each carries the comment that DOC-22
+of the standards asks for, `# Exception to ERR-11: <reason>`, directly above it, and the contract
+tests fail when one is missing.
 
-Replacing one is not a matter of swapping the statement. Two things were measured on PowerShell 7
-and Windows PowerShell 5.1. An error raised with `$PSCmdlet.ThrowTerminatingError()` inside a
+Writing `$PSCmdlet.ThrowTerminatingError()` where a `throw` would have gone is not enough. Two
+things were measured on PowerShell 7 and Windows PowerShell 5.1. An error raised with it inside a
 `try`, or from a `catch` nested in it, does not enter the `catch` of that same function: it
 leaves the function at once, so a `catch` that logs, cleans up or builds a failed result is
-passed by. And it ends only the statement that called the function: a caller that does not make
-the call inside a `try` carries on with its next line, where a `throw` would have unwound it. So
-before a statement is replaced, check what the function's own `catch` does. That every call to a
-function which raises this way sits inside a `try` is checked by the contract tests. A call inside
+passed by. And it goes to the nearest `try` on the call stack. With none there, it ends only the
+statement that called the function, and the caller carries on with its next line.
+`Stop-OrphanedSidSession` runs in the `finally` of a public command, with no `try` of the module
+around it, so that is not a remote case. Three forms follow from the first measurement, and the
+module uses each:
+
+- A check whose failure ends the function is made before the `try`, or after it, and raises an
+  error record with an error ID of its own. Where it has to sit inside the `try`, it first does
+  what the `catch` would have done for it, such as writing the log entry.
+- A check whose failure the `catch` turned into a failed result builds that result itself. The
+  functions that do this keep the handling in one script block, which the check and the `catch`
+  both run.
+- A `catch` that passes an error on raises it with `$PSCmdlet.ThrowTerminatingError($_)`, which
+  keeps the exception, the category and the first part of the error ID. A `catch` that adds
+  context raises a new record whose exception holds the caught one as its inner exception.
+
+A public command cannot use the first form for a check in its `end` block. The `catch` there is
+what ends the calling script, and an error raised in that `try` would pass it by. Such a check is
+a private function, as `Assert-DistinguishedNameInput` is, whose error does enter the `catch`.
+
+That every call to a function which raises this way sits inside a `try` is checked by the
+contract tests, so that each function is right whatever calls it. A call inside
 a script block counts with the `try` the block is written in, as long as the block is handed
 straight to a command: that `try` was measured to catch the error while the command runs the
 block. A block kept in a variable can run after the `try` has ended, so it needs a `try` of its

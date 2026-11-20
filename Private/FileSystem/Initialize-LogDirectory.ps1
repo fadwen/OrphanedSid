@@ -168,7 +168,12 @@ function Initialize-LogDirectory {
                 return $fallbackPath
             }
             catch {
-                Write-Error "Failed to establish any log file path: $($_.Exception.Message)" -ErrorAction Stop
+                $message = "Failed to establish any log file path: $($_.Exception.Message)"
+                $exception = [System.IO.IOException]::new($message, $_.Exception)
+                $category = [System.Management.Automation.ErrorCategory]::OpenError
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'LogPathNotEstablished', $category, $LogPath)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
         }
     }
@@ -395,7 +400,12 @@ function New-LogDirectory {
             Write-Verbose "Created log directory: $DirectoryPath"
         }
         catch {
-            throw "Failed to create log directory '$DirectoryPath': $($_.Exception.Message)"
+            $message = "Failed to create log directory '$DirectoryPath': $($_.Exception.Message)"
+            $exception = [System.IO.IOException]::new($message, $_.Exception)
+            $category = [System.Management.Automation.ErrorCategory]::WriteError
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'LogDirectoryNotCreated', $category, $DirectoryPath)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
     } else {
         Write-Verbose "Log directory already exists: $DirectoryPath"
@@ -409,7 +419,12 @@ function New-LogDirectory {
         Write-Verbose "Write permissions validated for directory: $DirectoryPath"
     }
     catch {
-        throw "Insufficient write permissions for log directory '$DirectoryPath': $($_.Exception.Message)"
+        $message = "Insufficient write permissions for log directory '$DirectoryPath': $($_.Exception.Message)"
+        $exception = [System.UnauthorizedAccessException]::new($message, $_.Exception)
+        $category = [System.Management.Automation.ErrorCategory]::PermissionDenied
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'LogDirectoryNotWritable', $category, $DirectoryPath)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 }
 
@@ -481,6 +496,11 @@ Console Output Suppressed: $($loggingState.SuppressConsoleOutput)
         }
     }
     catch {
-        throw "Failed to initialize log file '$LogFilePath': $($_.Exception.Message)"
+        $message = "Failed to initialize log file '$LogFilePath': $($_.Exception.Message)"
+        $exception = [System.IO.IOException]::new($message, $_.Exception)
+        $category = [System.Management.Automation.ErrorCategory]::WriteError
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'LogFileNotInitialized', $category, $LogFilePath)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 }

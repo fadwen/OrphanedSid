@@ -25,6 +25,22 @@ All notable changes to this module are recorded here. Format follows
   error ID that named that exception type. The message is unchanged. A script that matched the
   old exception type or error ID has to match the new one; `Documentation/Automation.md` shows
   how. ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
+- Four more failures that end `Find-OrphanedSid`, `Remove-OrphanedSid` or
+  `Restore-OrphanedSidBackup` have an error ID, an exception type and a category of their own.
+  A `-ConfigPath` file that cannot be loaded is `ConfigurationFileNotLoaded`, and one that loads
+  and does not validate is `ConfigurationInvalid`; both are a `System.IO.InvalidDataException`
+  with the category `InvalidData`. A `-SearchBase` that holds no usable name is
+  `SearchBaseNotUsable`, and a `-TargetObjectDN` that holds none is `RestoreTargetNotUsable`; both
+  are a `System.ArgumentException` with the category `InvalidArgument`. Each was a
+  `RuntimeException` with the category `OperationStopped` and the text of its message as its
+  error ID. The messages are unchanged, and each still ends the calling script. A script that
+  matched the old error ID has to match the new one; `Documentation/Automation.md` lists them.
+  ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
+- A step of the module's own start-up that fails, such as the set-up of the log or of the memory
+  manager, raises an error with an ID of its own as well. Such an error was a
+  `WriteErrorException` with the category `NotSpecified`, or a `RuntimeException`. None of them
+  is expected in normal use; `Documentation/Automation.md` names them.
+  ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 - A `RemovalOperationResult` is now `Success = False` whenever an entry that discovery reported
   is not on the object when `Remove-OrphanedSid` comes to remove it. That includes an entry that
   someone else removed in the meantime, and a run that removed some entries and did not find
@@ -126,6 +142,10 @@ All notable changes to this module are recorded here. Format follows
   `Object reference not set to an instance of an object` whenever `-ConfigPath` was given, for
   the rest of the process. A console session and PowerShell 7 were not affected.
   ([#125](https://github.com/fadwen/OrphanedSid/issues/125))
+- When `Remove-OrphanedSid` cannot write the changed ACL of an object, the log file has one
+  `Failed to apply ACL changes` entry at Error level for it. It had two with the same text. A
+  `-BackupPath` that is too long to hold a backup file is likewise logged once for each object.
+  ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
 
 ## [1.1.0] - 2026-11-11
 

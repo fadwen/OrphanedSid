@@ -209,7 +209,7 @@ function Invoke-MemoryCheck {
         }
         catch {
             Write-StructuredLog "Memory check operation failed: $($_.Exception.Message)" -Level Warning -Component 'MemoryManagement' -CorrelationId $CorrelationId
-            throw
+            $PSCmdlet.ThrowTerminatingError($_)
         }
     }
 }
@@ -294,7 +294,12 @@ function Test-MemoryThreshold {
         return $result
     }
     catch {
-        Write-Error "Memory threshold test failed: $($_.Exception.Message)" -ErrorAction Stop
+        $message = "Memory threshold test failed: $($_.Exception.Message)"
+        $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'MemoryThresholdTestFailed', $category, $ThresholdMB)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 }
 

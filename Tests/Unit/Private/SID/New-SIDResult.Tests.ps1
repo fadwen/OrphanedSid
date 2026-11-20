@@ -102,10 +102,44 @@ Describe "New-OrphanedSIDResult Function Tests" {
             $invalidSID = 'INVALID-SID-FORMAT'
             $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
 
+            $expected = @{
+                ErrorId         = 'SidFormatInvalid,New-OrphanedSIDResult'
+                ExpectedMessage = 'Failed to create OrphanedSIDResult: Invalid SID format provided: INVALID-SID-FORMAT'
+                ExceptionType   = [System.ArgumentException]
+            }
             { New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID $invalidSID -AccessRule $testAccessRule -CorrelationId 'res-err' } |
-                Should -Throw -ExpectedMessage 'Failed to create OrphanedSIDResult: Invalid SID format provided: INVALID-SID-FORMAT'
+                Should -Throw @expected
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
-                $Level -eq 'Error' -and $CorrelationId -eq 'res-err' -and $Message -like "Error creating OrphanedSIDResult object for $testObjectDN*"
+                $Level -eq 'Error' -and $CorrelationId -eq 'res-err' -and
+                $Message -eq "Error creating OrphanedSIDResult object for $testObjectDN : Invalid SID format provided: INVALID-SID-FORMAT"
+            }
+        }
+
+        It "Should end with SidResultNotCreated, and keep the cause, when a step of building the result fails" {
+            $testObjectDN = 'CN=TestUser,OU=Users,DC=contoso,DC=com'
+            $testAccessRule = [PSCustomObject]@{ AccessControlType = 'Allow' }
+            Mock Get-OrphanedSidModuleVersion { throw 'manifest unreadable' }
+
+            $caught = $null
+            try {
+                New-OrphanedSIDResult -ObjectDN $testObjectDN -OrphanedSID 'S-1-5-21-1-2-3-1001' -AccessRule $testAccessRule -CorrelationId 'res-step'
+            } catch {
+                $caught = $_
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'SidResultNotCreated,New-OrphanedSIDResult'
+            $caught.Exception | Should -BeOfType [System.InvalidOperationException]
+            $caught.Exception.Message | Should -Be 'Failed to create OrphanedSIDResult: manifest unreadable'
+            $caught.Exception.InnerException.Message | Should -Be 'manifest unreadable'
+            $caught.TargetObject | Should -Be $testObjectDN
+            # The step logs its own failure as a warning and raises it again; the function logs it at Error
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq 'Error adding processing metadata: manifest unreadable'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'res-step' -and
+                $Message -eq "Error creating OrphanedSIDResult object for $testObjectDN : manifest unreadable"
             }
         }
         

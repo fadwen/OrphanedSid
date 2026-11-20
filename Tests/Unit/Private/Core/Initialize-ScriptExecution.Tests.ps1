@@ -173,8 +173,49 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             $cfg = Join-Path $script:workDir 'bad.json'
             @{ BatchSize = 5000 } | ConvertTo-Json | Set-Content $cfg
 
-            { Initialize-ScriptExecution -ConfigPath $cfg } | Should -Throw -ExpectedMessage '*BatchSize must be between 1 and 1000*'
+            $expected = @{
+                ErrorId         = 'ConfigurationFileNotLoaded,Initialize-ScriptExecution'
+                ExpectedMessage = '*BatchSize must be between 1 and 1000*'
+                ExceptionType   = [System.IO.InvalidDataException]
+            }
+            { Initialize-ScriptExecution -ConfigPath $cfg } | Should -Throw @expected
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -like 'Script initialization failed:*' }
+        }
+
+        It 'Keeps the error of the file as the inner exception and names the file as the target' {
+            $cfg = Join-Path $script:workDir 'bad-inner.json'
+            @{ BatchSize = 5000 } | ConvertTo-Json | Set-Content $cfg
+
+            $caught = $null
+            try {
+                Initialize-ScriptExecution -ConfigPath $cfg
+            } catch {
+                $caught = $_
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.Exception.InnerException | Should -Not -BeNullOrEmpty
+            $caught.Exception.InnerException.Message | Should -Be $caught.Exception.Message
+            $caught.TargetObject | Should -Be $cfg
+            $caught.CategoryInfo.Category | Should -Be 'InvalidData'
+        }
+
+        It 'Ends with ConfigurationInvalid, and logs it once, when the file loads and does not validate' {
+            # "Info" is not one of the six level names, so the file loads and then fails validation
+            $cfg = Join-Path $script:workDir 'bad-level.json'
+            @{ LogLevel = 'Info' } | ConvertTo-Json | Set-Content $cfg
+
+            $expected = @{
+                ErrorId         = 'ConfigurationInvalid,Initialize-ScriptExecution'
+                ExpectedMessage = 'Configuration validation failed'
+                ExceptionType   = [System.IO.InvalidDataException]
+            }
+            { Initialize-ScriptExecution -ConfigPath $cfg -CorrelationId 'init-5' } | Should -Throw @expected
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'init-5' -and
+                $Message -eq 'Script initialization failed: Configuration validation failed'
+            }
+            Should -Invoke Initialize-MemoryManager -Times 0 -Exactly
         }
 
         It "Sets up the file's LogFilePath, once and before writing, when asked to (#90)" {
@@ -299,6 +340,17 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Error' -and $Message -like '*no log folder*' -and $CorrelationId -eq 'init-4'
             }
+        }
+
+        It 'Passes on the error of a step with the first part of its error ID' {
+            Mock Initialize-LoggingSystem {
+                $exception = [System.IO.IOException]::new('no log folder')
+                $category = [System.Management.Automation.ErrorCategory]::OpenError
+                throw [System.Management.Automation.ErrorRecord]::new($exception, 'LogFolderMissing', $category, 'C:\Logs')
+            }
+
+            { Initialize-ScriptExecution } |
+                Should -Throw -ErrorId 'LogFolderMissing,Initialize-ScriptExecution' -ExceptionType ([System.IO.IOException])
         }
     }
 }

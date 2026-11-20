@@ -161,14 +161,11 @@ function Start-OrchestrationWorkflow {
 
                     return Invoke-RestoreWorkflow @restoreParams
                 }
-                default {
-                    throw "Unsupported operation type: $OperationType"
-                }
             }
         }
         catch {
             Write-StructuredLog "Orchestration workflow failed for $OperationType : $($_.Exception.Message)" -Level Error -Component 'Orchestration' -CorrelationId $CorrelationId
-            throw
+            $PSCmdlet.ThrowTerminatingError($_)
         }
         finally {
             Write-StructuredLog "Orchestration workflow completed: $OperationType" -Level Information -Component 'Orchestration' -CorrelationId $CorrelationId

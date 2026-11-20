@@ -49,6 +49,10 @@ failures have an ID of their own:
 | Error ID | Exception type | Meaning |
 |----------|----------------|---------|
 | `ActiveDirectoryModuleMissing` | `System.InvalidOperationException` | The ActiveDirectory PowerShell module is not installed on this computer |
+| `ConfigurationFileNotLoaded` | `System.IO.InvalidDataException` | The `-ConfigPath` file could not be read as JSON, or it holds a value that is refused when the file is loaded, such as a `BatchSize` outside 1 to 1000. The message gives the reason |
+| `ConfigurationInvalid` | `System.IO.InvalidDataException` | The `-ConfigPath` file was loaded and its settings do not validate, for example a `LogLevel` that is not one of the six level names |
+| `SearchBaseNotUsable` | `System.ArgumentException` | `-SearchBase` was given to `Find-OrphanedSid` or `Remove-OrphanedSid` and held no usable distinguished name |
+| `RestoreTargetNotUsable` | `System.ArgumentException` | `-TargetObjectDN` of `Restore-OrphanedSidBackup` held no usable distinguished name |
 
 ```powershell
 try {
@@ -62,8 +66,15 @@ try {
 }
 ```
 
-Every other critical error still arrives as a `RuntimeException` whose error ID is the text of
-its message, so those can only be told apart by that text for now.
+A step of the module's own start-up that fails has an ID as well. None of these is expected in
+normal use: `LoggingStateNotInitialized`, `LogPathNotEstablished`, `MemoryManagerNotInitialized`,
+`RequiredTypeMissing`, `SessionInitializationFailed`, `SessionNotStarted` and
+`StreamingResultsManagerMissing`.
+
+Every other critical error is passed on as it was raised, with its exception type and the first
+part of its error ID. For an error of PowerShell or of an Active Directory cmdlet, that is the ID
+it was given there. For a failure inside one of the module's classes, it is the text of the
+message, so such a failure can only be told apart by that text.
 
 ### Pipeline Output
 

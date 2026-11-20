@@ -186,7 +186,12 @@ function Get-MemoryUsageReport {
         return $report
     }
     catch {
-        Write-Error "Failed to generate memory usage report: $($_.Exception.Message)" -ErrorAction Stop
+        $message = "Failed to generate memory usage report: $($_.Exception.Message)"
+        $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'MemoryReportFailed', $category, $null)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 }
 

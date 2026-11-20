@@ -211,14 +211,22 @@ function New-OrphanedSIDResult {
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
+    Write-StructuredLog "Creating OrphanedSIDResult object for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
+
+    # Validate OrphanedSID format. Checked before the try, with the log entry and the message that
+    # the catch below gives an error of a step: raised inside the try, the error would pass that
+    # catch by.
+    if (-not (Test-SIDFormat -SID $OrphanedSID -CorrelationId $CorrelationId)) {
+        $reason = "Invalid SID format provided: $OrphanedSID"
+        Write-StructuredLog "Error creating OrphanedSIDResult object for $ObjectDN : $reason" -Level Error -CorrelationId $CorrelationId
+        $exception = [System.ArgumentException]::new("Failed to create OrphanedSIDResult: $reason")
+        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'SidFormatInvalid', $category, $OrphanedSID)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
     try {
-        Write-StructuredLog "Creating OrphanedSIDResult object for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
-
-        # Validate OrphanedSID format
-        if (-not (Test-SIDFormat -SID $OrphanedSID -CorrelationId $CorrelationId)) {
-            throw "Invalid SID format provided: $OrphanedSID"
-        }
-
         # Create new result object instance
         $result = [OrphanedSIDResult]::new()
 
@@ -244,7 +252,12 @@ function New-OrphanedSIDResult {
     }
     catch {
         Write-StructuredLog "Error creating OrphanedSIDResult object for $ObjectDN : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
-        throw "Failed to create OrphanedSIDResult: $($_.Exception.Message)"
+        $message = "Failed to create OrphanedSIDResult: $($_.Exception.Message)"
+        $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'SidResultNotCreated', $category, $ObjectDN)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
     }
 }
 
@@ -313,7 +326,7 @@ function Add-ProcessingMetadata {
     }
     catch {
         Write-StructuredLog "Error adding processing metadata: $($_.Exception.Message)" -Level Warning -CorrelationId $CorrelationId
-        throw
+        $PSCmdlet.ThrowTerminatingError($_)
     }
 }
 
@@ -422,7 +435,7 @@ function Set-ACLMetadata {
     }
     catch {
         Write-StructuredLog "Error extracting ACL metadata: $($_.Exception.Message)" -Level Warning -CorrelationId $CorrelationId
-        throw
+        $PSCmdlet.ThrowTerminatingError($_)
     }
 }
 

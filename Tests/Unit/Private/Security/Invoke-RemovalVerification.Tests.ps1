@@ -58,7 +58,9 @@ Describe "Invoke-RemovalVerification" -Tag 'Unit', 'Private', 'Security' {
 
             $result.Success | Should -Be $false
             $result.ErrorMessage | Should -Be 'Verification error: ObjectDN parameter cannot be empty or whitespace'
+            @($result.RemainingOrphanedSIDs).Count | Should -Be 0
             Should -Invoke Get-Acl -Times 0 -Exactly
+            Should -Invoke Start-Sleep -Times 0 -Exactly
         }
 
         It "Reads the ACL from the trimmed DN" {

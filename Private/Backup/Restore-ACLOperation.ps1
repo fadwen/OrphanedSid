@@ -159,18 +159,49 @@ function Set-ObjectACL {
     process {
         $startTime = Get-Date
 
-        try {
-            Write-Verbose "Applying ACL to object: $TargetObjectDN - CorrelationId: $CorrelationId"
+        # The result of an operation that did not succeed. It is built for a target that is not
+        # valid and for a step that raised an error, which are reported in the same way.
+        $newFailedResult = {
+            param([string]$Reason)
 
-            # Validate target object exists and is accessible, unless the caller just did: each check
-            # is a Get-ADObject and a Get-Acl against the domain controller
-            if (-not $SkipTargetValidation) {
+            [PSCustomObject]@{
+                PSTypeName = 'ACLOperationResult'
+                Success = $false
+                TargetObjectDN = $TargetObjectDN
+                ModificationsApplied = 0
+                VerificationResult = $null
+                Duration = (Get-Date) - $startTime
+                ErrorMessage = "ACL operation failed: $Reason"
+                WhatIfMode = $WhatIfPreference
+                CorrelationId = $CorrelationId
+                CompletedAt = Get-Date
+            }
+        }
+
+        Write-Verbose "Applying ACL to object: $TargetObjectDN - CorrelationId: $CorrelationId"
+
+        # Validate target object exists and is accessible, unless the caller just did: each check
+        # is a Get-ADObject and a Get-Acl against the domain controller. The check has a try of
+        # its own, and its outcome is reported after it: the error is then written once, also
+        # when the caller's error action makes Write-Error end the function.
+        $targetFailure = $null
+        if (-not $SkipTargetValidation) {
+            try {
                 $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
                 if (-not $targetValidation.IsValid) {
-                    throw "Target object validation failed: $(@($targetValidation.Issues) -join '; ')"
+                    $targetFailure = "Target object validation failed: $(@($targetValidation.Issues) -join '; ')"
                 }
+            } catch {
+                $targetFailure = $_.Exception.Message
             }
+        }
 
+        if ($null -ne $targetFailure) {
+            Write-Error "ACL operation failed for $TargetObjectDN : $targetFailure - CorrelationId: $CorrelationId"
+            return (& $newFailedResult $targetFailure)
+        }
+
+        try {
             # Prepare SDDL for application
             $sddlToApply = $BackupData.SDDL
             $modificationsCount = 0
@@ -232,21 +263,7 @@ function Set-ObjectACL {
             return $result
         }
         catch {
-            $duration = (Get-Date) - $startTime
-
-            $errorResult = [PSCustomObject]@{
-                PSTypeName = 'ACLOperationResult'
-                Success = $false
-                TargetObjectDN = $TargetObjectDN
-                ModificationsApplied = 0
-                VerificationResult = $null
-                Duration = $duration
-                ErrorMessage = "ACL operation failed: $($_.Exception.Message)"
-                WhatIfMode = $WhatIfPreference
-                CorrelationId = $CorrelationId
-                CompletedAt = Get-Date
-            }
-
+            $errorResult = & $newFailedResult $_.Exception.Message
             Write-Error "ACL operation failed for $TargetObjectDN : $($_.Exception.Message) - CorrelationId: $CorrelationId"
             return $errorResult
         }

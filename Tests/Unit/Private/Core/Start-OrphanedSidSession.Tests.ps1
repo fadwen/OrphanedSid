@@ -209,9 +209,33 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
         }
     }
 
+    Context 'Initialization that fails (#130)' {
+        It 'Ends with the error of the initialization and leaves the module state as it was' {
+            Mock Initialize-ScriptExecution {
+                $exception = [System.IO.InvalidDataException]::new('Configuration validation failed')
+                $category = [System.Management.Automation.ErrorCategory]::InvalidData
+                throw [System.Management.Automation.ErrorRecord]::new($exception, 'ConfigurationInvalid', $category, 'C:\config.json')
+            }
+            $script:Config = 'previous configuration'
+            $script:Statistics = 'previous statistics'
+
+            $expected = @{
+                ErrorId         = 'ConfigurationInvalid,Start-OrphanedSidSession'
+                ExpectedMessage = 'Configuration validation failed'
+                ExceptionType   = [System.IO.InvalidDataException]
+            }
+            { Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' } | Should -Throw @expected
+
+            $script:Config | Should -Be 'previous configuration'
+            $script:Statistics | Should -Be 'previous statistics'
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like '*starting*' }
+        }
+    }
+
     Context 'Initialization that returns nothing (#120)' {
         It 'Ends with an error and leaves the module state as it was' {
-            # What Initialize-ScriptExecution does when its throw is swallowed by the caller's error action
+            # Initialize-ScriptExecution returns its results or raises an error. This is the guard
+            # for a version of it that does neither.
             Mock Initialize-ScriptExecution { }
             $script:Config = 'previous configuration'
             $script:Statistics = 'previous statistics'

@@ -70,18 +70,33 @@ Describe 'Invoke-SIDRemoval' -Tag 'Unit', 'ACL', 'Private' {
         }
 
         It 'Throws for a SID that is not in S-x-y-z form' {
-            { Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs 'CONTOSO\Finance' } |
-                Should -Throw -ExpectedMessage '*Invalid SID format: CONTOSO\Finance*'
+            $expected = @{
+                ErrorId         = 'SidFormatInvalid,Invoke-SIDRemoval'
+                ExpectedMessage = '*Invalid SID format: CONTOSO\Finance*'
+                ExceptionType   = [System.ArgumentException]
+            }
+            { Invoke-SIDRemoval -ACL $script:acl -AllowedSIDs 'CONTOSO\Finance' } | Should -Throw @expected
             $script:acl.Removed.Count | Should -Be 0
+        }
+
+        It 'Throws for an ACL argument that holds no object' {
+            # An empty string passes ValidateNotNull and is still no ACL
+            { Invoke-SIDRemoval -ACL '' -AllowedSIDs $script:orphan1 } |
+                Should -Throw -ErrorId 'AclMissing,Invoke-SIDRemoval' -ExpectedMessage 'ACL parameter cannot be null or empty.'
         }
 
         It 'Throws for an object whose access rules cannot be read, and adds nothing to it (#121)' {
             $bare = [PSCustomObject]@{ Owner = 'CONTOSO\Domain Admins' }
 
+            # The catch of the function logs the error and raises it again, so the error ID keeps
+            # its first part and ends in the name of this function
             { Invoke-SIDRemoval -ACL $bare -AllowedSIDs $script:orphan1 } |
-                Should -Throw -ErrorId 'AclAccessRulesUnavailable,Get-AclAccessRule'
+                Should -Throw -ErrorId 'AclAccessRulesUnavailable,Invoke-SIDRemoval'
 
             $bare.PSObject.Properties['Access'] | Should -BeNullOrEmpty
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like 'Error in ACL SID removal processing:*'
+            }
         }
 
         It 'Removes the entry from a real security descriptor in a runspace that a host created (#121)' {

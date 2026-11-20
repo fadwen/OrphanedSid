@@ -163,13 +163,33 @@ function Invoke-RemovalWorkflow {
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
+    # What a failure of the workflow leaves behind: the failed result, a log entry and an audit
+    # entry. The catch below runs it for an error of a step, and the two checks that this function
+    # makes itself run it and return, so that every failure is reported in the same way.
+    $recordFailure = {
+        param([string]$Reason)
+
+        $result.Success = $false
+        $result.ErrorMessage = "Workflow failed: $Reason"
+        Write-StructuredLog "SID removal workflow failed for $ObjectDistinguishedName : $Reason" -Level Error -CorrelationId $CorrelationId
+
+        # Log workflow failure for security audit
+        Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "SID removal workflow failed" -Outcome 'Failure' -CorrelationId $CorrelationId -SecurityContext @{
+            Operation = 'RemoveOrphanedSIDs'
+            TargetObjectDN = $ObjectDistinguishedName
+            Error = $Reason
+            IntendedRemovals = $result.IntendedRemovals
+        }
+    }
+
     try {
         Write-StructuredLog "Starting SID removal workflow for $ObjectDistinguishedName (SIDs: $($OrphanedSIDs.Count), WhatIf: $WhatIfMode)" -Level Verbose -CorrelationId $CorrelationId
 
         # Phase 1: Parameter Validation
         Write-StructuredLog "Phase 1: Parameter validation" -Level Debug -CorrelationId $CorrelationId
         if ([string]::IsNullOrWhiteSpace($ObjectDistinguishedName.Trim())) {
-            throw "ObjectDN parameter cannot be empty or whitespace"
+            & $recordFailure 'ObjectDN parameter cannot be empty or whitespace'
+            return $result
         }
 
         # Phase 2: ACL Retrieval
@@ -195,7 +215,10 @@ function Invoke-RemovalWorkflow {
             Write-StructuredLog "Phase 4: Backup creation" -Level Debug -CorrelationId $CorrelationId
             $backupFile = New-ACLBackup -ObjectDN $ObjectDistinguishedName -ACL $acl -BackupPath $BackupPath -CorrelationId $CorrelationId
             if (-not $backupFile) {
-                throw "Failed to create ACL backup - aborting removal operation"
+                # A backup that is declined at its own prompt returns nothing. Nothing is removed
+                # from an object that has no backup.
+                & $recordFailure 'Failed to create ACL backup - aborting removal operation'
+                return $result
             }
             $result.BackupFile = $backupFile
         }
@@ -318,18 +341,7 @@ function Invoke-RemovalWorkflow {
         return $result
     }
     catch {
-        $result.Success = $false
-        $result.ErrorMessage = "Workflow failed: $($_.Exception.Message)"
-        Write-StructuredLog "SID removal workflow failed for $ObjectDistinguishedName : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
-
-        # Log workflow failure for security audit
-        Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "SID removal workflow failed" -Outcome 'Failure' -CorrelationId $CorrelationId -SecurityContext @{
-            Operation = 'RemoveOrphanedSIDs'
-            TargetObjectDN = $ObjectDistinguishedName
-            Error = $_.Exception.Message
-            IntendedRemovals = $result.IntendedRemovals
-        }
-
+        & $recordFailure $_.Exception.Message
         return $result
     }
     finally {

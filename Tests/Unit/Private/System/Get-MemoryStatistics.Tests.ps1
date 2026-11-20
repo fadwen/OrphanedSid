@@ -155,8 +155,12 @@ Describe "Get-MemoryUsageReport" -Tag 'Unit' {
         It "Should stop with a message naming the failure" {
             Mock Get-CurrentMemoryUsage { throw 'counter unavailable' }
 
-            { Get-MemoryUsageReport -MemoryManager $script:manager } |
-                Should -Throw -ExpectedMessage 'Failed to generate memory usage report: counter unavailable'
+            $expected = @{
+                ErrorId         = 'MemoryReportFailed,Get-MemoryUsageReport'
+                ExpectedMessage = 'Failed to generate memory usage report: counter unavailable'
+                ExceptionType   = [System.InvalidOperationException]
+            }
+            { Get-MemoryUsageReport -MemoryManager $script:manager } | Should -Throw @expected
         }
     }
 }

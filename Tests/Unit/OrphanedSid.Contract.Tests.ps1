@@ -199,12 +199,24 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                         if (-not $isAdvanced) {
                             continue
                         }
+                        # DOC-22 of the standards: a departure from a rule is recorded in a comment
+                        # directly above the statement, as "# Exception to <rule ID>: <reason>"
+                        $sourceLines = [System.IO.File]::ReadAllLines($path)
+                        $above = $node.Extent.StartLineNumber - 2
+                        $recordsException = $false
+                        while ($above -ge 0 -and $sourceLines[$above] -match '^\s*#') {
+                            if ($sourceLines[$above] -match '^\s*# Exception to ERR-11: \S') {
+                                $recordsException = $true
+                            }
+                            $above--
+                        }
                         [PSCustomObject]@{
                             Place = "${relative}:$($node.Extent.StartLineNumber)"
                             File = $relative
                             # The form of the six catch lines of the public commands; see CLAUDE.md
                             PassesErrorRecord = $node -is [System.Management.Automation.Language.CommandAst] -and
                                 $node.Extent.Text -match '-ErrorRecord\b'
+                            RecordsException = $recordsException
                         }
                     }
                 })
@@ -221,11 +233,20 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             @($exceptions | Where-Object { $_.File -notlike 'Public*' }).Count | Should -Be 0
         }
 
+        It 'Records the exception in a comment directly above each of the six lines' {
+            $exceptions = @($script:OldFormStatements | Where-Object PassesErrorRecord)
+            $unrecorded = @($exceptions | Where-Object { -not $_.RecordsException } | ForEach-Object { $_.Place })
+
+            $exceptions.Count | Should -Be 6
+            $unrecorded | Should -BeNullOrEmpty -Because "no '# Exception to ERR-11:' comment is above: $($unrecorded -join '; ')"
+        }
+
         It 'Calls every function that raises with ThrowTerminatingError from inside a try' {
-            # ThrowTerminatingError() ends only the statement that called the function. A caller that
-            # makes the call outside a try carries on with its next line, where a throw in the same
-            # place would have unwound it. So a function that is moved to ThrowTerminatingError()
-            # needs every call to it in a try body, and a new call outside one fails here.
+            # An error raised with ThrowTerminatingError() goes to the nearest try on the call stack.
+            # With none there, it ends only the statement that called the function, and the caller
+            # carries on with its next line. So that each function is right whatever calls it, every
+            # call to a function that raises this way is in a try body, and a new call outside one
+            # fails here.
             #
             # A call inside a script block takes the try that the block is written in when the block
             # is handed straight to a command, as the retry blocks are. Measured on both editions:
@@ -272,17 +293,14 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             $outside | Should -BeNullOrEmpty -Because ($outside -join '; ')
         }
 
-        It 'Has exactly the recorded number of other such statements, which may only go down' {
+        It 'Has no other such statement' {
             # ERR-11 of the standards: an advanced function ends with $PSCmdlet.ThrowTerminatingError().
-            # The module predates that rule. A change that replaces some of these statements lowers the
-            # number here in the same commit, and a change that adds one fails. When the number
-            # reaches 0, this case stays, as the check that none comes back.
-            $recorded = 63
+            # A throw, or a Write-Error -ErrorAction Stop without -ErrorRecord, that is added to an
+            # advanced function of Private or Public fails here. CLAUDE.md, under the heading for
+            # ERR-11, says what to write in its place and what to check in the function first.
             $others = @($script:OldFormStatements | Where-Object { -not $_.PassesErrorRecord })
-            $byFile = ($others | Group-Object -Property File | Sort-Object -Property Count -Descending |
-                    ForEach-Object { "$($_.Count) in $($_.Name)" }) -join '; '
 
-            $others.Count | Should -Be $recorded -Because "the statements are: $byFile"
+            $others.Count | Should -Be 0 -Because "such a statement is at: $($others.Place -join '; ')"
         }
     }
 

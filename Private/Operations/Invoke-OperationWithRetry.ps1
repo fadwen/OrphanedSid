@@ -65,9 +65,10 @@ function Invoke-OperationWithRetry {
 
     process {
         $attempt = 0
-        $lastError = $null
 
-        do {
+        # The loop ends in one of two ways: the operation succeeds and its result is returned, or
+        # the catch raises the error of the last attempt.
+        while ($true) {
             $attempt++
             try {
                 Write-Verbose "Executing $OperationName (attempt $attempt/$MaxRetries)"
@@ -77,20 +78,19 @@ function Invoke-OperationWithRetry {
                 return $result
             }
             catch {
-                $lastError = $_
                 $isRetryable = $_.Exception.Message -match $RetryableErrorPattern
 
                 if (-not $isRetryable -or $attempt -ge $MaxRetries) {
                     Write-Verbose "Operation '$OperationName' failed permanently after $attempt attempts"
-                    throw $lastError
+                    # The error of the operation is passed on as it is: its exception, its
+                    # category and the first part of its error ID stay
+                    $PSCmdlet.ThrowTerminatingError($_)
                 }
 
                 $waitTime = [Math]::Min([Math]::Pow(2, $attempt - 1) + (Get-Random -Maximum 2), 30)
                 Write-Verbose "Operation '$OperationName' failed (attempt $attempt/$MaxRetries), retrying in $waitTime seconds"
                 Start-Sleep -Seconds $waitTime
             }
-        } while ($attempt -lt $MaxRetries)
-
-        throw $lastError
+        }
     }
 }

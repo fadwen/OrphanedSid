@@ -109,48 +109,62 @@ function Get-ACLForRemoval {
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
-    try {
-        Write-StructuredLog "Starting ACL retrieval for $ObjectDistinguishedName" -Level Debug -CorrelationId $CorrelationId
+    Write-StructuredLog "Starting ACL retrieval for $ObjectDistinguishedName" -Level Debug -CorrelationId $CorrelationId
 
-        # Validate ObjectDistinguishedName parameter
-        if ([string]::IsNullOrWhiteSpace($ObjectDistinguishedName.Trim())) {
-            throw "ObjectDistinguishedName parameter cannot be empty or whitespace"
-        }
-
-        # Validate ObjectDistinguishedName format (basic validation for AD DN format)
-        if ($ObjectDistinguishedName -match '^[A-Za-z]:\\' -and $ObjectDistinguishedName -notmatch '^CN=|^OU=|^DC=') {
-            throw "Invalid ObjectDistinguishedName format. Expected AD Distinguished Name, got filesystem path: $ObjectDistinguishedName"
-        }
-
+    # The name is checked before the try. Each check ends the function with an error of its own,
+    # and it is the caller that logs the refusal: the catch below is for a read that failed.
+    $refusal = $null
+    if ([string]::IsNullOrWhiteSpace($ObjectDistinguishedName.Trim())) {
+        $refusal = 'DistinguishedNameEmpty'
+        $message = 'ObjectDistinguishedName parameter cannot be empty or whitespace'
+    } elseif ($ObjectDistinguishedName -match '^[A-Za-z]:\\' -and
+        $ObjectDistinguishedName -notmatch '^CN=|^OU=|^DC=') {
+        $refusal = 'DistinguishedNameIsFilePath'
+        $message = 'Invalid ObjectDistinguishedName format. Expected AD Distinguished Name, ' +
+            "got filesystem path: $ObjectDistinguishedName"
+    } elseif (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDistinguishedName -CorrelationId $CorrelationId)) {
         # The check is of the form of the name only. Whether the object exists is settled by the
-        # read below, which fails with the directory's own error. ThrowTerminatingError() leaves
-        # the function at once: the catch at the end of this function does not receive the error,
-        # so it is the caller that logs the refusal.
-        if (-not (Test-ValidDistinguishedName -DistinguishedName $ObjectDistinguishedName -CorrelationId $CorrelationId)) {
-            $message = "The distinguished name was refused because it is not well formed: $ObjectDistinguishedName"
-            $exception = [System.ArgumentException]::new($message)
-            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
-            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
-                $exception, 'DistinguishedNameRefused', $category, $ObjectDistinguishedName)
-            $PSCmdlet.ThrowTerminatingError($errorRecord)
-        }
+        # read below, which fails with the directory's own error.
+        $refusal = 'DistinguishedNameRefused'
+        $message = "The distinguished name was refused because it is not well formed: $ObjectDistinguishedName"
+    }
 
+    if ($null -ne $refusal) {
+        $exception = [System.ArgumentException]::new($message)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, $refusal, $category, $ObjectDistinguishedName)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
+    $ruleCount = 0
+    try {
         # Retrieve ACL with retry logic for reliability
         $acl = Invoke-ADOperationWithRetry -ScriptBlock {
             Get-DirectoryObjectAcl -DistinguishedName $ObjectDistinguishedName
         } -MaxRetries 3 -OperationName 'Get-ACL' -ObjectContext $ObjectDistinguishedName -CorrelationId $CorrelationId
 
-        if (-not $acl) {
-            throw "Failed to retrieve ACL for $ObjectDistinguishedName"
+        if ($acl) {
+            $ruleCount = @(Get-AclAccessRule -Acl $acl).Count
         }
-
-        Write-StructuredLog "Successfully retrieved ACL for $ObjectDistinguishedName (Access rules: $(@(Get-AclAccessRule -Acl $acl).Count))" -Level Verbose -CorrelationId $CorrelationId
-        return $acl
-    }
-    catch {
+    } catch {
         Write-StructuredLog "Failed to retrieve ACL for $ObjectDistinguishedName : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
-        throw
+        $PSCmdlet.ThrowTerminatingError($_)
     }
+
+    if (-not $acl) {
+        # A read that neither failed nor returned a descriptor
+        $message = "Failed to retrieve ACL for $ObjectDistinguishedName"
+        Write-StructuredLog "$message : the read returned nothing" -Level Error -CorrelationId $CorrelationId
+        $exception = [System.InvalidOperationException]::new($message)
+        $category = [System.Management.Automation.ErrorCategory]::InvalidResult
+        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $exception, 'AclNotReturned', $category, $ObjectDistinguishedName)
+        $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
+    Write-StructuredLog "Successfully retrieved ACL for $ObjectDistinguishedName (Access rules: $ruleCount)" -Level Verbose -CorrelationId $CorrelationId
+    $acl
 }
 
 

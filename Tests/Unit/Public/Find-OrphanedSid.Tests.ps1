@@ -115,14 +115,15 @@ Describe 'Find-OrphanedSid' -Tag 'Unit', 'Public' {
 
         It 'Refuses input with no usable DN instead of scanning the domain root (#79)' {
             { [PSCustomObject]@{ Name = 'NoDN' } | Find-OrphanedSid -ErrorAction SilentlyContinue } |
-                Should -Throw '*No usable search base*'
+                Should -Throw '*No usable search base*' -ErrorId 'SearchBaseNotUsable,Find-OrphanedSid'
 
             Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 0 -Exactly
             Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 0 -Exactly
         }
 
         It 'Refuses a -SearchBase that is only blank' {
-            { Find-OrphanedSid -SearchBase '  ' } | Should -Throw '*No usable search base*'
+            { Find-OrphanedSid -SearchBase '  ' } |
+                Should -Throw '*No usable search base*' -ErrorId 'SearchBaseNotUsable,Find-OrphanedSid'
 
             Should -Invoke -ModuleName OrphanedSid Get-ADDomain -Times 0 -Exactly
         }

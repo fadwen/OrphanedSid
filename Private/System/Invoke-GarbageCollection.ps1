@@ -167,7 +167,12 @@ function Invoke-Cleanup {
         }
         catch {
             Write-StructuredLog "Cleanup failed: $($_.Exception.Message)" -Level Error -Component $script:MemoryManagementConfig.LogComponent -CorrelationId $CorrelationId
-            Write-Error "Memory cleanup operation failed: $($_.Exception.Message)" -ErrorAction Stop
+            $message = "Memory cleanup operation failed: $($_.Exception.Message)"
+            $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'MemoryCleanupFailed', $category, $null)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
     }
 

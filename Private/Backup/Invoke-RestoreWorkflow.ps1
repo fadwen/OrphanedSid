@@ -18,7 +18,7 @@
 .NOTES
     Author: Jeffrey Stuhr
     Module: Find-UnknownSID.RestoreOperations
-    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1
+    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1
     Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
@@ -179,6 +179,10 @@ function Invoke-RestoreWorkflow {
         if (-not (Get-Command Set-ObjectACL -ErrorAction SilentlyContinue)) {
             . $PSScriptRoot\Restore-ACLOperation.ps1
         }
+
+        if (-not (Get-Command Get-BackupFileForRestore -ErrorAction SilentlyContinue)) {
+            . $PSScriptRoot\Get-BackupFileForRestore.ps1
+        }
     }
 
     process {
@@ -284,112 +288,19 @@ function Invoke-RestoreWorkflow {
             $backupFilesToProcess = @()
             $restoreMode = "Single"
 
+            # The file and the folder were resolved and checked before the try, where a path that
+            # does not exist, or a file of another type, ends the function with an error of its own.
             if ($BackupFile) {
                 # Single file mode - specific backup file provided
-                # Validate and sanitize file path
-                $BackupFile = $BackupFile.Trim()
-                # Normalize path to prevent traversal attacks
-                try {
-                    # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not
-                    # the current location, so a relative path pointed at the user profile (#80)
-                    $BackupFile = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupFile)
-                } catch {
-                    throw "Invalid backup file path: $BackupFile"
-                }
-                
-                if (-not (Test-Path -LiteralPath $BackupFile)) {
-                    throw "Backup file not found"
-                }
-                
-                # Validate file extension for security
-                $allowedExtensions = @('.xml', '.clixml')
-                $fileExtension = [System.IO.Path]::GetExtension($BackupFile)
-                if ($fileExtension -notin $allowedExtensions) {
-                    throw "Invalid backup file extension: $fileExtension. Only .xml and .clixml files are allowed."
-                }
-                
                 $backupFilesToProcess = @($BackupFile)
                 $restoreMode = "Single"
-            } elseif ($BackupPath) {
-                # Directory mode - discover backup files
-                # Validate and sanitize directory path
-                $BackupPath = $BackupPath.Trim()
-                # Normalize path to prevent traversal attacks
-                try {
-                    # Resolved as PowerShell sees it: [IO.Path]::GetFullPath uses the process directory, not
-                    # the current location, so a relative path pointed at the user profile (#80)
-                    $BackupPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BackupPath)
-                } catch {
-                    throw "Invalid backup directory path: $BackupPath"
-                }
-                
-                if (-not (Test-Path -LiteralPath $BackupPath -PathType Container)) {
-                    throw "Backup directory not found"
-                }
-
-                # Get all XML backup files in the directory
-                $allBackupFiles = @(Get-ChildItem -LiteralPath $BackupPath -Filter "*.xml" -File)
-
-                if ($allBackupFiles.Count -eq 0) {
-                    throw "No backup files found in directory: $BackupPath"
-                }
-
-                Write-Verbose "Found $($allBackupFiles.Count) backup files in $BackupPath"
-
-                # Convert to file paths immediately to avoid PowerShell collection issues
-                $allBackupFilePaths = @()
-                foreach ($file in $allBackupFiles) {
-                    if ($file -and $file.FullName) {
-                        $allBackupFilePaths += $file.FullName
-                    }
-                }
-
-                Write-Verbose "Successfully collected $($allBackupFilePaths.Count) valid file paths"
-
-                # Read the ObjectDN each backup records. A file name cannot identify the object: it is the
-                # sanitized DN, so CN=User1 is a prefix of a CN_User10 backup, and the same CN recurs in
-                # every OU that holds one.
-                $backupIndex = foreach ($backupFilePath in $allBackupFilePaths) {
-                    try {
-                        Write-Verbose "Processing backup file: $backupFilePath"
-                        $backupMetadata = Import-Clixml -LiteralPath $backupFilePath -ErrorAction Stop
-                        [PSCustomObject]@{
-                            Path      = $backupFilePath
-                            ObjectDN  = [string]$backupMetadata.ObjectDN
-                            WrittenAt = (Get-Item -LiteralPath $backupFilePath).LastWriteTime
-                        }
-                    } catch {
-                        Write-Warning "Failed to process backup file '$backupFilePath': $($_.Exception.Message)"
-                    }
-                }
-                $backupIndex = @($backupIndex | Where-Object { $_.ObjectDN })
-                $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
-
-                if ($TargetObjectDN -match '^(OU|DC)=') {
-                    # Bulk restore mode - every object at or under the container. The comma anchors the
-                    # suffix, so OU=Sales does not take in OU=PreSales.
-                    $restoreMode = "Bulk"
-                    $inScope = @($backupIndex | Where-Object {
-                            $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) -or
-                            $_.ObjectDN.EndsWith(",$TargetObjectDN", $ignoreCase)
-                        })
-                } else {
-                    # Single restore mode - only backups of exactly this object
-                    $restoreMode = "Single"
-                    $inScope = @($backupIndex | Where-Object { $_.ObjectDN.Equals($TargetObjectDN, $ignoreCase) })
-                    if ($inScope.Count -eq 0) {
-                        throw "No backup files found for object $TargetObjectDN in path $BackupPath"
-                    }
-                }
-
-                # One backup per object, the most recent, so two runs in one folder cannot restore an
-                # object twice in an arbitrary order
-                $backupFilesToProcess = @(foreach ($group in ($inScope | Group-Object { $_.ObjectDN.ToUpperInvariant() })) {
-                        @($group.Group | Sort-Object WrittenAt -Descending)[0].Path
-                    })
-                Write-Verbose "Matched $($backupFilesToProcess.Count) backup files for $TargetObjectDN"
             } else {
-                throw "Either BackupFile or BackupPath must be specified"
+                # Directory mode - discover backup files. A folder that holds none, and a single
+                # object that has no backup there, are raised by the selection, and the catch at the
+                # end of this try reports them like any other failure of the workflow.
+                $selection = Get-BackupFileForRestore -TargetObjectDN $TargetObjectDN -BackupPath $BackupPath
+                $restoreMode = $selection.RestoreMode
+                $backupFilesToProcess = @($selection.BackupFiles)
             }
 
             $workflowSteps[-1].Status = "Completed"
@@ -412,6 +323,9 @@ function Invoke-RestoreWorkflow {
             }
 
             foreach ($fileToProcess in $backupFilesToProcess) {
+                # Why this file was not restored: set by the check of the object below and by the
+                # catch, and reported after the try, so that both give the same failed result
+                $fileFailure = $null
                 try {
                     Write-Verbose "Processing backup file: $fileToProcess"
 
@@ -421,54 +335,55 @@ function Invoke-RestoreWorkflow {
 
                     # A backup chosen by file must be of the object asked for. Directory mode already
                     # selects files by the DN they record.
-                    if ($restoreMode -eq 'Single' -and $BackupFile -and
-                        -not [string]::Equals([string]$actualTargetDN, $TargetObjectDN, [System.StringComparison]::OrdinalIgnoreCase)) {
-                        throw "Backup file $fileToProcess is a backup of '$actualTargetDN', not of '$TargetObjectDN'"
-                    }
+                    $isOtherObject = $restoreMode -eq 'Single' -and $BackupFile -and
+                        -not [string]::Equals([string]$actualTargetDN, $TargetObjectDN, [System.StringComparison]::OrdinalIgnoreCase)
 
-                    # Set-ObjectACL honours $WhatIfPreference and prints the preview itself, so under
-                    # -WhatIf the restore still runs through validation; this guard only answers -Confirm.
-                    if (-not $WhatIfPreference -and
+                    if ($isOtherObject) {
+                        $fileFailure = "Backup file $fileToProcess is a backup of '$actualTargetDN', not of '$TargetObjectDN'"
+                    } elseif (-not $WhatIfPreference -and
                         -not $PSCmdlet.ShouldProcess($actualTargetDN, "Restore ACL from backup $fileToProcess")) {
+                        # Set-ObjectACL honours $WhatIfPreference and prints the preview itself, so under
+                        # -WhatIf the restore still runs through validation; this guard only answers -Confirm.
                         Write-Verbose "Restore declined at the confirmation prompt: $actualTargetDN"
-                        continue
-                    }
-
-                    # Restore this individual object
-                    $individualResult = Restore-IndividualObject -TargetObjectDN $actualTargetDN -BackupData $backupData -BackupFile $fileToProcess -ValidationLevel $ValidationLevel -VerifyRestoration:$VerifyRestoration -CorrelationId $CorrelationId
-                    
-                    # Add workflow-specific type name
-                    $individualResult.PSObject.TypeNames.Insert(0, 'RestoreWorkflowResult')
-
-                    $allResults += $individualResult
-                    $workflowSteps[-1].ProcessedObjects++
-
-                    if ($individualResult.Success) {
-                        $workflowSteps[-1].SuccessfulRestores++
-                        Write-Verbose "Successfully restored: $actualTargetDN"
                     } else {
-                        $workflowSteps[-1].FailedRestores++
-                        Write-Warning "Failed to restore: $actualTargetDN - $($individualResult.ErrorMessage)"
+                        # Restore this individual object
+                        $individualResult = Restore-IndividualObject -TargetObjectDN $actualTargetDN -BackupData $backupData -BackupFile $fileToProcess -ValidationLevel $ValidationLevel -VerifyRestoration:$VerifyRestoration -CorrelationId $CorrelationId
+
+                        # Add workflow-specific type name
+                        $individualResult.PSObject.TypeNames.Insert(0, 'RestoreWorkflowResult')
+
+                        $allResults += $individualResult
+                        $workflowSteps[-1].ProcessedObjects++
+
+                        if ($individualResult.Success) {
+                            $workflowSteps[-1].SuccessfulRestores++
+                            Write-Verbose "Successfully restored: $actualTargetDN"
+                        } else {
+                            $workflowSteps[-1].FailedRestores++
+                            Write-Warning "Failed to restore: $actualTargetDN - $($individualResult.ErrorMessage)"
+                        }
                     }
                 }
                 catch {
+                    # Preserve original error message for debugging
+                    $fileFailure = $_.Exception.Message
+                }
+
+                if ($null -ne $fileFailure) {
                     $workflowSteps[-1].FailedRestores++
                     $workflowSteps[-1].ProcessedObjects++
-                    
-                    # Preserve original error message for debugging
-                    $originalErrorMessage = $_.Exception.Message
-                    
+
                     $failedResult = [PSCustomObject]@{
                         Success = $false
                         TargetObjectDN = "Unknown (from $fileToProcess)"
-                        ErrorMessage = $originalErrorMessage
+                        ErrorMessage = $fileFailure
                         BackupFile = $fileToProcess
                         CorrelationId = $CorrelationId
                     }
                     $failedResult.PSTypeNames.Insert(0, 'RestoreWorkflowResult')
                     $allResults += $failedResult
-                    
-                    Write-Warning "Failed to process backup file $fileToProcess : $originalErrorMessage"
+
+                    Write-Warning "Failed to process backup file $fileToProcess : $fileFailure"
                 }
             }
 
@@ -632,7 +547,28 @@ function Restore-IndividualObject {
     )
 
     $startTime = Get-Date
-    
+
+    # The result of a restore that did not succeed, with the warning that goes with it. The three
+    # steps below return it for a step that reports a failure, and the catch returns it for a
+    # step that raised an error, so that both are reported in the same way.
+    $newFailedResult = {
+        param([string]$Reason)
+
+        $errorResult = [PSCustomObject]@{
+            Success = $false
+            TargetObjectDN = $TargetObjectDN
+            BackupFile = $BackupFile
+            EntriesRestored = 0
+            Duration = (Get-Date) - $startTime
+            CorrelationId = $CorrelationId
+            ErrorMessage = $Reason
+        }
+        $errorResult.PSTypeNames.Insert(0, 'RestoreWorkflowResult')
+
+        Write-Warning "Failed to restore object: $TargetObjectDN - $Reason"
+        $errorResult
+    }
+
     try {
         Write-Verbose "Restoring individual object: $TargetObjectDN from $BackupFile"
 
@@ -640,14 +576,14 @@ function Restore-IndividualObject {
         $backupValidation = Test-BackupIntegrity -BackupData $BackupData -ExpectedObjectDN $TargetObjectDN -ValidationLevel $ValidationLevel -CorrelationId $CorrelationId
 
         if (-not $backupValidation.IsValid) {
-            throw "Backup validation failed: $($backupValidation.ErrorMessage)"
+            return (& $newFailedResult "Backup validation failed: $($backupValidation.ErrorMessage)")
         }
 
         # Validate target object exists and is accessible
         $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
 
         if (-not $targetValidation.IsValid) {
-            throw "Target validation failed: $($targetValidation.Issues -join '; ')"
+            return (& $newFailedResult "Target validation failed: $($targetValidation.Issues -join '; ')")
         }
 
         # Apply ACL restoration. The target was validated above, so Set-ObjectACL does not read it again.
@@ -655,7 +591,7 @@ function Restore-IndividualObject {
 
         if (-not $aclOperation.Success) {
             # Set-ObjectACL's message already starts "ACL application failed:" or "ACL operation failed:"
-            throw $aclOperation.ErrorMessage
+            return (& $newFailedResult $aclOperation.ErrorMessage)
         }
 
         # Create success result
@@ -677,19 +613,7 @@ function Restore-IndividualObject {
         return $result
     }
     catch {
-        $errorResult = [PSCustomObject]@{
-            Success = $false
-            TargetObjectDN = $TargetObjectDN
-            BackupFile = $BackupFile
-            EntriesRestored = 0
-            Duration = (Get-Date) - $startTime
-            CorrelationId = $CorrelationId
-            ErrorMessage = $_.Exception.Message
-        }
-        $errorResult.PSTypeNames.Insert(0, 'RestoreWorkflowResult')
-
-        Write-Warning "Failed to restore object: $TargetObjectDN - $($_.Exception.Message)"
-        return $errorResult
+        return (& $newFailedResult $_.Exception.Message)
     }
 }
 

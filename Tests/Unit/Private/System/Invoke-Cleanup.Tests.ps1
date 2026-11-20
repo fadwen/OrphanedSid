@@ -80,7 +80,12 @@ Describe 'Invoke-Cleanup' -Tag 'Unit', 'System', 'Private' {
     It 'Logs at Error level and stops when the memory reading fails' {
         Mock Get-CurrentMemoryUsage { throw 'counter unavailable' }
 
-        { Invoke-Cleanup -CorrelationId 'gc-2' } | Should -Throw -ExpectedMessage '*counter unavailable*'
+        $expected = @{
+            ErrorId         = 'MemoryCleanupFailed,Invoke-Cleanup'
+            ExpectedMessage = 'Memory cleanup operation failed: counter unavailable'
+            ExceptionType   = [System.InvalidOperationException]
+        }
+        { Invoke-Cleanup -CorrelationId 'gc-2' } | Should -Throw @expected
         Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Error' -and $Message -eq 'Cleanup failed: counter unavailable' -and $CorrelationId -eq 'gc-2' }
     }
 }

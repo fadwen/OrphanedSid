@@ -232,8 +232,56 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
         It "Should throw when not even the fallback path can be built" {
             Mock Get-Location { throw 'No current location' }
 
-            { Initialize-LogDirectory -LogPath '..\escape.log' } |
-                Should -Throw -ExpectedMessage '*Failed to establish any log file path: No current location*'
+            $expected = @{
+                ErrorId         = 'LogPathNotEstablished,Initialize-LogDirectory'
+                ExpectedMessage = 'Failed to establish any log file path: No current location'
+                ExceptionType   = [System.IO.IOException]
+            }
+            { Initialize-LogDirectory -LogPath '..\escape.log' } | Should -Throw @expected
+        }
+    }
+
+    Context 'The errors of the two steps' {
+        It 'New-LogDirectory ends with LogDirectoryNotCreated and keeps the cause as the inner exception' {
+            Mock New-Item { throw 'Access denied' } -ParameterFilter { $ItemType -eq 'Directory' }
+            $missing = Join-Path $script:TestRoot 'not-there'
+
+            $caught = $null
+            try {
+                New-LogDirectory -DirectoryPath $missing
+            } catch {
+                $caught = $_
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'LogDirectoryNotCreated,New-LogDirectory'
+            $caught.Exception | Should -BeOfType [System.IO.IOException]
+            $caught.Exception.Message | Should -Be "Failed to create log directory '$missing': Access denied"
+            $caught.Exception.InnerException.Message | Should -Be 'Access denied'
+            $caught.TargetObject | Should -Be $missing
+        }
+
+        It 'New-LogDirectory ends with LogDirectoryNotWritable when the test file cannot be written' {
+            Mock Set-Content { throw 'Write denied' } -ParameterFilter { $LiteralPath -like '*test_write_*.tmp' }
+
+            $expected = @{
+                ErrorId         = 'LogDirectoryNotWritable,New-LogDirectory'
+                ExpectedMessage = "Insufficient write permissions for log directory '$script:TestRoot': Write denied"
+                ExceptionType   = [System.UnauthorizedAccessException]
+            }
+            { New-LogDirectory -DirectoryPath $script:TestRoot } | Should -Throw @expected
+        }
+
+        It 'Initialize-LogFile ends with LogFileNotInitialized when the header cannot be written' {
+            Mock Set-Content { throw 'Disk full' }
+            $logFile = Join-Path $script:TestRoot 'header.log'
+
+            $expected = @{
+                ErrorId         = 'LogFileNotInitialized,Initialize-LogFile'
+                ExpectedMessage = "Failed to initialize log file '$logFile': Disk full"
+                ExceptionType   = [System.IO.IOException]
+            }
+            { Initialize-LogFile -LogFilePath $logFile } | Should -Throw @expected
         }
     }
 }

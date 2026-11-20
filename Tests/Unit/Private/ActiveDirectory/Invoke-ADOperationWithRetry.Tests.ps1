@@ -97,6 +97,17 @@ Describe "Invoke-ADOperationWithRetry" -Tag 'Unit' {
             { Invoke-ADOperationWithRetry -ScriptBlock { 'x' } } |
                 Should -Throw -ExpectedMessage 'DC unavailable' -ExceptionType ([System.InvalidOperationException])
         }
+
+        It "Keeps the first part of the error ID and ends it in its own name" {
+            Mock Invoke-OperationWithRetry {
+                $exception = [System.UnauthorizedAccessException]::new('Access is denied')
+                $category = [System.Management.Automation.ErrorCategory]::PermissionDenied
+                throw [System.Management.Automation.ErrorRecord]::new($exception, 'ReadRefused', $category, 'OU=Sales')
+            }
+
+            { Invoke-ADOperationWithRetry -ScriptBlock { 'x' } } |
+                Should -Throw -ErrorId 'ReadRefused,Invoke-ADOperationWithRetry' -ExceptionType ([System.UnauthorizedAccessException])
+        }
     }
 
     Context "Security logging" {

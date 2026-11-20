@@ -123,7 +123,12 @@ function Initialize-LoggingSystem {
             Write-Verbose "  - Console Output Suppressed: $script:SuppressConsoleOutput"
         }
         catch {
-            Write-Error "Failed to initialize logging system state: $($_.Exception.Message)" -ErrorAction Stop
+            $message = "Failed to initialize logging system state: $($_.Exception.Message)"
+            $exception = [System.InvalidOperationException]::new($message, $_.Exception)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'LoggingStateNotInitialized', $category, $null)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
     }
 

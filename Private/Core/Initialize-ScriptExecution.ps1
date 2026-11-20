@@ -251,8 +251,18 @@ function Initialize-ScriptExecution {
                 }
             }
 
+            # The three checks of this try raise their error from inside it, where
+            # ThrowTerminatingError() passes the catch below by. Each therefore writes the log
+            # entry that the catch writes for an error of a step.
             if ($missingTypes.Count -gt 0) {
-                throw "Required types not available: $($missingTypes -join ', '). Classes should be loaded by the main script before calling Initialize-ScriptExecution."
+                $message = "Required types not available: $($missingTypes -join ', '). " +
+                    'Classes should be loaded by the main script before calling Initialize-ScriptExecution.'
+                Write-StructuredLog "Script initialization failed: $message" -Level Error -Component 'Initialization' -CorrelationId $CorrelationId
+                $exception = [System.InvalidOperationException]::new($message)
+                $category = [System.Management.Automation.ErrorCategory]::InvalidOperation
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'RequiredTypeMissing', $category, ($missingTypes -join ', '))
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
 
             Write-Verbose "All required classes are available: $($requiredTypes -join ', ')"
@@ -299,7 +309,15 @@ function Initialize-ScriptExecution {
             }
 
             if ($configLoadError) {
-                throw $configLoadError
+                # The message is the one the file's own check gave. The error gets an ID that a
+                # caller can match, and keeps what was raised as its inner exception.
+                $message = $configLoadError.Exception.Message
+                Write-StructuredLog "Script initialization failed: $message" -Level Error -Component 'Initialization' -CorrelationId $CorrelationId
+                $exception = [System.IO.InvalidDataException]::new($message, $configLoadError.Exception)
+                $category = [System.Management.Automation.ErrorCategory]::InvalidData
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'ConfigurationFileNotLoaded', $category, $ConfigPath)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
             if ($configFromFile) {
                 Write-StructuredLog "Loaded configuration from file: $ConfigPath" -Level Debug -Component 'Initialization' -CorrelationId $CorrelationId
@@ -309,7 +327,13 @@ function Initialize-ScriptExecution {
 
             # Validate configuration
             if (-not $script:Config.ValidateConfiguration()) {
-                throw "Configuration validation failed"
+                $message = 'Configuration validation failed'
+                Write-StructuredLog "Script initialization failed: $message" -Level Error -Component 'Initialization' -CorrelationId $CorrelationId
+                $exception = [System.IO.InvalidDataException]::new($message)
+                $category = [System.Management.Automation.ErrorCategory]::InvalidData
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'ConfigurationInvalid', $category, $ConfigPath)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
             }
 
             # Validated above, so the level is one Test-LogLevel knows. Applied after the lines that
@@ -347,7 +371,7 @@ function Initialize-ScriptExecution {
 
         } catch {
             Write-StructuredLog "Script initialization failed: $($_.Exception.Message)" -Level Error -Component 'Initialization' -CorrelationId $CorrelationId
-            throw
+            $PSCmdlet.ThrowTerminatingError($_)
         }
     }
 }
