@@ -5,9 +5,10 @@ function ConvertTo-NormalizedDistinguishedName {
 
     .DESCRIPTION
     Active Directory accepts a distinguished name that is typed with a blank after a comma or
-    around an equals sign, such as 'CN=Alice, OU=Sales, DC=contoso, DC=com', and returns names
-    without them. The restore compares the name it is given with the names that backups record,
-    which are the directory's own, so it needs one spelling for both.
+    around an equals sign, such as 'CN=Alice, OU=Sales, DC=contoso, DC=com'. The names that a
+    subtree search returns, which is how discovery reads objects, have no such blanks, and those
+    are the names that backups record. The restore compares the name it is given with them, so
+    it needs one spelling for both.
 
     The name is split at the commas and at the first equals sign of each component, and the
     blanks on either side of those separators are removed. A separator or a blank that is

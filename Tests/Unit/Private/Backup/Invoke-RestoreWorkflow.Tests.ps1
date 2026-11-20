@@ -216,6 +216,21 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.TargetObjectDN | Should -Be "Unknown (from $otherFile)"
             $result.ErrorMessage | Should -Be "Backup file $otherFile is a backup of 'CN=Someone Else,OU=Users,DC=company,DC=com', not of '$($script:TargetDN)'"
         }
+
+        It "Should take a backup file that records the name of the target as <Recorded> (#150)" -ForEach @(
+            @{ Recorded = 'CN=TestUser, OU=Users, DC=company, DC=com' }
+            @{ Recorded = 'cn = testuser , ou = users , dc = company , dc = com' }
+        ) {
+            # The target is compared without the blanks around its separators, so the name that
+            # the file records has to be compared that way too
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $Recorded
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $Recorded -BackupFile $file
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $file }
+        }
+
         It "Should default to the Standard validation level" {
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
 

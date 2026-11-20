@@ -342,9 +342,13 @@ function Invoke-RestoreWorkflow {
                     $actualTargetDN = $backupData.ObjectDN
 
                     # A backup chosen by file must be of the object asked for. Directory mode already
-                    # selects files by the DN they record.
+                    # selects files by the DN they record. The recorded name is compared in the
+                    # spelling that the target was brought into at the start.
+                    $recordedName = [string]$actualTargetDN
+                    $recordedName = ConvertTo-NormalizedDistinguishedName -DistinguishedName $recordedName
+                    $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
                     $isOtherObject = $restoreMode -eq 'Single' -and $BackupFile -and
-                        -not [string]::Equals([string]$actualTargetDN, $TargetObjectDN, [System.StringComparison]::OrdinalIgnoreCase)
+                        -not [string]::Equals($recordedName, $TargetObjectDN, $ignoreCase)
 
                     if ($isOtherObject) {
                         $fileFailure = "Backup file $fileToProcess is a backup of '$actualTargetDN', not of '$TargetObjectDN'"
