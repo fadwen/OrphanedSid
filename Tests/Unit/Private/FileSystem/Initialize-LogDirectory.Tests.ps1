@@ -151,7 +151,6 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
         }
 
         It "Should resolve a relative path against the current location, not the module folder (#45)" {
-            Mock Get-ScriptRootDirectory { 'C:\ModuleFolderMustNotBeUsed' }
             $null = New-Item -Path $script:TestRoot -ItemType Directory -Force
             Push-Location -Path $script:TestRoot
             try {
@@ -176,26 +175,67 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
         }
     }
 
-    Context "Fallback path" {
-        It "Should fall back to a timestamped file in the current directory when <Case>" -ForEach @(
-            @{ Case = 'the path contains a traversal'; Path = '..\..\..\windows\system32\test.log'; Reason = '*Directory traversal not allowed*' }
-            @{ Case = 'the path is outside the allowed directories'; Path = 'C:\Program Files\Company\Application\Logs\Find-UnknownSID.log'; Reason = '*Path must be within script directory*' }
+    Context "A folder named like a system folder (#149)" {
+        It "Should write the log where the path says when a folder is named <Folder>" -ForEach @(
+            @{ Folder = 'windows-servers' }
+            @{ Folder = 'Program Files' }
+            @{ Folder = 'system32' }
         ) {
-            $result = Initialize-LogDirectory -LogPath $Path
+            $asked = Join-Path (Join-Path $script:TestRoot $Folder) 'run.log'
+
+            $result = Initialize-LogDirectory -LogPath $asked
+
+            $result | Should -Be $asked
+            Test-Path -LiteralPath $asked -PathType Leaf | Should -BeTrue
+            $script:LogFileInitialized | Should -BeTrue
+            Should -Invoke Write-Warning -Times 0 -Exactly
+        }
+
+        It "Should read .. in a relative path as the parent folder, as a cmdlet does" {
+            $start = Join-Path $script:TestRoot 'Scripts'
+            $null = New-Item -Path $start -ItemType Directory -Force
+            Push-Location -Path $start
+            try {
+                $result = Initialize-LogDirectory -LogPath '..\Logs\run.log'
+            }
+            finally {
+                Pop-Location
+            }
+
+            $result | Should -Be (Join-Path $script:TestRoot 'Logs\run.log')
+            Test-Path -LiteralPath $result -PathType Leaf | Should -BeTrue
+            Should -Invoke Write-Warning -Times 0 -Exactly
+        }
+    }
+
+    Context "Fallback path" {
+        It "Should fall back to a timestamped file in the current directory when the path is not a file system path" {
+            $result = Initialize-LogDirectory -LogPath 'HKLM:\Software\OrphanedSid\run.log'
 
             Split-Path $result -Parent | Should -Be $script:FallbackDir
             Split-Path $result -Leaf | Should -Match '^OrphanedSid_\d{8}_\d{6}\.log$'
             $script:LogPath | Should -Be $result
             $script:LogFileInitialized | Should -BeFalse
             $script:LogFileReinitAttempted | Should -BeTrue
-            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like "Log directory initialization failed: $Reason" }
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like 'Log directory initialization failed: *is not a file system path*'
+            }
+            # Nothing is created for it: not in the registry, and not as a folder of that name
+            Test-Path $script:FallbackDir | Should -BeFalse
         }
 
-        It "Should not create anything for a traversal path" {
-            Initialize-LogDirectory -LogPath '..\..\..\windows\system32\test.log'
+        It "Should fall back when the drive of the path does not exist" {
+            $letter = 71..90 | ForEach-Object { [char]$_ } |
+                Where-Object { -not (Get-PSDrive -Name $_ -ErrorAction SilentlyContinue) } |
+                Select-Object -First 1
 
-            Test-Path (Join-Path $script:RepositoryRoot 'windows') | Should -BeFalse
-            Test-Path $script:FallbackDir | Should -BeFalse
+            $result = Initialize-LogDirectory -LogPath "${letter}:\Logs\run.log"
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            $script:LogFileInitialized | Should -BeFalse
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like 'Log directory initialization failed:*'
+            }
         }
 
         It "Should fall back when the directory cannot be created" {
@@ -224,9 +264,13 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             $result = Initialize-LogDirectory -LogPath (Join-Path $script:TestRoot 'bad<>|?.log')
 
             Split-Path $result -Parent | Should -Be $script:FallbackDir
-            # .NET Framework rejects the name while resolving the path, .NET while writing the file
-            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like 'Log directory initialization failed:*' }
+            # The name is refused when the path is resolved, on both editions, so the folder of
+            # the path is not created
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like "Log directory initialization failed: *'bad<>|?.log' holds a character*"
+            }
             $script:LogFileInitialized | Should -BeFalse
+            Test-Path -LiteralPath $script:TestRoot | Should -BeFalse
         }
 
         It "Should throw when not even the fallback path can be built" {
@@ -237,7 +281,7 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
                 ExpectedMessage = 'Failed to establish any log file path: No current location'
                 ExceptionType   = [System.IO.IOException]
             }
-            { Initialize-LogDirectory -LogPath '..\escape.log' } | Should -Throw @expected
+            { Initialize-LogDirectory -LogPath 'HKLM:\Software\OrphanedSid\run.log' } | Should -Throw @expected
         }
     }
 
@@ -323,26 +367,54 @@ Describe "Resolve-LogPath" -Tag "Unit", "Private", "FileSystem" {
         $result | Should -Be (Join-Path $TestDrive 'Logs\run.log')
     }
 
-    It "Should reject a path containing '..'" {
-        { Resolve-LogPath -LogPath 'C:\Logs\..\Windows\run.log' } |
-            Should -Throw -ErrorId 'LogPathTraversal,Resolve-LogPath'
+    It "Should read .. as the parent folder" {
+        Resolve-LogPath -LogPath 'C:\Logs\..\Other\run.log' | Should -Be 'C:\Other\run.log'
     }
 
-    It "Should reject a log path under <Location>" -ForEach @(
-        @{ Location = 'System32'; Path = 'C:\Windows\System32\run.log' }
-        @{ Location = 'Program Files'; Path = 'C:\Program Files\App\run.log' }
+    It "Should leave two dots inside a file name alone" {
+        Resolve-LogPath -LogPath 'C:\Logs\nightly..run.log' | Should -Be 'C:\Logs\nightly..run.log'
+    }
+
+    # The path is not created here, so these name folders that a test must not write to. Each was
+    # refused by the words in it, and the log of the run went to the current folder (#149).
+    It "Should return a path <Case> as it was given" -ForEach @(
+        @{ Case = 'in a folder named windows-servers'; Path = 'C:\Data\windows-servers\run.log' }
+        @{ Case = 'under Program Files'; Path = 'C:\Program Files\App\logs\run.log' }
+        @{ Case = 'under System32'; Path = 'C:\Windows\System32\run.log' }
+        @{ Case = 'under Windows\Temp'; Path = 'C:\Windows\Temp\run.log' }
     ) {
-        { Resolve-LogPath -LogPath $Path } | Should -Throw -ErrorId 'LogPathOutsideAllowedDirectories,Resolve-LogPath'
+        Resolve-LogPath -LogPath $Path | Should -Be $Path
+        Should -Invoke Write-Warning -Times 0 -Exactly
     }
 
-    It "Should accept a path under Windows\Temp" {
-        Resolve-LogPath -LogPath 'C:\Windows\Temp\run.log' | Should -Be 'C:\Windows\Temp\run.log'
+    It "Should not expand wildcard characters" {
+        Resolve-LogPath -LogPath 'C:\Logs\run[1].log' | Should -Be 'C:\Logs\run[1].log'
     }
-}
 
-Describe "Get-ScriptRootDirectory" -Tag "Unit", "Private", "FileSystem" {
-    It "Should return the module root, two levels above Private\FileSystem" {
-        Get-ScriptRootDirectory | Should -Be $script:RepositoryRoot
+    It "Should end with LogPathInvalidCharacters for <Case>" -ForEach @(
+        @{ Case = 'a file name with characters no file can have'; Path = 'C:\Logs\bad<>|?.log'; Segment = 'bad<>|?.log' }
+        @{ Case = 'a folder name with such a character'; Path = 'C:\Lo|gs\run.log'; Segment = 'Lo|gs' }
+        @{ Case = 'a second colon'; Path = 'C:\Logs\run.log:stream'; Segment = 'run.log:stream' }
+    ) {
+        $expected = @{
+            ErrorId         = 'LogPathInvalidCharacters,Resolve-LogPath'
+            ExpectedMessage = "The log path '$Path' cannot be used: '$Segment' holds a character that a file or folder name cannot have."
+            ExceptionType   = [System.ArgumentException]
+        }
+        { Resolve-LogPath -LogPath $Path } | Should -Throw @expected
+    }
+
+    It "Should take a network path" {
+        Resolve-LogPath -LogPath '\\server\share\logs\run.log' | Should -Be '\\server\share\logs\run.log'
+    }
+
+    It "Should end with LogPathNotFileSystem for a path of another provider" {
+        $expected = @{
+            ErrorId         = 'LogPathNotFileSystem,Resolve-LogPath'
+            ExpectedMessage = "The log path 'HKLM:\Software\run.log' is not a file system path: it belongs to the Registry provider."
+            ExceptionType   = [System.ArgumentException]
+        }
+        { Resolve-LogPath -LogPath 'HKLM:\Software\run.log' } | Should -Throw @expected
     }
 }
 

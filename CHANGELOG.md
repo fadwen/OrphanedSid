@@ -146,6 +146,15 @@ All notable changes to this module are recorded here. Format follows
   `Failed to apply ACL changes` entry at Error level for it. It had two with the same text. A
   `-BackupPath` that is too long to hold a backup file is likewise logged once for each object.
   ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
+- `-LogPath`, and `LogFilePath` in a `-ConfigPath` file, are used as they are given. A path was
+  refused when it held the word `windows` or `program files` anywhere, such as
+  `D:\Logs\windows-servers\run.log`, and when it held two dots, such as `..\Logs\run.log`. The
+  command warned, finished, and wrote its log to the current folder under another name. A path is
+  now read as any cmdlet reads one, and whether its folder can be used is decided by creating the
+  folder and writing to it. A path on a drive that does not exist, a path that is not a file
+  system path and a name with a character that no file can have still send the log to the
+  current folder, each with a warning that says why.
+  ([#149](https://github.com/fadwen/OrphanedSid/issues/149))
 
 ## [1.1.0] - 2026-11-11
 
