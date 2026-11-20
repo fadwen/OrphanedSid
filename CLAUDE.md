@@ -251,10 +251,10 @@ parameter its callee lacks. When a helper needs a sibling that works on a file p
 loaded data, give it a distinct name rather than a second definition: two backup helpers once
 shared one name that way, and the file-path version silently replaced the other.
 
-### The coverage gate is 90% and only goes up, and every test must be able to fail
+### The coverage gate is 93% and only goes up, and every test must be able to fail
 
-`quality-gates.yml` fails below 90% command coverage over `Public/` and `Private/`; the suite measures
-about 94%. The module arrived with test files that defined a stub of their subject and tested the
+`quality-gates.yml` fails below 93% command coverage over `Public/` and `Private/`; the suite measures
+about 94.8%. The module arrived with test files that defined a stub of their subject and tested the
 stub (`Set-ModifiedACL.Tests.ps1` defined its own `Set-ModifiedACL`), which is why coverage was 62%
 with 2,400 passing tests, and with Integration and Performance folders that ran only in-file
 simulators. Coverage does not catch the rest: a test with no assertion, an assertion swallowed by a
@@ -272,7 +272,15 @@ test and turns a per-item `Write-Error` into a termination the tests do not expe
 `quality-gates.yml` runs PSScriptAnalyzer with every Error and Warning rule over `Classes`,
 `Private`, `Public`, `Build`, the root module and the manifest, and with `Tests/PSScriptAnalyzerSettings.psd1`
 over `Tests` and `Tools`. The relaxed set drops the rules that fire on every stub and mock. A
-suppression in shipping code carries a `Justification`.
+suppression in shipping code carries a `Justification`. A second step runs the `ScriptSecurity`
+preset over every folder, `Tests` and `Tools` included, and the relaxed set does not apply to it.
+
+### The build tools are pinned in one place
+
+`quality-gates.yml` names the version of Pester, PSScriptAnalyzer and PlatyPS once, under `env:`,
+and every job installs and imports exactly that. The two test jobs once ran different Pester
+versions without anyone having chosen that: one installed a range and the other a fixed version.
+`release.yml` installs PlatyPS with a version of its own, which has to stay the same number.
 
 ### The MAML filename carries a capital H
 

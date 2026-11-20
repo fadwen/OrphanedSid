@@ -1,12 +1,13 @@
 # Quality gates for OrphanedSid.
 #
-# Three jobs, because the module makes claims that can only fail in different places:
+# Four jobs, because the module makes claims that can only fail in different places:
 #
 #   tests     Windows, PowerShell 7. PSScriptAnalyzer over the shipping code with zero tolerance,
-#             over the tests with a relaxed rule set, then the whole Pester suite shuffled with an
-#             90% coverage gate over Public/ and Private/. Every Active Directory cmdlet the suite
-#             touches is mocked; Tests/TestHelpers/ADCmdletStubs.ps1 defines placeholders when
-#             RSAT is absent, so the suite reaches no directory.
+#             over the tests with a relaxed rule set, and over everything with its ScriptSecurity
+#             preset, then the whole Pester suite shuffled with a 93% coverage gate over Public/
+#             and Private/. Every Active Directory cmdlet the suite touches is mocked;
+#             Tests/TestHelpers/ADCmdletStubs.ps1 defines placeholders when RSAT is absent, so the
+#             suite reaches no directory.
 #
 #   desktop   Windows PowerShell 5.1. The manifest declares CompatiblePSEditions Desktop and the
 #             root module carries #Requires -Version 5.1, because the RSAT ActiveDirectory module
@@ -18,6 +19,11 @@
 #             complete, the committed MAML in en-US/ was built from it, and Get-Help serves every
 #             command's full help on a case-sensitive filesystem - the only place the -Help.xml
 #             capital H can fail.
+#
+#   rehearsal Windows. The release script with -WhatIf: it stages the package from its allowlist,
+#             imports the staged copy in a new process, measures the manifest against the limits
+#             of the Gallery, and stops before the upload. A change that breaks staging is found
+#             on its pull request and not when the release is made.
 #
 # There is no Linux test job. The module reads and writes
 # System.DirectoryServices.ActiveDirectorySecurity, which is Windows-only in .NET, and the unit
@@ -33,11 +39,25 @@ on:
     branches: [main]
   workflow_dispatch:
 
+  # Every night, on the default branch. A runner image or the Gallery can change under a
+  # repository that nobody pushes to, and this is how that shows before the next pull request.
+  schedule:
+    - cron: '17 3 * * *'
+
   # Callable so release.yml can run these exact gates before publishing.
   workflow_call:
 
 permissions:
   contents: read
+
+# The build tools, each at one fixed version for every job. An install without a version can
+# change what a passing build means, and two jobs with different versions can disagree. Change a
+# number here, run the suite, and commit both in one change. release.yml installs PlatyPS at
+# the same version; keep the two in step.
+env:
+  PESTER_VERSION: '6.2.0'
+  PSSCRIPTANALYZER_VERSION: '1.25.0'
+  PLATYPS_VERSION: '1.0.3'
 
 jobs:
   tests:
@@ -51,16 +71,23 @@ jobs:
       - name: Install build modules
         shell: pwsh
         run: |
-          # Runners ship Pester 5.x. Pester 6 must be installed explicitly, and the version range
-          # keeps a future Pester 7 from silently changing the assertion surface.
-          Install-PSResource -Name Pester -Version '[6.1.0,7.0.0)' -Scope CurrentUser -TrustRepository
-          Install-PSResource -Name PSScriptAnalyzer -Scope CurrentUser -TrustRepository
+          $ErrorActionPreference = 'Stop'
+          # Runners ship Pester 5.x. Pester 6 must be installed explicitly.
+          Install-PSResource -Name Pester -Version $env:PESTER_VERSION -Scope CurrentUser -TrustRepository
+          $analyzer = @{
+              Name = 'PSScriptAnalyzer'
+              Version = $env:PSSCRIPTANALYZER_VERSION
+              Scope = 'CurrentUser'
+              TrustRepository = $true
+          }
+          Install-PSResource @analyzer
           $PSVersionTable | ConvertTo-Json -Depth 3
 
       - name: PSScriptAnalyzer
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          Import-Module PSScriptAnalyzer -RequiredVersion $env:PSSCRIPTANALYZER_VERSION
           # Shipping code: every Error and Warning rule. Tests and Tools: the relaxed settings in
           # Tests/PSScriptAnalyzerSettings.psd1, which drop the rules that fire on every mock and
           # stub (unused parameters, global stubs, assignments the test only reads indirectly).
@@ -77,6 +104,25 @@ jobs:
           }
           Write-Host 'PSScriptAnalyzer clean.'
 
+      # The preset of PSScriptAnalyzer for security: commands built from text, passwords in plain
+      # text, and the like. It runs over every folder, the tests and the lab tool included, and
+      # the relaxed settings of the step above do not apply to it.
+      - name: Security scan
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module PSScriptAnalyzer -RequiredVersion $env:PSSCRIPTANALYZER_VERSION
+          $paths = 'Classes', 'Private', 'Public', 'Build', 'Tools', 'Tests', 'OrphanedSid.psm1', 'OrphanedSid.psd1'
+          $findings = foreach ($path in $paths) {
+              Invoke-ScriptAnalyzer -Path $path -Recurse -Settings ScriptSecurity
+          }
+          $findings = @($findings)
+          if ($findings.Count -gt 0) {
+              $findings | Format-Table RuleName, Severity, ScriptName, Line -AutoSize | Out-String | Write-Host
+              throw "The security scan reported $($findings.Count) finding(s)."
+          }
+          Write-Host 'Security scan clean.'
+
       - name: Pester with coverage
         shell: pwsh
         run: |
@@ -85,7 +131,7 @@ jobs:
           # problem with Write-Error then terminates instead of continuing, which fails tests that
           # pass everywhere else. Set it back before the suite runs; the gates below throw explicitly.
           $ErrorActionPreference = 'Continue'
-          Import-Module Pester -MinimumVersion 6.1.0 -ErrorAction Stop
+          Import-Module Pester -RequiredVersion $env:PESTER_VERSION -ErrorAction Stop
           $cfg = New-PesterConfiguration
           $cfg.Run.Path = './Tests'
           $cfg.Run.PassThru = $true
@@ -117,9 +163,11 @@ jobs:
                   "file(s) failed under shuffle seed $seed.")
           }
 
-          # 80% is the standards' floor. The suite measures about 93% since every test was rewritten
-          # to exercise the real functions. Raise the number as coverage rises; never lower it.
-          $coverageGate = 90
+          # 80% is the standards' floor. The suite measures about 94.8% since every test was
+          # rewritten to exercise the real functions; the gate sits below that by a margin, so
+          # that a change does not fail for a few commands it leaves uncovered. Raise the number
+          # as coverage rises; never lower it.
+          $coverageGate = 93
           $coverage = [math]::Round($result.CodeCoverage.CoveragePercent, 2)
           Write-Host "Code coverage: $coverage% (gate $coverageGate%)"
           if ($coverage -lt $coverageGate) {
@@ -162,8 +210,17 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          Install-Module -Name Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
-          Import-Module Pester -RequiredVersion 6.1.0
+          # -SkipPublisherCheck, because Windows ships Pester 3.4.0 under another publisher
+          $pester = @{
+              Name = 'Pester'
+              RequiredVersion = $env:PESTER_VERSION
+              Scope = 'CurrentUser'
+              Force = $true
+              SkipPublisherCheck = $true
+              AllowClobber = $true
+          }
+          Install-Module @pester
+          Import-Module Pester -RequiredVersion $env:PESTER_VERSION
           "Pester $((Get-Module Pester).Version) on PowerShell $($PSVersionTable.PSVersion)" | Write-Host
 
       - name: Pester under Windows PowerShell 5.1
@@ -171,7 +228,7 @@ jobs:
         run: |
           # Same as the PowerShell 7 job: the shell's Stop preference must not reach the tests
           $ErrorActionPreference = 'Continue'
-          Import-Module Pester -RequiredVersion 6.1.0 -ErrorAction Stop
+          Import-Module Pester -RequiredVersion $env:PESTER_VERSION -ErrorAction Stop
           $cfg = New-PesterConfiguration
           $cfg.Run.Path = './Tests'
           $cfg.Run.PassThru = $true
@@ -206,7 +263,14 @@ jobs:
       - name: Install PlatyPS
         shell: pwsh
         run: |
-          Install-PSResource -Name Microsoft.PowerShell.PlatyPS -Version '1.0.3' -Scope CurrentUser -TrustRepository
+          $ErrorActionPreference = 'Stop'
+          $platyPS = @{
+              Name = 'Microsoft.PowerShell.PlatyPS'
+              Version = $env:PLATYPS_VERSION
+              Scope = 'CurrentUser'
+              TrustRepository = $true
+          }
+          Install-PSResource @platyPS
           $PSVersionTable | ConvertTo-Json -Depth 3
 
       - name: Validate help Markdown
@@ -257,3 +321,31 @@ jobs:
               throw 'MAML help was not served on a case-sensitive filesystem.'
           }
           Write-Host 'All commands served full help from MAML.'
+
+  rehearsal:
+    name: 'Release rehearsal'
+    # Windows, like the publish job of release.yml: the release script imports the staged copy
+    # and runs Test-SIDFormat, which builds a SecurityIdentifier.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The release script builds the help, so it needs PlatyPS at the version the help job uses
+      - name: Install PlatyPS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $platyPS = @{
+              Name = 'Microsoft.PowerShell.PlatyPS'
+              Version = $env:PLATYPS_VERSION
+              Scope = 'CurrentUser'
+              TrustRepository = $true
+          }
+          Install-PSResource @platyPS
+
+      # -WhatIf stops the script before the upload and needs no API key
+      - name: Stage and verify the package (no publish)
+        shell: pwsh
+        run: ./Build/Publish-Module.ps1 -WhatIf

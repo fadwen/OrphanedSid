@@ -7,9 +7,10 @@ push and pull request, on PowerShell 7 and on Windows PowerShell 5.1, plus a hel
 ## Requirements
 
 - Windows PowerShell 5.1 or PowerShell 7.x.
-- Pester 6.1 or later (CI uses 6.1.0 on Windows PowerShell 5.1). The suite uses the `Should -Be`
-  operator form and `Should -Invoke`.
-- PSScriptAnalyzer 1.25 or later.
+- Pester 6.1 or later. CI uses 6.2.0 in both test jobs. Most test files use the `Should -Be`
+  operator form and `Should -Invoke`; a file that is new since the standards asked for it uses
+  the Pester 6 assertions, such as `Should-Be`. One file holds one style.
+- PSScriptAnalyzer 1.25 or later. CI uses 1.25.0.
 - No Active Directory domain and no RSAT. Every Active Directory cmdlet a test touches is mocked;
   `Tests/TestHelpers/ADCmdletStubs.ps1` defines placeholder cmdlets when the module is absent so
   Pester has something to mock.
@@ -45,7 +46,7 @@ functions names a parameter the callee does not declare.
 
 ## Coverage
 
-CI fails below 90% command coverage over `Public/` and `Private/`. To measure it locally:
+CI fails below 93% command coverage over `Public/` and `Private/`. To measure it locally:
 
 ```powershell
 $cfg = New-PesterConfiguration
@@ -71,6 +72,16 @@ foreach ($path in 'Classes', 'Private', 'Public', 'Build', 'OrphanedSid.psm1', '
 }
 foreach ($path in 'Tests', 'Tools') {
     Invoke-ScriptAnalyzer -Path $path -Recurse -Settings ./Tests/PSScriptAnalyzerSettings.psd1
+}
+```
+
+CI also runs the `ScriptSecurity` preset of PSScriptAnalyzer over every folder, the tests and the
+lab tool included. The relaxed set does not apply to it:
+
+```powershell
+$paths = 'Classes', 'Private', 'Public', 'Build', 'Tools', 'Tests', 'OrphanedSid.psm1', 'OrphanedSid.psd1'
+foreach ($path in $paths) {
+    Invoke-ScriptAnalyzer -Path $path -Recurse -Settings ScriptSecurity
 }
 ```
 
