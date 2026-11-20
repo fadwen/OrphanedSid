@@ -95,6 +95,19 @@ test fails on a static member in `Classes/`. The behaviour itself is covered by 
 `OrphanedSidStartupFailure.Tests.ps1`, in a process of its own: closing a second runspace inside
 the Pester process would break every later test that touches the class on Windows PowerShell 5.1.
 
+### A class method calls cmdlets only, never a function of the module
+
+A method of a PowerShell class runs in the scope its class was defined in. Two test files
+dot-source `Classes/StreamingResultsManager.ps1`, which defines the class a second time outside
+the module. When `ExportToCsv()` called a private function, `Export-ResultCsv`, the three
+integration cases that write a CSV failed in four of eight CI jobs with
+`The term 'Export-ResultCsv' is not recognized`, and passed in the other four and in declaration
+order (#159). CI shuffles the suite, and which order does it was not found. What a method and a
+function both need is therefore written in both, with a test for each, as the decision about
+`-NoTypeInformation` is in `ExportToCsv()` and in `Export-ResultCsv`. The contract test fails on
+a call from a class to a function of the module. Run the suite shuffled before trusting it:
+`$cfg.Run.Shuffle = $true`, as CI does.
+
 ### A fatal error of a public command ends the calling script, against ERR-11
 
 The `catch` in `begin` and the `catch` in `end` of each public command raise the failure with
