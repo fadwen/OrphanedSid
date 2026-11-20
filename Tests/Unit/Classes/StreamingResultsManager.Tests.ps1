@@ -333,8 +333,11 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             # mock that is set here, and such a case failed in three of four CI jobs.
             $tokens = $null
             $parseErrors = $null
+            # Two calls: Join-Path takes one child path on Windows PowerShell 5.1
+            $classFolder = Join-Path -Path $ModuleRoot -ChildPath 'Classes'
+            $classFile = Join-Path -Path $classFolder -ChildPath 'StreamingResultsManager.ps1'
             $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-                "$ModuleRoot\Classes\StreamingResultsManager.ps1", [ref]$tokens, [ref]$parseErrors)
+                $classFile, [ref]$tokens, [ref]$parseErrors)
             $method = $ast.Find({
                     param($node)
                     $node -is [System.Management.Automation.Language.FunctionMemberAst] -and
