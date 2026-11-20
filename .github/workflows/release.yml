@@ -4,6 +4,10 @@
 #
 #     git tag v1.0.0 && git push origin v1.0.0
 #
+# It can also be started by hand. From a branch that is always a rehearsal: the package is staged
+# and verified and nothing is uploaded, with dryRun checked or not. Started by hand on a tag, with
+# dryRun unchecked, it publishes that tag.
+#
 # The whole quality-gates workflow runs first and the publish is gated on it. A tag can be pushed
 # at any commit, including one that never went through a pull request, so the gates are re-run
 # here rather than assumed.
@@ -69,13 +73,27 @@ jobs:
           }
           Write-Host "Tag and manifest agree on $manifest."
 
+      # A run that is not on a tag never publishes, whatever dryRun says: the check of the tag
+      # against ModuleVersion above runs for a tag only, so from a branch nothing would stand
+      # between an unchecked box and the Gallery. Such a run is a rehearsal.
+      - name: Say that a run from a branch does not publish
+        if: ${{ !inputs.dryRun && !startsWith(github.ref, 'refs/tags/') }}
+        shell: pwsh
+        env:
+          # As a variable, so that the name of a branch is never part of the script
+          RUN_REF: ${{ github.ref }}
+        run: |
+          $message = "dryRun was unchecked, but this run is on '$env:RUN_REF' and not on a tag, " +
+              'so nothing is published. To release, push the tag v<ModuleVersion>.'
+          Write-Host "::warning title=Not published::$message"
+
       - name: Stage and verify (no publish)
-        if: inputs.dryRun
+        if: ${{ inputs.dryRun || !startsWith(github.ref, 'refs/tags/') }}
         shell: pwsh
         run: ./Build/Publish-Module.ps1 -WhatIf
 
       - name: Publish
-        if: ${{ !inputs.dryRun }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') && !inputs.dryRun }}
         shell: pwsh
         env:
           # Consumed by Build/Publish-Module.ps1, which prefers this over its local secret vault.
