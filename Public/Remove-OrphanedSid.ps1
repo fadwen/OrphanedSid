@@ -171,7 +171,6 @@ function Remove-OrphanedSid {
             Write-StructuredLog "Removal completed (CorrelationId: $CorrelationId)" -Level Information -Component 'Main' -CorrelationId $CorrelationId
         }
         catch {
-            if ($script:Statistics) { $script:Statistics.CriticalErrors++ }
             Write-StructuredLog "Removal failed: $($_.Exception.Message)" -Level Error -Component 'Main' -CorrelationId $CorrelationId
             # Exception to ERR-11: a critical error ends the calling script whatever its error
             # action is, as Documentation/Automation.md tells callers. ThrowTerminatingError()

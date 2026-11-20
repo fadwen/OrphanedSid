@@ -222,7 +222,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Find-OrphanedSIDsInObject -Times 0 -Exactly
         }
 
-        It "Logs a discovery Failure, counts a critical error and rethrows when retrieval fails" {
+        It "Logs a discovery Failure and the critical error, and rethrows, when retrieval fails" {
             Mock Get-ADObjectsSequential { throw 'AD connection failed' }
 
             { Invoke-Subject @{ SearchBase = 'OU=Users,DC=test,DC=com' } } | Should -Throw -ExpectedMessage 'AD connection failed'
@@ -234,7 +234,6 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Level -eq 'Error' -and $Message -eq 'Critical error in main processing: AD connection failed'
             }
-            $script:Statistics.CriticalErrors | Should -Be 1
         }
     }
 

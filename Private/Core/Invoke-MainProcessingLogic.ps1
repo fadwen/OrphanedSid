@@ -238,7 +238,6 @@ function Invoke-MainProcessingLogic {
         $recordCriticalError = {
             param([System.Management.Automation.ErrorRecord]$Failure)
 
-            $script:Statistics.CriticalErrors++
             Write-StructuredLog "Critical error in main processing: $($Failure.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
         }
 

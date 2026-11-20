@@ -9,7 +9,6 @@ class ProcessingStatistics {
     # Objects returned without a security descriptor the account may read, so not examined
     [int]$UnexaminedObjects
     [int]$ProcessingErrors
-    [int]$CriticalErrors
     [DateTime]$StartTime
     [DateTime]$EndTime
     [System.TimeSpan]$Duration
