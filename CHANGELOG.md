@@ -155,6 +155,12 @@ All notable changes to this module are recorded here. Format follows
   system path and a name with a character that no file can have still send the log to the
   current folder, each with a warning that says why.
   ([#149](https://github.com/fadwen/OrphanedSid/issues/149))
+- `Restore-OrphanedSidBackup` reports a backup folder that the running account may not read with
+  the error of the file system, `Access to the path ... is denied`. It reported
+  `No backup files found in directory`, although backups were there, and on PowerShell 7 it gave
+  no other sign of the reason. A log folder that cannot be created is now reported as that in
+  the warning before the log falls back to the current folder; it was reported as missing write
+  permissions. ([#156](https://github.com/fadwen/OrphanedSid/issues/156))
 
 ## [1.1.0] - 2026-11-11
 

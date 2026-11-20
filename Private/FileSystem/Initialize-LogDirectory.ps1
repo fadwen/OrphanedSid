@@ -320,9 +320,10 @@ function New-LogDirectory {
 
     if (-not (Test-Path -LiteralPath $DirectoryPath)) {
         try {
-            # Bypass WhatIf for log directory creation
-            New-Item -Path $DirectoryPath -ItemType Directory -Force -WhatIf:$false | Out-Null
-            Write-Verbose "Created log directory: $DirectoryPath"
+            # Bypass WhatIf for log directory creation. -ErrorAction Stop, because New-Item
+            # only writes its error for a folder that it is not allowed to create, and the catch
+            # below would not be reached.
+            $null = New-Item -Path $DirectoryPath -ItemType Directory -Force -WhatIf:$false -ErrorAction Stop
         }
         catch {
             $message = "Failed to create log directory '$DirectoryPath': $($_.Exception.Message)"
@@ -332,6 +333,22 @@ function New-LogDirectory {
                 $exception, 'LogDirectoryNotCreated', $category, $DirectoryPath)
             $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
+
+        # For a folder whose parent is a file, New-Item -Force returns nothing and reports no
+        # error, with -ErrorAction Stop as well; measured on both editions. So the folder is
+        # looked for. Left to the write test below, the failure was reported as missing write
+        # permissions.
+        if (-not (Test-Path -LiteralPath $DirectoryPath -PathType Container)) {
+            $message = "Failed to create log directory '$DirectoryPath': the folder does not exist after " +
+                'it was created without an error. A part of the path may be a file.'
+            $exception = [System.IO.IOException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::WriteError
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'LogDirectoryNotCreated', $category, $DirectoryPath)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+
+        Write-Verbose "Created log directory: $DirectoryPath"
     } else {
         Write-Verbose "Log directory already exists: $DirectoryPath"
     }

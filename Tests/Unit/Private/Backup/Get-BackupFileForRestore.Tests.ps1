@@ -110,6 +110,41 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
                 Should -Throw @expected
         }
 
+        It 'Ends with the error of the file system for a folder that cannot be listed (#156)' {
+            # The folder holds a backup of the object. Reading it is denied for this case, and
+            # allowed again afterwards so that the test drive can be removed.
+            New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $script:folder /deny "${identity}:(RD)"
+            try {
+                $caught = $null
+                try {
+                    Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $script:folder /remove:d $identity
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.Exception | Should -BeOfType [System.UnauthorizedAccessException]
+            $caught.FullyQualifiedErrorId | Should -BeLike '*,Get-BackupFileForRestore'
+            $caught.FullyQualifiedErrorId | Should -Not -BeLike 'BackupFilesNotFound,*'
+        }
+
+        It 'Selects files by the extension .xml exactly' {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
+            Copy-Item -LiteralPath $file -Destination (Join-Path $script:folder 'copy-of-alice.xmlbak')
+            Copy-Item -LiteralPath $file -Destination (Join-Path $script:folder 'notes.txt')
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $file
+            Should -Invoke Write-Warning -Times 0 -Exactly
+        }
+
         It 'Warns about a file that cannot be read and selects from the others' {
             $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
             $broken = Join-Path $script:folder 'broken.xml'

@@ -305,6 +305,65 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             $caught.TargetObject | Should -Be $missing
         }
 
+        It 'New-LogDirectory ends with LogDirectoryNotCreated for a folder that cannot be created (#156)' {
+            # Nothing is mocked: the parent of the folder is a file
+            $null = New-Item -Path $script:TestRoot -ItemType Directory -Force
+            $file = Join-Path $script:TestRoot 'a-file.txt'
+            Set-Content -LiteralPath $file -Value 'not a folder' -Encoding ascii
+            $impossible = Join-Path $file 'logs'
+
+            $caught = $null
+            try {
+                New-LogDirectory -DirectoryPath $impossible
+            } catch {
+                $caught = $_
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'LogDirectoryNotCreated,New-LogDirectory'
+            $caught.Exception | Should -BeOfType [System.IO.IOException]
+            $caught.Exception.Message | Should -BeLike "Failed to create log directory '$impossible': *A part of the path may be a file."
+        }
+
+        It 'New-LogDirectory ends with LogDirectoryNotCreated for a folder it is not allowed to create (#156)' {
+            # Nothing is mocked: adding a folder to the parent is denied for this case, and
+            # allowed again afterwards so that the test drive can be removed
+            $null = New-Item -Path $script:TestRoot -ItemType Directory -Force
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $script:TestRoot /deny "${identity}:(AD,WD)"
+            $refused = Join-Path $script:TestRoot 'logs'
+            try {
+                $caught = $null
+                try {
+                    New-LogDirectory -DirectoryPath $refused
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $script:TestRoot /remove:d $identity
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'LogDirectoryNotCreated,New-LogDirectory'
+            $caught.Exception.InnerException | Should -BeOfType [System.UnauthorizedAccessException]
+        }
+
+        It 'Initialize-LogDirectory says that the folder could not be created when it falls back (#156)' {
+            $null = New-Item -Path $script:TestRoot -ItemType Directory -Force
+            $file = Join-Path $script:TestRoot 'a-file.txt'
+            Set-Content -LiteralPath $file -Value 'not a folder' -Encoding ascii
+
+            $result = Initialize-LogDirectory -LogPath (Join-Path $file 'logs\run.log')
+
+            Split-Path $result -Parent | Should -Be $script:FallbackDir
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -like 'Log directory initialization failed: Failed to create log directory*'
+            }
+            Should -Invoke Write-Warning -Times 0 -Exactly -ParameterFilter {
+                $Message -like '*Insufficient write permissions*'
+            }
+        }
+
         It 'New-LogDirectory ends with LogDirectoryNotWritable when the test file cannot be written' {
             Mock Set-Content { throw 'Write denied' } -ParameterFilter { $LiteralPath -like '*test_write_*.tmp' }
 
