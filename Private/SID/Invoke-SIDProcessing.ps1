@@ -62,7 +62,6 @@ function Find-OrphanedSIDsInObject {
 
         DESCRIPTION: Processing background job results with correlation tracking
         OUTPUT: Orphaned SID results with full audit trail correlation
-        INTEGRATION: Large-scale parallel processing with enterprise tracking
 
     .OUTPUTS
         [OrphanedSIDResult[]] Array of comprehensive result objects containing

@@ -140,14 +140,6 @@ function Remove-OrphanedSidEntry {
         - SecurityValidation: Comprehensive security validation results
 
     .NOTES
-        ARCHITECTURAL IMPROVEMENTS (v2.0):
-        - Modular design with specialized component delegation
-        - Security validation isolated to specialized security modules
-        - ACL operations modularized for focused functionality
-        - Verification logic separated for independent testing
-        - Workflow orchestration handles complex coordination
-        - Enhanced testability with independent module validation
-
         SECURITY CONSIDERATIONS:
         - Implements protected SID validation to prevent critical system damage
         - Uses privileged SID pattern detection for additional safety
@@ -163,7 +155,6 @@ function Remove-OrphanedSidEntry {
     .LINK
         https://docs.microsoft.com/en-us/powershell/module/activedirectory/
         .\Troubleshooting\Security\Security-Validation-Guide.md
-        .\Documentation\RemovalOperations-Architecture-Guide.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]
@@ -190,7 +181,7 @@ function Remove-OrphanedSidEntry {
     process {
         foreach ($dn in $ObjectDN) {
             try {
-                Write-StructuredLog "Starting SID removal operation for $dn (Public API v2.0)" -Level Verbose -CorrelationId $CorrelationId
+                Write-StructuredLog "Starting SID removal operation for $dn" -Level Verbose -CorrelationId $CorrelationId
 
                 # Invoke-RemovalWorkflow honours -WhatIfMode and $WhatIfPreference itself and prints the
                 # preview, so both still reach it unchanged; this guard only answers -Confirm.
@@ -216,7 +207,7 @@ function Remove-OrphanedSidEntry {
                 $errorResult.CorrelationId = $CorrelationId
                 $errorResult.IntendedRemovals = $OrphanedSIDs.Count
                 $errorResult.Success = $false
-                $errorResult.ErrorMessage = "Public API workflow delegation failed: $($_.Exception.Message)"
+                $errorResult.ErrorMessage = "The removal workflow failed: $($_.Exception.Message)"
 
                 Write-StructuredLog "SID removal operation failed for $dn : $($_.Exception.Message)" -Level Error -CorrelationId $CorrelationId
                 $errorResult

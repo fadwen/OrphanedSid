@@ -85,7 +85,7 @@ Describe 'Remove-OrphanedSidEntry' -Tag 'Unit', 'Core', 'Private' {
         It 'Logs start and completion at Verbose level with the correlation ID' {
             Remove-OrphanedSidEntry -ObjectDN $script:dnA -OrphanedSIDs $script:sids -CorrelationId 'rm-2' -Confirm:$false | Out-Null
 
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Starting SID removal operation for $($script:dnA) (Public API v2.0)" -and $Level -eq 'Verbose' -and $CorrelationId -eq 'rm-2' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Starting SID removal operation for $($script:dnA)" -and $Level -eq 'Verbose' -and $CorrelationId -eq 'rm-2' }
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "SID removal operation completed for $($script:dnA) - Success: True" -and $Level -eq 'Verbose' -and $CorrelationId -eq 'rm-2' }
         }
     }
@@ -102,7 +102,7 @@ Describe 'Remove-OrphanedSidEntry' -Tag 'Unit', 'Core', 'Private' {
             $results.Count | Should -Be 2
             $failed = $results | Where-Object ObjectDN -eq $script:dnA
             $failed.Success | Should -BeFalse
-            $failed.ErrorMessage | Should -BeLike '*LDAP server unavailable*'
+            $failed.ErrorMessage | Should -Be 'The removal workflow failed: LDAP server unavailable'
             $failed.IntendedRemovals | Should -Be 2
             $failed.CorrelationId | Should -Be 'rm-3'
             ($results | Where-Object ObjectDN -eq $script:dnB).Success | Should -BeTrue
