@@ -15,7 +15,7 @@ function Remove-OrphanedSidEntry {
         - Protected SID validation prevents removal of critical system accounts
         - Security risk assessment with configurable approval workflows
         - Comprehensive backup creation before any modifications
-        - Real-time verification of removal operations
+        - Verification of the ACL after each removal
         - Audit logging with correlation tracking
 
         MODULAR ARCHITECTURE:

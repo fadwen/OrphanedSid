@@ -13,7 +13,7 @@ function Invoke-MainProcessingLogic {
         PROCESSING FEATURES:
         - Memory-efficient streaming results management
         - Comprehensive retry logic for resilient operations
-        - Real-time progress reporting and monitoring
+        - A progress line in the log after every 50 objects and after the last one
         - Integration with backup systems for safe removal
 
     .PARAMETER SearchBase
