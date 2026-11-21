@@ -21,6 +21,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
+    function Write-RestoreSecurityLog { param($Outcome, $Message, $TargetObjectDN, $BackupFile, $CorrelationId, [hashtable]$Detail) }
 
     function New-BackupFile {
         param([string]$Folder, [string]$ObjectDN, [datetime]$WrittenAt)
@@ -41,6 +42,7 @@ Describe 'Invoke-RestoreWorkflow single-object restore' -Tag 'Unit', 'Backup', '
         $script:folder = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:folder | Out-Null
         Mock Write-Warning { }
+        Mock Write-RestoreSecurityLog { }
         Mock Restore-IndividualObject {
             [PSCustomObject]@{ Success = $true; TargetObjectDN = $TargetObjectDN; BackupFile = $BackupFile; EntriesRestored = 1; ErrorMessage = $null }
         }
@@ -146,6 +148,7 @@ Describe 'Invoke-RestoreWorkflow container restore scope' -Tag 'Unit', 'Backup',
         $script:folder = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:folder | Out-Null
         Mock Write-Warning { }
+        Mock Write-RestoreSecurityLog { }
         Mock Restore-IndividualObject {
             [PSCustomObject]@{ Success = $true; TargetObjectDN = $TargetObjectDN; BackupFile = $BackupFile; EntriesRestored = 1; ErrorMessage = $null }
         }

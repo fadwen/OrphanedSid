@@ -147,6 +147,19 @@ BeforeAll {
         }
         Remove-OrphanedSid @parameters
     }
+
+    # The security entries that a restore wrote to a log file. A security entry is one JSON object
+    # on a line of its own; the values a caller adds are properties whose names begin Security_.
+    function Get-RestoreSecurityEntry {
+        param([string]$LogPath)
+        foreach ($line in Get-Content -LiteralPath $LogPath) {
+            if (-not $line.StartsWith('{')) { continue }
+            $entry = $line | ConvertFrom-Json
+            if ($entry.Component -eq 'SecurityAudit' -and $entry.Security_Operation -eq 'RestoreACL') {
+                $entry
+            }
+        }
+    }
 }
 
 Describe 'OrphanedSid end to end' -Tag 'Integration' {
@@ -1083,6 +1096,98 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             $result.Success | Should -BeTrue
             Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
             Get-TrusteeSid -DN $dn | Should -Contain $script:LiveSid
+        }
+
+        It 'Writes a security entry for the attempt and for the success of each object it restores, at -LogLevel <Level> (#187)' -ForEach @(
+            @{ Level = 'Information' }
+            @{ Level = 'Error' }
+        ) {
+            # A restore replaces the security descriptor of an object. With -LogLevel Warning or
+            # Error the log of a restore that succeeded held only its header.
+            $null = Invoke-RemoveOrphanedSid
+            $dn = "OU=Finance,$script:DomainDN"
+            $backupFolder = (Get-ChildItem -Path $script:BackupRoot -Directory | Select-Object -First 1).FullName
+            $backupFiles = @(Get-ChildItem -LiteralPath $backupFolder -Filter '*.xml')
+            $log = Join-Path $TestDrive "restore-security-$Level.log"
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupPath            = $backupFolder
+                LogPath               = $log
+                LogLevel              = $Level
+                CorrelationId         = 'restore-187'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+
+            $result = Restore-OrphanedSidBackup @parameters
+
+            $result.Success | Should -BeTrue
+            $entries = @(Get-RestoreSecurityEntry -LogPath $log)
+            # The OU is restored with the object under it: one attempt and one success for each file
+            $backupFiles.Count | Should -Be 2
+            $entries.Count | Should -Be 4
+            @($entries | Where-Object { $_.CorrelationId -ne 'restore-187' }).Count | Should -Be 0
+            @($entries | Where-Object { $_.SecurityEventType -ne 'PrivilegeUse' }).Count | Should -Be 0
+
+            $ofTheOU = @($entries | Where-Object { $_.Security_TargetObjectDN -eq $dn })
+            $ofTheOU.Count | Should -Be 2
+            $ofTheOU[0].Outcome | Should -Be 'Attempt'
+            $ofTheOU[1].Outcome | Should -Be 'Success'
+            $ofTheOU[1].Security_EntriesRestored | Should -BeGreaterThan 0
+            $ofTheOU[1].Security_WhatIfMode | Should -BeFalse
+            $fileOfTheOU = @($backupFiles | Where-Object { $_.Name -like 'OU_Finance_*' })[0].FullName
+            $ofTheOU[0].Security_BackupFile | Should -Be $fileOfTheOU
+            $ofTheOU[1].Security_BackupFile | Should -Be $fileOfTheOU
+        }
+
+        It 'Writes a security entry for a restore that it refuses, at -LogLevel Error (#187)' {
+            $null = Invoke-RemoveOrphanedSid
+            $dn = "OU=Finance,$script:DomainDN"
+            $fileOfAnotherObject = @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Payroll_*' -Recurse)[0].FullName
+            $log = Join-Path $TestDrive 'restore-security-refused.log'
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $fileOfAnotherObject
+                LogPath               = $log
+                LogLevel              = 'Error'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+
+            $result = Restore-OrphanedSidBackup @parameters -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+            $result.Success | Should -BeFalse
+            Get-TrusteeSid -DN $dn | Should -Not -Contain $script:OrphanSid
+            $entries = @(Get-RestoreSecurityEntry -LogPath $log)
+            $entries.Count | Should -Be 1
+            $entries[0].Outcome | Should -Be 'Failure'
+            $entries[0].Security_TargetObjectDN | Should -Be $dn
+            $entries[0].Security_BackupFile | Should -Be $fileOfAnotherObject
+            $entries[0].Security_Error | Should -BeLike "*is a backup of 'CN=Payroll,OU=Finance,$script:DomainDN'*"
+        }
+
+        It 'Writes the entry for the attempt, marked as a preview, and none for a success under -WhatIf (#187)' {
+            $null = Invoke-RemoveOrphanedSid
+            $dn = "OU=Finance,$script:DomainDN"
+            $fileOfTheOU = @(Get-ChildItem -Path $script:BackupRoot -Filter 'OU_Finance_*' -Recurse)[0].FullName
+            $log = Join-Path $TestDrive 'restore-security-whatif.log'
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $fileOfTheOU
+                LogPath               = $log
+                LogLevel              = 'Error'
+                SuppressConsoleOutput = $true
+                WhatIf                = $true
+            }
+
+            $null = Restore-OrphanedSidBackup @parameters
+
+            Get-TrusteeSid -DN $dn | Should -Not -Contain $script:OrphanSid
+            $entries = @(Get-RestoreSecurityEntry -LogPath $log)
+            $entries.Count | Should -Be 1
+            $entries[0].Outcome | Should -Be 'Attempt'
+            $entries[0].Security_TargetObjectDN | Should -Be $dn
+            $entries[0].Security_WhatIfMode | Should -BeTrue
         }
 
         It 'Puts back every orphaned SID removed from one object (#40)' {

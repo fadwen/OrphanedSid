@@ -120,6 +120,20 @@ $results = @(Restore-OrphanedSidBackup -TargetObjectDN 'OU=Test,DC=contoso,DC=co
 $results.IndividualResults | Where-Object { -not $_.Success } | Select-Object TargetObjectDN, ErrorMessage
 ```
 
+The log file names each object in security entries, which are written whatever `-LogLevel` is. An
+object whose ACL was written has an `Attempt` entry and a `Success` entry, and one that was not
+restored has a `Failure` entry with the reason. Each entry is one JSON object on a line of its own:
+
+```powershell
+Get-Content -LiteralPath $logFile |
+    Where-Object { $_.StartsWith('{') } |
+    ForEach-Object { $_ | ConvertFrom-Json } |
+    Where-Object { $_.Security_Operation -eq 'RestoreACL' } |
+    Select-Object Outcome, Security_TargetObjectDN, Security_BackupFile, Security_EntriesRestored, Security_Error
+```
+
+Under `-WhatIf` only the `Attempt` entry is written, with `Security_WhatIfMode` true.
+
 `Restore-OrphanedSidBackup` has `ConfirmImpact = 'High'`: it prompts once
 (`Restore ACLs from backup folder <path>`) in an interactive console, and a non-interactive run needs
 `-Force` or `-Confirm:$false`; without either, PowerShell's own prompt fails. A declined prompt logs
