@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 
 # Import shared logging configuration and state management
-# Script-scoped variables are defined in LoggingConfiguration.ps1
+# Script-scoped variables are defined in Initialize-LoggingConfiguration.ps1
 # This module uses those shared variables for state management
 
 

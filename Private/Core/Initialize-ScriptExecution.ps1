@@ -140,7 +140,6 @@ function Initialize-ScriptExecution {
 
         DESCRIPTION: Access initialization results for monitoring
         OUTPUT: Returns initialization timestamp
-        INTEGRATION: Enables integration with monitoring dashboards
 
     .NOTES
         Author: Jeffrey Stuhr

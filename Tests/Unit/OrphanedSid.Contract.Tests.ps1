@@ -342,11 +342,12 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
     }
 
     Context 'Help references' {
-        It 'Points every troubleshooting reference in the shipping files at a guide that exists (#101)' {
+        It 'Points every reference to a guide or a document in the shipping files at a file that exists (#101, #188)' {
             # Help copied from a template named 81 guides that were never written; a maintainer
-            # following one found nothing
+            # following one found nothing. Three references into Documentation were to files that
+            # had moved to its archive or had never been there.
             $shippingFiles = Get-ChildItem -Path "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public" -Filter *.ps1 -Recurse -File
-            $missing = foreach ($match in ($shippingFiles | Select-String -Pattern '\.\\Troubleshooting\\[^\s''"`)]+\.md' -AllMatches)) {
+            $missing = foreach ($match in ($shippingFiles | Select-String -Pattern '\.\\(Troubleshooting|Documentation)\\[^\s''"`)]+\.md' -AllMatches)) {
                 foreach ($reference in $match.Matches.Value) {
                     # The references are written with backslashes; the suite also runs on Linux
                     $relative = $reference.Substring(2).Replace('\', [System.IO.Path]::DirectorySeparatorChar)

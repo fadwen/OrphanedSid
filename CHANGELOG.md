@@ -76,6 +76,13 @@ All notable changes to this module are recorded here. Format follows
   `Failed to apply ACL changes` and the reason stood only in the log. Automation that compares
   the whole text has to allow for the reason after it.
   ([#177](https://github.com/fadwen/OrphanedSid/issues/177))
+- Two messages of `Remove-OrphanedSid` no longer speak of a public interface and a version 2.0,
+  neither of which the module has. When the removal of one object fails with an error that
+  nothing else handled, the `ErrorMessage` of its result begins `The removal workflow failed:`,
+  where it began `Public API workflow delegation failed:`. The log entry at the `Verbose` level
+  that begins the removal of an object reads `Starting SID removal operation for <DN>`, without
+  `(Public API v2.0)` after it. Automation that matches either text has to match the new one.
+  ([#188](https://github.com/fadwen/OrphanedSid/issues/188))
 
 ### Fixed
 
