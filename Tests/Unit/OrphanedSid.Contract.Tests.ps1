@@ -374,6 +374,9 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             @{ Issue = 176; What = 'use of the word enterprise-grade'; Pattern = 'enterprise-grade' }
             @{ Issue = 176; What = 'claim of compliance'; Pattern = 'complian' }
             @{ Issue = 176; What = 'name of a regulation'; Pattern = '\b(SOX|GDPR|HIPAA)\b' }
+            # Nothing in the module starts a job or a runspace or uses -Parallel, so help that
+            # names parallel processing describes a mode that the module does not have
+            @{ Issue = 188; What = 'mention of parallel processing'; Pattern = '\bparallel\b' }
         ) {
             $folders = "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public"
             $shippingFiles = Get-ChildItem -Path $folders -Filter *.ps1 -Recurse -File
