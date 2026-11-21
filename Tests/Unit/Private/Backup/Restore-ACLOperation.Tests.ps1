@@ -5,10 +5,11 @@
     Unit tests for Set-ObjectACL, which applies a backup's SDDL to an Active Directory object.
 
 .DESCRIPTION
-    Runs the real Set-ObjectACL with its collaborators mocked: Get-RestorationTarget and
-    Confirm-RestorationSuccess, Set-Acl (the AD: drive does not exist on a test machine) and
-    Write-Error. Restore-ACLOperation.Helpers.Tests.ps1 runs the real bodies of the helpers in the
-    same file.
+    Runs the real Set-ObjectACL with its collaborators mocked: Confirm-RestorationSuccess,
+    Set-Acl (the AD: drive does not exist on a test machine) and Write-Error.
+    Get-RestorationTarget is mocked as well, to show that the function does not call it: the
+    check of the target is its caller's. Restore-ACLOperation.Helpers.Tests.ps1 runs the real
+    bodies of the helpers in the same file.
 
 .NOTES
     Author: Jeffrey Stuhr
@@ -41,8 +42,10 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
     BeforeEach {
         Mock Write-Error { }
         Mock Set-Acl { }
+        # Set-ObjectACL does not check the target (#160). The mock refuses every target, so that
+        # a call to it would turn a case that expects success into a failure.
         Mock Get-RestorationTarget {
-            [PSCustomObject]@{ IsValid = $true; TargetObjectDN = $TargetObjectDN; Issues = @() }
+            [PSCustomObject]@{ IsValid = $false; TargetObjectDN = $TargetObjectDN; Issues = @('must not be asked') }
         }
         Mock Confirm-RestorationSuccess {
             [PSCustomObject]@{ IsVerified = $true; TargetObjectDN = $TargetObjectDN; MatchPercentage = 100 }
@@ -60,7 +63,7 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $null } | Should -Throw "*parameter 'BackupData'*"
         }
 
-        It "Should refuse backup data missing <Property> before touching the target" -ForEach @(
+        It "Should refuse backup data missing <Property> before writing anything" -ForEach @(
             @{ Property = 'SDDL' }
             @{ Property = 'ObjectDN' }
             @{ Property = 'ValidationSignature' }
@@ -73,16 +76,15 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
                 ExpectedMessage = "Backup data missing required property: $Property"
             }
             { Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $partial } | Should -Throw @expected
-            Should -Invoke Get-RestorationTarget -Times 0 -Exactly
             Should -Invoke Set-Acl -Times 0 -Exactly
         }
 
-        It "Should generate a correlation ID when none is given and pass it to target validation" {
-            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup
+        It "Should generate a correlation ID when none is given and pass it to the verification" {
+            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -VerifyApplication
 
             $result.CorrelationId | Should -Match "^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$"
             $generated = $result.CorrelationId
-            Should -Invoke Get-RestorationTarget -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq $generated }
+            Should -Invoke Confirm-RestorationSuccess -Times 1 -Exactly -ParameterFilter { $CorrelationId -eq $generated }
         }
 
         It "Should apply the ACL to each distinguished name piped in" {
@@ -97,12 +99,16 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
     }
 
     Context "Applying the ACL" {
-        It "Should validate the target with its DN and correlation ID first" {
-            $null = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -CorrelationId 'acl-1'
+        It "Should write without checking the target, which its caller has checked (#160)" {
+            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -CorrelationId 'acl-1'
 
-            Should -Invoke Get-RestorationTarget -Times 1 -Exactly -ParameterFilter {
-                $TargetObjectDN -eq $script:TestObjectDN -and $CorrelationId -eq 'acl-1'
-            }
+            $result.Success | Should -BeTrue
+            Should -Invoke Get-RestorationTarget -Times 0 -Exactly
+            Should -Invoke Set-Acl -Times 1 -Exactly
+        }
+
+        It "Should have no switch that skips a check of the target (#160)" {
+            (Get-Command -Name Set-ObjectACL).Parameters.ContainsKey('SkipTargetValidation') | Should -BeFalse
         }
 
         It "Should write a security descriptor built from the backup SDDL to the object's AD: path" {
@@ -171,38 +177,33 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
     }
 
     Context "Failures" {
-        It "Should fail without writing when the target does not validate" {
-            Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; Issues = @('Object not found') } }
+        It "Should report the error of the directory for a target that does not exist, and write nothing else" {
+            # The check of the target is the caller's. A caller that left it out gets the
+            # failure of the write, as a result and not as an exception.
+            Mock Set-Acl { throw "Cannot find path 'AD:\$($script:TestObjectDN)' because it does not exist." }
 
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -CorrelationId 'acl-4'
 
             $result.Success | Should -BeFalse
             $result.ModificationsApplied | Should -Be 0
-            $result.ErrorMessage | Should -Be 'ACL operation failed: Target object validation failed: Object not found'
-            Should -Invoke Set-Acl -Times 0 -Exactly
-            Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
-                $Message -eq "ACL operation failed for $($script:TestObjectDN) : Target object validation failed: Object not found - CorrelationId: acl-4"
-            }
-        }
-
-        It "Should not check the target again with -SkipTargetValidation (#51)" {
-            Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; Issues = @('must not be asked') } }
-
-            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -SkipTargetValidation
-
-            $result.Success | Should -BeTrue
+            $result.ErrorMessage | Should -Be "ACL application failed: Cannot find path 'AD:\$($script:TestObjectDN)' because it does not exist."
             Should -Invoke Get-RestorationTarget -Times 0 -Exactly
-            Should -Invoke Set-Acl -Times 1 -Exactly
         }
 
-        It "Should report the reasons Get-RestorationTarget gives for rejecting the target" {
-            Mock Get-RestorationTarget {
-                [PSCustomObject]@{ IsValid = $false; Issues = @('Target object not found or inaccessible: no such object', 'Cannot read current ACL: denied') }
+        It "Should report an error that the verification raises as a failed result" {
+            Mock Confirm-RestorationSuccess { throw 'The ACL could not be read back' }
+
+            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup -VerifyApplication -CorrelationId 'acl-5'
+
+            $result.PSTypeNames[0] | Should -Be 'ACLOperationResult'
+            $result.Success | Should -BeFalse
+            $result.TargetObjectDN | Should -Be $script:TestObjectDN
+            $result.ModificationsApplied | Should -Be 0
+            $result.ErrorMessage | Should -Be 'ACL operation failed: The ACL could not be read back'
+            $result.CorrelationId | Should -Be 'acl-5'
+            Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                $Message -eq "ACL operation failed for $($script:TestObjectDN) : The ACL could not be read back - CorrelationId: acl-5"
             }
-
-            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup
-
-            $result.ErrorMessage | Should -BeLike '*Target object validation failed: Target object not found or inaccessible: no such object; Cannot read current ACL: denied*'
         }
 
         It "Should report a Set-Acl failure and skip verification" {

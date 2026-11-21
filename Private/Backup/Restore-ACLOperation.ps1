@@ -37,6 +37,11 @@ function Set-ObjectACL {
         This function performs the actual ACL modification operations and should
         only be called with backup data that Test-BackupIntegrity has validated.
 
+        It does not check the target. Restore-IndividualObject, its caller, runs
+        Get-RestorationTarget first, so that a restore reads the object once. A target that
+        does not exist fails in the write, and the result then has Success False and the
+        message of the directory.
+
         BUSINESS VALUE:
         - Enables precise ACL restoration for disaster recovery
         - Provides granular control over permission restoration
@@ -45,7 +50,7 @@ function Set-ObjectACL {
 
     .PARAMETER TargetObjectDN
         Distinguished name of the target Active Directory object for ACL application.
-        Object must exist and be accessible for ACL modification.
+        The caller has checked that the object exists and that its ACL can be read.
 
     .PARAMETER BackupData
         Validated backup data containing SDDL and metadata for restoration.
@@ -54,10 +59,6 @@ function Set-ObjectACL {
     .PARAMETER VerifyApplication
         Whether to verify successful ACL application after setting.
         Recommended for critical operations requiring confirmation.
-
-    .PARAMETER SkipTargetValidation
-        Skip the Get-RestorationTarget check of the target object. For a caller that has just run
-        that check itself, such as Restore-IndividualObject, so a restore reads the object once.
 
     .PARAMETER WhatIf
         Shows what ACL changes would be applied without making modifications.
@@ -102,7 +103,6 @@ function Set-ObjectACL {
         - Requires Modify Permissions permission on target object
         - Validates SDDL format before application
         - Logs all ACL modifications for audit compliance
-        - Confirms target object existence before modification
 
         TROUBLESHOOTING:
         - For permission errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
@@ -127,9 +127,6 @@ function Set-ObjectACL {
         [switch]$VerifyApplication,
 
         [Parameter()]
-        [switch]$SkipTargetValidation,
-
-        [Parameter()]
         [string]$CorrelationId = [System.Guid]::NewGuid().ToString()
     )
 
@@ -152,47 +149,10 @@ function Set-ObjectACL {
     process {
         $startTime = Get-Date
 
-        # The result of an operation that did not succeed. It is built for a target that is not
-        # valid and for a step that raised an error, which are reported in the same way.
-        $newFailedResult = {
-            param([string]$Reason)
-
-            [PSCustomObject]@{
-                PSTypeName = 'ACLOperationResult'
-                Success = $false
-                TargetObjectDN = $TargetObjectDN
-                ModificationsApplied = 0
-                VerificationResult = $null
-                Duration = (Get-Date) - $startTime
-                ErrorMessage = "ACL operation failed: $Reason"
-                WhatIfMode = $WhatIfPreference
-                CorrelationId = $CorrelationId
-                CompletedAt = Get-Date
-            }
-        }
-
+        # The target is not checked here: Restore-IndividualObject, the caller, has just run
+        # Get-RestorationTarget, which is a Get-ADObject and a Get-Acl against the domain
+        # controller (#160).
         Write-Verbose "Applying ACL to object: $TargetObjectDN - CorrelationId: $CorrelationId"
-
-        # Validate target object exists and is accessible, unless the caller just did: each check
-        # is a Get-ADObject and a Get-Acl against the domain controller. The check has a try of
-        # its own, and its outcome is reported after it: the error is then written once, also
-        # when the caller's error action makes Write-Error end the function.
-        $targetFailure = $null
-        if (-not $SkipTargetValidation) {
-            try {
-                $targetValidation = Get-RestorationTarget -TargetObjectDN $TargetObjectDN -CorrelationId $CorrelationId
-                if (-not $targetValidation.IsValid) {
-                    $targetFailure = "Target object validation failed: $(@($targetValidation.Issues) -join '; ')"
-                }
-            } catch {
-                $targetFailure = $_.Exception.Message
-            }
-        }
-
-        if ($null -ne $targetFailure) {
-            Write-Error "ACL operation failed for $TargetObjectDN : $targetFailure - CorrelationId: $CorrelationId"
-            return (& $newFailedResult $targetFailure)
-        }
 
         try {
             # Prepare SDDL for application
@@ -256,7 +216,18 @@ function Set-ObjectACL {
             return $result
         }
         catch {
-            $errorResult = & $newFailedResult $_.Exception.Message
+            $errorResult = [PSCustomObject]@{
+                PSTypeName = 'ACLOperationResult'
+                Success = $false
+                TargetObjectDN = $TargetObjectDN
+                ModificationsApplied = 0
+                VerificationResult = $null
+                Duration = (Get-Date) - $startTime
+                ErrorMessage = "ACL operation failed: $($_.Exception.Message)"
+                WhatIfMode = $WhatIfPreference
+                CorrelationId = $CorrelationId
+                CompletedAt = Get-Date
+            }
             Write-Error "ACL operation failed for $TargetObjectDN : $($_.Exception.Message) - CorrelationId: $CorrelationId"
             return $errorResult
         }

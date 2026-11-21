@@ -18,7 +18,9 @@ BeforeAll {
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
     function Test-BackupIntegrity { param($BackupData, $ExpectedObjectDN, $ValidationLevel, $CorrelationId) }
     function Get-RestorationTarget { param($TargetObjectDN, $CorrelationId) }
-    function Set-ObjectACL { param($TargetObjectDN, $BackupData, [switch]$VerifyApplication, [switch]$SkipTargetValidation, $CorrelationId) }
+    # The parameters are the real function's. A mock takes any parameter name, so it is the
+    # contract tests, not this placeholder, that fail when the caller names one that is gone.
+    function Set-ObjectACL { param($TargetObjectDN, $BackupData, [switch]$VerifyApplication, $CorrelationId) }
 
     $script:backup = [PSCustomObject]@{
         ObjectDN = 'CN=Host 1,OU=Orphaned,DC=contoso,DC=com'
@@ -112,9 +114,9 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
             Should -Invoke Get-RestorationTarget -Times 1 -Exactly -ParameterFilter {
                 $TargetObjectDN -eq $script:backup.ObjectDN -and $CorrelationId -eq 'corr-7'
             }
-            # Validated once here, so Set-ObjectACL is told not to read the object again (#51)
+            # The target is validated once, here; Set-ObjectACL does not check it (#51, #160)
             Should -Invoke Set-ObjectACL -Times 1 -Exactly -ParameterFilter {
-                $TargetObjectDN -eq $script:backup.ObjectDN -and -not $VerifyApplication -and $SkipTargetValidation -and $CorrelationId -eq 'corr-7'
+                $TargetObjectDN -eq $script:backup.ObjectDN -and -not $VerifyApplication -and $CorrelationId -eq 'corr-7'
             }
         }
     }
