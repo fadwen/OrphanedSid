@@ -29,7 +29,6 @@ function Write-ProcessingSummary {
 
         OPERATION-SPECIFIC PROPERTIES:
         Discovery/Removal: OrphanedSIDsFound, RemovalResults, StreamingManager
-        Restore: SuccessfulRestores, FailedRestores, RestoreResults
 
     .PARAMETER OutputPath
         [String] (Optional) Path for CSV export of results.
@@ -57,13 +56,6 @@ function Write-ProcessingSummary {
         DESCRIPTION: Write summary and export results to CSV
         OUTPUT: Console summary and CSV file export
         USE CASE: Standard result reporting and documentation
-
-    .EXAMPLE
-        PS> Write-ProcessingSummary -ProcessingResults $restoreResults
-
-        DESCRIPTION: Display restore operation summary
-        OUTPUT: Detailed restore operation results
-        BUSINESS CASE: Change management and rollback reporting
 
     .NOTES
         Author: Jeffrey Stuhr
@@ -138,56 +130,27 @@ function Write-ProcessingSummary {
                 Write-StructuredLog "Peak memory usage: $($values['PeakMemoryUsageMB']) MB" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             }
 
-            # Check if this is a restore operation
-            if ($resultKeys -contains 'SuccessfulRestores') {
-                # Restore operation summary
-                Write-StructuredLog "=== RESTORE SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Successful restores: $($values['SuccessfulRestores'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Failed restores: $($values['FailedRestores'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Backup source: $($values['BackupPath'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "WhatIf mode: $($values['WhatIfMode'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+            # The lines of a discovery or a removal. A restore is not summarised here:
+            # Restore-OrphanedSidBackup writes its own summary.
+            if ($resultKeys -contains 'ProcessingErrors') {
+                Write-StructuredLog "Processing errors: $($values['ProcessingErrors'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+            }
 
-                # Show detailed restore results
-                if ($values['RestoreResults'] -and @($values['RestoreResults']).Count -gt 0) {
-                    Write-StructuredLog "=== RESTORE DETAILS ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    foreach ($result in $values['RestoreResults']) {
-                        $status = if ($result.Success) { "SUCCESS" } else { "FAILED" }
-                        $entriesInfo = if ($result.EntriesRestored) { " ($($result.EntriesRestored) entries)" } else { "" }
-                        Write-StructuredLog "  [$status] $($result.ObjectDN)$entriesInfo" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                        if (-not $result.Success -and $result.ErrorMessage) {
-                            Write-StructuredLog "    Error: $($result.ErrorMessage)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                        }
-                    }
-                }
+            if ($resultKeys -contains 'OrphanedSIDsFound') {
+                Write-StructuredLog "Orphaned SIDs found: $($values['OrphanedSIDsFound'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+            }
 
-                # Overall restore operation status
-                if ($values['FailedRestores'] -eq 0) {
-                    Write-StructuredLog "All restore operations completed successfully!" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                } else {
-                    Write-StructuredLog "Some restore operations failed. Review the details above." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+            if ($resultKeys -contains 'UnexaminedObjects') {
+                Write-StructuredLog "Objects not examined (security descriptor not readable): $($values['UnexaminedObjects'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                if ($values['UnexaminedObjects'] -gt 0) {
+                    Write-StructuredLog "$($values['UnexaminedObjects']) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
                 }
-            } else {
-                # Standard discovery/removal operation summary
-                if ($resultKeys -contains 'ProcessingErrors') {
-                    Write-StructuredLog "Processing errors: $($values['ProcessingErrors'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                }
+            }
 
-                if ($resultKeys -contains 'OrphanedSIDsFound') {
-                    Write-StructuredLog "Orphaned SIDs found: $($values['OrphanedSIDsFound'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                }
-
-                if ($resultKeys -contains 'UnexaminedObjects') {
-                    Write-StructuredLog "Objects not examined (security descriptor not readable): $($values['UnexaminedObjects'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    if ($values['UnexaminedObjects'] -gt 0) {
-                        Write-StructuredLog "$($values['UnexaminedObjects']) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
-                    }
-                }
-
-                if ($resultKeys -contains 'UnverifiedSIDsFound') {
-                    Write-StructuredLog "Unverified SIDs (lookup failed, not removed): $($values['UnverifiedSIDsFound'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    if ($values['UnverifiedSIDsFound'] -gt 0) {
-                        Write-StructuredLog "$($values['UnverifiedSIDsFound']) SID(s) could not be verified because a directory lookup failed. They are marked VerificationStatus Unverified in the results and were not removed; re-run once the domain controller is reachable and the account can read the targets." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
-                    }
+            if ($resultKeys -contains 'UnverifiedSIDsFound') {
+                Write-StructuredLog "Unverified SIDs (lookup failed, not removed): $($values['UnverifiedSIDsFound'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                if ($values['UnverifiedSIDsFound'] -gt 0) {
+                    Write-StructuredLog "$($values['UnverifiedSIDsFound']) SID(s) could not be verified because a directory lookup failed. They are marked VerificationStatus Unverified in the results and were not removed; re-run once the domain controller is reachable and the account can read the targets." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
                 }
             }
 
@@ -221,30 +184,19 @@ function Write-ProcessingSummary {
                 }
             }
 
-            # Export results to CSV if path provided
-            # Check if we have streaming results or restore results
+            # Export results to CSV if path provided. Only a run that streamed results has
+            # something to export.
             $hasStreamingResults = $values['StreamingManager'] -and $values['StreamingManager'].Summary.TotalResults -gt 0
-            $hasRestoreResults = $values['RestoreResults'] -and @($values['RestoreResults']).Count -gt 0
 
-            if ($hasStreamingResults -or $hasRestoreResults) {
+            if ($hasStreamingResults) {
                 if ($OutputPath) {
                     try {
-                        # Under -WhatIf neither export writes a file: the streaming manager skips it in
-                        # WhatIf mode, and Export-Csv honours the inherited $WhatIfPreference
-                        $exported = $false
-                        if ($hasStreamingResults) {
-                            # Use StreamingManager's efficient CSV export
-                            $exported = $values['StreamingManager'].ExportToCsv($OutputPath)
-                        } elseif ($hasRestoreResults) {
-                            if (-not $WhatIfPreference) {
-                                $restoreRows = @($values['RestoreResults'])
-                                Export-ResultCsv -InputObject $restoreRows -LiteralPath $OutputPath
-                                $exported = $true
-                            }
-                        }
+                        # Under -WhatIf the export writes no file: the streaming manager skips it
+                        # in WhatIf mode
+                        $exported = $values['StreamingManager'].ExportToCsv($OutputPath)
                         if ($exported) {
                             Write-StructuredLog "Results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                        } elseif ($WhatIfPreference -or ($hasStreamingResults -and $values['StreamingManager'].WhatIfMode)) {
+                        } elseif ($WhatIfPreference -or $values['StreamingManager'].WhatIfMode) {
                             Write-StructuredLog "WhatIf: results would be exported to $OutputPath; no file was written" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                         } else {
                             Write-StructuredLog "No results were read back to export; $OutputPath was not written" -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
@@ -265,17 +217,10 @@ function Write-ProcessingSummary {
                     }
                 }
             } else {
-                # Handle different operation types appropriately
-                if ($resultKeys -contains 'SuccessfulRestores') {
-                    # This is a restore operation with no results - shouldn't happen but handle gracefully
-                    Write-StructuredLog "No restore operations were performed." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                if ($resultKeys -contains 'ProcessingErrors' -and $values['ProcessingErrors'] -gt 0) {
+                    Write-StructuredLog "Consider reviewing the error log for detailed information." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 } else {
-                    # This is a discovery/removal operation
-                    if ($resultKeys -contains 'ProcessingErrors' -and $values['ProcessingErrors'] -gt 0) {
-                        Write-StructuredLog "Consider reviewing the error log for detailed information." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    } else {
-                        Write-StructuredLog "No orphaned SIDs found. Active Directory ACLs appear to be clean." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    }
+                    Write-StructuredLog "No orphaned SIDs found. Active Directory ACLs appear to be clean." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
             }
 
