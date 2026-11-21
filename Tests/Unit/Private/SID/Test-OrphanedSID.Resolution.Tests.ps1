@@ -42,6 +42,10 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
         $script:SIDValidationCache = @{}
         $script:SIDValidationCacheLookups = 0
         $script:SIDValidationCacheHits = 0
+        # A case that finds the server down suspends the directory lookups for 60 seconds (#82);
+        # without this the cases that run after it would attempt none
+        $script:DirectoryUnreachableSince = $null
+        $script:DirectoryRetryAt = $null
     }
 
     It 'Leaves a malformed SID unverified, warns, and makes no lookup' {
@@ -310,15 +314,220 @@ Describe 'Test-OrphanedSID resolution order' -Tag 'Unit', 'SID', 'Private' {
             $lookup.ErrorMessage | Should -Not -BeLike '*Not attempted*'
         }
 
-        It 'Starts each SID afresh, so one server-down SID does not skip the next' {
-            Mock Get-ADObject { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) }
+        It 'Does not suspend the lookups of the next SID after a failure that is not server-down' {
+            Mock Get-ADObject { throw [System.TimeoutException]::new('The operation timed out') }
             $null = Test-OrphanedSID -SID $script:orphan
 
             Mock Get-ADObject { $null }
             (Test-OrphanedSID -SID 'S-1-5-21-111-222-333-9002').Status | Should -Be 'Orphaned'
-            # The second SID runs every lookup; nothing from the first SID's failure carries over
             Should -Invoke Get-ADObject -Times 2 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
             Should -Invoke Get-ADComputer -Times 1 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'The SIDs that follow while the server cannot be contacted (#82)' {
+
+        BeforeAll {
+            $script:downMessage = 'Unable to contact the server. This may be because this server does not exist, it is currently down, or it does not have the Active Directory Web Services running.'
+            $script:next = 'S-1-5-21-111-222-333-9002'
+            $script:allLookups = 'Get-ADObject, Get-ADObject -IncludeDeletedObjects, Get-ADUser, Get-ADGroup, Get-ADComputer'
+        }
+
+        BeforeEach {
+            # The clock of the function, which a case moves forward
+            $script:clock = [datetime]::new(2026, 11, 20, 10, 0, 0)
+            Mock Get-Date { $script:clock }
+            # The first SID finds the server down, at 10:00:00
+            Mock Get-ADObject { throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage) }
+            $null = Test-OrphanedSID -SID $script:orphan
+        }
+
+        It 'Attempts no directory lookup for the next SID, and reports it Unverified without caching it' {
+            $script:clock = $script:clock.AddSeconds(59)
+
+            $lookup = Test-OrphanedSID -SID $script:next
+
+            $lookup.Status | Should -Be 'Unverified'
+            $lookup.IsOrphaned | Should -BeFalse
+            $lookup.ErrorMessage | Should -Be "Not attempted because the directory server could not be contacted: $($script:allLookups)"
+            Should -Invoke Get-ADObject -Times 0 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+            Should -Invoke Get-ADUser -Times 0 -Exactly
+            Should -Invoke Get-ADGroup -Times 0 -Exactly
+            Should -Invoke Get-ADComputer -Times 0 -Exactly
+            $script:SIDValidationCache.ContainsKey($script:next) | Should -BeFalse
+        }
+
+        It 'Still asks the local name lookup in that time, which can prove that a SID exists' {
+            $lookup = Test-OrphanedSID -SID 'S-1-5-32-544'
+
+            $lookup.Status | Should -Be 'Exists'
+            Should -Invoke Get-ADObject -Times 0 -Exactly -ParameterFilter { $Filter -like '*S-1-5-32-544*' }
+        }
+
+        It 'Writes one warning that the server cannot be contacted, however many SIDs follow' {
+            foreach ($rid in 9002..9006) {
+                $null = Test-OrphanedSID -SID "S-1-5-21-111-222-333-$rid"
+            }
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -eq ('The directory server cannot be contacted. No directory lookup is ' +
+                    'attempted for the next 60 seconds: a SID that needs one is reported as Unverified and is not removed. ' +
+                    'The server is tried again after that.')
+            }
+            # The SID that found the server down has its two warnings; the five after it have none
+            Should -Invoke Write-StructuredLog -Times 3 -Exactly -ParameterFilter { $Level -eq 'Warning' }
+            Should -Invoke Write-StructuredLog -Times 5 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -like 'SID could not be verified - 0 lookup(s) failed, 5 not attempted: *'
+            }
+        }
+
+        It 'Tries the directory again for the first SID after 60 seconds, and goes on as usual when it answers' {
+            $script:clock = $script:clock.AddSeconds(60)
+            Mock Get-ADObject { $null }
+
+            (Test-OrphanedSID -SID $script:next).Status | Should -Be 'Orphaned'
+            (Test-OrphanedSID -SID 'S-1-5-21-111-222-333-9003').Status | Should -Be 'Orphaned'
+
+            Should -Invoke Get-ADObject -Times 2 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+            Should -Invoke Get-ADComputer -Times 1 -Exactly -ParameterFilter { $Filter -like '*-9003*' }
+            $script:DirectoryUnreachableSince | Should -BeNullOrEmpty
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $Message -eq ('The directory server answers again, 60 seconds after it ' +
+                    'could not be contacted. Directory lookups are attempted again.')
+            }
+        }
+
+        It 'Takes not-found from the lookup that tries again as an answer' {
+            $script:clock = $script:clock.AddSeconds(61)
+            Mock Get-ADObject { throw [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]::new('not found') }
+
+            (Test-OrphanedSID -SID $script:next).Status | Should -Be 'Orphaned'
+
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+            Should -Invoke Get-ADComputer -Times 1 -Exactly
+        }
+
+        It 'Begins another 60 seconds when the lookup that tries again finds the server down as well' {
+            $script:clock = $script:clock.AddSeconds(75)
+
+            $probe = Test-OrphanedSID -SID $script:next
+            $script:clock = $script:clock.AddSeconds(59)
+            $after = Test-OrphanedSID -SID 'S-1-5-21-111-222-333-9003'
+
+            # The SID that tried again made one lookup; the one after it made none
+            $probe.ErrorMessage | Should -BeLike "Get-ADObject: $($script:downMessage)*"
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+            Should -Invoke Get-ADObject -Times 0 -Exactly -ParameterFilter { $Filter -like '*-9003*' }
+            $after.ErrorMessage | Should -Be "Not attempted because the directory server could not be contacted: $($script:allLookups)"
+            # Since the first failure, and again from the second
+            $script:DirectoryUnreachableSince | Should -Be ([datetime]::new(2026, 11, 20, 10, 0, 0))
+            $script:DirectoryRetryAt | Should -Be ([datetime]::new(2026, 11, 20, 10, 2, 15))
+            # Still the one warning about the server
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -like 'The directory server cannot be contacted.*'
+            }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Debug' -and $Message -eq 'The directory server still cannot be contacted. It is tried again in 60 seconds.'
+            }
+        }
+
+        It 'Suspends the lookups also when the SID that found the server down has a local name' {
+            # A SID that the local name lookup finds returns before the end of the function
+            $script:DirectoryUnreachableSince = $null
+            $script:DirectoryRetryAt = $null
+            (Test-OrphanedSID -SID 'S-1-5-32-545').Status | Should -Be 'Exists'
+
+            $null = Test-OrphanedSID -SID $script:next
+
+            Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter { $Filter -like '*S-1-5-32-545*' }
+            Should -Invoke Get-ADObject -Times 0 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+        }
+
+        It 'Suspends the lookups also when <Lookup> is the one that finds the server down' -ForEach @(
+            @{ Lookup = 'the deleted-objects lookup'; DownAt = 'Deleted' }
+            @{ Lookup = 'a typed lookup'; DownAt = 'Typed' }
+        ) {
+            $script:DirectoryUnreachableSince = $null
+            $script:DirectoryRetryAt = $null
+            Mock Get-ADObject {
+                if ($IncludeDeletedObjects -and $DownAt -eq 'Deleted') {
+                    throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage)
+                }
+            }
+            Mock Get-ADGroup {
+                if ($DownAt -eq 'Typed') {
+                    throw [Microsoft.ActiveDirectory.Management.ADServerDownException]::new($script:downMessage)
+                }
+            }
+            $null = Test-OrphanedSID -SID 'S-1-5-21-111-222-333-9004'
+
+            $null = Test-OrphanedSID -SID $script:next
+
+            Should -Invoke Get-ADObject -Times 0 -Exactly -ParameterFilter { $Filter -like '*-9002*' }
+            $script:DirectoryRetryAt | Should -Be $script:clock.AddSeconds(60)
+        }
+    }
+
+    Context 'Register-DirectoryLookupOutcome' {
+
+        BeforeEach {
+            $script:clock = [datetime]::new(2026, 11, 20, 10, 0, 0)
+            Mock Get-Date { $script:clock }
+        }
+
+        It 'Records the time and suspends lookups for 60 seconds the first time the server is unreachable' {
+            Register-DirectoryLookupOutcome -Outcome Unreachable -CorrelationId 'reg-1'
+
+            $script:DirectoryUnreachableSince | Should -Be $script:clock
+            $script:DirectoryRetryAt | Should -Be $script:clock.AddSeconds(60)
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $CorrelationId -eq 'reg-1' -and $Component -eq 'SIDDetection'
+            }
+        }
+
+        It 'Keeps the first time and moves the time to try again when the server is unreachable once more' {
+            Register-DirectoryLookupOutcome -Outcome Unreachable
+            $first = $script:clock
+            $script:clock = $script:clock.AddSeconds(100)
+
+            Register-DirectoryLookupOutcome -Outcome Unreachable
+
+            $script:DirectoryUnreachableSince | Should -Be $first
+            $script:DirectoryRetryAt | Should -Be $first.AddSeconds(160)
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' }
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Debug' }
+        }
+
+        It 'Clears both times and says for how long the server was unreachable when it answers' {
+            Register-DirectoryLookupOutcome -Outcome Unreachable
+            $script:clock = $script:clock.AddSeconds(145)
+
+            Register-DirectoryLookupOutcome -Outcome Answered -CorrelationId 'reg-2'
+
+            $script:DirectoryUnreachableSince | Should -BeNullOrEmpty
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $CorrelationId -eq 'reg-2' -and
+                $Message -like 'The directory server answers again, 145 seconds after*'
+            }
+        }
+
+        It 'Does and writes nothing for an answer when the server was not recorded as unreachable' {
+            Register-DirectoryLookupOutcome -Outcome Answered
+
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly
+        }
+
+        It 'Writes nothing to the pipeline' {
+            @(Register-DirectoryLookupOutcome -Outcome Unreachable).Count | Should -Be 0
+            @(Register-DirectoryLookupOutcome -Outcome Answered).Count | Should -Be 0
+        }
+
+        It 'Rejects an outcome other than Answered and Unreachable' {
+            { Register-DirectoryLookupOutcome -Outcome 'Slow' } | Should -Throw "*parameter 'Outcome'*"
         }
     }
 

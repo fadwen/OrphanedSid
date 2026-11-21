@@ -79,8 +79,10 @@ second of jitter, capped at 30 seconds. Any other error fails the read at once.
 
 On a healthy domain controller retries never fire. On a link that drops for seconds at a time,
 raise it to ride out short outages; each retry adds its back-off to the run. A domain controller
-that cannot be contacted at all is not retried, whatever the value: each SID that needs it costs
-one connection timeout and is reported `Unverified`. The ACL reads and writes of a removal keep
+that cannot be contacted at all is not retried, whatever the value: the SID that finds it so
+costs one connection timeout, about 42 seconds, and is reported `Unverified`. The SIDs of the
+next 60 seconds are reported `Unverified` without a lookup, and then one lookup tries the server
+again, so a run pays one timeout for each such minute and not one for each SID. The ACL reads and writes of a removal keep
 their own fixed limits, and a removal is never repeated as a whole.
 
 ### -LogLevel

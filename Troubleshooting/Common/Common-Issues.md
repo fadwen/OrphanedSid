@@ -200,7 +200,10 @@ up to five AD queries (`Get-ADObject` by `objectSid`, deleted-objects query, `Ge
 `Invoke-ADOperationWithRetry` when the error looks transient. When the directory server cannot be contacted, the first lookup
 waits out a connect timeout of about 42 seconds, the remaining directory lookups for that SID are
 skipped and listed in `VerificationError` as `Not attempted because the directory server could not
-be contacted: ...`, and the SID is reported `Unverified`, which is never removed.
+be contacted: ...`, and the SID is reported `Unverified`, which is never removed. For the 60
+seconds that follow, no directory lookup is attempted for any other SID either: each is
+`Unverified` with all five lookups listed as not attempted. The first SID after that tries the
+server again.
 
 **Resolution:**
 

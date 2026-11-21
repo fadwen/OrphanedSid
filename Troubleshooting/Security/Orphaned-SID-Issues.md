@@ -253,9 +253,17 @@ waits for the AD Web Services connect timeout, about 42 seconds, and fails with 
 the server`. After the first such failure for a SID, its remaining directory lookups are not tried,
 because they would wait and fail the same way. `VerificationError` then ends with `Not attempted
 because the directory server could not be contacted: <lookups>`. The local name lookup still runs.
-Each SID that needs the directory still costs one timeout, so a run against an unreachable domain
-controller slows by about 42 seconds per distinct SID. Every object that carries the same SID pays
-it again, because unverified answers are not cached. Check the domain controller before re-running:
+
+The SIDs that follow do not each wait for that timeout. For 60 seconds after a lookup found the
+server unreachable, no directory lookup is attempted: each SID that needs one is `Unverified`,
+with all five lookups listed after `Not attempted because the directory server could not be
+contacted:`, and is not cached. The first SID after the 60 seconds tries the server again. If it
+answers, lookups go on as usual and the log says for how long the server could not be
+contacted; if not, another 60 seconds begin. The log has one Warning for the whole time, `The
+directory server cannot be contacted. ...`, in place of two for each SID. On a lab domain,
+discovery over five objects with one unverifiable SID each took 214 seconds before this and 45
+seconds with it, with the same five `Unverified` results. Check the domain controller before
+re-running:
 
 ```powershell
 Get-ADDomainController -Discover -Service ADWS   # which DC the AD cmdlets will use

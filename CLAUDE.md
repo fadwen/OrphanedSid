@@ -83,6 +83,14 @@ runspace: the cases assert the exit code of the host, under `-File` and under `-
 The SID validation cache is the exception: it lives for the PowerShell session so the
 second run against the same domain is cheaper.
 
+`$script:DirectoryUnreachableSince` and `$script:DirectoryRetryAt` are per run as well, and both
+helpers reset them. `Test-OrphanedSID` sets them when a lookup finds the directory server
+unreachable, and for 60 seconds attempts no directory lookup for any SID (#82). Two things there
+are easy to break. A SID whose lookups were all skipped has no failed lookup, and it must still
+come out `Unverified` and uncached: read as "nothing failed", it would be `Orphaned` and removable
+while the server is down. And the record is made where the failure is caught, not at the end of
+the function, because a SID that the local name lookup finds returns before the end.
+
 ### The classes have no static member
 
 On Windows PowerShell 5.1, once another runspace of the process has imported the module and been

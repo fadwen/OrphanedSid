@@ -31,6 +31,8 @@ VerificationError that names each failed lookup, so it can be re-checked.
 When a directory server cannot be contacted, the SID's remaining directory lookups are skipped
 rather than each waiting for the same timeout, and VerificationError lists them after
 "Not attempted because the directory server could not be contacted:".
+For the next 60 seconds no directory lookup is attempted for the SIDs that follow either: each
+is Unverified with all five lookups listed there. After that the server is tried again.
 Remove-OrphanedSid never removes an unverified SID.
 Unverified results are not cached, so a later object or a later run looks the SID up again.
 

@@ -25,6 +25,16 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- A run that meets a directory server that cannot be contacted no longer waits for one connect
+  timeout, about 42 seconds, for each SID. After a lookup finds the server unreachable, no
+  directory lookup is attempted for 60 seconds: each SID that needs one in that time is
+  `Unverified`, with `VerificationError` reading `Not attempted because the directory server
+  could not be contacted: <the five lookups>`, and is not cached. The first SID after that tries
+  the server again, and lookups go on as usual once it answers. The log has one warning for the
+  whole time and an information entry when the server answers again. On a lab domain, discovery
+  over five objects with one such SID each took 214 seconds before and 45 seconds after, with
+  the same five `Unverified` results. A SID is still never reported as orphaned while the
+  server cannot be contacted. ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
 - The error that `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` raise
   when the ActiveDirectory PowerShell module is not installed has an error ID, an exception type
   and a category of its own: `ActiveDirectoryModuleMissing`, `System.InvalidOperationException`

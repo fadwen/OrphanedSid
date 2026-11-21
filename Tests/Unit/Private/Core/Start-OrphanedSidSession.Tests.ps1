@@ -182,6 +182,17 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
             $script:SIDClassificationCache.Count | Should -Be 0
         }
 
+        It 'Starts each run without the record of an unreachable directory server (#82)' {
+            # A server that could not be contacted in the last run is tried again by this one
+            $script:DirectoryUnreachableSince = (Get-Date).AddSeconds(-10)
+            $script:DirectoryRetryAt = (Get-Date).AddSeconds(50)
+
+            Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' | Out-Null
+
+            $script:DirectoryUnreachableSince | Should -BeNullOrEmpty
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+        }
+
         It 'Resets the per-run state before initializing and records the results after' {
             $result = Start-OrphanedSidSession -CommandName 'Find-OrphanedSid' -CorrelationId 'start-1' -SuppressConsoleOutput -ConfigPath 'C:\cfg.json' -MaxMemoryUsageMB 2048
 
