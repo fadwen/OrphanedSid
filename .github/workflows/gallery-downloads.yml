@@ -15,7 +15,11 @@ permissions:
 
 jobs:
   badge:
-    uses: fadwen/IntuneScriptLab/.github/workflows/gallery-downloads.yml@main
+    # A commit ID, not the branch: this job runs every day with write access to the repository,
+    # and at a branch it would run whatever that branch holds on the day. The commit is the one
+    # that last changed the workflow, on 2026-10-19. To take a newer version, look up its commit
+    # ID in fadwen/IntuneScriptLab and replace this one.
+    uses: fadwen/IntuneScriptLab/.github/workflows/gallery-downloads.yml@4d4e138c5c5aaf6a45a7e88743a46d933055f77c
     with:
       package: OrphanedSid
       label: Gallery downloads

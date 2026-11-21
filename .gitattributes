@@ -1,0 +1,6 @@
+# Every text file is stored and checked out with LF, on every platform. Without this file a
+# checkout takes its line endings from the core.autocrlf setting of each clone: GitHub's
+# Windows runners check out CRLF and its Linux runners LF, and a test that compares the text
+# of a file with a here-string can pass on one and fail on the other. PowerShell 7 and
+# Windows PowerShell 5.1 both read files with LF.
+* text=auto eol=lf

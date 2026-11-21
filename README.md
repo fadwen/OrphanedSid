@@ -242,6 +242,14 @@ Conventions come from [ai-powershell-standards](https://github.com/fadwen/ai-pow
 and are installed into `.github/`, `.claude/` and `.agents/` by a weekly workflow. See [CLAUDE.md](./CLAUDE.md)
 for the invariants specific to this module.
 
+`.gitattributes` checks every text file out with LF. A clone that was made before that file existed
+keeps its CRLF files, also after a pull, until they are checked out again. Commit or stash any work
+first, because `git reset --hard` discards uncommitted changes:
+
+```powershell
+git rm --cached -r . ; git reset --hard
+```
+
 ## Blog posts
 
 The [OrphanedSid series](https://www.techbyjeff.net/series/orphanedsid/) on techbyjeff.net:

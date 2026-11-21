@@ -568,7 +568,9 @@ discovered entries as CSV.</maml:para>
           <maml:para>Folder that receives the per-run backup subfolder.
 Defaults to .\Backup under the current
 directory.
-The parent folder must exist; the backup folder itself is created.</maml:para>
+The parent folder must exist; the backup folder itself is created.
+When the folder for the run cannot be created, the command ends with the error
+BackupFolderNotCreated before it reads any object, and its message gives the reason.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -768,7 +770,9 @@ backup written before the change. Its folder is the one to pass to `Restore-Orph
 `Success` is false when an entry could not be removed, when the changed ACL could not be written
 or verified, and when an entry that was reported for removal was no longer on the object.
 `ErrorMessage` says which, and in the last case names the SIDs; the entries that were found are
-still removed, and `ActualRemovals` is then lower than `IntendedRemovals`.
+still removed, and `ActualRemovals` is then lower than `IntendedRemovals`. For an ACL that could
+not be written, `ErrorMessage` is `Failed to apply ACL changes:` followed by the reason, such as
+`Access is denied`.
 
 `NotFoundSIDs` lists the SIDs of that last case: entries that discovery reported and that were
 no longer on the object, for example because someone else removed them in the meantime.

@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Memory Monitoring and Threshold Management Module for Find-UnknownSID Enterprise Solution
+    Memory Monitoring and Threshold Management Module for the OrphanedSid module
 
 .DESCRIPTION
     Provides focused memory monitoring and threshold checking functionality including:
@@ -24,7 +24,7 @@
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
 
 .COMPONENT
-    Find-UnknownSID Memory Monitoring System
+    OrphanedSid Memory Monitoring System
 
 .FUNCTIONALITY
     - Memory usage monitoring

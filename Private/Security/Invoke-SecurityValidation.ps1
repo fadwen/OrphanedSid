@@ -16,8 +16,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -100,11 +98,6 @@ function Invoke-SecurityValidation {
         - Provides detailed audit trails with correlation tracking
         - Blocks protected and privileged SIDs automatically
         - Supports enterprise security policy integration
-
-        PERFORMANCE CHARACTERISTICS:
-        - Processing Rate: 10-50 SIDs/second depending on validation complexity
-        - Memory Usage: Optimized for large SID validation batches
-        - Validation Time: <50ms per SID typically
 
         TROUBLESHOOTING:
         - For blocked SIDs: Check protected SID configuration and policies

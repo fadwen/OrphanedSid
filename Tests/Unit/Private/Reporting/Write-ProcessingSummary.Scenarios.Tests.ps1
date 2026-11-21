@@ -14,6 +14,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Reporting\Export-ResultCsv.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
@@ -259,6 +260,8 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             $rows = @(Import-Csv $script:csv)
             $rows.Count | Should -Be 2
             $rows[1].ErrorMessage | Should -Be 'Access is denied'
+            # Import-Csv skips a #TYPE line, so the first line is read as text (#159)
+            @(Get-Content -LiteralPath $script:csv -TotalCount 1)[0] | Should -BeLike '"ObjectDN",*'
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Results exported to: $($script:csv)" }
         }
 

@@ -48,6 +48,17 @@ All notable changes to this module are recorded here. Format follows
   the SIDs that were not. Such a result was `Success = True` before, so automation that counts
   failures by `Success` will count these. The help of `Remove-OrphanedSid` describes it.
   ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- The CSV file of `-OutputPath` is written without the `-NoTypeInformation` switch of
+  `Export-Csv` on PowerShell 7, where the switch has no effect. PowerShell 7.7 declares it
+  obsolete and writes a warning for each call that passes it, so a run with `-OutputPath` would
+  have shown a warning there. Windows PowerShell 5.1 still gets the switch, without which it
+  writes a `#TYPE` line. The file is the same as before on both editions.
+  ([#159](https://github.com/fadwen/OrphanedSid/issues/159))
+- The result of `Remove-OrphanedSid` for an object whose changed ACL could not be written says
+  why: `ErrorMessage` is `Failed to apply ACL changes: Access is denied`, where it was
+  `Failed to apply ACL changes` and the reason stood only in the log. Automation that compares
+  the whole text has to allow for the reason after it.
+  ([#177](https://github.com/fadwen/OrphanedSid/issues/177))
 
 ### Fixed
 
@@ -171,6 +182,22 @@ All notable changes to this module are recorded here. Format follows
   `Invalid target object DN format` for a blank before the equals sign. The target and the
   names that the backups record are now compared in one spelling.
   ([#150](https://github.com/fadwen/OrphanedSid/issues/150))
+- `Remove-OrphanedSid` ends with the error `BackupFolderNotCreated`, before it reads any object,
+  when it cannot create the folder for the backups of the run, and the message gives the reason,
+  such as `Access to the path ... is denied`. The log said `Created backup folder` for a folder
+  that was not there, the command went on to every object, and each removal then failed with
+  `Could not find a part of the path`. Nothing was removed in that state, and nothing is now;
+  what changes is what the operator is told and when.
+  ([#161](https://github.com/fadwen/OrphanedSid/issues/161))
+
+### Security
+
+- `Tools/Generate-OrphanedSIDs.ps1`, the script in the repository that fills a lab domain with
+  test accounts, gives each account a random password that it keeps nowhere. It gave every
+  account the same password, which is written in the script. The script deletes its accounts at
+  the end of a run, so only an account that an interrupted run left behind still has that
+  password; delete such an account. The script is not part of the published module.
+  ([#155](https://github.com/fadwen/OrphanedSid/issues/155))
 
 ## [1.1.0] - 2026-11-11
 

@@ -104,11 +104,6 @@ function Test-BackupIntegrity {
         - Format validation ensures compatibility and prevents injection
         - Version checking prevents incompatible restoration attempts
 
-        PERFORMANCE CHARACTERISTICS:
-        - Basic validation: ~10ms per backup
-        - Standard validation: ~25ms per backup (includes crypto operations)
-        - Comprehensive validation: ~50ms per backup (includes security checks)
-
         TROUBLESHOOTING:
         - For hash mismatches: .\Troubleshooting\Common\Backup-Restore-Issues.md
 

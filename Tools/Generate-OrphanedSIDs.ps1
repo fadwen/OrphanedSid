@@ -56,9 +56,40 @@ function Write-DetailedLog {
     }
 }
 
-# Function to create secure password
+# Makes a new random password for each account. The accounts exist to be deleted again and
+# nothing signs in with them, so the password is not kept, shown or logged. It holds a letter
+# of each case, a digit and a symbol, for a domain whose policy asks for complexity.
 function New-TestPassword {
-    return ConvertTo-SecureString "OrphanTest123!" -AsPlainText -Force
+    $characterSets = @(
+        'ABCDEFGHJKLMNPQRSTUVWXYZ'
+        'abcdefghijkmnopqrstuvwxyz'
+        '23456789'
+        '!#%+-_='
+    )
+    $allCharacters = -join $characterSets
+    $randomBytes = [byte[]]::new(28)
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $generator.GetBytes($randomBytes)
+    } finally {
+        $generator.Dispose()
+    }
+
+    $password = [System.Security.SecureString]::new()
+    # The first four characters are one of each set, the other twenty-four are of any set
+    for ($index = 0; $index -lt $randomBytes.Count; $index++) {
+        $characters = $allCharacters
+        if ($index -lt $characterSets.Count) {
+            $characters = $characterSets[$index]
+        }
+        # A byte has 256 values. The 64 characters of all sets divide that evenly, and so do the
+        # 8 digits, so those positions are uniform. The sets of 24, 25 and 7 do not: their first
+        # 16, 6 and 4 characters are each a little more likely than the rest. That is left as it
+        # is, for the passwords of accounts that the same run deletes.
+        $password.AppendChar($characters[$randomBytes[$index] % $characters.Length])
+    }
+    $password.MakeReadOnly()
+    return $password
 }
 
 # Function to wait and verify AD replication
@@ -518,11 +549,12 @@ foreach ($Delegation in $EnterpriseExplicitDelegations) {
             continue
         }
 
-        $cmd = "dsacls `"$($Delegation.Target)`" /G `"$($Delegation.Principal):$($Delegation.Rights)`""
+        # The arguments go to dsacls as a list, so that a name is one argument whatever it holds
+        $dsaclsArguments = @($Delegation.Target, '/G', "$($Delegation.Principal):$($Delegation.Rights)")
         Write-LogOutput "Applying: $($Delegation.Description)" -Color Yellow
-        Write-DetailedLog "Delegation command: $cmd"
+        Write-DetailedLog "Delegation command: dsacls $($dsaclsArguments -join ' ')"
 
-        Invoke-Expression $cmd
+        & dsacls.exe @dsaclsArguments
 
         if ($LASTEXITCODE -eq 0) {
             Write-LogOutput " Successfully applied delegation" -Color Green
@@ -595,11 +627,11 @@ foreach ($Delegation in $EnterpriseInheritedDelegations) {
         }
 
         # Apply with inheritance (CI = Container Inherit, OI = Object Inherit)
-        $cmd = "dsacls `"$($Delegation.Target)`" /G `"$($Delegation.Principal):$($Delegation.Rights)`" /I:T"
+        $dsaclsArguments = @($Delegation.Target, '/G', "$($Delegation.Principal):$($Delegation.Rights)", '/I:T')
         Write-LogOutput "Applying Inherited: $($Delegation.Description)" -Color Yellow
-        Write-DetailedLog "Inherited delegation command: $cmd"
+        Write-DetailedLog "Inherited delegation command: dsacls $($dsaclsArguments -join ' ')"
 
-        Invoke-Expression $cmd
+        & dsacls.exe @dsaclsArguments
 
         if ($LASTEXITCODE -eq 0) {
             Write-LogOutput " Successfully applied inherited delegation" -Color Green

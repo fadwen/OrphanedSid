@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    High-level workflow coordination for Find-UnknownSID operations
+    High-level workflow coordination for OrphanedSid operations
 
 .DESCRIPTION
     Provides lightweight orchestration and coordination between focused
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
@@ -28,7 +26,7 @@ function Start-OrchestrationWorkflow {
         Coordinates high-level workflow between processing modules
 
     .DESCRIPTION
-        Acts as the central coordinator for Find-UnknownSID operations,
+        Acts as the central coordinator for OrphanedSid operations,
         delegating to specialized functions while maintaining workflow
         integrity and proper error handling.
 

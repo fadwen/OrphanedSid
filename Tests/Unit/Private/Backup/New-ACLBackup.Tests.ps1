@@ -15,6 +15,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\New-ACLBackup.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Backup\Initialize-BackupFolder.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Utilities\Get-OrphanedSidModuleVersion.ps1"
 
@@ -306,6 +307,71 @@ Describe 'New-ACLBackup' -Tag 'Unit', 'Backup', 'Private' {
                 Should -Throw -ExpectedMessage '*Disk full*'
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter {
                 $Level -eq 'Error' -and $Message -like '*Disk full*' -and $CorrelationId -eq 'bk-3' -and $Data.Function -eq 'New-ACLBackup'
+            }
+        }
+
+        It 'Ends with BackupFolderNotCreated when a part of the backup path is a file (#161)' {
+            # Nothing but the log is mocked. New-Item returns nothing and reports no error here.
+            $file = Join-Path $TestDrive "a-file-$([guid]::NewGuid().ToString('N')).txt"
+            Set-Content -LiteralPath $file -Value 'not a folder' -Encoding ascii
+            $folder = Join-Path $file 'Backup'
+
+            $expected = @{
+                ErrorId         = 'BackupFolderNotCreated,New-ACLBackup'
+                ExpectedMessage = "The backup folder '$folder' could not be created: *may be a file."
+                ExceptionType   = [System.IO.IOException]
+            }
+            { New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $folder -CorrelationId 'bk-5' } |
+                Should -Throw @expected
+            # The folder is not logged as created, and the failure is logged once with the reason
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Created backup directory*'
+            }
+            $logged = "Failed to create ACL backup for $($script:dn) : " +
+                "The backup folder '$folder' could not be created*"
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $CorrelationId -eq 'bk-5' -and $Message -like $logged
+            }
+        }
+
+        It 'Ends with BackupFolderNotCreated, and the reason, when the parent denies new folders (#161)' {
+            # Nothing but the log is mocked: adding a folder to the parent is denied for this
+            # case, and allowed again afterwards. The entry does not keep the folder from being
+            # removed with the test drive.
+            $parent = Join-Path $TestDrive "NoNewFolders-$([guid]::NewGuid().ToString('N'))"
+            $null = New-Item -Path $parent -ItemType Directory
+            $folder = Join-Path $parent 'Backup'
+            $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $parent /deny "${account}:(AD,WD)"
+            try {
+                $caught = $null
+                try {
+                    New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $folder
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $parent /remove:d $account
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'BackupFolderNotCreated,New-ACLBackup'
+            $caught.Exception.InnerException | Should -BeOfType [System.UnauthorizedAccessException]
+            $reason = $caught.Exception.InnerException.Message
+            $caught.Exception.Message | Should -Be "The backup folder '$folder' could not be created: $reason"
+            Test-Path -LiteralPath $folder | Should -BeFalse
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Created backup directory*'
+            }
+        }
+
+        It 'Logs the folder as created only when it created it' {
+            $second = 'CN=Second,OU=Groups,DC=contoso,DC=com'
+            New-ACLBackup -ObjectDN $script:dn -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+            New-ACLBackup -ObjectDN $second -ACL $script:acl -BackupPath $script:backupDir | Out-Null
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $Message -eq "Created backup directory: $($script:backupDir)"
             }
         }
     }

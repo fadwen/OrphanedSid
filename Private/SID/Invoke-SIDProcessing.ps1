@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Processing Orchestration Module for Find-UnknownSID Solution
+    SID Processing Orchestration Module for the OrphanedSid module
 
 .DESCRIPTION
     This focused module orchestrates the entire orphaned SID detection workflow
-    for the Find-UnknownSID enterprise solution. It coordinates the interaction
+    for the OrphanedSid module. It coordinates the interaction
     between security descriptor retrieval, identity resolution, and result creation
     while managing processing statistics and error aggregation.
 
@@ -31,8 +31,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -139,13 +137,6 @@ function Find-OrphanedSIDsInObject {
         - Comprehensive logging with correlation tracking
         - Processing statistics for troubleshooting
         - Memory cleanup for large datasets
-
-        PERFORMANCE CHARACTERISTICS:
-        - Optimized for pipeline processing of large object collections
-        - Memory-efficient with periodic cleanup
-        - Per-object processing isolation for error containment
-        - Detailed performance metrics and timing
-        - Scalable architecture for enterprise environments
 
         INTEGRATION POINTS:
         - Get-ObjectAccessRule for security descriptor processing

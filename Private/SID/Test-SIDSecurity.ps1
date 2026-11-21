@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Security Validation Module for Find-UnknownSID Solution
+    SID Security Validation Module for the OrphanedSid module
 
 .DESCRIPTION
     This module provides comprehensive SID security validation and risk assessment
-    functionality for the Find-UnknownSID enterprise solution. It focuses exclusively
+    functionality for the OrphanedSid module. It focuses exclusively
     on security validation and compliance checking for SID operations.
 
     This module follows the single-responsibility principle by focusing exclusively
@@ -30,8 +30,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     MODULE DESIGN:
@@ -100,8 +98,6 @@ function Test-SIDSecurity {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
 
         SECURITY FEATURES:
         - Protected SID detection and blocking

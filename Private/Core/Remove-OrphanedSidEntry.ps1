@@ -16,8 +16,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-05
-    Version: 2.0.0 (Modular Architecture)
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -191,12 +189,6 @@ function Remove-OrphanedSidEntry {
         - Creates comprehensive backups before any changes
         - Provides rollback capability through backup restoration
         - Logs all security decisions for audit compliance
-
-        PERFORMANCE CHARACTERISTICS:
-        - Processing Rate: 5-20 objects/second depending on ACL complexity
-        - Memory Usage: Optimized for large-scale operations (~50-100MB typical)
-        - Backup Creation: <100ms per object typically
-        - Verification: Real-time validation of changes
 
         BUSINESS COMPLIANCE:
         - Full audit trail with correlation ID tracking

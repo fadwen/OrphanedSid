@@ -148,6 +148,32 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             $classes.Count | Should -BeGreaterThan 0
             $static | Should -BeNullOrEmpty -Because ($static -join '; ')
         }
+
+        It 'Calls no function of the module from a class (#159)' {
+            # The test files that dot-source a class define it a second time, outside the
+            # module. Measured on PowerShell 7 with a method that called a private function: when
+            # a test file imports the module, a second one dot-sources the class and a third then
+            # runs the module, the method fails with the function not recognized. In declaration
+            # order that does not happen, and in CI, which shuffles, four of eight jobs failed. A
+            # method that calls cmdlets only cannot fail that way.
+            $calls = @(foreach ($path in $script:FileAsts.Keys) {
+                    $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                    $classes = $script:FileAsts[$path].FindAll(
+                        { param($node) $node -is [System.Management.Automation.Language.TypeDefinitionAst] }, $true)
+                    foreach ($class in $classes) {
+                        $commands = $class.FindAll(
+                            { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true)
+                        foreach ($command in $commands) {
+                            $name = $command.GetCommandName()
+                            if ($name -and $script:Definitions.ContainsKey($name)) {
+                                "$name at ${relative}:$($command.Extent.StartLineNumber)"
+                            }
+                        }
+                    }
+                })
+
+            $calls | Should -BeNullOrEmpty -Because ($calls -join '; ')
+        }
     }
 
     Context 'Terminating errors raised with throw or Write-Error -ErrorAction Stop (#130)' {
@@ -328,6 +354,22 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                 }
             }
             @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
+        }
+
+        It 'Holds no <What> in the shipping files (#158)' -ForEach @(
+            # Help written before the module had measurements or its present name. A maintainer
+            # reads it as fact: a rate of 50 to 200 objects a second stood where 8 was measured.
+            @{ What = 'section of performance figures'; Pattern = 'PERFORMANCE CHARACTERISTICS' }
+            @{ What = 'version line in help'; Pattern = '^\s*#?\s*Version:\s*\d' }
+            @{ What = 'date of a last update'; Pattern = '^\s*#?\s*Last Updated:' }
+            @{ What = 'mention of the old name Find-UnknownSID'; Pattern = 'Find-UnknownSID' }
+        ) {
+            $folders = "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public"
+            $shippingFiles = Get-ChildItem -Path $folders -Filter *.ps1 -Recurse -File
+            $found = @($shippingFiles | Select-String -Pattern $Pattern |
+                    ForEach-Object { "$($_.Filename):$($_.LineNumber)" })
+
+            $found | Should -BeNullOrEmpty -Because ($found -join '; ')
         }
     }
 

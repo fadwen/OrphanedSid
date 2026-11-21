@@ -17,10 +17,8 @@
 
 .NOTES
     Author: Jeffrey Stuhr
-    Module: Find-UnknownSID.RestoreOperations
     Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1,
         Utilities\ConvertTo-NormalizedDistinguishedName.ps1
-    Version: 2.1.0
 
     SECURITY CONSIDERATIONS:
     - Validates all inputs before processing
@@ -130,12 +128,6 @@ function Invoke-RestoreWorkflow {
         4. ACL application with safety checks
         5. Optional restoration verification
         6. Result compilation and reporting
-
-        PERFORMANCE CHARACTERISTICS:
-        - Standard workflow: 200-500ms per object
-        - Comprehensive validation adds 100-200ms
-        - Verification adds 50-100ms overhead
-        - Memory usage: ~2MB per concurrent workflow
 
         TROUBLESHOOTING:
         - For workflow failures: .\Troubleshooting\Common\Backup-Restore-Issues.md

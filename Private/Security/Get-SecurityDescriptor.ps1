@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    Security Descriptor Retrieval Module for Find-UnknownSID Solution
+    Security Descriptor Retrieval Module for the OrphanedSid module
 
 .DESCRIPTION
     This focused module handles all security descriptor retrieval and ACL processing
-    scenarios for the Find-UnknownSID enterprise solution. It implements multiple
+    scenarios for the OrphanedSid module. It implements multiple
     retrieval strategies with fallback mechanisms to ensure reliable access to
     security descriptors across various Active Directory object types and states.
 
@@ -31,8 +31,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -102,11 +100,6 @@ function Get-ObjectAccessRule {
         1. Get-Acl Method: Uses PowerShell's Get-Acl for standard retrieval
         2. Binary Processing: Handles binary, Base64, and deserialized formats
         3. Fresh Query: Performs new AD query as last resort
-
-        PERFORMANCE CHARACTERISTICS:
-        - Get-Acl: Fastest and most reliable for standard objects
-        - Binary Processing: Handles complex scenarios (background jobs)
-        - Fresh Query: Slowest but most comprehensive fallback
 
         ERROR HANDLING:
         - Each method includes comprehensive error handling

@@ -100,10 +100,7 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
             $result.PSTypeNames | Should -Contain 'ACLApplicationResult'
             $result.Success | Should -BeTrue
             $result.Verified | Should -BeTrue
-            $result.Path | Should -Be $script:dn
-            $result.CorrelationId | Should -Be 'apply-1'
-            $result.RulesApplied | Should -Be 3
-            $result.AccessEntriesApplied | Should -Be 3
+            $result.VerificationError | Should -BeNullOrEmpty
             $result.ErrorMessage | Should -BeNullOrEmpty
             Should -Invoke Set-Acl -Times 1 -Exactly -ParameterFilter {
                 $Path -eq "AD:\$($script:dn)" -and $AclObject -eq $script:acl
@@ -134,14 +131,18 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
             Should -Invoke Invoke-ADOperationWithRetry -Times 1 -Exactly -ParameterFilter { $MaxRetries -eq 2 -and $CorrelationId -eq 'apply-3' }
         }
 
-        It 'Records duration, audit and performance details on success' {
-            $result = Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn -CorrelationId 'apply-2'
+        It 'Returns the same four fields for a write that was made and for one that failed (#157)' {
+            # The result once carried a sentence that the operation was compliant with enterprise
+            # security policies, a network flag that was guessed from the text of the error, and
+            # three fields about a backup that this function does not take
+            $made = Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn -CorrelationId 'apply-2'
+            Mock Set-Acl { throw 'Access is denied' }
+            $failed = Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn -CorrelationId 'apply-2'
 
-            $result.Duration | Should -BeOfType [TimeSpan]
-            $result.AuditTrail | Should -BeLike "*$($script:dn)*apply-2*"
-            $result.PerformanceMetrics.Success | Should -BeTrue
-            $result.TroubleshootingInfo | Should -BeNullOrEmpty
-            $result.ComplianceValidation | Should -Be 'ACL operation compliant with enterprise security policies'
+            $expected = 'ErrorMessage', 'Success', 'VerificationError', 'Verified'
+            @($made.PSObject.Properties.Name | Sort-Object) | Should -Be $expected
+            @($failed.PSObject.Properties.Name | Sort-Object) | Should -Be $expected
+            $failed.PSTypeNames | Should -Contain 'ACLApplicationResult'
         }
     }
 
@@ -151,7 +152,7 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
 
             $result.Success | Should -BeFalse
             $result.Verified | Should -BeFalse
-            $result.RulesApplied | Should -Be 0
+            $result.ErrorMessage | Should -BeNullOrEmpty
             Should -Invoke Set-Acl -Times 0 -Exactly
             Should -Invoke Get-Acl -Times 0 -Exactly
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -like '*skipped due to WhatIf*' }
@@ -166,20 +167,17 @@ Describe 'Set-ModifiedACL' -Tag 'Unit', 'ACL', 'Private' {
 
             $result.Success | Should -BeFalse
             $result.ErrorMessage | Should -BeLike '*Access is denied*'
-            $result.ErrorCategory | Should -Be 'OperationalError'
-            $result.NetworkError | Should -BeFalse
-            $result.TroubleshootingInfo | Should -BeLike "*$($script:dn)*"
-            $result.ComplianceValidation | Should -BeNullOrEmpty
+            $result.Verified | Should -BeFalse
             Should -Invoke Get-Acl -Times 0 -Exactly
         }
 
-        It 'Flags a network failure' {
+        It 'Carries the message of the error that was caught, whatever it was' {
             Mock Set-Acl { throw 'The network path was not found' }
 
             $result = Set-ModifiedACL -ACL $script:acl -ObjectDN $script:dn
 
             $result.Success | Should -BeFalse
-            $result.NetworkError | Should -BeTrue
+            $result.ErrorMessage | Should -BeLike '*The network path was not found*'
         }
 
         It 'Reports success with a failed verification when the read-back fails' {

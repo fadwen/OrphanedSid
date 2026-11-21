@@ -95,6 +95,26 @@ test fails on a static member in `Classes/`. The behaviour itself is covered by 
 `OrphanedSidStartupFailure.Tests.ps1`, in a process of its own: closing a second runspace inside
 the Pester process would break every later test that touches the class on Windows PowerShell 5.1.
 
+### A class method calls cmdlets only, never a function of the module
+
+Two test files dot-source `Classes/StreamingResultsManager.ps1`, which defines the class a second
+time in the process, outside the module. With two definitions, the scope a method runs in is not
+always the scope of the code that called it, and the two editions differ. Both were measured
+(#159), with one test file that imports the module, then one that dot-sources the class:
+
+- On PowerShell 7 the module then uses the class of the test file. When `ExportToCsv()` called a
+  private function, `Export-ResultCsv`, a later `Find-OrphanedSid -OutputPath` failed with
+  `The term 'Export-ResultCsv' is not recognized`. Windows PowerShell 5.1 passed.
+- On Windows PowerShell 5.1 the test file gets methods that run in the module. A `Mock` of
+  `Export-Csv` that the test file set was not seen by the method. PowerShell 7 saw it.
+
+Neither happens in declaration order. CI shuffles, and each failed in about half of its jobs. So
+a method calls cmdlets only, and the contract test fails on a call from a class to a function of
+the module. What a method and a function both need is written in both, as the decision about
+`-NoTypeInformation` is in `ExportToCsv()` and in `Export-ResultCsv`. And a test does not mock a
+command for a method of a class: it asserts what the method wrote, or reads the syntax tree. Run
+the suite shuffled before trusting it, `$cfg.Run.Shuffle = $true`, as CI does.
+
 ### A fatal error of a public command ends the calling script, against ERR-11
 
 The `catch` in `begin` and the `catch` in `end` of each public command raise the failure with
@@ -251,10 +271,10 @@ parameter its callee lacks. When a helper needs a sibling that works on a file p
 loaded data, give it a distinct name rather than a second definition: two backup helpers once
 shared one name that way, and the file-path version silently replaced the other.
 
-### The coverage gate is 90% and only goes up, and every test must be able to fail
+### The coverage gate is 93% and only goes up, and every test must be able to fail
 
-`quality-gates.yml` fails below 90% command coverage over `Public/` and `Private/`; the suite measures
-about 94%. The module arrived with test files that defined a stub of their subject and tested the
+`quality-gates.yml` fails below 93% command coverage over `Public/` and `Private/`; the suite measures
+about 94.8%. The module arrived with test files that defined a stub of their subject and tested the
 stub (`Set-ModifiedACL.Tests.ps1` defined its own `Set-ModifiedACL`), which is why coverage was 62%
 with 2,400 passing tests, and with Integration and Performance folders that ran only in-file
 simulators. Coverage does not catch the rest: a test with no assertion, an assertion swallowed by a
@@ -272,7 +292,15 @@ test and turns a per-item `Write-Error` into a termination the tests do not expe
 `quality-gates.yml` runs PSScriptAnalyzer with every Error and Warning rule over `Classes`,
 `Private`, `Public`, `Build`, the root module and the manifest, and with `Tests/PSScriptAnalyzerSettings.psd1`
 over `Tests` and `Tools`. The relaxed set drops the rules that fire on every stub and mock. A
-suppression in shipping code carries a `Justification`.
+suppression in shipping code carries a `Justification`. A second step runs the `ScriptSecurity`
+preset over every folder, `Tests` and `Tools` included, and the relaxed set does not apply to it.
+
+### The build tools are pinned in one place
+
+`quality-gates.yml` names the version of Pester, PSScriptAnalyzer and PlatyPS once, under `env:`,
+and every job installs and imports exactly that. The two test jobs once ran different Pester
+versions without anyone having chosen that: one installed a range and the other a fixed version.
+`release.yml` installs PlatyPS with a version of its own, which has to stay the same number.
 
 ### The MAML filename carries a capital H
 
