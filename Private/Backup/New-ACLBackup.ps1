@@ -27,8 +27,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.1.0
 
     DEPENDENCIES:
     - Requires ActiveDirectory module
@@ -174,8 +172,6 @@ function New-ACLBackup {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 2.1.0
 
         BACKUP FILE FORMAT:
         Files are stored in XML format using PowerShell's Export-Clixml for
@@ -187,12 +183,6 @@ function New-ACLBackup {
         - Filename sanitization prevents path traversal attacks
         - Comprehensive audit logging for security event management
         - Correlation ID tracking for forensic analysis capability
-
-        PERFORMANCE CHARACTERISTICS:
-        - Backup Creation: 50-100ms per object (typical)
-        - File Size: 2-10KB per backup (depends on ACL complexity)
-        - Memory Usage: Minimal impact with automatic cleanup
-        - Integrity Verification: Real-time validation without performance degradation
 
         ENTERPRISE INTEGRATION:
         - Correlation ID support for audit trail consistency
@@ -305,9 +295,10 @@ function New-ACLBackup {
                 $backupFile = Join-Path $BackupPath "${safeName}_${timestamp}_$sequence.xml"
             }
 
-            # Ensure backup directory exists with proper error handling
-            if (-not (Test-Path -LiteralPath $BackupPath)) {
-                New-Item -Path $BackupPath -ItemType Directory -Force | Out-Null
+            # A folder that cannot be made is raised by Initialize-BackupFolder, with the reason,
+            # and enters the catch below. Left to the export, it was logged as created and then
+            # reported as a part of the path that could not be found.
+            if (Initialize-BackupFolder -Path $BackupPath) {
                 Write-StructuredLog "Created backup directory: $BackupPath" -Level Information -CorrelationId $CorrelationId
             }
 

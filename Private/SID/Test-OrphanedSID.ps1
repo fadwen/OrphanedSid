@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Orphaned Detection and Cache Management Module for Find-UnknownSID Solution
+    SID Orphaned Detection and Cache Management Module for the OrphanedSid module
 
 .DESCRIPTION
     This module provides comprehensive SID orphaned detection and cache management
-    functionality for the Find-UnknownSID enterprise solution. It focuses exclusively
+    functionality for the OrphanedSid module. It focuses exclusively
     on identifying orphaned SIDs and managing validation cache for performance.
 
     This module follows the single-responsibility principle by focusing exclusively
@@ -30,8 +30,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     MODULE DESIGN:
@@ -58,6 +56,11 @@ if ($null -eq $script:SIDValidationCacheLookups) {
     $script:SIDValidationCacheLookups = 0
     $script:SIDValidationCacheHits = 0
 }
+# Set while the directory server is known to be unreachable (#82): the time it was first found
+# so, and the time from which a directory lookup is tried again. Unlike the cache they are per
+# run, and Start-OrphanedSidSession resets them.
+$script:DirectoryUnreachableSince = $null
+$script:DirectoryRetryAt = $null
 
 function Test-OrphanedSID {
     <#
@@ -87,6 +90,14 @@ function Test-OrphanedSID {
         Unverified, exactly as if each had been tried. SecurityIdentifier.Translate still runs:
         it goes through LSA rather than AD Web Services, and a name it returns proves the SID
         exists.
+
+        The SIDs that follow would each wait out the same timeout, for the same reason. So for
+        60 seconds after a lookup found the server unreachable, no directory lookup is attempted
+        for any SID: each such SID is Unverified, with all five lookups listed as not attempted,
+        and is not cached. The first SID after that time tries the directory again. If the
+        server answers, lookups go on as usual; if not, another 60 seconds begin. One warning in
+        the log says that the server cannot be contacted, and one information entry says when
+        it answers again. See Register-DirectoryLookupOutcome.
 
         BUSINESS VALUE:
         - Enables accurate identification of orphaned SIDs for security cleanup
@@ -165,13 +176,6 @@ function Test-OrphanedSID {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Uses caching to improve performance for repeated queries
-        - Multiple fallback methods ensure comprehensive validation
-        - Typical execution time: 50-200ms for uncached, <5ms for cached
 
         TROUBLESHOOTING:
         - For validation errors: .\Troubleshooting\Security\Orphaned-SID-Issues.md
@@ -232,25 +236,48 @@ function Test-OrphanedSID {
                 return $script:SIDValidationCache[$SID]
             }
 
-            # Method 1: Try Get-ADObject with SID (most reliable)
-            try {
-                $adObject = Invoke-ADOperationWithRetry -ScriptBlock {
-                    Get-ADObject -Filter "objectSid -eq '$SID'" -ErrorAction Stop
-                } -MaxRetries $lookupAttempts -OperationName 'Get-ADObject-BySID' -ObjectContext $SID -CorrelationId $CorrelationId
+            # An earlier SID of this run found the directory server unreachable, and the time to
+            # try it again has not come (#82). The lookups below would each wait out the same
+            # connect timeout, so none is attempted for this SID. The local name lookup still runs.
+            $lookupsSuspended = $null -ne $script:DirectoryRetryAt -and (Get-Date) -lt $script:DirectoryRetryAt
 
-                if ($adObject) {
-                    Write-StructuredLog "SID found in AD via Get-ADObject: $($adObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-                    $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
-                    return $script:SIDValidationCache[$SID]
+            # Method 1: Try Get-ADObject with SID (most reliable)
+            if ($lookupsSuspended) {
+                $serverDown = $true
+                $skippedLookups.Add('Get-ADObject')
+            } else {
+                try {
+                    $adObject = Invoke-ADOperationWithRetry -ScriptBlock {
+                        Get-ADObject -Filter "objectSid -eq '$SID'" -ErrorAction Stop
+                    } -MaxRetries $lookupAttempts -OperationName 'Get-ADObject-BySID' -ObjectContext $SID -CorrelationId $CorrelationId
+
+                    # The server answered. After a time in which it could not be contacted, this is
+                    # the lookup that tried it again.
+                    if ($null -ne $script:DirectoryUnreachableSince) {
+                        Register-DirectoryLookupOutcome -Outcome Answered -CorrelationId $CorrelationId
+                    }
+
+                    if ($adObject) {
+                        Write-StructuredLog "SID found in AD via Get-ADObject: $($adObject.DistinguishedName)" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                        $script:SIDValidationCache[$SID] = New-SIDLookupResult -SID $SID -Status 'Exists'
+                        return $script:SIDValidationCache[$SID]
+                    }
                 }
-            }
-            catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
-                Write-StructuredLog "SID not found via Get-ADObject: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
-            }
-            catch {
-                $lookupFailures.Add("Get-ADObject: $($_.Exception.Message)")
-                if (Test-ADServerDownError -ErrorRecord $_) { $serverDown = $true }
-                Write-StructuredLog "Get-ADObject lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+                    # Not found is an answer too
+                    if ($null -ne $script:DirectoryUnreachableSince) {
+                        Register-DirectoryLookupOutcome -Outcome Answered -CorrelationId $CorrelationId
+                    }
+                    Write-StructuredLog "SID not found via Get-ADObject: $SID" -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+                }
+                catch {
+                    $lookupFailures.Add("Get-ADObject: $($_.Exception.Message)")
+                    if (Test-ADServerDownError -ErrorRecord $_) {
+                        $serverDown = $true
+                        Register-DirectoryLookupOutcome -Outcome Unreachable -CorrelationId $CorrelationId
+                    }
+                    Write-StructuredLog "Get-ADObject lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                }
             }
 
             # Method 1a: Check for deleted objects specifically. -IncludeDeletedObjects returns live
@@ -286,7 +313,10 @@ function Test-OrphanedSID {
                 }
                 catch {
                     $lookupFailures.Add("Get-ADObject -IncludeDeletedObjects: $($_.Exception.Message)")
-                    if (Test-ADServerDownError -ErrorRecord $_) { $serverDown = $true }
+                    if (Test-ADServerDownError -ErrorRecord $_) {
+                        $serverDown = $true
+                        Register-DirectoryLookupOutcome -Outcome Unreachable -CorrelationId $CorrelationId
+                    }
                     Write-StructuredLog "Deleted objects lookup failed for SID $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
                 }
             }
@@ -339,21 +369,30 @@ function Test-OrphanedSID {
                 }
                 catch {
                     $lookupFailures.Add("$($objectType.CmdLet): $($_.Exception.Message)")
-                    if (Test-ADServerDownError -ErrorRecord $_) { $serverDown = $true }
+                    if (Test-ADServerDownError -ErrorRecord $_) {
+                        $serverDown = $true
+                        Register-DirectoryLookupOutcome -Outcome Unreachable -CorrelationId $CorrelationId
+                    }
                     Write-StructuredLog "$($objectType.CmdLet) lookup failed for $SID : $($_.Exception.Message)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
                 }
             }
 
             # Nothing found the SID, but a lookup that failed might have. Unverified is not cached, so
             # a transient failure does not decide the answer for every later object in the run.
-            if ($lookupFailures.Count -gt 0) {
+            if ($lookupFailures.Count -gt 0 -or $skippedLookups.Count -gt 0) {
                 $countText = "$($lookupFailures.Count) lookup(s) failed"
                 if ($skippedLookups.Count -gt 0) {
                     $countText += ", $($skippedLookups.Count) not attempted"
                     $lookupFailures.Add("Not attempted because the directory server could not be contacted: $($skippedLookups -join ', ')")
                 }
                 $failureText = $lookupFailures -join '; '
-                Write-StructuredLog "SID could not be verified - $($countText): $SID ($failureText)" -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+                # A SID whose lookups were not attempted at all says nothing new: the one warning
+                # that the server cannot be contacted was written when that was found (#82)
+                $unverifiedLevel = 'Warning'
+                if ($lookupsSuspended) {
+                    $unverifiedLevel = 'Debug'
+                }
+                Write-StructuredLog "SID could not be verified - $($countText): $SID ($failureText)" -Level $unverifiedLevel -Component 'SIDDetection' -CorrelationId $CorrelationId
                 return New-SIDLookupResult -SID $SID -Status 'Unverified' -ErrorMessage $failureText
             }
 
@@ -476,12 +515,6 @@ function Clear-SIDValidationCache {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Instant operation regardless of cache size
-        - No impact on other module functions
 
         TROUBLESHOOTING:
         - For cache issues: .\Troubleshooting\Security\Orphaned-SID-Issues.md
@@ -559,12 +592,6 @@ function Get-SIDValidationCacheStat {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Very fast operation (simple counting)
-        - No impact on cache contents or performance
 
         TROUBLESHOOTING:
         - For cache analysis: .\Troubleshooting\Security\Orphaned-SID-Issues.md
@@ -653,4 +680,102 @@ function Test-ADServerDownError {
         $exception = $exception.InnerException
     }
     return $false
+}
+
+
+function Register-DirectoryLookupOutcome {
+    <#
+    .SYNOPSIS
+    Records whether the directory server answered a lookup or could not be contacted.
+
+    .DESCRIPTION
+    Test-OrphanedSID calls this when a directory lookup fails because the server could not be
+    contacted, and when its first lookup for a SID is answered after such a failure.
+
+    For Unreachable it records the time, the first time only, and sets the time from which a
+    lookup is tried again to 60 seconds from now. Until then Test-OrphanedSID attempts no
+    directory lookup. The first call writes one warning to the log. A later call, made when the
+    lookup that tried the server again failed as well, writes a debug entry.
+
+    For Answered it clears both times and writes an information entry that says for how long
+    the server could not be contacted. It does nothing when the server was not recorded as
+    unreachable.
+
+    The two times are module state of one run: Start-OrphanedSidSession resets them.
+
+    .PARAMETER Outcome
+    Unreachable when a lookup failed because the server could not be contacted. Answered when a
+    lookup came back, with or without a result.
+
+    .PARAMETER CorrelationId
+    Correlation ID for the log entries.
+
+    .EXAMPLE
+    Register-DirectoryLookupOutcome -Outcome Unreachable -CorrelationId $CorrelationId
+
+    Records that the server could not be contacted, and suspends directory lookups for 60 seconds.
+
+    .EXAMPLE
+    Register-DirectoryLookupOutcome -Outcome Answered -CorrelationId $CorrelationId
+
+    Records that the server answers again, so that directory lookups are attempted for every SID.
+
+    .INPUTS
+    None.
+
+    .OUTPUTS
+    None.
+
+    .NOTES
+    AUTHOR:
+    - Author: Jeffrey Stuhr
+    - Blog: https://techbyjeff.net
+    - LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
+    - Bluesky: https://bsky.app/profile/techbyjeff.net
+    #>
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Answered', 'Unreachable')]
+        [string]$Outcome,
+
+        [Parameter()]
+        [string]$CorrelationId
+    )
+
+    # A lookup against a server that does not answer waits about 42 seconds. A shorter time
+    # than this would spend most of a run on such waits; a much longer one would leave a server
+    # that came back unused for the rest of a short run.
+    $retryAfterSeconds = 60
+    $now = Get-Date
+
+    if ($Outcome -eq 'Unreachable') {
+        $isFirst = $null -eq $script:DirectoryUnreachableSince
+        if ($isFirst) {
+            $script:DirectoryUnreachableSince = $now
+        }
+        $script:DirectoryRetryAt = $now.AddSeconds($retryAfterSeconds)
+
+        if ($isFirst) {
+            $message = 'The directory server cannot be contacted. No directory lookup is attempted for the ' +
+                "next $retryAfterSeconds seconds: a SID that needs one is reported as Unverified and is not " +
+                'removed. The server is tried again after that.'
+            Write-StructuredLog $message -Level Warning -Component 'SIDDetection' -CorrelationId $CorrelationId
+        } else {
+            $message = 'The directory server still cannot be contacted. ' +
+                "It is tried again in $retryAfterSeconds seconds."
+            Write-StructuredLog $message -Level Debug -Component 'SIDDetection' -CorrelationId $CorrelationId
+        }
+        return
+    }
+
+    if ($null -ne $script:DirectoryUnreachableSince) {
+        $seconds = [int][math]::Round(($now - $script:DirectoryUnreachableSince).TotalSeconds)
+        $script:DirectoryUnreachableSince = $null
+        $script:DirectoryRetryAt = $null
+        $message = "The directory server answers again, $seconds seconds after it could not be contacted. " +
+            'Directory lookups are attempted again.'
+        Write-StructuredLog $message -Level Information -Component 'SIDDetection' -CorrelationId $CorrelationId
+    }
 }

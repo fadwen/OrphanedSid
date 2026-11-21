@@ -159,6 +159,10 @@ function Start-OrphanedSidSession {
     # Per run, not per session: whether a SID is well known depends on this run's ProtectedSIDs and
     # WellKnownSIDPatterns
     $script:SIDClassificationCache = @{}
+    # Per run as well: a directory server that could not be contacted during the last run is
+    # tried again by the first lookup of this one (#82)
+    $script:DirectoryUnreachableSince = $null
+    $script:DirectoryRetryAt = $null
 
     $initParams = @{
         ConfigPath            = $ConfigPath

@@ -12,9 +12,9 @@ domain root is used with a warning; given but holding no usable DN, the command 
 `-OutputPath`, `-IncludeInherited`, `-MaxRetries` (1-10, default 3), `-ConfigPath`,
 `-MaxMemoryUsageMB` (100-16384, default 1024), `-PreserveTempFiles`, `-LogPath`, `-CorrelationId`, `-LogLevel` (`Critical`, `Error`, `Warning`, `Information`, `Debug`,
 `Verbose`; default `Information`) and `-SuppressConsoleOutput`. `Remove-OrphanedSid` adds
-`-BackupPath` and `-Force`. `Restore-OrphanedSidBackup` takes `-TargetObjectDN`, a mandatory
-`-BackupPath`, `-Force`, `-OutputPath`, `-LogPath`, `-CorrelationId`, `-LogLevel` and
-`-SuppressConsoleOutput`. The two commands that change Active Directory also take `-WhatIf` and
+`-BackupPath` and `-Force`. `Restore-OrphanedSidBackup` takes `-TargetObjectDN`, one of
+`-BackupPath` (a folder) and `-BackupFile` (one backup file), `-Force`, `-OutputPath`,
+`-LogPath`, `-CorrelationId`, `-LogLevel` and `-SuppressConsoleOutput`. The two commands that change Active Directory also take `-WhatIf` and
 `-Confirm`. There is no `-Credential`; every command runs as the current user.
 
 Each command writes its results to the pipeline as objects: one `OrphanedSIDResult` per orphaned
@@ -200,7 +200,10 @@ up to five AD queries (`Get-ADObject` by `objectSid`, deleted-objects query, `Ge
 `Invoke-ADOperationWithRetry` when the error looks transient. When the directory server cannot be contacted, the first lookup
 waits out a connect timeout of about 42 seconds, the remaining directory lookups for that SID are
 skipped and listed in `VerificationError` as `Not attempted because the directory server could not
-be contacted: ...`, and the SID is reported `Unverified`, which is never removed.
+be contacted: ...`, and the SID is reported `Unverified`, which is never removed. For the 60
+seconds that follow, no directory lookup is attempted for any other SID either: each is
+`Unverified` with all five lookups listed as not attempted. The first SID after that tries the
+server again.
 
 **Resolution:**
 
@@ -240,7 +243,7 @@ read. `ScriptConfiguration.LoadFromFile` reads only these top-level keys:
 | `BatchSize` | int | 50 | 1-1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1-1000; objects between memory checks |
 | `LogLevel` | string | Information | Critical, Error, Warning, Information, Debug, Verbose; the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent |
-| `LogFilePath` | string | null | the run's log file when `-LogPath` is not given; resolved, created and rotated like `-LogPath` |
+| `LogFilePath` | string | null | the run's log file when `-LogPath` is not given; resolved, created and rotated like `-LogPath`, and refused when it lies in the Windows folder or a Program Files folder |
 | `EnableLogFileRotation` | bool | true | |
 | `MaxLogFileSizeMB` | int | 10 | |
 

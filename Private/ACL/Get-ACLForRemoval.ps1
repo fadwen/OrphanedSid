@@ -16,8 +16,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -81,11 +79,6 @@ function Get-ACLForRemoval {
         - Comprehensive parameter validation
         - Detailed error handling and logging
         - Optimized for removal operation workflows
-
-        PERFORMANCE CHARACTERISTICS:
-        - Retrieval Time: 50-200ms per object typically
-        - Retry Logic: Up to 3 attempts with backoff
-        - Memory Usage: Minimal - direct ACL retrieval
 
         SECURITY CONSIDERATIONS:
         - Requires appropriate AD permissions for ACL reading

@@ -49,6 +49,8 @@ VerificationError that names each failed lookup, so it can be re-checked.
 When a directory server cannot be contacted, the SID's remaining directory lookups are skipped
 rather than each waiting for the same timeout, and VerificationError lists them after
 "Not attempted because the directory server could not be contacted:".
+For the next 60 seconds no directory lookup is attempted for the SIDs that follow either: each
+is Unverified with all five lookups listed there. After that the server is tried again.
 Remove-OrphanedSid never removes an unverified SID.
 Unverified results are not cached, so a later object or a later run looks the SID up again.
 
@@ -56,8 +58,11 @@ A SID from a trusted domain can only be checked by that domain.
 When its domain controllers answer that the principal is gone, the SID is reported orphaned
 with LikelySource Foreign Domain/Trust; review those rows before a removal, since the owner
 sits outside the domain being cleaned.
-When they cannot be reached or the trust is broken, the SID is reported Unverified, and each
-such lookup waits for the trust to time out (about 40 seconds per SID in testing).
+When they cannot be reached or the trust is broken, the SID is reported Unverified.
+The lookup that first finds the trusted domain out of reach waits once, 34 to 56 seconds in
+testing.
+After that such lookups fail at once, except that about once a minute one of them waits again:
+15 seconds during about the first ten minutes, and 2 seconds from then on.
 
 An account that cannot read a principal gets no error from Active Directory, only an empty
 search, so missing read permission alone does not make a SID unverified.

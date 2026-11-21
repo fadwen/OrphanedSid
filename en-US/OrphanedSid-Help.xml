@@ -31,6 +31,8 @@ VerificationError that names each failed lookup, so it can be re-checked.
 When a directory server cannot be contacted, the SID's remaining directory lookups are skipped
 rather than each waiting for the same timeout, and VerificationError lists them after
 "Not attempted because the directory server could not be contacted:".
+For the next 60 seconds no directory lookup is attempted for the SIDs that follow either: each
+is Unverified with all five lookups listed there. After that the server is tried again.
 Remove-OrphanedSid never removes an unverified SID.
 Unverified results are not cached, so a later object or a later run looks the SID up again.
 
@@ -38,8 +40,11 @@ A SID from a trusted domain can only be checked by that domain.
 When its domain controllers answer that the principal is gone, the SID is reported orphaned
 with LikelySource Foreign Domain/Trust; review those rows before a removal, since the owner
 sits outside the domain being cleaned.
-When they cannot be reached or the trust is broken, the SID is reported Unverified, and each
-such lookup waits for the trust to time out (about 40 seconds per SID in testing).
+When they cannot be reached or the trust is broken, the SID is reported Unverified.
+The lookup that first finds the trusted domain out of reach waits once, 34 to 56 seconds in
+testing.
+After that such lookups fail at once, except that about once a minute one of them waits again:
+15 seconds during about the first ten minutes, and 2 seconds from then on.
 
 An account that cannot read a principal gets no error from Active Directory, only an empty
 search, so missing read permission alone does not make a SID unverified.
@@ -568,7 +573,9 @@ discovered entries as CSV.</maml:para>
           <maml:para>Folder that receives the per-run backup subfolder.
 Defaults to .\Backup under the current
 directory.
-The parent folder must exist; the backup folder itself is created.</maml:para>
+The parent folder must exist; the backup folder itself is created.
+When the folder for the run cannot be created, the command ends with the error
+BackupFolderNotCreated before it reads any object, and its message gives the reason.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -768,7 +775,9 @@ backup written before the change. Its folder is the one to pass to `Restore-Orph
 `Success` is false when an entry could not be removed, when the changed ACL could not be written
 or verified, and when an entry that was reported for removal was no longer on the object.
 `ErrorMessage` says which, and in the last case names the SIDs; the entries that were found are
-still removed, and `ActualRemovals` is then lower than `IntendedRemovals`.
+still removed, and `ActualRemovals` is then lower than `IntendedRemovals`. For an ACL that could
+not be written, `ErrorMessage` is `Failed to apply ACL changes:` followed by the reason, such as
+`Access is denied`.
 
 `NotFoundSIDs` lists the SIDs of that last case: entries that discovery reported and that were
 no longer on the object, for example because someone else removed them in the meantime.
@@ -865,15 +874,15 @@ USE CASE: A scheduled task or a pipeline step</maml:para>
     <command:details>
       <command:name>Restore-OrphanedSidBackup</command:name>
       <maml:description>
-        <maml:para>Restores Active Directory ACLs from a backup folder written by Remove-OrphanedSid.</maml:para>
+        <maml:para>Restores Active Directory ACLs from a backup folder or file written by Remove-OrphanedSid.</maml:para>
       </maml:description>
       <command:verb>Restore</command:verb>
       <command:noun>OrphanedSidBackup</command:noun>
     </command:details>
     <maml:description>
-      <maml:para>Reads the Clixml backup files in -BackupPath, validates each one (format, object DN, SDDL
-and its SHA256 hash), applies the saved security descriptor to the object, and reads the
-ACL back to verify the result.
+      <maml:para>Reads the Clixml backup files in -BackupPath, or the one file given as -BackupFile, validates
+each one (format, object DN, SDDL and its SHA256 hash), applies the saved security descriptor
+to the object, and reads the ACL back to verify the result.
 
 -TargetObjectDN decides the scope.
 A container (a DN that starts with OU= or DC=, such as an OU or the domain root) restores every
@@ -884,6 +893,12 @@ restores only backups whose recorded object DN equals
 Either way each object is restored once, from its most recent backup in the folder.
 -BackupPath is the folder that holds the .xml files, normally one timestamped run
 folder under the Remove-OrphanedSid backup root.
+
+-BackupFile names one backup file in place of the folder, and restores one object from it.
+The file has to be a backup of the object that -TargetObjectDN names: a file of another object
+is refused, and nothing is written.
+With -BackupFile a container is restored as one object, and the objects under it are left as
+they are.
 
 The command has ConfirmImpact High: it asks once before writing anything.
 -WhatIf previews
@@ -974,14 +989,113 @@ CorrelationId.</maml:para>
           </dev:type>
         </command:parameter>
       </command:syntaxItem>
+      <command:syntaxItem>
+        <maml:name>Restore-OrphanedSidBackup</maml:name>
+        <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="false" position="0" aliases="DistinguishedName, SearchBase">
+          <maml:name>TargetObjectDN</maml:name>
+          <maml:description />
+          <command:parameterValue required="true" variableLength="false">Object[]</command:parameterValue>
+          <dev:type>
+            <maml:name>System.Object[]</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="1" aliases="none">
+          <maml:name>OutputPath</maml:name>
+          <maml:description />
+          <command:parameterValue required="true" variableLength="false">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="2" aliases="none">
+          <maml:name>LogPath</maml:name>
+          <maml:description />
+          <command:parameterValue required="true" variableLength="false">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="3" aliases="none">
+          <maml:name>CorrelationId</maml:name>
+          <maml:description />
+          <command:parameterValue required="true" variableLength="false">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="4" aliases="none">
+          <maml:name>LogLevel</maml:name>
+          <maml:description />
+          <command:parameterValue required="true" variableLength="false">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="false" position="named" aliases="none">
+          <maml:name>BackupFile</maml:name>
+          <maml:description />
+          <command:parameterValue required="true" variableLength="false">string</command:parameterValue>
+          <dev:type>
+            <maml:name>System.String</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="named" aliases="none">
+          <maml:name>Force</maml:name>
+          <maml:description />
+          <dev:type>
+            <maml:name>System.Management.Automation.SwitchParameter</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="named" aliases="none">
+          <maml:name>SuppressConsoleOutput</maml:name>
+          <maml:description />
+          <dev:type>
+            <maml:name>System.Management.Automation.SwitchParameter</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="named" aliases="none">
+          <maml:name>WhatIf</maml:name>
+          <maml:description />
+          <dev:type>
+            <maml:name>System.Management.Automation.SwitchParameter</maml:name>
+          </dev:type>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="false" position="named" aliases="none">
+          <maml:name>Confirm</maml:name>
+          <maml:description />
+          <dev:type>
+            <maml:name>System.Management.Automation.SwitchParameter</maml:name>
+          </dev:type>
+        </command:parameter>
+      </command:syntaxItem>
     </command:syntax>
     <command:parameters>
+      <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="false" position="Named" aliases="none">
+        <maml:name>BackupFile</maml:name>
+        <maml:description>
+          <maml:para>One backup file to restore from, in place of -BackupPath.
+Must exist.
+A relative path is resolved against the current location.
+The file has to be a backup of the object that -TargetObjectDN names: the name that the file
+records is compared with the target without regard to letter case and to blanks after a comma
+or around an equals sign.
+A file of another object, and a file whose extension is not .xml or .clixml, give a result with
+Success False, and nothing is written.
+Only that one object is restored, also when it is a container.
+The parameter has no position and is given by name.</maml:para>
+        </maml:description>
+        <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
+        <dev:type>
+          <maml:name>System.String</maml:name>
+        </dev:type>
+      </command:parameter>
       <command:parameter required="true" variableLength="false" globbing="false" pipelineInput="false" position="1" aliases="none">
         <maml:name>BackupPath</maml:name>
         <maml:description>
           <maml:para>Folder containing the backup .xml files.
 Must exist.
-A relative path is resolved against the current location.</maml:para>
+A relative path is resolved against the current location.
+To restore from one file, give -BackupFile in its place; the two are not given together.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.String</command:parameterValue>
         <dev:type>
@@ -1072,7 +1186,13 @@ Not written under -WhatIf; the log says so.</maml:para>
 Accepts pipeline input. A string is used as the DN; any other object contributes its
 DistinguishedName property, so the output of Get-ADObject, and Import-Csv rows with a
 DistinguishedName column, can be piped directly. An item with no DistinguishedName is reported
-as an error and skipped; input that yields no usable DN stops the command.</maml:para>
+as an error and skipped; input that yields no usable DN stops the command.
+A name is compared with the names the backups record without regard to letter case and to blanks
+after a comma or around an equals sign, so it can be typed as
+'CN=Alice, OU=Sales, DC=contoso, DC=com'.
+An escaped character has to be written the way the backup records it: 'CN=Doe\, Jane' and
+'CN=Doe\2C Jane' are two spellings of one name, and they are compared as two names here.
+Use the name as Find-OrphanedSid or Remove-OrphanedSid reported it.</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="true">System.Object[]</command:parameterValue>
         <dev:type>
@@ -1116,7 +1236,10 @@ an object at or under the container. When `-BackupPath` holds no `.xml` file at 
 stops before choosing any backup: it writes the error
 `Restore workflow failed for &lt;DN&gt; : No backup files found in directory: &lt;path&gt; - CorrelationId: &lt;id&gt;`,
 and the result's
-`ErrorMessage` reads `No backup files found in directory: &lt;path&gt;`.</maml:para>
+`ErrorMessage` reads `No backup files found in directory: &lt;path&gt;`.
+With `-BackupFile` the result is that object's restore result. When the file is a backup of
+another object, `TargetObjectDN` is the target that was asked for and `ErrorMessage` reads
+`Backup file &lt;path&gt; is a backup of '&lt;DN in the file&gt;', not of '&lt;target&gt;'`.</maml:para>
         </maml:description>
       </command:returnValue>
     </command:returnValues>
@@ -1168,6 +1291,20 @@ USE CASE: Undoing a cleanup that removed an entry still in use</maml:para>
 OUTPUT: One result per object; an object that run did not change, such as one with only
 unverified entries, has no backup in the folder and comes back with Success False
 USE CASE: Targeted rollback driven by the removal's own CSV</maml:para>
+        </maml:introduction>
+        <dev:code />
+        <dev:remarks />
+      </command:example>
+      <command:example>
+        <maml:title>--------- EXAMPLE 4 ---------</maml:title>
+        <maml:introduction>
+          <maml:para>Restore-OrphanedSidBackup -TargetObjectDN 'CN=SRV01,OU=Servers,DC=contoso,DC=com' -BackupFile 'D:\ADBackups\20260703_104232\CN_SRV01_OU_Servers_DC_contoso_DC_com_20260703_104232.xml' -Force</maml:para>
+          <maml:para>&#x80;</maml:para>
+          <maml:para>DESCRIPTION: Restores SRV01 from one backup file that is given by name
+OUTPUT: One result for SRV01; when the file is a backup of another object, Success is False
+and ErrorMessage says which object the file is of
+USE CASE: Restoring one object from a chosen backup, such as a file that was copied out of its
+run folder</maml:para>
         </maml:introduction>
         <dev:code />
         <dev:remarks />

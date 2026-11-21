@@ -144,8 +144,10 @@ function Remove-OrphanedSid {
                 $effectiveBackupPath = Join-Path -Path (Get-Location).Path -ChildPath 'Backup'
             }
             $effectiveBackupPath = Join-Path -Path $effectiveBackupPath -ChildPath (Get-Date -Format 'yyyyMMdd_HHmmss')
-            if (-not $WhatIfPreference -and -not (Test-Path -LiteralPath $effectiveBackupPath)) {
-                New-Item -Path $effectiveBackupPath -ItemType Directory -Force | Out-Null
+            # A folder that cannot be made ends the command here, before any object is read: a
+            # removal that cannot write a backup has nothing to do. The folder is made by a
+            # function of its own so that its error enters the catch below.
+            if (-not $WhatIfPreference -and (Initialize-BackupFolder -Path $effectiveBackupPath)) {
                 Write-StructuredLog "Created backup folder: $effectiveBackupPath" -Level Information -Component 'Main' -CorrelationId $CorrelationId
             }
 
@@ -169,7 +171,6 @@ function Remove-OrphanedSid {
             Write-StructuredLog "Removal completed (CorrelationId: $CorrelationId)" -Level Information -Component 'Main' -CorrelationId $CorrelationId
         }
         catch {
-            if ($script:Statistics) { $script:Statistics.CriticalErrors++ }
             Write-StructuredLog "Removal failed: $($_.Exception.Message)" -Level Error -Component 'Main' -CorrelationId $CorrelationId
             # Exception to ERR-11: a critical error ends the calling script whatever its error
             # action is, as Documentation/Automation.md tells callers. ThrowTerminatingError()

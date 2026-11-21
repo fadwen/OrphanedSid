@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Result Factory Module for Find-UnknownSID Solution
+    SID Result Factory Module for the OrphanedSid module
 
 .DESCRIPTION
     This focused module handles all result object creation and metadata management
-    for the Find-UnknownSID enterprise solution. It provides comprehensive factory
+    for the OrphanedSid module. It provides comprehensive factory
     functions for creating standardized result objects with rich metadata and
     proper validation.
 
@@ -32,8 +32,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -160,12 +158,6 @@ function New-OrphanedSIDResult {
         - Safe property extraction with null checking
         - Graceful handling of missing or invalid access rule properties
         - Detailed logging for troubleshooting and audit purposes
-
-        PERFORMANCE CHARACTERISTICS:
-        - Efficient object creation with minimal memory allocation
-        - Safe property access with error containment
-        - Optimized for high-volume processing scenarios
-        - Memory cleanup considerations for large result sets
     #>
 
     [CmdletBinding()]

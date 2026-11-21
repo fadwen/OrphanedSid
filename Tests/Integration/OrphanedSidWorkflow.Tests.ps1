@@ -404,6 +404,31 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @(Select-String -Path $mine -Pattern 'Module Version:' -SimpleMatch).Count | Should -Be 1
             @(Select-String -Path $mine -Pattern 'Discovery completed' -SimpleMatch).Count | Should -Be 1
         }
+
+        It 'Refuses a LogFilePath in a system folder and logs in the current folder (#162)' {
+            # Whoever can edit the file would otherwise choose a file that a privileged run appends to
+            $systemFolder = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+            $inSystemFolder = Join-Path $systemFolder "OrphanedSidProbe-$([guid]::NewGuid().ToString('N'))\run.log"
+            @{ LogFilePath = $inSystemFolder } | ConvertTo-Json | Set-Content $script:cfg
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                ConfigPath            = $script:cfg
+                SuppressConsoleOutput = $true
+                WarningVariable       = 'warnings'
+                WarningAction         = 'SilentlyContinue'
+            }
+
+            $results = @(Find-OrphanedSid @parameters)
+
+            # The run goes on, and its log is the fallback file in the current folder
+            $results.Count | Should -BeGreaterThan 0
+            Test-Path -LiteralPath (Split-Path $inSystemFolder -Parent) | Should -BeFalse
+            @($warnings | Where-Object { "$_" -like '*is inside the system folder*' }).Count | Should -Be 1
+            $fallback = @(Get-ChildItem -LiteralPath $script:runDir -Filter 'OrphanedSid_*.log')
+            $fallback.Count | Should -Be 1
+            @(Select-String -LiteralPath $fallback[0].FullName -Pattern 'Discovery completed' -SimpleMatch).Count |
+                Should -Be 1
+        }
     }
 
     Context '-MaxRetries reaches the directory lookups (#89)' {
@@ -467,6 +492,22 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:FlakySid
             $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
             @(Get-ChildItem -Path $script:BackupRoot -Filter 'CN_Shared_*' -Recurse).Count | Should -Be 0
+        }
+
+        It 'Says in each result why the changed ACL could not be written (#177)' {
+            Mock -ModuleName OrphanedSid Set-Acl -ParameterFilter { $Path -like 'AD:*' } { throw 'Access is denied' }
+
+            $results = @(Invoke-RemoveOrphanedSid -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+
+            # The unit and the group below it each hold the orphaned entry
+            $results.Count | Should -Be 2
+            foreach ($result in $results) {
+                $result.Success | Should -BeFalse
+                $result.ErrorMessage | Should -Be 'Failed to apply ACL changes: Access is denied'
+            }
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
         }
 
         It 'Leaves an orphaned entry that is only inherited, and backs nothing up (#46)' {
@@ -618,6 +659,77 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
                 $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
             }
             @(Get-ChildItem -Path $script:BackupRoot -Filter '*.xml' -Recurse).Count | Should -Be 0
+        }
+
+        It 'Ends with the reason, before it reads an object, when the backup folder may not be created (#161)' {
+            # Adding a folder to -BackupPath is denied for this case, and allowed again afterwards.
+            # The entry does not keep the folder from being removed with the test drive. The
+            # variable is not named $identity: the mock of Get-ADObject above reads a variable
+            # of that name as its parameter.
+            $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $script:BackupRoot /deny "${account}:(AD,WD)"
+            # A log of its own: the other tests of this context write to remove.log
+            $logPath = Join-Path $TestDrive "remove-$([guid]::NewGuid().ToString('N')).log"
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                BackupPath            = $script:BackupRoot
+                LogPath               = $logPath
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            try {
+                $caught = $null
+                try {
+                    $null = Remove-OrphanedSid @parameters
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $script:BackupRoot /remove:d $account
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'BackupFolderNotCreated,Remove-OrphanedSid'
+            $caught.Exception.InnerException | Should -BeOfType [System.UnauthorizedAccessException]
+            Should -Invoke -ModuleName OrphanedSid Get-ADObject -Times 0 -Exactly -ParameterFilter { $SearchBase }
+            Should -Invoke -ModuleName OrphanedSid Set-Acl -Times 0 -Exactly
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+            $log = Get-Content -LiteralPath $logPath -Raw
+            $log | Should -Not -Match 'Created backup'
+            $failure = '\[Error\] \[Main\] \[[^\]]+\] Removal failed: The backup folder .+ could not be created: '
+            $log | Should -Match $failure
+        }
+
+        It 'Ends before it reads an object when a part of the backup path is a file (#161)' {
+            # The default folder is .\Backup, and in this working folder that name is a file.
+            # New-Item returns nothing and reports no error for the folder below it.
+            Set-Content -LiteralPath (Join-Path $script:BackupRoot 'Backup') -Value 'not a folder' -Encoding ascii
+            $logPath = Join-Path $TestDrive "remove-$([guid]::NewGuid().ToString('N')).log"
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                LogPath               = $logPath
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $priorLocation = Get-Location
+            Set-Location -LiteralPath $script:BackupRoot
+            try {
+                $expected = @{
+                    ErrorId         = 'BackupFolderNotCreated,Remove-OrphanedSid'
+                    ExpectedMessage = '*A part of the path may be a file.'
+                }
+                { Remove-OrphanedSid @parameters } | Should -Throw @expected
+            } finally {
+                Set-Location $priorLocation
+            }
+
+            Should -Invoke -ModuleName OrphanedSid Get-ADObject -Times 0 -Exactly -ParameterFilter { $SearchBase }
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+            Get-Content -LiteralPath $logPath -Raw | Should -Not -Match 'Created backup'
         }
     }
 
@@ -997,6 +1109,107 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN $dn | Should -Contain $script:OrphanSid
             Get-TrusteeSid -DN $dn | Should -Contain $script:SecondOrphanSid
         }
+
+        It 'Puts back one object from its backup file, and leaves the object below it as the removal left it (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $below = "CN=Payroll,OU=Finance,$script:DomainDN"
+            $file = @($removed | Where-Object { $_.ObjectDN -eq $dn })[0].BackupFile
+            $file | Should -Exist
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $file
+                LogPath               = Join-Path $TestDrive 'restore-file.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters)
+
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeTrue
+            $result[0].TargetObjectDN | Should -Be $dn
+            $result[0].BackupFile | Should -Be $file
+            $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            # From the folder, a restore of the OU puts back the group below it as well
+            Get-TrusteeSid -DN $below | Should -Not -Contain $script:OrphanSid
+            (Get-Content -LiteralPath $parameters.LogPath -Raw) | Should -Match ([regex]::Escape("Backup source: $file"))
+        }
+
+        It 'Refuses a backup file of another object, restores nothing, and names the target in its result (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $below = "CN=Payroll,OU=Finance,$script:DomainDN"
+            $fileOfOther = @($removed | Where-Object { $_.ObjectDN -eq $below })[0].BackupFile
+            $afterRemoval = @{ $dn = $script:Directory[$dn].Sddl; $below = $script:Directory[$below].Sddl }
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $fileOfOther
+                LogPath               = Join-Path $TestDrive 'restore-other.log'
+                OutputPath            = Join-Path $TestDrive 'restore-other.csv'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters -WarningAction SilentlyContinue)
+
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeFalse
+            $result[0].TargetObjectDN | Should -Be $dn
+            $result[0].ErrorMessage | Should -Be "Backup file $fileOfOther is a backup of '$below', not of '$dn'"
+            $script:Directory[$dn].Sddl | Should -Be $afterRemoval[$dn]
+            $script:Directory[$below].Sddl | Should -Be $afterRemoval[$below]
+            $rows = @(Import-Csv -Path $parameters.OutputPath)
+            $rows.Count | Should -Be 1
+            $rows[0].Success | Should -Be 'False'
+            $rows[0].TargetObjectDN | Should -Be $dn
+            $rows[0].EntriesRestored | Should -Be '0'
+        }
+
+        It 'Changes nothing under -WhatIf with a backup file (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $file = @($removed | Where-Object { $_.ObjectDN -eq $dn })[0].BackupFile
+            $afterRemoval = $script:Directory[$dn].Sddl
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $file
+                LogPath               = Join-Path $TestDrive 'restore-file-whatif.log'
+                SuppressConsoleOutput = $true
+                WhatIf                = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters)
+
+            $result.Count | Should -Be 1
+            $result[0].TargetObjectDN | Should -Be $dn
+            $script:Directory[$dn].Sddl | Should -Be $afterRemoval
+        }
+
+        It 'Returns a failed result, and restores nothing, for a backup file that is not .xml or .clixml (#160)' {
+            $removed = @(Invoke-RemoveOrphanedSid)
+            $dn = "OU=Finance,$script:DomainDN"
+            $file = @($removed | Where-Object { $_.ObjectDN -eq $dn })[0].BackupFile
+            $renamed = Join-Path $TestDrive "backup-$([guid]::NewGuid().ToString('N')).bak"
+            Copy-Item -LiteralPath $file -Destination $renamed
+            $afterRemoval = $script:Directory[$dn].Sddl
+
+            $parameters = @{
+                TargetObjectDN        = $dn
+                BackupFile            = $renamed
+                LogPath               = Join-Path $TestDrive 'restore-file-extension.log'
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+            $result = @(Restore-OrphanedSidBackup @parameters)
+
+            $result.Count | Should -Be 1
+            $result[0].Success | Should -BeFalse
+            $result[0].TargetObjectDN | Should -Be $dn
+            $result[0].ErrorMessage | Should -Be 'Invalid file extension. Only .xml and .clixml files are allowed'
+            $script:Directory[$dn].Sddl | Should -Be $afterRemoval
+        }
+
         It 'Reports a failed write once, with one prefix (#51)' {
             $null = Invoke-RemoveOrphanedSid
             $dn = "OU=Finance,$script:DomainDN"

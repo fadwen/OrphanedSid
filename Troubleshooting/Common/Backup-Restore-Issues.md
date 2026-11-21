@@ -129,11 +129,34 @@ validation steps and prints `What if: Performing the operation "Apply ACL from b
 
 Note that `Restore-OrphanedSidBackup -BackupPath` names the **timestamped subfolder**
 (`D:\ACLBackups\20250702_103631`), not the root given to `Remove-OrphanedSid`; discovery does not
-recurse.
+recurse. `-BackupFile` names one `.xml` file in such a folder and restores the one object that
+the file is a backup of, which has to be the object given as `-TargetObjectDN`.
 
 ## Critical Backup Issues
 
 ### 1. Backup Creation Failures
+
+#### Issue: `Removal failed: The backup folder '<path>' could not be created: <reason>`
+
+**Symptoms:**
+
+- `Remove-OrphanedSid` ends with the error ID `BackupFolderNotCreated` before it searches the
+  directory. No object is read and nothing is removed.
+- The log holds the message above at Error level, and no `Created backup folder` entry.
+
+**Root Cause:**
+
+- The account may not create a folder under `-BackupPath`. The reason is then the error of the
+  file system, such as `Access to the path '<path>' is denied`.
+- A part of the path is a file. The file system raises no error for that when the folder is
+  created, so the reason reads `the folder does not exist after it was created without an error.
+  A part of the path may be a file.` Without `-BackupPath`, that is a file named `Backup` in the
+  current directory.
+
+**Resolution:**
+
+Give `-BackupPath` a folder in which the account can create a subfolder. The write test under
+the next issue shows whether it can.
 
 #### Issue: `Failed to create ACL backup for <DN> : <message>`
 

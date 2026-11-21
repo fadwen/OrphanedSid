@@ -253,9 +253,17 @@ waits for the AD Web Services connect timeout, about 42 seconds, and fails with 
 the server`. After the first such failure for a SID, its remaining directory lookups are not tried,
 because they would wait and fail the same way. `VerificationError` then ends with `Not attempted
 because the directory server could not be contacted: <lookups>`. The local name lookup still runs.
-Each SID that needs the directory still costs one timeout, so a run against an unreachable domain
-controller slows by about 42 seconds per distinct SID. Every object that carries the same SID pays
-it again, because unverified answers are not cached. Check the domain controller before re-running:
+
+The SIDs that follow do not each wait for that timeout. For 60 seconds after a lookup found the
+server unreachable, no directory lookup is attempted: each SID that needs one is `Unverified`,
+with all five lookups listed after `Not attempted because the directory server could not be
+contacted:`, and is not cached. The first SID after the 60 seconds tries the server again. If it
+answers, lookups go on as usual and the log says for how long the server could not be
+contacted; if not, another 60 seconds begin. The log has one Warning for the whole time, `The
+directory server cannot be contacted. ...`, in place of two for each SID. On a lab domain,
+discovery over five objects with one unverifiable SID each took 214 seconds before this and 45
+seconds with it, with the same five `Unverified` results. Check the domain controller before
+re-running:
 
 ```powershell
 Get-ADDomainController -Discover -Service ADWS   # which DC the AD cmdlets will use
@@ -281,11 +289,24 @@ Only the domain that issued a SID can say whether it still exists. When that dom
 found", the SID is reported orphaned. When it cannot be reached, nothing is decided and the SID is
 left in place.
 
-An unreachable-trust lookup can wait for the trust to time out, about 40 seconds per distinct SID
-in testing. Once Windows has marked the trust broken (`nltest` below reports
-`ERROR_NO_LOGON_SERVERS`), each lookup fails in a few seconds instead; 4 seconds in testing. An
-unverified answer is not cached, so every ACE that names such a SID pays the cost again.
-A run that slows down sharply on objects with foreign entries is usually waiting on a trust:
+What an unreachable trust costs depends on how long the trusted domain has been out of reach,
+not on the number of SIDs. Measured on a lab forest trust from a domain controller that runs
+Windows Server 2022, with one lookup after another, each for a SID that had not been asked before:
+
+| Since the trusted domain stopped answering | What a lookup costs |
+|---|---|
+| The first lookup | One wait of 34 to 56 seconds. Windows then marks the secure channel broken: `nltest /sc_query:<trusted domain>` reports `ERROR_NO_LOGON_SERVERS` |
+| About the first ten minutes | Nothing, except for one lookup about every 60 seconds, which waits 15 seconds while Windows looks for a domain controller again |
+| After that | Nothing, except for one lookup about every 47 seconds, which waits 2 seconds |
+| The trusted domain answers again | Lookups go on failing until the next such attempt, 32 seconds in testing, and then work at once |
+
+The waits are made by Windows, not by PowerShell: the first run after the trust broke waited as
+long on Windows PowerShell 5.1 as on PowerShell 7.6. `Find-OrphanedSid` over five objects with
+one SID of the trusted domain each took 4 seconds with the trust working. As the first run after
+the trust broke it took 40 to 62 seconds, of which the first of the five SIDs took 37 to 56, and
+as the next run 4 to 8 seconds. An unverified answer is not cached, so every ACE that names such
+a SID is looked up again, but most of those lookups return at once. A run that slows down sharply
+on objects with foreign entries is usually the one that found the trust gone:
 
 ```powershell
 nltest /sc_verify:<trusted domain DNS name>   # NERR_Success means the secure channel works

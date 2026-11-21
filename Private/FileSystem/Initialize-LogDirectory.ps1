@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Log directory and path management for Find-UnknownSID operations
+    Log directory and path management for OrphanedSid operations
 
 .DESCRIPTION
     Handles log path validation, directory creation, and permissions validation
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-05
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For path resolution issues: .\Troubleshooting\Common\Common-Issues.md
@@ -31,7 +29,7 @@ function Initialize-LogDirectory {
 
     .DESCRIPTION
         Handles all file system operations for logging setup including:
-        - Log path validation and resolution
+        - Log path resolution
         - Directory creation with proper permissions
         - Log file initialization with header content
         - Error handling for file system issues
@@ -49,6 +47,11 @@ function Initialize-LogDirectory {
         renamed to <name>_<yyyyMMdd_HHmmss>.log before this run writes to it, so the rotated file
         holds only earlier runs. The outcome is left in $script:LogRotation (From, To, SizeMB, or
         Error) for the caller to log once logging is set up. 0, the default, never rotates.
+
+    .PARAMETER RefuseSystemFolder
+        Refuses a path inside the Windows or Program Files folders, and falls back to the current
+        location as for any other path that cannot be used. Set for a path that a configuration
+        file names: see Resolve-LogPath.
 
     .EXAMPLE
         PS> Initialize-LogDirectory -LogPath "C:\Logs\script.log"
@@ -77,14 +80,9 @@ function Initialize-LogDirectory {
         Bypasses WhatIf mode for log file operations to ensure logging works during -WhatIf runs.
 
         SECURITY CONSIDERATIONS:
-        - Validates path to prevent directory traversal
+        - Writes where the operator's path says. Only with -RefuseSystemFolder is a folder refused
         - Creates directories with inherited permissions
         - Tests write access before setting as active log path
-
-        PERFORMANCE CHARACTERISTICS:
-        - Execution time: 10-50ms depending on directory creation
-        - Memory usage: Minimal
-        - File system impact: Creates directories and test file
 
         TROUBLESHOOTING:
         - Path resolution handles relative and absolute paths
@@ -100,7 +98,10 @@ function Initialize-LogDirectory {
 
         [Parameter()]
         [ValidateRange(0, [int]::MaxValue)]
-        [int]$RotateAboveMB = 0
+        [int]$RotateAboveMB = 0,
+
+        [Parameter()]
+        [switch]$RefuseSystemFolder
     )
 
     begin {
@@ -117,7 +118,7 @@ function Initialize-LogDirectory {
     process {
         try {
             # Validate and normalize the log path
-            $resolvedPath = Resolve-LogPath -LogPath $LogPath
+            $resolvedPath = Resolve-LogPath -LogPath $LogPath -RefuseSystemFolder:$RefuseSystemFolder
 
             # Create directory structure
             $logDirectory = Split-Path -Parent $resolvedPath
@@ -187,15 +188,34 @@ function Initialize-LogDirectory {
 function Resolve-LogPath {
     <#
     .SYNOPSIS
-        Resolves and validates log file path
+        Resolves the log file path to a full path
 
     .DESCRIPTION
-        Converts relative paths to absolute paths and validates the path
-        for security and accessibility. Handles edge cases and provides
-        fallback paths when needed.
+        Turns the log path into a full path, as any cmdlet reads a path: a relative path is
+        relative to the current location, and .. is the parent folder. A path of only blanks
+        becomes a default file name under .\Logs. Wildcard characters are not expanded.
+
+        The path is not checked against a list of folders. Whether its folder can be used is
+        settled by New-LogDirectory, which creates the folder and writes a test file there. Two
+        things the path itself can show end the function with an error: a path that is not a
+        file system path (LogPathNotFileSystem), and a file or folder name with a character that
+        the file system does not allow (LogPathInvalidCharacters).
+
+        With -RefuseSystemFolder, a path inside the Windows folder or a Program Files folder also
+        ends the function, with LogPathInSystemFolder. That is for a path that comes from a
+        configuration file: a scheduled run under a privileged account appends to the file that
+        the configuration names, so whoever can edit the configuration would choose a file in
+        those folders for it. A path on the command line is the choice of the person who runs
+        the command, with that person's own rights, and is not refused.
 
     .PARAMETER LogPath
         Log file path to resolve
+
+    .PARAMETER RefuseSystemFolder
+        Refuses a path inside the folders that [Environment]::GetFolderPath() gives for Windows,
+        ProgramFiles and ProgramFilesX86. A short name such as C:\PROGRA~1 is written out in
+        full before the comparison. A link or a junction that leads into such a folder is not
+        followed.
 
     .EXAMPLE
         PS> Resolve-LogPath -LogPath ".\logs\script.log"
@@ -209,16 +229,19 @@ function Resolve-LogPath {
         [string] Resolved absolute path to log file
 
     .NOTES
-        Handles relative path resolution based on main script location.
-        Validates against directory traversal attacks.
-        Provides meaningful defaults for edge cases.
+        A path on a drive that does not exist ends the function with the error that PowerShell
+        raises for it. Initialize-LogDirectory catches each of these errors and falls back to a
+        log file in the current location.
     #>
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [string]$LogPath
+        [string]$LogPath,
+
+        [Parameter()]
+        [switch]$RefuseSystemFolder
     )
 
     # Handle empty or whitespace-only paths. Trimmed into a plain variable first: assigning '' to
@@ -232,128 +255,75 @@ function Resolve-LogPath {
         $LogPath = $trimmedPath
     }
 
-    # SECURITY: Validate against directory traversal BEFORE path resolution
-    if ($LogPath.Contains('..')) {
-        Write-Warning "Potential directory traversal detected in path: $LogPath"
-        $exception = [System.ArgumentException]::new('Invalid path: Directory traversal not allowed')
-        $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
-        $errorRecord = [System.Management.Automation.ErrorRecord]::new(
-            $exception, 'LogPathTraversal', $category, $LogPath)
-        $PSCmdlet.ThrowTerminatingError($errorRecord)
-    }
+    # The path is taken as any cmdlet takes one: relative to the current location, with .. for the
+    # parent folder, and in whatever folder the operator names. Whether the folder can be used is
+    # settled by New-LogDirectory, which creates it and writes a test file there. A check of the
+    # words in the path once refused D:\Logs\windows-servers, and the log of the run went to the
+    # current folder.
+    $provider = $null
+    $drive = $null
+    $resolvedPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+        $LogPath, [ref]$provider, [ref]$drive)
 
-    # Convert to absolute path
-    if ([System.IO.Path]::IsPathRooted($LogPath)) {
-        # Already absolute path
-        $resolvedPath = $LogPath
-    } else {
-        # A relative path is relative to the current location, as a path given to any cmdlet is. It
-        # was resolved against the module's folder, which put the log in the install folder.
-        $resolvedPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
-    }
-
-    # SECURITY: Final validation after resolution - ensure we haven't escaped the expected directory structure
-    $scriptRoot = Get-ScriptRootDirectory
-    $allowedBasePaths = @(
-        $scriptRoot,
-        $env:TEMP,
-        $env:USERPROFILE,
-        'C:\Logs',
-        'C:\ProgramData\Logs',
-        'C:\temp',  # Allow temp directories in C:
-        'C:\Windows\Temp'  # Allow Windows temp
-    )
-    
-    # For testing purposes, allow some additional paths
-    if ($resolvedPath -match 'temp.*test' -or $resolvedPath -match 'test.*log') {
-        $isAllowedPath = $true
-    } else {
-        $isAllowedPath = $false
-        foreach ($basePath in $allowedBasePaths) {
-            if ($resolvedPath.StartsWith($basePath, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $isAllowedPath = $true
-                break
-            }
-        }
-    }
-    
-    # Also allow paths that are clearly for testing (but not dangerous system paths)
-    if (-not $isAllowedPath -and 
-        ($resolvedPath -notmatch 'system32|windows|program files' -or $resolvedPath -match 'test')) {
-        $isAllowedPath = $true
-    }
-    
-    if (-not $isAllowedPath) {
-        Write-Warning "Path outside allowed directories: $resolvedPath"
-        $message = 'Invalid path: Path must be within script directory, temp, or approved log directories'
+    # The one thing the path itself can rule out: a path of another provider, such as HKLM:\,
+    # resolves to text that the file system would read as a relative path.
+    if ($provider.Name -ne 'FileSystem') {
+        $message = "The log path '$LogPath' is not a file system path: it belongs to the $($provider.Name) provider."
         $exception = [System.ArgumentException]::new($message)
         $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
         $errorRecord = [System.Management.Automation.ErrorRecord]::new(
-            $exception, 'LogPathOutsideAllowedDirectories', $category, $resolvedPath)
+            $exception, 'LogPathNotFileSystem', $category, $LogPath)
         $PSCmdlet.ThrowTerminatingError($errorRecord)
+    }
+
+    # A name that no file or folder can have is refused here, by the characters the file system
+    # itself rules out. Left to the cmdlets, such a path fails at a different step on each edition,
+    # and on Windows PowerShell 5.1 with an error of Test-Path beside the fallback.
+    $invalidCharacters = [System.IO.Path]::GetInvalidFileNameChars()
+    $withoutRoot = $resolvedPath -replace '^([A-Za-z]:|\\\\)', ''
+    $separators = [char[]]'\/'
+    foreach ($segment in $withoutRoot.Split($separators, [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        if ($segment.IndexOfAny($invalidCharacters) -ge 0) {
+            $message = "The log path '$resolvedPath' cannot be used: '$segment' holds a character " +
+                'that a file or folder name cannot have.'
+            $exception = [System.ArgumentException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::InvalidArgument
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'LogPathInvalidCharacters', $category, $resolvedPath)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+    }
+
+    # A path that a configuration file names may not lie in a system folder (SEC-12). The words
+    # in the path are not what is compared: the folders are the ones this system reports, and
+    # GetFullPath writes a short name such as C:\PROGRA~1 out in full first. The separator after
+    # the folder keeps C:\WindowsLogs apart from C:\Windows.
+    if ($RefuseSystemFolder) {
+        $fullPath = [System.IO.Path]::GetFullPath($resolvedPath)
+        $systemFolders = @(
+            [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+            [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
+            [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+            # What a 32-bit process is given as ProgramFiles is the x86 folder
+            $env:ProgramW6432
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+        foreach ($systemFolder in $systemFolders) {
+            $folderRoot = $systemFolder.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+            if ($fullPath.StartsWith($folderRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $message = "The log path '$fullPath' is inside the system folder '$systemFolder'. A log " +
+                    'path that a configuration file names may not lie there. To write there, name the ' +
+                    'path with -LogPath.'
+                $exception = [System.ArgumentException]::new($message)
+                $category = [System.Management.Automation.ErrorCategory]::SecurityError
+                $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                    $exception, 'LogPathInSystemFolder', $category, $fullPath)
+                $PSCmdlet.ThrowTerminatingError($errorRecord)
+            }
+        }
     }
 
     Write-Verbose "Log path resolved to: $resolvedPath"
     return $resolvedPath
-}
-
-
-function Get-ScriptRootDirectory {
-    <#
-    .SYNOPSIS
-        Determines the root directory of the main script
-
-    .DESCRIPTION
-        Resolves the main script directory for relative path calculations,
-        handling various execution contexts and fallback scenarios.
-
-    .EXAMPLE
-        PS> Get-ScriptRootDirectory
-
-        Returns the main script's directory path
-
-    .INPUTS
-        None. This function does not accept pipeline input.
-
-    .OUTPUTS
-        [string] Root directory path
-
-    .NOTES
-        Handles execution from different contexts (main script, module, etc.)
-        Provides fallback to current directory when script context unavailable.
-    #>
-    [CmdletBinding()]
-    [OutputType([string])]
-    param()
-
-    if ($PSScriptRoot) {
-        # If we're in the Private/FileSystem folder, go up two levels to get the main script directory
-        $currentPath = $PSScriptRoot
-        if ($currentPath -like "*\Private\*") {
-            # Go up to Private folder, then up to main script directory
-            $parentPath = Split-Path -Parent $currentPath  # Private folder
-            $scriptRoot = Split-Path -Parent $parentPath   # Main script directory
-        } else {
-            $scriptRoot = $PSScriptRoot
-        }
-    } else {
-        # Fallback: try to get from caller's script location
-        $callerScript = Get-PSCallStack | Where-Object {
-            $_.ScriptName -and
-            $_.ScriptName -notlike "*\Private\*" -and
-            $_.ScriptName -like "*OrphanedSid*"
-        } | Select-Object -First 1
-
-        if ($callerScript -and $callerScript.ScriptName) {
-            $scriptRoot = Split-Path -Parent $callerScript.ScriptName
-        } else {
-            # Final fallback: use current directory
-            $scriptRoot = Get-Location
-        }
-    }
-
-    Write-Verbose "Script root directory resolved to: $scriptRoot"
-    return $scriptRoot
 }
 
 
@@ -395,9 +365,10 @@ function New-LogDirectory {
 
     if (-not (Test-Path -LiteralPath $DirectoryPath)) {
         try {
-            # Bypass WhatIf for log directory creation
-            New-Item -Path $DirectoryPath -ItemType Directory -Force -WhatIf:$false | Out-Null
-            Write-Verbose "Created log directory: $DirectoryPath"
+            # Bypass WhatIf for log directory creation. -ErrorAction Stop, because New-Item
+            # only writes its error for a folder that it is not allowed to create, and the catch
+            # below would not be reached.
+            $null = New-Item -Path $DirectoryPath -ItemType Directory -Force -WhatIf:$false -ErrorAction Stop
         }
         catch {
             $message = "Failed to create log directory '$DirectoryPath': $($_.Exception.Message)"
@@ -407,6 +378,22 @@ function New-LogDirectory {
                 $exception, 'LogDirectoryNotCreated', $category, $DirectoryPath)
             $PSCmdlet.ThrowTerminatingError($errorRecord)
         }
+
+        # For a folder whose parent is a file, New-Item -Force returns nothing and reports no
+        # error, with -ErrorAction Stop as well; measured on both editions. So the folder is
+        # looked for. Left to the write test below, the failure was reported as missing write
+        # permissions.
+        if (-not (Test-Path -LiteralPath $DirectoryPath -PathType Container)) {
+            $message = "Failed to create log directory '$DirectoryPath': the folder does not exist after " +
+                'it was created without an error. A part of the path may be a file.'
+            $exception = [System.IO.IOException]::new($message)
+            $category = [System.Management.Automation.ErrorCategory]::WriteError
+            $errorRecord = [System.Management.Automation.ErrorRecord]::new(
+                $exception, 'LogDirectoryNotCreated', $category, $DirectoryPath)
+            $PSCmdlet.ThrowTerminatingError($errorRecord)
+        }
+
+        Write-Verbose "Created log directory: $DirectoryPath"
     } else {
         Write-Verbose "Log directory already exists: $DirectoryPath"
     }

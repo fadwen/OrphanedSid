@@ -149,6 +149,107 @@ Describe 'Remove-OrphanedSid' -Tag 'Unit', 'Public' {
             { Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -BackupPath 'C:\no\such\parent\Backup' } |
                 Should -Throw '*parent folder*'
         }
+
+        It 'Logs the backup folder as created, once, when it creates it' {
+            # A root of its own: the tests of this context run in any order, and one of them counts
+            # the folders under .\Backup
+            $root = Join-Path $TestDrive "Logged-$([guid]::NewGuid().ToString('N'))"
+            New-Item -Path $root -ItemType Directory | Out-Null
+
+            Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -BackupPath $root | Out-Null
+
+            $runFolders = @(Get-ChildItem $root -Directory)
+            $runFolders.Count | Should -Be 1
+            $runFolder = $runFolders[0].FullName
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Information' -and $Message -eq "Created backup folder: $runFolder"
+            }
+        }
+
+        It 'Uses a backup folder that is already there, and does not log it as created' {
+            # The folder of a run is named by the second, so a second run in the same second finds it
+            $root = Join-Path $TestDrive "Existing-$([guid]::NewGuid().ToString('N'))"
+            $runFolder = Join-Path $root '20260101_120000'
+            New-Item -Path $runFolder -ItemType Directory | Out-Null
+            Mock -ModuleName OrphanedSid Get-Date { '20260101_120000' } -ParameterFilter {
+                $Format -eq 'yyyyMMdd_HHmmss'
+            }
+
+            Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -BackupPath $root | Out-Null
+
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 1 -Exactly -ParameterFilter {
+                $BackupPath -eq $runFolder
+            }
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Created backup folder*'
+            }
+        }
+
+        It 'Ends before any object is read when a part of the backup path is a file (#161)' {
+            # New-Item returns nothing and reports no error here. The default folder is .\Backup,
+            # and in this working folder that name is a file.
+            $workFolder = Join-Path $TestDrive "FileInPath-$([guid]::NewGuid().ToString('N'))"
+            New-Item -Path $workFolder -ItemType Directory | Out-Null
+            Set-Content -LiteralPath (Join-Path $workFolder 'Backup') -Value 'not a folder' -Encoding ascii
+            Set-Location -LiteralPath $workFolder
+
+            $expected = @{
+                ErrorId         = 'BackupFolderNotCreated,Remove-OrphanedSid'
+                ExpectedMessage = '*could not be created*A part of the path may be a file.'
+                ExceptionType   = [System.IO.IOException]
+            }
+            { Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force } | Should -Throw @expected
+
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 0 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Created backup folder*'
+            }
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -like 'Removal failed: The backup folder * could not be created*'
+            }
+            Should -Invoke -ModuleName OrphanedSid Stop-OrphanedSidSession -Times 1 -Exactly
+        }
+
+        It 'Ends before any object is read, with the reason, when the backup folder may not be created (#161)' {
+            # New-Item only writes its error here. Adding a folder to -BackupPath is denied for
+            # this case, and allowed again afterwards. The entry does not keep the folder from
+            # being removed with the test drive.
+            $root = Join-Path $TestDrive "NoNewFolders-$([guid]::NewGuid().ToString('N'))"
+            New-Item -Path $root -ItemType Directory | Out-Null
+            $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $root /deny "${account}:(AD,WD)"
+            try {
+                $caught = $null
+                try {
+                    Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -BackupPath $root
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $root /remove:d $account
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -Be 'BackupFolderNotCreated,Remove-OrphanedSid'
+            $caught.Exception.InnerException | Should -BeOfType [System.UnauthorizedAccessException]
+            @(Get-ChildItem -LiteralPath $root).Count | Should -Be 0
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 0 -Exactly
+            Should -Invoke -ModuleName OrphanedSid Write-StructuredLog -Times 0 -Exactly -ParameterFilter {
+                $Message -like 'Created backup folder*'
+            }
+        }
+
+        It 'Ends the same way when the caller asks to continue silently (#161)' {
+            $workFolder = Join-Path $TestDrive "FileInPath-$([guid]::NewGuid().ToString('N'))"
+            New-Item -Path $workFolder -ItemType Directory | Out-Null
+            Set-Content -LiteralPath (Join-Path $workFolder 'Backup') -Value 'not a folder' -Encoding ascii
+            Set-Location -LiteralPath $workFolder
+
+            { Remove-OrphanedSid -SearchBase 'OU=X,DC=contoso,DC=com' -Force -ErrorAction SilentlyContinue } |
+                Should -Throw -ErrorId 'BackupFolderNotCreated,Remove-OrphanedSid'
+
+            Should -Invoke -ModuleName OrphanedSid Invoke-MainProcessingLogic -Times 0 -Exactly
+        }
     }
 
     Context 'Output and lifecycle' {

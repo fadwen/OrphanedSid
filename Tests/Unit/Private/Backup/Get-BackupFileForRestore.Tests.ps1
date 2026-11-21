@@ -13,6 +13,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Get-BackupFileForRestore.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\ConvertTo-NormalizedDistinguishedName.ps1"
 
     function New-BackupFile {
         param([string]$Folder, [string]$ObjectDN, [datetime]$WrittenAt)
@@ -59,6 +60,29 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
             @($result.BackupFiles)[0] | Should -Be $file
         }
 
+        It 'Finds the backup of a target that is typed as <Spelling> (#150)' -ForEach @(
+            @{ Spelling = 'CN=Alice, OU=Sales, DC=contoso, DC=com' }
+            @{ Spelling = 'CN =Alice,OU=Sales,DC=contoso,DC=com' }
+            @{ Spelling = 'cn = alice , ou = sales , dc = contoso , dc = com' }
+        ) {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $Spelling -BackupPath $script:folder
+
+            $result.RestoreMode | Should -Be 'Single'
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $file
+        }
+
+        It 'Finds a backup that records its name with blanks around the separators' {
+            $recorded = 'CN=Alice, OU=Sales, DC=contoso, DC=com'
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $recorded -WrittenAt (Get-Date).AddMinutes(-1)
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+
+            @($result.BackupFiles)[0] | Should -Be $file
+        }
+
         It 'Ends with BackupNotFoundForObject when the folder holds only backups of other objects' {
             New-BackupFile -Folder $script:folder -ObjectDN $script:bob -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
 
@@ -87,6 +111,17 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
             @($result.BackupFiles | Sort-Object) | Should -Be @($ofSales, $ofAlice, $ofBob | Sort-Object)
         }
 
+        It 'Takes a container that is typed with blanks around its separators as a container (#150)' {
+            $ofAlice = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-2)
+            New-BackupFile -Folder $script:folder -ObjectDN $script:carol -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
+
+            $result = Get-BackupFileForRestore -TargetObjectDN 'OU = Sales, DC=contoso, DC=com' -BackupPath $script:folder
+
+            $result.RestoreMode | Should -Be 'Bulk'
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $ofAlice
+        }
+
         It 'Selects nothing, without an error, when no backup is of an object in the container' {
             New-BackupFile -Folder $script:folder -ObjectDN $script:carol -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
 
@@ -108,6 +143,43 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
             }
             { Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder } |
                 Should -Throw @expected
+        }
+
+        It 'Ends with the error of the file system for a folder that cannot be listed (#156)' {
+            # The folder holds a backup of the object. Reading it is denied for this case, and
+            # allowed again afterwards so that the test drive can be removed. A run that is
+            # killed before the finally leaves the folder under %TEMP% with the entry on it:
+            # icacls <folder> /reset removes the entry, and the folder can then be deleted.
+            New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1) | Out-Null
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $null = & icacls.exe $script:folder /deny "${identity}:(RD)"
+            try {
+                $caught = $null
+                try {
+                    Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+                } catch {
+                    $caught = $_
+                }
+            } finally {
+                $null = & icacls.exe $script:folder /remove:d $identity
+            }
+
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.Exception | Should -BeOfType [System.UnauthorizedAccessException]
+            $caught.FullyQualifiedErrorId | Should -BeLike '*,Get-BackupFileForRestore'
+            $caught.FullyQualifiedErrorId | Should -Not -BeLike 'BackupFilesNotFound,*'
+        }
+
+        It 'Selects files by the extension .xml exactly' {
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
+            Copy-Item -LiteralPath $file -Destination (Join-Path $script:folder 'copy-of-alice.xmlbak')
+            Copy-Item -LiteralPath $file -Destination (Join-Path $script:folder 'notes.txt')
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $file
+            Should -Invoke Write-Warning -Times 0 -Exactly
         }
 
         It 'Warns about a file that cannot be read and selects from the others' {

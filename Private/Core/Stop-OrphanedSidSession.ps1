@@ -1,4 +1,4 @@
-﻿function Stop-OrphanedSidSession {
+function Stop-OrphanedSidSession {
     <#
     .SYNOPSIS
         Releases the per-run state created by Start-OrphanedSidSession.
@@ -83,5 +83,7 @@
         $script:Statistics = $null
         $script:RemovalResults = @()
         $script:SIDClassificationCache = $null
+        $script:DirectoryUnreachableSince = $null
+        $script:DirectoryRetryAt = $null
     }
 }

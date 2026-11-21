@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Script execution initialization module for Find-UnknownSID
+    Script execution initialization module for OrphanedSid
 
 .DESCRIPTION
     Provides comprehensive script initialization capabilities including configuration
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For initialization issues: .\Troubleshooting\Common\Common-Issues.md
@@ -183,12 +181,6 @@ function Initialize-ScriptExecution {
         - Memory management prevents denial-of-service scenarios
         - Correlation IDs enable security event tracking
 
-        PERFORMANCE CHARACTERISTICS:
-        - Initialization typically completes in 1-3 seconds
-        - Memory overhead: ~50MB for management structures
-        - Configuration loading scales with complexity
-        - Log rotation occurs automatically based on size limits
-
         TROUBLESHOOTING:
         - For initialization failures: .\Troubleshooting\Common\Common-Issues.md
         - For memory management: .\Troubleshooting\Performance\Memory-Management.md
@@ -294,10 +286,20 @@ function Initialize-ScriptExecution {
             # The file's LogFilePath is chosen here, before anything is written, and goes through the
             # same resolution, refusal and rotation as -LogPath. Swapping it in after setup once split
             # a run across two files and overrode -LogPath given on the command line.
+            # A path from the file is refused when it lies in a system folder: whoever can edit
+            # the file would otherwise choose a file there for a privileged run to append to. A
+            # path from the command line is the operator's own choice.
+            $logPathFromFile = $false
             if ($UseConfigLogPath -and -not [string]::IsNullOrWhiteSpace($script:Config.LogFilePath)) {
                 $targetLogPath = $script:Config.LogFilePath
+                $logPathFromFile = $true
             }
-            $null = Initialize-LogDirectory -LogPath $targetLogPath -RotateAboveMB $rotateAboveMB
+            $logDirectoryParameters = @{
+                LogPath = $targetLogPath
+                RotateAboveMB = $rotateAboveMB
+                RefuseSystemFolder = $logPathFromFile
+            }
+            $null = Initialize-LogDirectory @logDirectoryParameters
 
             if ($script:LogRotation) {
                 if ($script:LogRotation.Error) {

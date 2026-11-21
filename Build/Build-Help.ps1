@@ -181,8 +181,16 @@ if (-not (Test-Path $built)) {
 }
 
 New-Item -Path $cultureDir -ItemType Directory -Force | Out-Null
-Copy-Item -LiteralPath $built -Destination $cultureDir -Force
 
+# PlatyPS writes the line endings of the platform, CRLF on Windows and LF elsewhere. The committed
+# file is stored and checked out with LF (.gitattributes), and CI compares a fresh build with it
+# byte for byte, so the file is written with LF on every platform. Copied as it was built, it
+# stood as changed after a build on Windows, with nothing in it to commit.
 $final = Join-Path $cultureDir $helpFileName
+$builtPath = (Resolve-Path -LiteralPath $built).Path
+$finalPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($final)
+$helpText = [System.IO.File]::ReadAllText($builtPath).Replace("`r`n", "`n")
+[System.IO.File]::WriteAllText($finalPath, $helpText, [System.Text.UTF8Encoding]::new($false))
+
 Write-Information "Compiled help: $final" -InformationAction Continue
 Get-Item -LiteralPath $final

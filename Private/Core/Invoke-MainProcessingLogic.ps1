@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Core SID discovery and processing logic for Find-UnknownSID
+    Core SID discovery and processing logic for OrphanedSid
 
 .DESCRIPTION
     Handles the main processing workflow including AD object discovery,
@@ -13,8 +13,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For processing failures: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
@@ -137,12 +135,6 @@ function Invoke-MainProcessingLogic {
         - All operations are logged for security audit
         - ShouldProcess support enables safe testing with -WhatIf
 
-        PERFORMANCE CHARACTERISTICS:
-        - Processing rate: 50-200 objects per second (depending on complexity)
-        - Memory usage: Optimized with streaming results management
-        - Parallel processing scales with available system resources
-        - Progress reporting every 50 objects for user feedback
-
         TROUBLESHOOTING:
         - For processing failures: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
         - For AD connectivity: .\Troubleshooting\Common\Common-Issues.md
@@ -246,7 +238,6 @@ function Invoke-MainProcessingLogic {
         $recordCriticalError = {
             param([System.Management.Automation.ErrorRecord]$Failure)
 
-            $script:Statistics.CriticalErrors++
             Write-StructuredLog "Critical error in main processing: $($Failure.Exception.Message)" -Level Error -Component 'MainProcessing' -CorrelationId $CorrelationId
         }
 

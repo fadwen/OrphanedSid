@@ -17,9 +17,8 @@
 
 .NOTES
     Author: Jeffrey Stuhr
-    Module: Find-UnknownSID.RestoreOperations
-    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1
-    Version: 2.1.0
+    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1,
+        Utilities\ConvertTo-NormalizedDistinguishedName.ps1
 
     SECURITY CONSIDERATIONS:
     - Validates all inputs before processing
@@ -130,12 +129,6 @@ function Invoke-RestoreWorkflow {
         5. Optional restoration verification
         6. Result compilation and reporting
 
-        PERFORMANCE CHARACTERISTICS:
-        - Standard workflow: 200-500ms per object
-        - Comprehensive validation adds 100-200ms
-        - Verification adds 50-100ms overhead
-        - Memory usage: ~2MB per concurrent workflow
-
         TROUBLESHOOTING:
         - For workflow failures: .\Troubleshooting\Common\Backup-Restore-Issues.md
 
@@ -183,14 +176,21 @@ function Invoke-RestoreWorkflow {
         if (-not (Get-Command Get-BackupFileForRestore -ErrorAction SilentlyContinue)) {
             . $PSScriptRoot\Get-BackupFileForRestore.ps1
         }
+
+        if (-not (Get-Command ConvertTo-NormalizedDistinguishedName -ErrorAction SilentlyContinue)) {
+            $utilitiesPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Utilities'
+            . (Join-Path -Path $utilitiesPath -ChildPath 'ConvertTo-NormalizedDistinguishedName.ps1')
+        }
     }
 
     process {
         Write-Verbose "Starting restore workflow for target: $TargetObjectDN"
         Write-Verbose "Starting restore workflow"
         
-        # Trim and sanitize input first
-        $TargetObjectDN = $TargetObjectDN.Trim()
+        # The target is brought into the spelling that the directory returns, without blanks
+        # around its separators: it is compared with the names that the backups record, and the
+        # directory accepts a name that is typed as 'CN=Alice, OU=Sales, DC=contoso, DC=com'.
+        $TargetObjectDN = ConvertTo-NormalizedDistinguishedName -DistinguishedName $TargetObjectDN
         
         # Validate target DN format after trimming. The attribute that names an object is set by
         # its class, so any attribute name is taken, as Test-ValidDistinguishedName does.
@@ -334,9 +334,13 @@ function Invoke-RestoreWorkflow {
                     $actualTargetDN = $backupData.ObjectDN
 
                     # A backup chosen by file must be of the object asked for. Directory mode already
-                    # selects files by the DN they record.
+                    # selects files by the DN they record. The recorded name is compared in the
+                    # spelling that the target was brought into at the start.
+                    $recordedName = [string]$actualTargetDN
+                    $recordedName = ConvertTo-NormalizedDistinguishedName -DistinguishedName $recordedName
+                    $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
                     $isOtherObject = $restoreMode -eq 'Single' -and $BackupFile -and
-                        -not [string]::Equals([string]$actualTargetDN, $TargetObjectDN, [System.StringComparison]::OrdinalIgnoreCase)
+                        -not [string]::Equals($recordedName, $TargetObjectDN, $ignoreCase)
 
                     if ($isOtherObject) {
                         $fileFailure = "Backup file $fileToProcess is a backup of '$actualTargetDN', not of '$TargetObjectDN'"
@@ -373,9 +377,19 @@ function Invoke-RestoreWorkflow {
                     $workflowSteps[-1].FailedRestores++
                     $workflowSteps[-1].ProcessedObjects++
 
+                    # A file that was given by name was given for this target, so the result is
+                    # the target's: Restore-OrphanedSidBackup returns one result for each target,
+                    # and its CSV has a row for it. For a file that was found in a folder, the
+                    # object is known only as far as the file could be read.
+                    $failedTarget = "Unknown (from $fileToProcess)"
+                    if ($BackupFile) {
+                        $failedTarget = $TargetObjectDN
+                    }
+
                     $failedResult = [PSCustomObject]@{
                         Success = $false
-                        TargetObjectDN = "Unknown (from $fileToProcess)"
+                        TargetObjectDN = $failedTarget
+                        EntriesRestored = 0
                         ErrorMessage = $fileFailure
                         BackupFile = $fileToProcess
                         CorrelationId = $CorrelationId
@@ -586,8 +600,8 @@ function Restore-IndividualObject {
             return (& $newFailedResult "Target validation failed: $($targetValidation.Issues -join '; ')")
         }
 
-        # Apply ACL restoration. The target was validated above, so Set-ObjectACL does not read it again.
-        $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -SkipTargetValidation -CorrelationId $CorrelationId
+        # Apply ACL restoration. The target was validated above; Set-ObjectACL does not check it.
+        $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
 
         if (-not $aclOperation.Success) {
             # Set-ObjectACL's message already starts "ACL application failed:" or "ACL operation failed:"

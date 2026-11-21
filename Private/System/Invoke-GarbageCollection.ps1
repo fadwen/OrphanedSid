@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Garbage Collection Operations Module for Find-UnknownSID Enterprise Solution
+    Garbage Collection Operations Module for the OrphanedSid module
 
 .DESCRIPTION
     Provides focused garbage collection and memory cleanup functionality including:
@@ -24,7 +24,7 @@
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
 
 .COMPONENT
-    Find-UnknownSID Garbage Collection System
+    OrphanedSid Garbage Collection System
 
 .FUNCTIONALITY
     - Memory cleanup operations

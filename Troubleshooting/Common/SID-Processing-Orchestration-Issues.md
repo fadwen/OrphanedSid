@@ -97,7 +97,12 @@ failed: <sid> (<failures>)` at Warning), is not cached, and `Remove-OrphanedSid`
 (`Not removing unverified SID ...`). When the directory server cannot be contacted, the first
 lookup waits out a connect timeout of about 42 seconds and the remaining directory lookups for that
 SID are skipped: the Warning reads `N lookup(s) failed, M not attempted`, and `VerificationError`
-ends with `Not attempted because the directory server could not be contacted: <lookups>`. An
+ends with `Not attempted because the directory server could not be contacted: <lookups>`. The
+log then has one Warning, `The directory server cannot be contacted. No directory lookup is
+attempted for the next 60 seconds: ...`, and the SIDs that follow in that time are `Unverified`
+with all five lookups listed and a Debug entry in place of a Warning. The first SID after the 60
+seconds tries the server again; when it answers, an Information entry reads `The directory
+server answers again, <n> seconds after it could not be contacted.` An
 exception in the function itself also gives `Unverified` (`Error testing SID for orphaned status <sid> : <message>` at Error level).
 
 Check before acting on results:

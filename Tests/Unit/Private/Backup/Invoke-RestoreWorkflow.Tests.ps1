@@ -19,6 +19,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Get-BackupFileForRestore.ps1"
+    . "$PSScriptRoot\..\..\..\..\Private\Utilities\ConvertTo-NormalizedDistinguishedName.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
     function New-BackupFile {
@@ -212,9 +213,27 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
 
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
             $result.Success | Should -BeFalse
-            $result.TargetObjectDN | Should -Be "Unknown (from $otherFile)"
+            # The result is the one of the target that was asked for (#160)
+            $result.TargetObjectDN | Should -Be $script:TargetDN
+            $result.EntriesRestored | Should -Be 0
+            $result.BackupFile | Should -Be $otherFile
             $result.ErrorMessage | Should -Be "Backup file $otherFile is a backup of 'CN=Someone Else,OU=Users,DC=company,DC=com', not of '$($script:TargetDN)'"
         }
+
+        It "Should take a backup file that records the name of the target as <Recorded> (#150)" -ForEach @(
+            @{ Recorded = 'CN=TestUser, OU=Users, DC=company, DC=com' }
+            @{ Recorded = 'cn = testuser , ou = users , dc = company , dc = com' }
+        ) {
+            # The target is compared without the blanks around its separators, so the name that
+            # the file records has to be compared that way too
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $Recorded
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $Recorded -BackupFile $file
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly -ParameterFilter { $BackupFile -eq $file }
+        }
+
         It "Should default to the Standard validation level" {
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
 
@@ -286,7 +305,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             }
         }
 
-        It "Should turn an exception from Restore-IndividualObject into a failed result naming the file" {
+        It "Should turn an exception from Restore-IndividualObject into a failed result of the target, naming the file" {
             Mock Restore-IndividualObject { throw 'Backup validation failed' }
 
             $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile -CorrelationId 'wf-err'
@@ -294,7 +313,8 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.PSTypeNames[0] | Should -Be 'RestoreWorkflowResult'
             $result.Success | Should -BeFalse
             $result.ErrorMessage | Should -Be 'Backup validation failed'
-            $result.TargetObjectDN | Should -Be "Unknown (from $($script:singleFile))"
+            $result.TargetObjectDN | Should -Be $script:TargetDN
+            $result.EntriesRestored | Should -Be 0
             $result.BackupFile | Should -Be $script:singleFile
             $result.CorrelationId | Should -Be 'wf-err'
             Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {

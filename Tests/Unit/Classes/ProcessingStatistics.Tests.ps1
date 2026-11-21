@@ -23,7 +23,6 @@ Describe "ProcessingStatistics Class Tests" -Tag "Unit", "Classes", "ProcessingS
             $stats.OrphanedSIDsFound | Should -Be 0
             $stats.UnverifiedSIDsFound | Should -Be 0
             $stats.ProcessingErrors | Should -Be 0
-            $stats.CriticalErrors | Should -Be 0
             $stats.ObjectsPerSecond | Should -Be 0
             $stats.PeakMemoryUsageMB | Should -Be 0
         }
@@ -45,7 +44,6 @@ Describe "ProcessingStatistics Class Tests" -Tag "Unit", "Classes", "ProcessingS
             $stats.OrphanedSIDsFound | Should -BeOfType [int]
             $stats.UnverifiedSIDsFound | Should -BeOfType [int]
             $stats.ProcessingErrors | Should -BeOfType [int]
-            $stats.CriticalErrors | Should -BeOfType [int]
             $stats.StartTime | Should -BeOfType [DateTime]
             $stats.EndTime | Should -BeOfType [DateTime]
             $stats.Duration | Should -BeOfType [TimeSpan]

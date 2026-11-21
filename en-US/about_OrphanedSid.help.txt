@@ -46,8 +46,10 @@ UNVERIFIED SIDS
 
     A SID from a trusted domain can only be checked by that domain. When it answers that the
     principal is gone, the SID is orphaned (LikelySource Foreign Domain/Trust). When its domain
-    controllers cannot be reached or the trust is broken, the SID is unverified, and each such
-    lookup waits for the trust to time out. Missing read permission does not make a SID
+    controllers cannot be reached or the trust is broken, the SID is unverified. The lookup that
+    first finds the trusted domain out of reach waits once, for up to about a minute; after that
+    such lookups fail at once, except for one about every minute, which waits for some seconds
+    while Windows looks for a domain controller again. Missing read permission does not make a SID
     unverified: Active Directory returns an empty search, not an error. Run the commands as an
     account that can read every object in scope.
 

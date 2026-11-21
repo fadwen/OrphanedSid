@@ -16,8 +16,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-01-27
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     TROUBLESHOOTING:
@@ -95,11 +93,6 @@ function Write-RemovalSecurityLog {
         - Risk-based event classification
         - Detailed SID and object tracking
         - Enterprise SIEM integration ready
-
-        PERFORMANCE CHARACTERISTICS:
-        - Logging Time: <10ms per event typically
-        - Memory Usage: Minimal - efficient log formatting
-        - Thread Safety: Safe for concurrent operations
 
         TROUBLESHOOTING:
         - For missing logs: Check logging configuration and permissions

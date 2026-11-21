@@ -2,19 +2,17 @@
 
 <#
 .SYNOPSIS
-    Processing summary and result reporting module for Find-UnknownSID
+    Processing summary and result reporting module for OrphanedSid
 
 .DESCRIPTION
     Provides comprehensive result formatting, summary generation, and export
-    capabilities for Find-UnknownSID processing results. Focused solely on
+    capabilities for OrphanedSid processing results. Focused solely on
     result presentation and data export functionality.
 
 .NOTES
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For output issues: .\Troubleshooting\Common\Common-Issues.md
@@ -106,12 +104,6 @@ function Write-ProcessingSummary {
         - Export files should be protected with appropriate permissions
         - Correlation IDs enable security event tracking
         - Summary data supports security audit requirements
-
-        PERFORMANCE CHARACTERISTICS:
-        - Summary generation typically completes in <1 second
-        - CSV export time varies with result count (1-10 seconds for large datasets)
-        - Memory usage minimal for summary display
-        - Streaming export for large result sets
 
         TROUBLESHOOTING:
         - For output issues: .\Troubleshooting\Common\Common-Issues.md
@@ -262,7 +254,8 @@ function Write-ProcessingSummary {
                             $exported = $ProcessingResults.StreamingManager.ExportToCsv($OutputPath)
                         } elseif ($hasRestoreResults) {
                             if (-not $WhatIfPreference) {
-                                $ProcessingResults.RestoreResults | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
+                                $restoreRows = @($ProcessingResults.RestoreResults)
+                                Export-ResultCsv -InputObject $restoreRows -LiteralPath $OutputPath
                                 $exported = $true
                             }
                         }

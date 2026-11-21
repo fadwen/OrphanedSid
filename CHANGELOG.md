@@ -8,6 +8,13 @@ All notable changes to this module are recorded here. Format follows
 
 ### Added
 
+- `Restore-OrphanedSidBackup` has a `-BackupFile` parameter, which restores one object from one
+  backup file that is given by name, in place of the folder given as `-BackupPath`. The file has
+  to be a backup of the object that `-TargetObjectDN` names; a file of another object gives a
+  result with `Success = False` that says which object the file is of, and nothing is written.
+  A container is restored as one object, without the objects under it. The two parameters are
+  not given together, and `-BackupPath` and the other parameters keep their positions.
+  ([#160](https://github.com/fadwen/OrphanedSid/issues/160))
 - A `RemovalOperationResult` has a `NotFoundSIDs` property. It lists the SIDs that discovery
   reported and that held no explicit entry on the object when `Remove-OrphanedSid` came to remove
   them, for example because someone else removed the entry in the meantime. Such a result was
@@ -18,6 +25,16 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- A run that meets a directory server that cannot be contacted no longer waits for one connect
+  timeout, about 42 seconds, for each SID. After a lookup finds the server unreachable, no
+  directory lookup is attempted for 60 seconds: each SID that needs one in that time is
+  `Unverified`, with `VerificationError` reading `Not attempted because the directory server
+  could not be contacted: <the five lookups>`, and is not cached. The first SID after that tries
+  the server again, and lookups go on as usual once it answers. The log has one warning for the
+  whole time and an information entry when the server answers again. On a lab domain, discovery
+  over five objects with one such SID each took 214 seconds before and 45 seconds after, with
+  the same five `Unverified` results. A SID is still never reported as orphaned while the
+  server cannot be contacted. ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
 - The error that `Find-OrphanedSid`, `Remove-OrphanedSid` and `Restore-OrphanedSidBackup` raise
   when the ActiveDirectory PowerShell module is not installed has an error ID, an exception type
   and a category of its own: `ActiveDirectoryModuleMissing`, `System.InvalidOperationException`
@@ -48,9 +65,27 @@ All notable changes to this module are recorded here. Format follows
   the SIDs that were not. Such a result was `Success = True` before, so automation that counts
   failures by `Success` will count these. The help of `Remove-OrphanedSid` describes it.
   ([#121](https://github.com/fadwen/OrphanedSid/issues/121))
+- The CSV file of `-OutputPath` is written without the `-NoTypeInformation` switch of
+  `Export-Csv` on PowerShell 7, where the switch has no effect. PowerShell 7.7 declares it
+  obsolete and writes a warning for each call that passes it, so a run with `-OutputPath` would
+  have shown a warning there. Windows PowerShell 5.1 still gets the switch, without which it
+  writes a `#TYPE` line. The file is the same as before on both editions.
+  ([#159](https://github.com/fadwen/OrphanedSid/issues/159))
+- The result of `Remove-OrphanedSid` for an object whose changed ACL could not be written says
+  why: `ErrorMessage` is `Failed to apply ACL changes: Access is denied`, where it was
+  `Failed to apply ACL changes` and the reason stood only in the log. Automation that compares
+  the whole text has to allow for the reason after it.
+  ([#177](https://github.com/fadwen/OrphanedSid/issues/177))
 
 ### Fixed
 
+- The help of `Find-OrphanedSid`, the `about_OrphanedSid` topic and the troubleshooting guide said
+  that a lookup of a SID from a trusted domain that cannot be reached waits about 40 seconds for
+  each SID. Measured on a lab forest trust, the wait is paid once, by the lookup that first finds
+  the trusted domain out of reach: 34 to 56 seconds. After that such lookups fail at once, except
+  for one about every minute, which waits 15 seconds during about the first ten minutes and 2
+  seconds from then on. The three texts now say that, and the guide has the figures in a table.
+  Nothing in the commands changed. ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
 - Square brackets in a path, and `[`, `]`, `*`, `?` or a backtick in an object's name, no longer
   stop a run or send it to another object. PowerShell reads those characters as a pattern, and
   the module passed names and paths in the form that is matched as one.
@@ -146,6 +181,47 @@ All notable changes to this module are recorded here. Format follows
   `Failed to apply ACL changes` entry at Error level for it. It had two with the same text. A
   `-BackupPath` that is too long to hold a backup file is likewise logged once for each object.
   ([#130](https://github.com/fadwen/OrphanedSid/issues/130))
+- `-LogPath`, and `LogFilePath` in a `-ConfigPath` file, are used as they are given. A path was
+  refused when it held the word `windows` or `program files` anywhere, such as
+  `D:\Logs\windows-servers\run.log`, and when it held two dots, such as `..\Logs\run.log`. The
+  command warned, finished, and wrote its log to the current folder under another name. A path is
+  now read as any cmdlet reads one, and whether its folder can be used is decided by creating the
+  folder and writing to it. One folder check is left, and it is for `LogFilePath` only: a path
+  from the configuration file that lies inside the Windows folder or a Program Files folder, as
+  the system reports them, is refused, so that whoever can edit the file does not choose a file
+  there for a privileged run to append to. A path on a drive that does not exist, a path that is
+  not a file system path and a name with a character that no file can have still send the log to
+  the current folder, as a refused `LogFilePath` does, each with a warning that says why.
+  ([#149](https://github.com/fadwen/OrphanedSid/issues/149))
+- `Restore-OrphanedSidBackup` reports a backup folder that the running account may not read with
+  the error of the file system, `Access to the path ... is denied`. It reported
+  `No backup files found in directory`, although backups were there, and on PowerShell 7 it gave
+  no other sign of the reason. A log folder that cannot be created is now reported as that in
+  the warning before the log falls back to the current folder; it was reported as missing write
+  permissions. ([#156](https://github.com/fadwen/OrphanedSid/issues/156))
+- `Restore-OrphanedSidBackup` finds the backup of a target that is typed with a blank after a
+  comma or around an equals sign, such as `CN=Alice, OU=Sales, DC=contoso, DC=com`. Active
+  Directory accepts a name spelled that way, and the restore answered
+  `No backup files found for object ...` although the folder held a backup of the object, or
+  `Invalid target object DN format` for a blank before the equals sign. The target and the
+  names that the backups record are now compared in one spelling.
+  ([#150](https://github.com/fadwen/OrphanedSid/issues/150))
+- `Remove-OrphanedSid` ends with the error `BackupFolderNotCreated`, before it reads any object,
+  when it cannot create the folder for the backups of the run, and the message gives the reason,
+  such as `Access to the path ... is denied`. The log said `Created backup folder` for a folder
+  that was not there, the command went on to every object, and each removal then failed with
+  `Could not find a part of the path`. Nothing was removed in that state, and nothing is now;
+  what changes is what the operator is told and when.
+  ([#161](https://github.com/fadwen/OrphanedSid/issues/161))
+
+### Security
+
+- `Tools/Generate-OrphanedSIDs.ps1`, the script in the repository that fills a lab domain with
+  test accounts, gives each account a random password that it keeps nowhere. It gave every
+  account the same password, which is written in the script. The script deletes its accounts at
+  the end of a run, so only an account that an interrupted run left behind still has that
+  password; delete such an account. The script is not part of the published module.
+  ([#155](https://github.com/fadwen/OrphanedSid/issues/155))
 
 ## [1.1.0] - 2026-11-11
 

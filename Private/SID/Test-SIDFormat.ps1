@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    SID Format Validation Module for Find-UnknownSID Solution
+    SID Format Validation Module for the OrphanedSid module
 
 .DESCRIPTION
     This module provides comprehensive SID format validation and well-known SID
-    identification functionality for the Find-UnknownSID enterprise solution.
+    identification functionality for the OrphanedSid module.
 
     This module follows the single-responsibility principle by focusing exclusively
     on SID format validation and structure checking. It serves as the foundation
@@ -29,8 +29,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 1.0.0
     PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
 
     MODULE DESIGN:
@@ -123,12 +121,6 @@ function Test-SIDFormat {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Very fast validation using .NET built-in methods
-        - Typical execution time: <5ms per SID
 
         TROUBLESHOOTING:
         - For validation errors: .\Troubleshooting\Security\SID-Format-Issues.md
@@ -255,12 +247,6 @@ function Test-WellKnownSID {
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-        Last Updated: 2025-07-04
-        Version: 1.0.0
-
-        PERFORMANCE CHARACTERISTICS:
-        - Fast pattern matching and list lookups
-        - Typical execution time: <10ms per SID
 
         WELL-KNOWN SID COVERAGE:
         - Universal well-known SIDs (S-1-0-*, S-1-1-*, etc.)

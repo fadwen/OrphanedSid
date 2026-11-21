@@ -29,7 +29,7 @@ BeforeAll {
     }
     function Invoke-RestoreWorkflow {
         [CmdletBinding(SupportsShouldProcess)]
-        param($BackupPath, $TargetObjectDN, [switch]$VerifyRestoration, $CorrelationId)
+        param($BackupPath, $BackupFile, $TargetObjectDN, [switch]$VerifyRestoration, $CorrelationId)
     }
 
     $script:SearchBase = 'OU=TestUsers,DC=contoso,DC=com'
@@ -138,6 +138,35 @@ Describe "Start-OrchestrationWorkflow" -Tag 'Unit', 'Core', 'Private' {
                 $CorrelationId -eq $script:CorrelationId -and $VerifyRestoration -and -not $WhatIf
             }
             Should -Invoke Invoke-MainProcessingLogic -Times 0 -Exactly
+        }
+
+        It "Maps a backup file, and passes no backup path with it (#160)" {
+            $file = 'C:\TestBackups\run1\CN_TestUser_20260101_120000.xml'
+            $parameters = @{
+                TargetObjectDN = $script:TargetDN
+                BackupFile = $file
+                CorrelationId = $script:CorrelationId
+            }
+
+            $null = Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters
+
+            # The bound parameters are asked, not $BackupPath: a parameter that was not passed
+            # reads as the $script:BackupPath of this file in the filter
+            Should -Invoke Invoke-RestoreWorkflow -Times 1 -Exactly -ParameterFilter {
+                $TargetObjectDN -eq $script:TargetDN -and $BackupFile -eq $file -and
+                -not $PesterBoundParameters.ContainsKey('BackupPath') -and
+                $CorrelationId -eq $script:CorrelationId -and $VerifyRestoration
+            }
+        }
+
+        It "Passes no backup file for a restore from a folder" {
+            $parameters = @{ TargetObjectDN = $script:TargetDN; BackupPath = $script:BackupPath }
+
+            $null = Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $parameters
+
+            Should -Invoke Invoke-RestoreWorkflow -Times 1 -Exactly -ParameterFilter {
+                $BackupPath -eq $script:BackupPath -and -not $PesterBoundParameters.ContainsKey('BackupFile')
+            }
         }
 
         It "Drops keys the restore workflow does not take" {

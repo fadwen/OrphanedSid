@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Resource Disposal and Cleanup Module for Find-UnknownSID Enterprise Solution
+    Resource Disposal and Cleanup Module for the OrphanedSid module
 
 .DESCRIPTION
     Provides focused resource disposal and cleanup functionality including:
@@ -24,7 +24,7 @@
     - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
 
 .COMPONENT
-    Find-UnknownSID Resource Disposal System
+    OrphanedSid Resource Disposal System
 
 .FUNCTIONALITY
     - Comprehensive resource cleanup

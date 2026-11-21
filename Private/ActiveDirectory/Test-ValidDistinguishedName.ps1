@@ -11,8 +11,6 @@
     Author: Jeffrey Stuhr
     Blog: https://www.techbyjeff.net
     LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    Last Updated: 2025-07-04
-    Version: 2.0.0
 
     TROUBLESHOOTING:
     - For DN validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md

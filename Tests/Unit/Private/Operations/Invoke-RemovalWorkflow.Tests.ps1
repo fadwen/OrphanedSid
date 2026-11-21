@@ -293,17 +293,27 @@ Describe "Invoke-RemovalWorkflow" -Tag "Unit", "Operations" {
     }
 
     Context "Failures" {
-        It "Reports a failure to write the ACL back, without verifying" {
+        It "Reports a failure to write the ACL back with its reason, without verifying (#177)" {
             Mock Set-ModifiedACL { [PSCustomObject]@{ Success = $false; ErrorMessage = 'Access is denied' } }
 
             $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1
 
             $result.Success | Should -Be $false
-            $result.ErrorMessage | Should -Be 'Failed to apply ACL changes'
+            $result.ErrorMessage | Should -Be 'Failed to apply ACL changes: Access is denied'
             Should -Invoke Invoke-RemovalVerification -Times 0 -Exactly
             Should -Invoke Write-RemovalSecurityLog -Times 1 -Exactly -ParameterFilter {
                 $Outcome -eq 'Failure' -and $SecurityContext.Error -eq 'ACLApplicationFailure'
             }
+        }
+
+        It "Reports a write that was not made and gave no reason, without a colon at the end" {
+            # Set-ModifiedACL answers this way when its own confirmation is declined
+            Mock Set-ModifiedACL { [PSCustomObject]@{ Success = $false; ErrorMessage = $null } }
+
+            $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $script:dn -OrphanedSIDs $script:sid1
+
+            $result.Success | Should -Be $false
+            $result.ErrorMessage | Should -Be 'Failed to apply ACL changes'
         }
 
         It "Reports a failed verification with its message" {

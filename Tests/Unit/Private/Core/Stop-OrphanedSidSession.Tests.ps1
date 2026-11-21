@@ -95,6 +95,18 @@ Describe 'Stop-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
         }
     }
 
+    Context 'The record of an unreachable directory server (#82)' {
+        It 'Drops the record, so a lookup outside a run tries the server' {
+            $script:DirectoryUnreachableSince = (Get-Date).AddSeconds(-10)
+            $script:DirectoryRetryAt = (Get-Date).AddSeconds(50)
+
+            Stop-OrphanedSidSession
+
+            $script:DirectoryUnreachableSince | Should -BeNullOrEmpty
+            $script:DirectoryRetryAt | Should -BeNullOrEmpty
+        }
+    }
+
     Context 'When cleanup throws' {
         It 'Warns, disposes both managers itself, and still clears the state' {
             Mock Invoke-ResourceCleanup { throw 'cleanup exploded' }

@@ -53,6 +53,7 @@ failures have an ID of their own:
 | `ConfigurationInvalid` | `System.IO.InvalidDataException` | The `-ConfigPath` file was loaded and its settings do not validate, for example a `LogLevel` that is not one of the six level names |
 | `SearchBaseNotUsable` | `System.ArgumentException` | `-SearchBase` was given to `Find-OrphanedSid` or `Remove-OrphanedSid` and held no usable distinguished name |
 | `RestoreTargetNotUsable` | `System.ArgumentException` | `-TargetObjectDN` of `Restore-OrphanedSidBackup` held no usable distinguished name |
+| `BackupFolderNotCreated` | `System.IO.IOException` | `Remove-OrphanedSid` could not create the folder for the backups of the run, so it read no object and removed nothing. The message names the folder and gives the reason; when the file system raised an error, it is the inner exception |
 
 ```powershell
 try {
@@ -266,11 +267,19 @@ is not created.
 | `BatchSize` | int | 50 | 1 to 1000; results per streaming batch file |
 | `MemoryCheckInterval` | int | 50 | 1 to 1000; objects processed between memory checks |
 | `LogLevel` | string | `Information` | One of the `-LogLevel` values. Sets the file log level when `-LogLevel`, `-Verbose` and `-Debug` are all absent; entries written before the file is loaded use `Information` |
-| `LogFilePath` | string | none | The run's log file when `-LogPath` is not given; `-LogPath` wins over it. Resolved, checked and created like `-LogPath`, and the whole run goes to it. Runs append to this file |
+| `LogFilePath` | string | none | The run's log file when `-LogPath` is not given; `-LogPath` wins over it. Resolved, checked and created like `-LogPath`, and the whole run goes to it. Runs append to this file. A path inside the Windows folder or a Program Files folder is refused when it comes from this key: the run warns and writes its log to the current folder |
 | `EnableLogFileRotation` | bool | true | At startup, rename the existing log file to `<name>_<yyyyMMdd_HHmmss>.log` when it is larger than `MaxLogFileSizeMB`, so the run starts a new one. Applies to the run's log file, from `-LogPath` or `LogFilePath`, before the run writes to it. The default timestamped log name is new each run, so rotation matters for a fixed path |
 | `MaxLogFileSizeMB` | int | 10 | |
 
 `CriticalObjectPatterns` is part of the default configuration but cannot be set from the file.
+
+The configuration file decides where a run writes its log, and a scheduled run appends to that
+file with the rights of the account it runs as. Keep the configuration file writable only by the
+people who may run the command with that account. The refusal of the Windows and Program Files
+folders for `LogFilePath` is a guard for the plainest case and no more: every other folder that
+the account can write to is accepted, and a link or a junction that leads into a system folder
+is not followed. `-LogPath` on the command line is not checked this way: it is the choice of
+whoever runs the command.
 
 ```json
 {
