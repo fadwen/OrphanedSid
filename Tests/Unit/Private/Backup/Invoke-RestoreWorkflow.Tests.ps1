@@ -22,6 +22,9 @@ BeforeAll {
     . "$PSScriptRoot\..\..\..\..\Private\Utilities\ConvertTo-NormalizedDistinguishedName.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
+    # A placeholder for the mock; the real function is in Private\Logging
+    function Write-RestoreSecurityLog { param($Outcome, $Message, $TargetObjectDN, $BackupFile, $CorrelationId, [hashtable]$Detail) }
+
     function New-BackupFile {
         param(
             [string]$Folder,
@@ -53,6 +56,7 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
     BeforeEach {
         Mock Write-Warning { }
         Mock Write-Error { }
+        Mock Write-RestoreSecurityLog { }
         Mock Restore-IndividualObject {
             [PSCustomObject]@{
                 Success         = $true
@@ -220,6 +224,27 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.ErrorMessage | Should -Be "Backup file $otherFile is a backup of 'CN=Someone Else,OU=Users,DC=company,DC=com', not of '$($script:TargetDN)'"
         }
 
+        It "Should write a security entry for a backup file that it refuses, which never reaches the restore of the object (#187)" {
+            $script:refusedFile = New-BackupFile -Folder $script:folder -ObjectDN 'CN=Someone Else,OU=Users,DC=company,DC=com'
+
+            $null = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:refusedFile -CorrelationId 'wf-187' -WarningAction SilentlyContinue
+
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and $TargetObjectDN -eq $script:TargetDN -and
+                $BackupFile -eq $script:refusedFile -and $CorrelationId -eq 'wf-187' -and
+                $Detail['Error'] -like "Backup file * is a backup of 'CN=Someone Else,OU=Users,DC=company,DC=com'*"
+            }
+        }
+
+        It "Should leave the security entries of an object that was restored to Restore-IndividualObject (#187)" {
+            $null = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $script:singleFile
+
+            Should -Invoke Restore-IndividualObject -Times 1 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 0 -Exactly
+        }
+
         It "Should take a backup file that records the name of the target as <Recorded> (#150)" -ForEach @(
             @{ Recorded = 'CN=TestUser, OU=Users, DC=company, DC=com' }
             @{ Recorded = 'cn = testuser , ou = users , dc = company , dc = com' }
@@ -303,6 +328,8 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
                 $Message -eq "Failed to restore: $($script:TargetDN) - Target validation failed: Object not found"
             }
+            # Restore-IndividualObject wrote the entry for this failure; a second one would count it twice
+            Should -Invoke Write-RestoreSecurityLog -Times 0 -Exactly
         }
 
         It "Should turn an exception from Restore-IndividualObject into a failed result of the target, naming the file" {
@@ -330,6 +357,10 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.Success | Should -BeFalse
             $result.ErrorMessage | Should -Be 'File is locked'
             Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and $TargetObjectDN -eq $script:TargetDN -and
+                $BackupFile -eq $script:singleFile -and $Detail['Error'] -eq 'File is locked'
+            }
         }
 
         It "Should fail the discovery step for an empty backup folder and write the error" {

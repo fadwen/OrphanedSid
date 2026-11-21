@@ -29,7 +29,7 @@ Tests/
 | `Unit/Private/Backup` | `New-ACLBackup`, `Test-BackupIntegrity` at each level, `Invoke-RestoreWorkflow` and `Invoke-RestoreWorkflow.SingleObject` (single-object restore and container scope), `Restore-IndividualObject`, `Restore-ACLOperation` (`Set-ObjectACL` with its helpers mocked) and `Restore-ACLOperation.Helpers` (`Get-RestorationTarget` and `Confirm-RestorationSuccess` for real) |
 | `Unit/Private/Core` | `Initialize-ScriptExecution`, `Invoke-MainProcessingLogic`, `Start-OrchestrationWorkflow`, `Remove-OrphanedSidEntry`, `Start-OrphanedSidSession`, `Stop-OrphanedSidSession` |
 | `Unit/Private/FileSystem` | `Initialize-LogDirectory` |
-| `Unit/Private/Logging` | `Initialize-LoggingConfiguration`, `Initialize-LoggingSystem` (including `Test-LogLevel`), `Format-LogMessage`, `Write-StructuredLogEntry`, `Write-StructuredLog`, `Write-SecurityStructuredLogEntry`, `Write-SecurityLog`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog` |
+| `Unit/Private/Logging` | `Initialize-LoggingConfiguration`, `Initialize-LoggingSystem` (including `Test-LogLevel`), `Format-LogMessage`, `Write-StructuredLogEntry`, `Write-StructuredLog`, `Write-SecurityStructuredLogEntry`, `Write-SecurityLog`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog`, `Write-RestoreSecurityLog` |
 | `Unit/Private/Operations` | `Invoke-OperationWithRetry`, `Invoke-RemovalWorkflow` |
 | `Unit/Private/Reporting` | `Write-ProcessingSummary` (parameters) and `Write-ProcessingSummary.Scenarios` (discovery, removal and restore results, CSV export) |
 | `Unit/Private/Security` | `Get-SecurityDescriptor` (`Get-ObjectAccessRule` and its retrieval strategies), `Invoke-SecurityValidation`, `Invoke-RemovalVerification` |

@@ -228,6 +228,8 @@ HelpMessage: ''
 
 Lowest level written to the log file.
 Security events are written at every level.
+Among them are the attempt and the outcome of the restore of each object, with the object and
+the backup file, so the log says what was restored at -LogLevel Error as well.
 When omitted, -Verbose sets Verbose and -Debug sets Debug, and the level is otherwise
 Information.
 
