@@ -4,6 +4,12 @@
 # TestDrive; Get-Location is mocked to TestDrive too, so the fallback path never points into the
 # repository.
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
+    # The configuration file first, as the module loads it: it assigns the logging state that
+    # Initialize-LoggingSystem and Get-LoggingSystemState read
+    . $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingConfiguration.ps1
     . $PSScriptRoot\..\..\..\..\Private\Logging\Initialize-LoggingSystem.ps1
 
     . $PSScriptRoot\..\..\..\..\Private\FileSystem\Initialize-LogDirectory.ps1
@@ -151,7 +157,8 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             Initialize-LogDirectory -LogPath $script:TestLogPath -RotateAboveMB 1 | Should -Be $script:TestLogPath
 
             $script:LogRotation.Error | Should -Be 'The process cannot access the file because it is being used by another process.'
-            $script:LogRotation.To | Should -BeNullOrEmpty
+            # A failed rotation has no To: the file was not renamed
+            $script:LogRotation.ContainsKey('To') | Should -BeFalse
             (Get-Item $script:TestLogPath).Length | Should -BeGreaterThan 2MB
             $script:LogFileInitialized | Should -BeTrue
         }
@@ -179,7 +186,11 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
         }
 
         It "Should warn when the logging system has no correlation ID" {
-            Mock Get-LoggingSystemState { [PSCustomObject]@{ CorrelationId = $null; LogLevel = 'Information' } }
+            # The state as the real function returns it before a session, with the properties
+            # that the header of the log file reads
+            Mock Get-LoggingSystemState {
+                [PSCustomObject]@{ CorrelationId = $null; LogLevel = 'Information'; SuppressConsoleOutput = $false }
+            }
 
             Initialize-LogDirectory -LogPath $script:TestLogPath
 

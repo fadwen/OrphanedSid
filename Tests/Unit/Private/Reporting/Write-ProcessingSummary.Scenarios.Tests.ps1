@@ -13,6 +13,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Export-ResultCsv.ps1"
 
@@ -20,7 +23,12 @@ BeforeAll {
 
     function New-DiscoveryResults {
         param([int]$Found = 2, [int]$Errors = 0, [int]$TotalResults = 2, [int]$Unverified = -1, [int]$Unexamined = -1, [switch]$AsHashtable)
-        $manager = [PSCustomObject]@{ Summary = [PSCustomObject]@{ TotalResults = $TotalResults }; Exported = $null }
+        # The members of StreamingResultsManager that the summary reads
+        $manager = [PSCustomObject]@{
+            Summary    = [PSCustomObject]@{ TotalResults = $TotalResults }
+            WhatIfMode = $false
+            Exported   = $null
+        }
         $manager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; 'ObjectDN,OrphanedSID' | Set-Content $Path; $true }
         $results = [ordered]@{
             TotalObjectsProcessed = 37
@@ -124,7 +132,7 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
 
         It 'Says no file was written when the streaming manager is in WhatIf mode (#50)' {
             $results = New-DiscoveryResults
-            $results.StreamingManager | Add-Member -NotePropertyName WhatIfMode -NotePropertyValue $true
+            $results.StreamingManager.WhatIfMode = $true
             $results.StreamingManager | Add-Member -MemberType ScriptMethod -Name ExportToCsv -Value { param($Path) $this.Exported = $Path; $false } -Force
 
             Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
@@ -252,6 +260,20 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Results $all)
 
             Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'All restore operations completed successfully!' }
+        }
+
+        It 'Summarises one restore result that arrives as one object, not as a collection (#153)' {
+            # Under strict mode one object has no Count on Windows PowerShell 5.1. On PowerShell 7
+            # a custom object has a Count of 1, so only that edition shows the difference.
+            $one = [PSCustomObject]@{ ObjectDN = 'CN=Host 1,DC=contoso,DC=com'; Success = $true; EntriesRestored = 34; ErrorMessage = $null }
+            $results = New-RestoreResults -Results @($one)
+            $results.RestoreResults = $one
+
+            Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
+
+            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq '  [SUCCESS] CN=Host 1,DC=contoso,DC=com (34 entries)' }
+            @(Import-Csv $script:csv).Count | Should -Be 1
+            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Level -eq 'Error' }
         }
 
         It 'Exports the restore results to CSV' {

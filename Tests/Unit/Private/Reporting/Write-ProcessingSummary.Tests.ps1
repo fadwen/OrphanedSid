@@ -3,6 +3,9 @@
 # that carry only some of the optional keys. Write-ProcessingSummary.Scenarios.Tests.ps1 covers what
 # is logged for each kind of full result.
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
 
     # Placeholder for the logging function defined in another file: Pester can only mock a command

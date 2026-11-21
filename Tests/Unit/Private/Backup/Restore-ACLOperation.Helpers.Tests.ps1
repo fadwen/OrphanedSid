@@ -12,6 +12,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ActiveDirectory\Get-DirectoryObjectAcl.ps1"

@@ -11,6 +11,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-ACLForRemoval.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"

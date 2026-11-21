@@ -297,7 +297,15 @@ function Invoke-RestoreWorkflow {
 
                     # Load backup data to get the actual target object DN
                     $backupData = Import-Clixml -LiteralPath $fileToProcess -ErrorAction Stop
-                    $actualTargetDN = $backupData.ObjectDN
+                    # Read by name: a file that is not a backup has no such property, and
+                    # reading it as a member is an error under strict mode
+                    $actualTargetDN = $null
+                    if ($null -ne $backupData) {
+                        $recordedProperty = $backupData.PSObject.Properties['ObjectDN']
+                        if ($null -ne $recordedProperty) {
+                            $actualTargetDN = $recordedProperty.Value
+                        }
+                    }
 
                     # A backup chosen by file must be of the object asked for. Directory mode already
                     # selects files by the DN they record. The recorded name is compared in the
@@ -426,6 +434,16 @@ function Invoke-RestoreWorkflow {
                 }
             }
 
+            # The entries of the objects that were restored. Added up here and not with
+            # Measure-Object, which returns nothing for no input, and whose Sum is then an
+            # error to read under strict mode.
+            $entriesRestored = 0
+            foreach ($restored in $allResults) {
+                if ($restored.Success) {
+                    $entriesRestored += [int]$restored.EntriesRestored
+                }
+            }
+
             # Return summary result for bulk operations
             $result = [PSCustomObject]@{
                 Success = $overallSuccess
@@ -435,7 +453,7 @@ function Invoke-RestoreWorkflow {
                 SuccessfulRestores = $workflowSteps[-1].SuccessfulRestores
                 FailedRestores = $workflowSteps[-1].FailedRestores
                 IndividualResults = $allResults
-                EntriesRestored = [int](($allResults | Where-Object { $_.Success } | Measure-Object -Property EntriesRestored -Sum).Sum -as [int])
+                EntriesRestored = $entriesRestored
                 WorkflowSteps = $workflowSteps
                 ValidationLevel = $ValidationLevel
                 Duration = $workflowDuration

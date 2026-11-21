@@ -77,10 +77,26 @@ class ScriptConfiguration {
         try {
             $configData = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 
+            # The settings of the file, by name. A file may leave any of them out, and under
+            # strict mode a read of a property that the parsed file does not have is an error.
+            # Looked up this way, a setting that is not in the file is $null.
+            $settingNames = 'WellKnownSIDPatterns', 'ProtectedSIDs', 'BatchSize', 'MemoryCheckInterval',
+                'LogLevel', 'LogFilePath', 'EnableLogFileRotation', 'MaxLogFileSizeMB'
+            $setting = @{}
+            foreach ($settingName in $settingNames) {
+                $setting[$settingName] = $null
+                if ($null -ne $configData) {
+                    $property = $configData.PSObject.Properties[$settingName]
+                    if ($null -ne $property) {
+                        $setting[$settingName] = $property.Value
+                    }
+                }
+            }
+
             # Validation with proper error handling
-            if ($configData.WellKnownSIDPatterns) {
+            if ($setting['WellKnownSIDPatterns']) {
                 # Validate SID patterns
-                foreach ($pattern in $configData.WellKnownSIDPatterns) {
+                foreach ($pattern in $setting['WellKnownSIDPatterns']) {
                     try {
                         $null = [regex]::new($pattern)
                     }
@@ -88,38 +104,38 @@ class ScriptConfiguration {
                         throw "Invalid regex pattern in WellKnownSIDPatterns: $pattern"
                     }
                 }
-                $this.WellKnownSIDPatterns = $configData.WellKnownSIDPatterns
+                $this.WellKnownSIDPatterns = $setting['WellKnownSIDPatterns']
             }
 
-            if ($configData.ProtectedSIDs) {
+            if ($setting['ProtectedSIDs']) {
                 # Validate SID formats
-                foreach ($sid in $configData.ProtectedSIDs) {
+                foreach ($sid in $setting['ProtectedSIDs']) {
                     if (-not ($sid -match '^S-1-\d+(-\d+)*$')) {
                         throw "Invalid SID format in ProtectedSIDs: $sid"
                     }
                 }
-                $this.ProtectedSIDs = $configData.ProtectedSIDs
+                $this.ProtectedSIDs = $setting['ProtectedSIDs']
             }
 
             # Tested for presence, not truth: 0 must reach the range check, not be read as unset
-            if ($null -ne $configData.BatchSize) {
-                if ($configData.BatchSize -lt 1 -or $configData.BatchSize -gt 1000) {
-                    throw "BatchSize must be between 1 and 1000, got: $($configData.BatchSize)"
+            if ($null -ne $setting['BatchSize']) {
+                if ($setting['BatchSize'] -lt 1 -or $setting['BatchSize'] -gt 1000) {
+                    throw "BatchSize must be between 1 and 1000, got: $($setting['BatchSize'])"
                 }
-                $this.BatchSize = $configData.BatchSize
+                $this.BatchSize = $setting['BatchSize']
             }
 
-            if ($null -ne $configData.MemoryCheckInterval) {
-                if ($configData.MemoryCheckInterval -lt 1 -or $configData.MemoryCheckInterval -gt 1000) {
-                    throw "MemoryCheckInterval must be between 1 and 1000, got: $($configData.MemoryCheckInterval)"
+            if ($null -ne $setting['MemoryCheckInterval']) {
+                if ($setting['MemoryCheckInterval'] -lt 1 -or $setting['MemoryCheckInterval'] -gt 1000) {
+                    throw "MemoryCheckInterval must be between 1 and 1000, got: $($setting['MemoryCheckInterval'])"
                 }
-                $this.MemoryCheckInterval = $configData.MemoryCheckInterval
+                $this.MemoryCheckInterval = $setting['MemoryCheckInterval']
             }
 
-            if ($configData.LogLevel) { $this.LogLevel = $configData.LogLevel }
-            if ($configData.LogFilePath) { $this.LogFilePath = $configData.LogFilePath }
-            if ($null -ne $configData.EnableLogFileRotation) { $this.EnableLogFileRotation = $configData.EnableLogFileRotation }
-            if ($configData.MaxLogFileSizeMB) { $this.MaxLogFileSizeMB = $configData.MaxLogFileSizeMB }
+            if ($setting['LogLevel']) { $this.LogLevel = $setting['LogLevel'] }
+            if ($setting['LogFilePath']) { $this.LogFilePath = $setting['LogFilePath'] }
+            if ($null -ne $setting['EnableLogFileRotation']) { $this.EnableLogFileRotation = $setting['EnableLogFileRotation'] }
+            if ($setting['MaxLogFileSizeMB']) { $this.MaxLogFileSizeMB = $setting['MaxLogFileSizeMB'] }
 
             return $this
 

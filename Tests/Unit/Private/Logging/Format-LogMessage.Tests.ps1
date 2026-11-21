@@ -10,6 +10,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     $script:ModuleRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 
     $script:FunctionPath = Join-Path $script:ModuleRoot "Private\Logging\Format-LogMessage.ps1"

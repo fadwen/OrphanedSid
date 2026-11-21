@@ -91,6 +91,44 @@ come out `Unverified` and uncached: read as "nothing failed", it would be `Orpha
 while the server is down. And the record is made where the failure is caught, not at the end of
 the function, because a SID that the local name lookup finds returns before the end.
 
+### Strict mode is set in the root module, and each unit test file sets it too
+
+`OrphanedSid.psm1` runs `Set-StrictMode -Version Latest` before it loads a file, as ERR-02 and
+MOD-05 of the standards ask. From there on a read of a variable that was never assigned, or of a
+property that an object does not have, is an error in every function and class method of the
+module, where it used to be a silent `$null`. Three things follow, and each was a failure once
+the line was in (#153):
+
+- State is assigned when the module loads. The state that the private functions share is
+  assigned in the root module, after the files are loaded. State that one file owns is assigned
+  at the top of that file: `$script:LogRotation` in `Initialize-LogDirectory.ps1`, the logging
+  state in `Initialize-LoggingConfiguration.ps1`, `$script:SecurityLoggingMetrics` in
+  `Write-SecurityStructuredLogEntry.ps1` and the SID validation cache in `Test-OrphanedSID.ps1`.
+  A function that tests `if (-not $script:X)` before anything has assigned `X` raises an error,
+  and a private function can be called through the module scope before any run. The SID
+  validation cache is assigned unconditionally for the same reason: the test
+  `if (-not $script:SIDValidationCache)` at the top of its file failed the import.
+- Data whose shape is not the module's own is read by name: a setting of a configuration file, a
+  property of a backup file, an object from the pipeline, a deserialized security descriptor, a
+  value of a result table. That is `$data.PSObject.Properties['Name']`, or a table read with the
+  index. Read as a member, a missing one ends the function. Where the nearest `catch` is the one
+  of a public command it ends the calling script: `(... | Measure-Object -Sum).Sum`, over no
+  restore that succeeded, did that to a restore that had only failed. An object that the module
+  builds itself, such as a restore result, is read as a member: it always has the property.
+- A collection is wrapped in `@()` before `.Count`, and the `@()` goes around an `if` that is used
+  as a value, not inside it: `$rules = if ($acl) { ... } else { @() }` gives nothing, and nothing
+  has no `Count`.
+
+A unit test file dot-sources single files and does not import the module, so the line in the root
+module does not reach it. Each test file under `Tests/Unit/Private` and `Tests/Unit/Classes`
+therefore has `Set-StrictMode -Version Latest` as the first statement of its first `BeforeAll`.
+That was measured on both editions to reach the functions the file loads and its `It` blocks, and
+not to reach the next file. A test then has to give the code what the module gives it: the state
+it reads, and doubles with the properties that the real object has. A test name with `<Word>` in
+it is an error there when `Word` is not a key of its `-ForEach` case, because Pester reads it as a
+variable. The contract tests check the line, that no loaded file sets the mode, that state is
+assigned at load, and that each of those test files sets it.
+
 ### The classes have no static member
 
 On Windows PowerShell 5.1, once another runspace of the process has imported the module and been

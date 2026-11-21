@@ -1,14 +1,13 @@
 #Requires -Version 5.1
 
-# Initialize cache at module level
-if (-not $script:SIDValidationCache) {
-    $script:SIDValidationCache = @{}
-}
+# The cache of lookup results, created when this file is loaded. The module loads the file once
+# for each import, so the cache lives as long as the module does: a second run in the same
+# PowerShell session reuses it. The assignments are unconditional because the root module sets
+# strict mode, and a test of a variable that was never assigned is an error there (#153).
+$script:SIDValidationCache = @{}
 # Lookup counters feed CacheHitRatio in Get-SIDValidationCacheStat
-if ($null -eq $script:SIDValidationCacheLookups) {
-    $script:SIDValidationCacheLookups = 0
-    $script:SIDValidationCacheHits = 0
-}
+$script:SIDValidationCacheLookups = 0
+$script:SIDValidationCacheHits = 0
 # Set while the directory server is known to be unreachable (#82): the time it was first found
 # so, and the time from which a directory lookup is tried again. Unlike the cache they are per
 # run, and Start-OrphanedSidSession resets them.

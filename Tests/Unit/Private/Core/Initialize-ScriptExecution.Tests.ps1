@@ -13,6 +13,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Classes\ScriptConfiguration.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\ProcessingStatistics.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\MemoryManager.ps1"
@@ -100,7 +103,7 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
             $result.Count | Should -Be 1
             $result[0] | Should -BeOfType [hashtable]
         }
-        It 'Defaults the log to .\Logs\OrphanedSid_<timestamp>.log when no path is given' {
+        It 'Defaults the log to .\Logs\OrphanedSid_ and the time, with the extension .log, when no path is given' {
             Initialize-ScriptExecution | Out-Null
 
             Should -Invoke Initialize-LogDirectory -Times 1 -Exactly -ParameterFilter { $LogPath -like '.\Logs\OrphanedSid_????????_??????.log' }

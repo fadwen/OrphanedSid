@@ -5,6 +5,12 @@
 # longer exist, removes them with a backup of every ACL touched, and restores an ACL from that
 # backup.
 
+# Set once, here. It applies to this scope and the scopes below it, which are the files that this
+# module dot-sources and every function and class method they define. A read of a variable that
+# was never assigned, or of a property that an object does not have, is an error from here on
+# and not a silent $null.
+Set-StrictMode -Version Latest
+
 $ModuleRoot = $PSScriptRoot
 Write-Verbose "Initializing OrphanedSid module from: $ModuleRoot"
 
@@ -87,16 +93,18 @@ Remove-Variable -Name $loaderVariables -Scope Script
 Remove-Variable -Name 'loaderVariables' -Scope Script
 
 # Module-scope state shared by the private functions. A command sets these for the duration of
-# one run through Start-OrphanedSidSession and clears them in Stop-OrphanedSidSession.
+# one run through Start-OrphanedSidSession and clears them in Stop-OrphanedSidSession. They are
+# assigned here so that each exists from the import on: under strict mode a function that reads
+# one before the first run, as a private function called through the module scope does, would
+# read a variable that nothing has assigned, which is an error. State that one file owns is
+# assigned at the top of that file, as the SID validation cache is in Test-OrphanedSID.ps1.
 $script:Config = $null
 $script:MemoryManager = $null
 $script:Statistics = $null
 $script:StreamingResults = $null
 $script:RemovalResults = @()
 $script:CurrentDomainSID = $null
-$script:SIDValidationCache = @{}
-$script:SIDValidationCacheLookups = 0
-$script:SIDValidationCacheHits = 0
+$script:SIDClassificationCache = $null
 
 Export-ModuleMember -Function @(
     'Find-OrphanedSid'
@@ -106,7 +114,9 @@ Export-ModuleMember -Function @(
 
 $ExecutionContext.SessionState.Module.OnRemove = {
     Write-Verbose 'Cleaning up OrphanedSid module'
-    foreach ($name in 'Config', 'MemoryManager', 'Statistics', 'StreamingResults', 'RemovalResults', 'CurrentDomainSID', 'SIDValidationCache') {
+    $stateNames = 'Config', 'MemoryManager', 'Statistics', 'StreamingResults', 'RemovalResults',
+        'CurrentDomainSID', 'SIDClassificationCache', 'SIDValidationCache'
+    foreach ($name in $stateNames) {
         Remove-Variable -Name $name -Scope Script -ErrorAction SilentlyContinue
     }
 }

@@ -3,6 +3,9 @@
 # Test-WellKnownSID unless a test mocks one of them
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
 
     . (Join-Path $PSScriptRoot '..\..\..\..\Classes\SIDAnalysisResult.ps1')

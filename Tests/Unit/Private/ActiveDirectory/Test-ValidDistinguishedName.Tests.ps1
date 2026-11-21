@@ -1,6 +1,9 @@
 ﻿# Test-ValidDistinguishedName Tests
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     $here = $PSScriptRoot
 
     $sut = (Split-Path -Leaf $PSCommandPath) -replace '\.Tests\.', '.'

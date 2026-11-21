@@ -137,8 +137,10 @@ function Set-ObjectACL {
                     # Apply ACL to Active Directory object
                     Set-DirectoryObjectAcl -DistinguishedName $TargetObjectDN -AclObject $securityDescriptor
 
-                    # Count ACE entries for reporting
-                    $modificationsCount = ($sddlToApply -split '\(' | Where-Object { $_ -like '*;*' }).Count
+                    # Count ACE entries for reporting. @(): a descriptor with one entry gives one
+                    # string, which has no Count under strict mode. The error came after the
+                    # write, so a restore that was applied was reported as failed.
+                    $modificationsCount = @($sddlToApply -split '\(' | Where-Object { $_ -like '*;*' }).Count
 
                     Write-Verbose "ACL applied successfully to $TargetObjectDN ($modificationsCount modifications) - CorrelationId: $CorrelationId"
                     $success = $true
@@ -156,7 +158,7 @@ function Set-ObjectACL {
                 # WhatIf mode - simulate the operation
                 $success = $true
                 $errorMessage = $null
-                $modificationsCount = ($sddlToApply -split '\(' | Where-Object { $_ -like '*;*' }).Count
+                $modificationsCount = @($sddlToApply -split '\(' | Where-Object { $_ -like '*;*' }).Count
                 Write-Verbose "WhatIf: Would apply ACL with $modificationsCount modifications to $TargetObjectDN"
             }
 

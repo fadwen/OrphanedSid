@@ -53,7 +53,7 @@
     # object with the properties value, DisplayHint and DateTime, so the Timestamp that
     # Write-SecurityLog passes had two shapes in the file (#191). Only a value of the entry
     # itself is converted, not a date inside a value.
-    if ($AdditionalData.Count -gt 0) {
+    if ($null -ne $AdditionalData -and $AdditionalData.Count -gt 0) {
         foreach ($key in $AdditionalData.Keys) {
             $value = $AdditionalData[$key]
             if ($value -is [datetime]) {

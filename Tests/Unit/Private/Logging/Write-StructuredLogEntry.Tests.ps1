@@ -1,5 +1,8 @@
 ﻿# Unit tests for Write-StructuredLogEntry.ps1
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLogEntry.ps1"
 }
 

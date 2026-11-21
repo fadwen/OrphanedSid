@@ -1,5 +1,8 @@
 ﻿#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     $privateRoot = Join-Path $PSScriptRoot '..\..\..\..\Private'
 
     # The real collaborators are dot-sourced so each mock carries the real parameter block: a call

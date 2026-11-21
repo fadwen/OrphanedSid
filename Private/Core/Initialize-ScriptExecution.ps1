@@ -273,7 +273,8 @@ function Initialize-ScriptExecution {
             $null = Initialize-LogDirectory @logDirectoryParameters
 
             if ($script:LogRotation) {
-                if ($script:LogRotation.Error) {
+                # The table has an Error key only when the rotation failed
+                if ($script:LogRotation.ContainsKey('Error')) {
                     Write-StructuredLog "Log file rotation failed for $($script:LogRotation.From) ($($script:LogRotation.SizeMB) MB); appending to it: $($script:LogRotation.Error)" -Level Warning -Component 'Initialization' -CorrelationId $CorrelationId
                 }
                 else {

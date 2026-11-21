@@ -1,4 +1,9 @@
-﻿function Write-SecurityStructuredLogEntry {
+﻿# The counters of Update-SecurityLoggingMetrics, which creates the table on its first call.
+# Declared when the module loads: the function tests the variable before it assigns it, and
+# under strict mode a test of a variable that was never assigned is an error (#153).
+$script:SecurityLoggingMetrics = $null
+
+function Write-SecurityStructuredLogEntry {
     <#
     .SYNOPSIS
         Writes security log entries directly to file with mandatory audit trail

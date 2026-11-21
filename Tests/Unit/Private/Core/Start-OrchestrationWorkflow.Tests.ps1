@@ -18,6 +18,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Core\Start-OrchestrationWorkflow.ps1"
 
     # Placeholders so the delegates can be mocked. The parameters are the real functions' names,

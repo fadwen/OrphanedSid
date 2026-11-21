@@ -1,6 +1,9 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '6.1.0' }
 Describe "Test-SIDSecurity" -Tag 'Unit', 'Private', 'SID' {
     BeforeAll {
+        # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+        Set-StrictMode -Version Latest
+
         # Dot-source the classes and functions under test rather than importing the module
         $ModuleRoot = Split-Path -Path (Split-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -Parent) -Parent
         $PrivatePath = Join-Path -Path $ModuleRoot -ChildPath 'Private'
@@ -317,7 +320,7 @@ Describe "Test-SIDSecurity" -Tag 'Unit', 'Private', 'SID' {
         }
 
         It "Applies no object check when the configuration has no critical patterns" {
-            $script:Config = @{ ProtectedSIDs = @() }
+            $script:Config = @{ ProtectedSIDs = @(); CriticalObjectPatterns = @() }
 
             $result = Test-SIDSecurity -SIDString $UserSID -ObjectDN 'CN=Domain Controllers,DC=contoso,DC=com'
 

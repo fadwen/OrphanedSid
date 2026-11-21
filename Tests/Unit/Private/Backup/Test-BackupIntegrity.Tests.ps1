@@ -11,6 +11,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
 
     function Get-Sha256Base64 {
@@ -70,16 +73,23 @@ Describe 'Test-BackupIntegrity' -Tag 'Unit', 'Backup', 'Private' {
     }
 
     Context 'Structure checks, applied at every level' {
-        It 'Reports each missing required property' {
+        It 'Reports each missing required property at the <Level> level' -ForEach @(
+            @{ Level = 'Basic' }
+            @{ Level = 'Standard' }
+            @{ Level = 'Comprehensive' }
+        ) {
+            # The later levels read the same properties again. A missing one has to come back in
+            # the list at every level, and not as an error of the check itself (#153).
             $partial = [PSCustomObject]@{ ObjectDN = 'CN=A,DC=contoso,DC=com'; SDDL = 'D:' }
 
-            $result = Test-BackupIntegrity -BackupData $partial -ValidationLevel 'Basic'
+            $result = Test-BackupIntegrity -BackupData $partial -ValidationLevel $Level
 
             $result.IsValid | Should -BeFalse
             $result.Issues | Should -Contain 'Missing required property: BackupDate'
             $result.Issues | Should -Contain 'Missing required property: SDDLHash'
             $result.Issues | Should -Contain 'Missing required property: ValidationSignature'
             $result.ErrorMessage | Should -BeLike '*Missing required property: BackupDate;*'
+            @($result.Issues | Where-Object { $_ -like 'Validation error:*' }) | Should -BeNullOrEmpty
         }
 
         It 'Rejects an unknown signature' {

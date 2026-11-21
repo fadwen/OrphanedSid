@@ -150,19 +150,23 @@ function Find-OrphanedSIDsInObject {
                     continue
                 }
 
-                # Validate that this is an AD object with required properties
-                if (-not $obj.DistinguishedName) {
+                # Validate that this is an AD object with required properties. They are read by
+                # name, because the input is whatever came down the pipeline: read as a member,
+                # a property that is not there is an error under strict mode.
+                $nameProperty = $obj.PSObject.Properties['DistinguishedName']
+                if ($null -eq $nameProperty -or -not $nameProperty.Value) {
                     Write-StructuredLog "Object missing DistinguishedName property, skipping" -Level Debug -CorrelationId $CorrelationId
                     $processingStats.SkippedSIDs++
                     continue
                 }
 
-                $objectDN = $obj.DistinguishedName
+                $objectDN = $nameProperty.Value
                 $processingStats.ObjectDN = $objectDN
                 Write-StructuredLog "Processing object: $objectDN" -Level Debug -CorrelationId $CorrelationId
 
                 # Check for security descriptor
-                if (-not $obj.nTSecurityDescriptor) {
+                $descriptorProperty = $obj.PSObject.Properties['nTSecurityDescriptor']
+                if ($null -eq $descriptorProperty -or -not $descriptorProperty.Value) {
                     Write-StructuredLog "No security descriptor found for $objectDN" -Level Debug -CorrelationId $CorrelationId
                     $processingStats.SkippedSIDs++
                     continue
@@ -177,8 +181,11 @@ function Find-OrphanedSIDsInObject {
                     continue
                 }
 
-                $processingStats.AccessRulesRetrieved = $accessRules.Count
-                Write-StructuredLog "Retrieved $($accessRules.Count) access rules for processing" -Level Debug -CorrelationId $CorrelationId
+                # @(): an object with one access rule gives one rule, not a collection of one, and
+                # under strict mode one object has no Count
+                $ruleCount = @($accessRules).Count
+                $processingStats.AccessRulesRetrieved = $ruleCount
+                Write-StructuredLog "Retrieved $ruleCount access rules for processing" -Level Debug -CorrelationId $CorrelationId
 
                 # Process each access rule for orphaned SIDs using specialized identity resolution
                 foreach ($rule in $accessRules) {
