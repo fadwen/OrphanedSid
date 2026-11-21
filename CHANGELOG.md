@@ -79,6 +79,13 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- The help of `Find-OrphanedSid`, the `about_OrphanedSid` topic and the troubleshooting guide said
+  that a lookup of a SID from a trusted domain that cannot be reached waits about 40 seconds for
+  each SID. Measured on a lab forest trust, the wait is paid once, by the lookup that first finds
+  the trusted domain out of reach: 34 to 56 seconds. After that such lookups fail at once, except
+  for one about every minute, which waits 15 seconds during about the first ten minutes and 2
+  seconds from then on. The three texts now say that, and the guide has the figures in a table.
+  Nothing in the commands changed. ([#82](https://github.com/fadwen/OrphanedSid/issues/82))
 - Square brackets in a path, and `[`, `]`, `*`, `?` or a backtick in an object's name, no longer
   stop a run or send it to another object. PowerShell reads those characters as a pattern, and
   the module passed names and paths in the form that is matched as one.

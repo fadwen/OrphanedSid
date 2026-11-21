@@ -289,11 +289,24 @@ Only the domain that issued a SID can say whether it still exists. When that dom
 found", the SID is reported orphaned. When it cannot be reached, nothing is decided and the SID is
 left in place.
 
-An unreachable-trust lookup can wait for the trust to time out, about 40 seconds per distinct SID
-in testing. Once Windows has marked the trust broken (`nltest` below reports
-`ERROR_NO_LOGON_SERVERS`), each lookup fails in a few seconds instead; 4 seconds in testing. An
-unverified answer is not cached, so every ACE that names such a SID pays the cost again.
-A run that slows down sharply on objects with foreign entries is usually waiting on a trust:
+What an unreachable trust costs depends on how long the trusted domain has been out of reach,
+not on the number of SIDs. Measured on a lab forest trust from a domain controller that runs
+Windows Server 2022, with one lookup after another, each for a SID that had not been asked before:
+
+| Since the trusted domain stopped answering | What a lookup costs |
+|---|---|
+| The first lookup | One wait of 34 to 56 seconds. Windows then marks the secure channel broken: `nltest /sc_query:<trusted domain>` reports `ERROR_NO_LOGON_SERVERS` |
+| About the first ten minutes | Nothing, except for one lookup about every 60 seconds, which waits 15 seconds while Windows looks for a domain controller again |
+| After that | Nothing, except for one lookup about every 47 seconds, which waits 2 seconds |
+| The trusted domain answers again | Lookups go on failing until the next such attempt, 32 seconds in testing, and then work at once |
+
+The waits are made by Windows, not by PowerShell: the first run after the trust broke waited as
+long on Windows PowerShell 5.1 as on PowerShell 7.6. `Find-OrphanedSid` over five objects with
+one SID of the trusted domain each took 4 seconds with the trust working. As the first run after
+the trust broke it took 40 to 62 seconds, of which the first of the five SIDs took 37 to 56, and
+as the next run 4 to 8 seconds. An unverified answer is not cached, so every ACE that names such
+a SID is looked up again, but most of those lookups return at once. A run that slows down sharply
+on objects with foreign entries is usually the one that found the trust gone:
 
 ```powershell
 nltest /sc_verify:<trusted domain DNS name>   # NERR_Success means the secure channel works
