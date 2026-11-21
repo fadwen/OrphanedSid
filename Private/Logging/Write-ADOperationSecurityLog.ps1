@@ -24,7 +24,7 @@ function Write-ADOperationSecurityLog {
 
         DESCRIPTION: Logs successful AD user retrieval operation
         OUTPUT: Security log entry with audit trail
-        USE CASE: Compliance and security monitoring
+        USE CASE: Security monitoring
 
     .NOTES
         Author: Jeffrey Stuhr

@@ -1,50 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Result Factory Module for the OrphanedSid module
-
-.DESCRIPTION
-    This focused module handles all result object creation and metadata management
-    for the OrphanedSid module. It provides comprehensive factory
-    functions for creating standardized result objects with rich metadata and
-    proper validation.
-
-    SINGLE RESPONSIBILITY:
-    This module does ONE thing well: Create and populate result objects with
-    comprehensive metadata, ensuring consistent structure and complete information
-    for all orphaned SID detection results.
-
-    BUSINESS VALUE:
-    - Standardized result object creation with consistent metadata
-    - Comprehensive error handling and validation for result objects
-    - Rich metadata population for audit trails and compliance
-    - Extensible factory pattern for future result types
-
-    TECHNICAL FEATURES:
-    - Safe property extraction from access rules with null handling
-    - Comprehensive metadata population including correlation tracking
-    - Standardized result object validation and structure
-    - Memory-efficient object creation with proper cleanup
-    - Integration with enterprise logging and audit systems
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For result creation issues: .\Troubleshooting\Common\Result-Creation-Issues.md
-    - For metadata population errors: .\Troubleshooting\Common\Metadata-Population-Issues.md
-    - For object validation problems: .\Troubleshooting\Common\Result-Validation-Issues.md
-
-    DEPENDENCIES:
-    - Requires Classes.ps1 for OrphanedSIDResult class definition
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Uses script-scoped variables (CorrelationId for tracking)
-#>
-
 #region SID Result Factory Functions
 
 function New-OrphanedSIDResult {
@@ -127,7 +82,6 @@ function New-OrphanedSIDResult {
 
         DESCRIPTION: Result creation with specific processing method and correlation tracking
         OUTPUT: OrphanedSIDResult with audit trail correlation and processing context
-        INTEGRATION: Enterprise environments requiring detailed tracking and compliance
 
     .OUTPUTS
         [OrphanedSIDResult] Fully populated result object containing:
@@ -151,13 +105,17 @@ function New-OrphanedSIDResult {
         - SID Analysis: Orphaned SID, source, confidence level
         - ACL Details: Access rights, control type, inheritance
         - Processing Info: Method, correlation ID, action taken
-        - Audit Trail: Timestamps, operator context, compliance data
 
         ERROR HANDLING:
         - Comprehensive input validation with detailed error messages
         - Safe property extraction with null checking
         - Graceful handling of missing or invalid access rule properties
         - Detailed logging for troubleshooting and audit purposes
+
+        TROUBLESHOOTING:
+        - For result creation issues: .\Troubleshooting\Common\Result-Creation-Issues.md
+        - For metadata population errors: .\Troubleshooting\Common\Metadata-Population-Issues.md
+        - For object validation problems: .\Troubleshooting\Common\Result-Validation-Issues.md
     #>
 
     [CmdletBinding()]

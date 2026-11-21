@@ -1,39 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Memory Statistics and Reporting Module for the OrphanedSid module
-
-.DESCRIPTION
-    Provides focused memory statistics collection and reporting functionality including:
-    - Current memory usage collection
-    - Detailed memory usage reporting with performance recommendations
-    - Memory statistics analysis and trend identification
-    - Enterprise-grade correlation tracking
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on memory statistics and reporting operations.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
-    - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
-    - For reporting issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
-
-.COMPONENT
-    OrphanedSid Memory Statistics System
-
-.FUNCTIONALITY
-    - Memory usage statistics collection
-    - Comprehensive memory reporting
-    - Performance recommendations
-    - Memory trend analysis
-#>
-
 function Get-CurrentMemoryUsage {
     <#
     .SYNOPSIS
@@ -56,6 +22,11 @@ function Get-CurrentMemoryUsage {
         MONITORING PURPOSE:
         Essential for memory baseline establishment and
         performance trending in enterprise environments.
+
+        TROUBLESHOOTING:
+        - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
+        - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
+        - For reporting issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
     #>
 
     [CmdletBinding()]
@@ -115,13 +86,6 @@ function Get-MemoryUsageReport {
 
     .OUTPUTS
         [PSCustomObject] Comprehensive memory usage report
-
-    .NOTES
-        ENTERPRISE VALUE:
-        - Performance baseline establishment
-        - Capacity planning support
-        - Troubleshooting documentation
-        - Compliance reporting
     #>
 
     [CmdletBinding()]

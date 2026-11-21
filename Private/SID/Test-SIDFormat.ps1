@@ -1,50 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Format Validation Module for the OrphanedSid module
-
-.DESCRIPTION
-    This module provides comprehensive SID format validation and well-known SID
-    identification functionality for the OrphanedSid module.
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on SID format validation and structure checking. It serves as the foundation
-    validation module for other SID processing modules.
-
-    BUSINESS VALUE:
-    - Ensures data quality by validating SID format before processing
-    - Prevents processing errors from malformed SID strings
-    - Identifies critical system SIDs to prevent accidental removal
-    - Provides fast, lightweight validation for performance-critical operations
-
-    TECHNICAL FEATURES:
-    - Comprehensive SID format validation using .NET SecurityIdentifier
-    - Well-known SID recognition with Microsoft specification compliance
-    - Pipeline-optimized processing for bulk operations
-    - Configuration-driven pattern matching for enterprise customization
-    - Lightweight module design for selective loading
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    MODULE DESIGN:
-    This module implements the single-responsibility principle by focusing
-    exclusively on SID format validation. It provides the foundation for
-    other SID processing modules while maintaining high cohesion and
-    minimal dependencies.
-
-    TROUBLESHOOTING:
-    - For format validation issues: .\Troubleshooting\Security\SID-Format-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Uses script-scoped $script:Config variable for configuration access (optional)
-#>
-
 function Test-SIDFormat {
     <#
     .SYNOPSIS
@@ -54,12 +9,6 @@ function Test-SIDFormat {
         Performs comprehensive validation of SID format using both pattern matching
         and .NET SecurityIdentifier object creation. This function ensures SID strings
         conform to Microsoft's SID format specifications before processing.
-
-        BUSINESS VALUE:
-        - Prevents processing errors from malformed SID strings
-        - Ensures data quality in security operations
-        - Reduces false positives in SID analysis
-        - Supports input validation for security compliance
 
         TECHNICAL FEATURES:
         - Pattern-based validation for basic SID structure
@@ -179,11 +128,8 @@ function Test-WellKnownSID {
         patterns, and protected SID lists. This function is essential for preventing
         accidental removal of system-critical SIDs during cleanup operations.
 
-        BUSINESS VALUE:
-        - Prevents accidental removal of critical system SIDs
-        - Ensures system stability during security cleanup operations
-        - Supports compliance by protecting essential security principals
-        - Reduces risk of breaking system functionality
+        The patterns and the protected SIDs are read from $script:Config. Without a
+        configuration only the built-in list is checked.
 
         TECHNICAL FEATURES:
         - Comprehensive well-known SID database

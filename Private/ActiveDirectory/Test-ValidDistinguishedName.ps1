@@ -1,23 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Distinguished Name validation module for Active Directory operations
-
-.DESCRIPTION
-    Checks that a string has the form of an Active Directory distinguished name.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For DN validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
-    - For AD object access: .\Troubleshooting\Common\Common-Issues.md
-#>
-
-
 function Test-ValidDistinguishedName {
     <#
     .SYNOPSIS
@@ -76,6 +58,10 @@ function Test-ValidDistinguishedName {
     System.Boolean. $true when the string has the form of a distinguished name.
 
     .NOTES
+    TROUBLESHOOTING:
+    - For DN validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
+    - For AD object access: .\Troubleshooting\Common\Common-Issues.md
+
     AUTHOR:
     - Author: Jeffrey Stuhr
     - Blog: https://techbyjeff.net

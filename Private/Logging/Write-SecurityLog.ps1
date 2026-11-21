@@ -1,11 +1,11 @@
 ﻿function Write-SecurityLog {
     <#
     .SYNOPSIS
-        Writes security audit log entries for compliance and monitoring
+        Writes security audit log entries
 
     .DESCRIPTION
         Provides standardized security event logging with proper audit trails,
-        security context tracking, and correlation IDs for compliance requirements.
+        security context tracking, and correlation IDs.
 
     .PARAMETER SecurityEventType
         Type of security event being logged (ObjectAccess, Authentication, Authorization, etc.)
@@ -27,7 +27,7 @@
 
         DESCRIPTION: Logs successful AD object access operation
         OUTPUT: Security log entry with audit trail
-        USE CASE: Compliance and security monitoring
+        USE CASE: Security monitoring
 
     .NOTES
         Author: Jeffrey Stuhr

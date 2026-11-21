@@ -1,24 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Script execution initialization module for OrphanedSid
-
-.DESCRIPTION
-    Provides comprehensive script initialization capabilities including configuration
-    loading, logging setup, memory management initialization, and dependency validation.
-    Focused solely on environment setup and preparation for script execution.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For initialization issues: .\Troubleshooting\Common\Common-Issues.md
-#>
-
-
 function Initialize-ScriptExecution {
     <#
     .SYNOPSIS
@@ -29,19 +10,12 @@ function Initialize-ScriptExecution {
         logging initialization, memory management setup, and dependency validation.
         Provides comprehensive error handling and validation for enterprise environments.
 
-        BUSINESS VALUE:
-        - Ensures consistent environment setup across all script executions
-        - Provides comprehensive logging and monitoring capabilities
-        - Implements memory management to prevent resource exhaustion
-        - Enables enterprise-grade configuration management
-        - Supports correlation tracking for audit and troubleshooting
-
         INITIALIZATION FEATURES:
         - Automatic log file rotation based on size limits
         - Memory usage monitoring and management
         - Configuration validation and error handling
         - Performance statistics initialization
-        - Correlation ID tracking for enterprise compliance
+        - Correlation ID tracking
 
     .PARAMETER ConfigPath
         [String] (Optional) Path to configuration JSON file for custom settings.
@@ -66,8 +40,7 @@ function Initialize-ScriptExecution {
         - File extension should be .log for consistency
 
         BUSINESS CONTEXT:
-        Enables centralized logging for enterprise monitoring and compliance
-        requirements. Supports integration with log aggregation systems.
+        A log file in a central location can be collected by a log aggregation system.
 
     .PARAMETER MaxMemoryUsageMB
         [Int] (Optional) Maximum memory usage threshold in MB (Default: 1024).
@@ -161,7 +134,6 @@ function Initialize-ScriptExecution {
         DESCRIPTION: Initialize with production configuration and debug logging
         OUTPUT: Hashtable with configuration loaded from file
         BUSINESS CASE: Production deployment with enhanced monitoring
-        COMPLIANCE: Supports SOX and GDPR audit requirements
 
     .EXAMPLE
         PS> $init = Initialize-ScriptExecution; $init.Statistics.StartTime

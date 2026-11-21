@@ -5,8 +5,8 @@
 
     .DESCRIPTION
         Specialized logging function for security and audit events that bypasses
-        normal log level filtering to ensure all security events are captured
-        for compliance purposes. Security logs are ALWAYS written to file
+        normal log level filtering, so that all security events are captured.
+        Security logs are ALWAYS written to file
         regardless of the general log level configuration.
 
     .PARAMETER Message
@@ -37,7 +37,7 @@
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
-        COMPLIANCE: Security logs are written regardless of log level to ensure audit trail
+        AUDIT TRAIL: Security logs are written regardless of log level
         PERFORMANCE: Direct file write, minimal validation for security critical path
 
         TROUBLESHOOTING:
@@ -202,7 +202,7 @@ function Write-SecurityFileEntry {
 
     .DESCRIPTION
         Ensures security log entries are written to the log file regardless
-        of the general log level configuration for compliance requirements.
+        of the general log level configuration.
 
     .PARAMETER FormattedMessage
         Pre-formatted security log message
@@ -292,7 +292,7 @@ function Update-SecurityLoggingMetrics {
 
     .DESCRIPTION
         Tracks security logging events separately from general logging
-        for security monitoring and compliance reporting.
+        for security monitoring.
 
     .PARAMETER Level
         Security log level that was written

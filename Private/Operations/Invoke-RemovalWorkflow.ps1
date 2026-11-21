@@ -1,39 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Orchestration workflow module for SID removal operations
-
-.DESCRIPTION
-    Provides comprehensive workflow orchestration for SID removal operations,
-    coordinating security validation, ACL manipulation, backup creation, and
-    verification. This module implements the "controller" pattern for complex
-    multi-step operations while maintaining clean separation of concerns.
-
-    This module focuses solely on workflow coordination, delegating specific
-    tasks to specialized modules for maximum modularity and testability.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For workflow failures: .\Troubleshooting\Common\Common-Issues.md
-
-    DEPENDENCIES:
-    - Requires Security\Invoke-SecurityValidation.ps1 for security validation
-    - Requires ACL\Get-ACLForRemoval.ps1 for ACL retrieval
-    - Requires ACL\Invoke-SIDRemoval.ps1 for ACL manipulation
-    - Requires ACL\Set-ModifiedACL.ps1 for ACL application
-    - Requires Verification\Invoke-RemovalVerification.ps1 for verification
-    - Requires RemovalLogging\Write-RemovalSecurityLog.ps1 for security logging
-    - Requires New-ACLBackup.ps1 for backup operations
-    - Requires Classes.ps1 for RemovalOperationResult type
-    - Requires Logging.ps1 for Write-StructuredLog function
-#>
-
 function Invoke-RemovalWorkflow {
     <#
     .SYNOPSIS
@@ -124,6 +90,7 @@ function Invoke-RemovalWorkflow {
         - For ACL failures: Check AD permissions and connectivity
         - For verification issues: Consider AD replication timing
         - For performance: Review object complexity and network latency
+        - For workflow failures: .\Troubleshooting\Common\Common-Issues.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

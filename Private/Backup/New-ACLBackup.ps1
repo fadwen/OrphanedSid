@@ -1,41 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Creates comprehensive ACL backups with integrity verification
-
-.DESCRIPTION
-    Focused module for creating Active Directory object ACL backups with
-    enterprise-grade security, integrity verification, and metadata tracking.
-
-    This module follows the single responsibility principle by handling
-    only backup creation operations, extracted from the original monolithic
-    module for improved maintainability and modularity.
-
-    BUSINESS VALUE:
-    - Ensures safe ACL modifications with full rollback capability
-    - Provides comprehensive audit trails for compliance reporting
-    - Supports enterprise change management workflows
-
-    ENTERPRISE FEATURES:
-    - SHA256 integrity verification for backup authenticity
-    - Comprehensive metadata tracking for audit compliance
-    - Timestamped backup organization for easy management
-    - Cross-platform compatibility and secure file handling
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    DEPENDENCIES:
-    - Requires ActiveDirectory module
-    - Integrates with Logging.ps1 for structured audit logging
-
-    TROUBLESHOOTING:
-    - For backup creation issues: .\Troubleshooting\Common\Backup-Restore-Issues.md
-#>
-
 function New-ACLBackup {
     <#
     .SYNOPSIS
@@ -44,8 +8,8 @@ function New-ACLBackup {
     .DESCRIPTION
         Creates detailed backups of Active Directory object ACLs including
         metadata, integrity verification, and restoration information.
-        Backups are stored in XML format with SHA256 hash verification
-        for enterprise-grade security and compliance.
+        Backups are stored in XML format with a SHA256 hash of the SDDL, which
+        a restore checks before it applies the backup.
 
         This function focuses solely on backup creation and immediate
         verification, following the single responsibility principle.
@@ -57,12 +21,6 @@ function New-ACLBackup {
         - Safe filename generation with illegal character replacement
         - Automatic backup directory creation with proper permissions
         - Cross-platform compatibility for hybrid environments
-
-        ENTERPRISE INTEGRATION:
-        - Correlation ID tracking for audit trails and troubleshooting
-        - Integration with enterprise monitoring and alerting systems
-        - Compliance framework support (SOX, GDPR, HIPAA)
-        - Structured logging for security event management (SIEM)
 
     .PARAMETER ObjectDN
         Distinguished name of the Active Directory object to backup.
@@ -108,7 +66,7 @@ function New-ACLBackup {
 
         BUSINESS CONTEXT:
         Recommended to use timestamped subdirectories for organized backup
-        management and compliance with data retention policies.
+        management.
 
         EXAMPLES:
         - Standard path: "C:\ADBackups\ACLs"
@@ -118,11 +76,6 @@ function New-ACLBackup {
     .PARAMETER CorrelationId
         Unique identifier for tracking this backup operation across systems.
         Automatically generated if not provided for audit trail consistency.
-
-        BUSINESS VALUE:
-        Enables end-to-end tracking of backup operations for compliance
-        reporting, troubleshooting, and integration with enterprise
-        monitoring systems.
 
     .EXAMPLE
         PS> New-ACLBackup -ObjectDN "CN=User1,CN=Users,DC=contoso,DC=com" -ACL $userACL -BackupPath "C:\Backups"
@@ -147,9 +100,8 @@ function New-ACLBackup {
         PS> $correlationId = [System.Guid]::NewGuid().ToString()
         PS> New-ACLBackup -ObjectDN $ouDN -ACL $ouACL -BackupPath $timestampedPath -CorrelationId $correlationId
 
-        DESCRIPTION: Enterprise backup with correlation tracking for audit compliance
+        DESCRIPTION: Backup with a correlation ID that the caller supplies
         OUTPUT: Backup with correlation ID for integration with monitoring systems
-        COMPLIANCE: Full audit trail for regulatory compliance and change management
         MONITORING: Integration with enterprise security event management systems
 
     .INPUTS
@@ -176,19 +128,13 @@ function New-ACLBackup {
         BACKUP FILE FORMAT:
         Files are stored in XML format using PowerShell's Export-Clixml for
         platform compatibility and include comprehensive metadata for
-        restoration validation and audit compliance.
+        restoration validation.
 
         SECURITY CONSIDERATIONS:
         - SHA256 integrity verification prevents tampering
         - Filename sanitization prevents path traversal attacks
         - Comprehensive audit logging for security event management
         - Correlation ID tracking for forensic analysis capability
-
-        ENTERPRISE INTEGRATION:
-        - Correlation ID support for audit trail consistency
-        - Integration with enterprise monitoring and alerting
-        - Compliance framework support (SOX, GDPR, HIPAA)
-        - Structured logging for SIEM integration
 
         TROUBLESHOOTING:
         - For backup failures: .\Troubleshooting\Common\Backup-Restore-Issues.md

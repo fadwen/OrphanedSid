@@ -1,25 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Core SID discovery and processing logic for OrphanedSid
-
-.DESCRIPTION
-    Handles the main processing workflow including AD object discovery,
-    SID analysis, and optional removal operations. Focused solely on
-    the core business logic of orphaned SID processing.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For processing failures: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
-    - For AD connectivity: .\Troubleshooting\Common\Common-Issues.md
-#>
-
-
 function Invoke-MainProcessingLogic {
     <#
     .SYNOPSIS
@@ -29,13 +9,6 @@ function Invoke-MainProcessingLogic {
         Orchestrates the main processing workflow including AD object discovery,
         SID analysis, and optional removal operations with comprehensive error
         handling and performance monitoring.
-
-        BUSINESS VALUE:
-        - Identifies orphaned SIDs that pose security risks
-        - Enables cleanup of obsolete access control entries
-        - Provides comprehensive audit trail for compliance
-        - Supports large-scale AD security remediation
-        - Delivers actionable security intelligence
 
         PROCESSING FEATURES:
         - Parallel processing for improved performance
@@ -114,7 +87,6 @@ function Invoke-MainProcessingLogic {
         DESCRIPTION: Execute removal operation with backup creation
         OUTPUT: Results including removal statistics and backup location
         BUSINESS CASE: Production cleanup of orphaned SIDs with safety measures
-        COMPLIANCE: Supports change management and audit requirements
 
     .EXAMPLE
         PS> Invoke-MainProcessingLogic -SearchBase "DC=contoso,DC=com" -IncludeInherited

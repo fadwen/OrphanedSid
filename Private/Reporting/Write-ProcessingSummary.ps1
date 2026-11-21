@@ -1,24 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Processing summary and result reporting module for OrphanedSid
-
-.DESCRIPTION
-    Provides comprehensive result formatting, summary generation, and export
-    capabilities for OrphanedSid processing results. Focused solely on
-    result presentation and data export functionality.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For output issues: .\Troubleshooting\Common\Common-Issues.md
-#>
-
-
 function Write-ProcessingSummary {
     <#
     .SYNOPSIS
@@ -28,13 +9,6 @@ function Write-ProcessingSummary {
         Generates and displays a comprehensive summary of processing results
         including performance statistics, findings, and recommendations for
         enterprise reporting and audit requirements.
-
-        BUSINESS VALUE:
-        - Provides executive-level summary for decision making
-        - Supports compliance reporting and audit requirements
-        - Enables performance monitoring and optimization
-        - Delivers actionable insights for security teams
-        - Facilitates automation integration and monitoring
 
         REPORTING FEATURES:
         - Multi-format output for different audiences
@@ -67,8 +41,7 @@ function Write-ProcessingSummary {
         - File extension should be .csv for consistency
 
         BUSINESS CONTEXT:
-        Supports integration with reporting systems, compliance
-        documentation, and change management processes.
+        The CSV file can be read by a reporting system or attached to a change record.
 
     .PARAMETER CorrelationId
         [String] (Optional) Correlation ID for tracking this operation.
@@ -84,7 +57,6 @@ function Write-ProcessingSummary {
         DESCRIPTION: Write summary and export results to CSV
         OUTPUT: Console summary and CSV file export
         USE CASE: Standard result reporting and documentation
-        COMPLIANCE: Supports audit trail requirements
 
     .EXAMPLE
         PS> Write-ProcessingSummary -ProcessingResults $restoreResults
@@ -92,7 +64,6 @@ function Write-ProcessingSummary {
         DESCRIPTION: Display restore operation summary
         OUTPUT: Detailed restore operation results
         BUSINESS CASE: Change management and rollback reporting
-        AUDIT: Supports compliance documentation requirements
 
     .NOTES
         Author: Jeffrey Stuhr

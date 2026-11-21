@@ -1,27 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Log directory and path management for OrphanedSid operations
-
-.DESCRIPTION
-    Handles log path validation, directory creation, and permissions validation
-    for the logging system. Focuses solely on file system operations related
-    to logging infrastructure setup.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For path resolution issues: .\Troubleshooting\Common\Common-Issues.md
-
-.LINK
-    https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-paths
-#>
-
-
 function Initialize-LogDirectory {
     <#
     .SYNOPSIS
@@ -88,6 +66,7 @@ function Initialize-LogDirectory {
         - Path resolution handles relative and absolute paths
         - Graceful fallback to current directory on failures
         - Comprehensive error logging for file system issues
+        - For path resolution issues: .\Troubleshooting\Common\Common-Issues.md
     #>
     [CmdletBinding()]
     [OutputType([string])]

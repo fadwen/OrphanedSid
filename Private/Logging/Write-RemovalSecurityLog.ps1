@@ -1,32 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Specialized security logging module for SID removal operations
-
-.DESCRIPTION
-    Provides focused security event logging functionality specifically designed
-    for SID removal operations. This module implements the "tool" pattern for
-    consistent security audit logging with enterprise-grade compliance support.
-
-    This module focuses solely on security event logging, enabling independent
-    testing and reuse across different security-sensitive operations.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For logging issues: .\Troubleshooting\Common\Common-Issues.md
-    - For security audit compliance: .\Troubleshooting\Security\Security-Logging-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-SecurityLog function
-    - Requires Logging.ps1 for Write-StructuredLog function
-#>
-
 function Write-RemovalSecurityLog {
     <#
     .SYNOPSIS
@@ -34,14 +7,13 @@ function Write-RemovalSecurityLog {
 
     .DESCRIPTION
         Creates comprehensive security audit logs specifically designed for SID
-        removal operations with enterprise compliance requirements. This function
+        removal operations. This function
         implements focused security logging following the "tool" pattern.
 
         Security logging includes:
         - Operation context and authorization details
         - Risk assessment and security validation results
         - Detailed SID removal tracking
-        - Compliance-ready audit trail formatting
 
     .PARAMETER SecurityEventType
         Type of security event being logged (e.g., 'PrivilegeUse', 'ObjectAccess').
@@ -53,7 +25,7 @@ function Write-RemovalSecurityLog {
 
     .PARAMETER Outcome
         Result of the security operation ('Attempt', 'Success', 'Failure').
-        Used for security monitoring and compliance reporting.
+        Used for security monitoring.
 
     .PARAMETER CorrelationId
         Unique identifier for tracking this security event across
@@ -67,7 +39,7 @@ function Write-RemovalSecurityLog {
         PS> Write-RemovalSecurityLog -SecurityEventType 'PrivilegeUse' -Message "SID removal operation initiated" -Outcome 'Attempt' -CorrelationId $id -SecurityContext @{TargetObject = $dn; SIDsToRemove = $sids}
 
         DESCRIPTION: Logs the start of a SID removal operation
-        OUTPUT: Security audit log entry with compliance formatting
+        OUTPUT: Security audit log entry
         USE CASE: Enterprise security audit trail for SID removal operations
 
     .EXAMPLE
@@ -76,18 +48,12 @@ function Write-RemovalSecurityLog {
 
         DESCRIPTION: Logs successful completion of ACL modifications
         OUTPUT: Detailed security log with operation results
-        USE CASE: Compliance reporting and security monitoring
+        USE CASE: Security monitoring
 
     .OUTPUTS
         None. This function writes to security audit logs and does not return values.
 
     .NOTES
-        SECURITY COMPLIANCE:
-        - Supports SOX, GDPR, HIPAA audit requirements
-        - Provides non-repudiation through detailed logging
-        - Includes risk assessment and authorization context
-        - Maintains correlation tracking for forensic analysis
-
         AUDIT FEATURES:
         - Comprehensive operation context logging
         - Risk-based event classification
@@ -98,6 +64,8 @@ function Write-RemovalSecurityLog {
         - For missing logs: Check logging configuration and permissions
         - For format issues: Verify security context structure
         - For performance: Consider log level filtering and batch operations
+        - For logging issues: .\Troubleshooting\Common\Common-Issues.md
+        - For security logging issues: .\Troubleshooting\Security\Security-Logging-Issues.md
     #>
 
     [CmdletBinding()]
