@@ -360,6 +360,16 @@ Describe "Format-LogMessage" {
             $result | Should -Not -Match 'Date\('
         }
 
+        It "Should write a date of unspecified kind as text without an offset" {
+            # Nothing says which offset such a date has, so none is written
+            $moment = [datetime]::new(2026, 11, 20, 21, 54, 45, 123)
+
+            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON" -AdditionalData @{ Recorded = $moment }
+
+            $moment.Kind | Should -Be 'Unspecified'
+            $result | Should -Match '"Recorded":"2026-11-20T21:54:45\.123"'
+        }
+
         It "Should write the date that Get-Date returns as text with the offset of the session (#191)" {
             $before = [DateTimeOffset]::Now
             $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON" -AdditionalData @{ Timestamp = Get-Date }

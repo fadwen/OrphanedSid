@@ -2,6 +2,17 @@
     <#
     .SYNOPSIS
         Formats log messages according to specified style and requirements
+
+    .DESCRIPTION
+        Builds one log entry from a message, its level, component and correlation ID, and
+        the additional data. The entry starts with the time at which it was built, as
+        yyyy-MM-ddTHH:mm:ss.fff followed by the offset from UTC.
+
+        A date among the additional data is written as text in the same format, so that
+        PowerShell 7 and Windows PowerShell 5.1 write the same text. What follows the
+        milliseconds depends on the kind of the date: the offset for a local time, which
+        is what Get-Date returns, Z for a UTC time, and nothing for a date of unspecified
+        kind. Only a value of the entry itself is converted, not a date inside a value.
     #>
     [CmdletBinding()]
     param(
