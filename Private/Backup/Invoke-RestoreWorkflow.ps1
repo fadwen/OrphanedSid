@@ -1,31 +1,4 @@
 #region Invoke-RestoreWorkflow.ps1 - Restore Workflow Orchestration Module
-<#
-.SYNOPSIS
-    Orchestration and workflow management functions for restore operations.
-
-.DESCRIPTION
-    This module provides comprehensive workflow orchestration for ACL restore
-    operations, coordinating backup validation, target verification, ACL application,
-    and result reporting. It serves as the central coordination point for all
-    restore operation components.
-
-    BUSINESS VALUE:
-    - Ensures consistent restore operation workflows
-    - Provides centralized error handling and recovery
-    - Coordinates complex multi-step restore processes
-    - Enables standardized restore operation reporting
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Dependencies: Test-BackupIntegrity.ps1, Restore-ACLOperation.ps1, Get-BackupFileForRestore.ps1,
-        Utilities\ConvertTo-NormalizedDistinguishedName.ps1
-
-    SECURITY CONSIDERATIONS:
-    - Validates all inputs before processing
-    - Implements safe operation ordering and rollback
-    - Provides comprehensive audit trail of operations
-    - Ensures proper resource cleanup and disposal
-#>
 
 function Invoke-RestoreWorkflow {
     <#
@@ -43,12 +16,6 @@ function Invoke-RestoreWorkflow {
         This function implements the complete restore workflow with proper error
         handling, rollback capabilities, and comprehensive logging. It supports
         both single object restoration and bulk restoration for search base scopes.
-
-        BUSINESS VALUE:
-        - Standardizes restore operation procedures
-        - Reduces manual errors through automation
-        - Provides consistent restore operation outcomes
-        - Enables scalable disaster recovery operations
 
     .PARAMETER TargetObjectDN
         Distinguished name of the object to restore ACL for, OR a search base DN

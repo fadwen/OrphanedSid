@@ -1,32 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Post-operation verification module for SID removal operations
-
-.DESCRIPTION
-    Provides focused verification functionality to confirm that SID removal
-    operations were successful. This module implements the "tool" pattern
-    for reliable post-operation validation with comprehensive error handling.
-
-    This module focuses solely on verification logic, enabling independent
-    testing and reuse across different removal and validation scenarios.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For verification failures: .\Troubleshooting\Common\Common-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Requires Operations\Invoke-ADOperationWithRetry.ps1 for retry logic
-    - Active Directory PowerShell module for Get-Acl cmdlet
-#>
-
 function Invoke-RemovalVerification {
     <#
     .SYNOPSIS
@@ -97,6 +70,7 @@ function Invoke-RemovalVerification {
         - For remaining SIDs: Check AD replication and timing
         - For ACL access errors: Verify appropriate permissions
         - For verification timeouts: Consider network and AD performance
+        - For verification failures: .\Troubleshooting\Common\Common-Issues.md
     #>
 
     [CmdletBinding()]

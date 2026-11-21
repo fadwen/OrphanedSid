@@ -1,38 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Garbage Collection Operations Module for the OrphanedSid module
-
-.DESCRIPTION
-    Provides focused garbage collection and memory cleanup functionality including:
-    - Memory cleanup operations
-    - Advanced garbage collection techniques
-    - Large Object Heap compaction
-    - Enterprise-grade correlation tracking
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on garbage collection and memory cleanup operations.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For cleanup issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
-    - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
-
-.COMPONENT
-    OrphanedSid Garbage Collection System
-
-.FUNCTIONALITY
-    - Memory cleanup operations
-    - Advanced garbage collection techniques
-    - Large Object Heap compaction
-    - Memory pressure management
-#>
-
 function Invoke-Cleanup {
     <#
     .SYNOPSIS
@@ -72,6 +39,10 @@ function Invoke-Cleanup {
         - Cleanup operations ALWAYS execute regardless of -WhatIf
         - Only detailed logging and reporting operations respect -WhatIf
         - This ensures critical memory operations are not skipped during simulations
+
+        TROUBLESHOOTING:
+        - For cleanup issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
+        - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

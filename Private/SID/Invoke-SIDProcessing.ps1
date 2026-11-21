@@ -1,51 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Processing Orchestration Module for the OrphanedSid module
-
-.DESCRIPTION
-    This focused module orchestrates the entire orphaned SID detection workflow
-    for the OrphanedSid module. It coordinates the interaction
-    between security descriptor retrieval, identity resolution, and result creation
-    while managing processing statistics and error aggregation.
-
-    SINGLE RESPONSIBILITY:
-    This module does ONE thing well: Orchestrate the complete orphaned SID detection
-    process by coordinating specialized modules and managing the overall workflow.
-
-    BUSINESS VALUE:
-    - Streamlined orchestration of complex multi-module workflows
-    - Comprehensive error aggregation and processing statistics
-    - Memory-efficient processing for large-scale AD environments
-    - Standardized pipeline processing with correlation tracking
-
-    TECHNICAL FEATURES:
-    - Pipeline processing coordination with memory management
-    - Error aggregation and graceful degradation
-    - Processing statistics management and reporting
-    - Integration with all specialized processing modules
-    - Comprehensive logging and correlation tracking
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
-    - For performance problems: .\Troubleshooting\Performance\Performance-Tuning.md
-    - For memory management: .\Troubleshooting\Performance\Memory-Management-Issues.md
-
-    DEPENDENCIES:
-    - Requires Get-SecurityDescriptor.ps1 for ACL retrieval
-    - Requires Resolve-SIDIdentity.ps1 for identity resolution
-    - Requires New-SIDResult.ps1 for result object creation
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Uses script-scoped variables (CorrelationId for tracking)
-#>
-
 #region SID Processing Orchestration Functions
 
 function Find-OrphanedSIDsInObject {
@@ -143,6 +97,11 @@ function Find-OrphanedSIDsInObject {
         - Test-AccessRuleForOrphanedSID for identity resolution
         - Correlation tracking across all processing modules
         - Enterprise logging and audit trail integration
+
+        TROUBLESHOOTING:
+        - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
+        - For performance problems: .\Troubleshooting\Performance\Performance-Tuning.md
+        - For memory management: .\Troubleshooting\Performance\Memory-Management-Issues.md
     #>
 
     [CmdletBinding()]

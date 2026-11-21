@@ -1,33 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Pure ACL manipulation module for SID removal operations
-
-.DESCRIPTION
-    Provides focused ACL manipulation functionality for removing SIDs from
-    Active Directory security descriptors. This module implements the "tool"
-    pattern with pure ACL processing logic, enabling independent testing
-    without Active Directory dependencies.
-
-    This module focuses solely on in-memory ACL manipulation, making it
-    highly testable and reusable across different removal scenarios.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For ACL manipulation errors: .\Troubleshooting\Common\Common-Issues.md
-    - For performance issues: .\Troubleshooting\Performance\Performance-Tuning.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - System.DirectoryServices.ActiveDirectorySecurity for ACL objects
-#>
-
 function Invoke-SIDRemoval {
     <#
     .SYNOPSIS
@@ -111,6 +83,8 @@ function Invoke-SIDRemoval {
         - For ACE removal failures: Check SID format and ACL structure
         - For performance issues: Consider ACL size and complexity
         - For logging problems: Verify correlation ID propagation
+        - For ACL manipulation errors: .\Troubleshooting\Common\Common-Issues.md
+        - For performance issues: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding()]

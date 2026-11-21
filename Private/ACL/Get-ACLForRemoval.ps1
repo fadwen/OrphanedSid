@@ -1,33 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    ACL retrieval module for Active Directory object security descriptors
-
-.DESCRIPTION
-    Provides focused ACL retrieval functionality with enterprise-grade retry logic
-    and error handling. This module implements the "tool" pattern for reliable
-    ACL retrieval operations from Active Directory objects.
-
-    This module focuses solely on ACL retrieval, enabling independent testing
-    and reuse across different removal and modification scenarios.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For ACL retrieval failures: .\Troubleshooting\Security\Security-Descriptor-Issues.md
-    - For AD connectivity issues: .\Troubleshooting\Common\Common-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Requires Operations\Invoke-ADOperationWithRetry.ps1 for retry logic
-    - Active Directory PowerShell module for Get-Acl cmdlet
-#>
-
 function Get-ACLForRemoval {
     <#
     .SYNOPSIS
@@ -89,6 +61,8 @@ function Get-ACLForRemoval {
         - For permission errors: Verify AD read rights
         - For connectivity issues: Check AD server availability
         - For object not found: Verify DN format and object existence
+        - For ACL retrieval failures: .\Troubleshooting\Security\Security-Descriptor-Issues.md
+        - For AD connectivity issues: .\Troubleshooting\Common\Common-Issues.md
     #>
 
     [CmdletBinding()]

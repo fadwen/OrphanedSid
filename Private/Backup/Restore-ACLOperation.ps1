@@ -1,28 +1,4 @@
 #region Restore-ACLOperation.ps1 - Core ACL Restoration Module
-<#
-.SYNOPSIS
-    Core ACL restoration and manipulation functions for restore operations.
-
-.DESCRIPTION
-    This module provides focused ACL restoration functionality including:
-    - Direct ACL application to Active Directory objects
-    - Target object verification and validation
-    - Restoration success confirmation and verification
-    - SDDL conversion and security descriptor manipulation
-
-    This module handles the core security operations for ACL restoration,
-    working with validated backup data to apply permissions safely.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Dependencies: ActiveDirectory module, validated backup data
-
-    SECURITY CONSIDERATIONS:
-    - Requires appropriate Active Directory permissions
-    - Validates target object existence before modification
-    - Confirms restoration success through verification
-    - Logs all ACL modification operations for audit compliance
-#>
 
 function Set-ObjectACL {
     <#
@@ -41,12 +17,6 @@ function Set-ObjectACL {
         Get-RestorationTarget first, so that a restore reads the object once. A target that
         does not exist fails in the write, and the result then has Success False and the
         message of the directory.
-
-        BUSINESS VALUE:
-        - Enables precise ACL restoration for disaster recovery
-        - Provides granular control over permission restoration
-        - Ensures secure and validated ACL application
-        - Supports compliance requirements for change management
 
     .PARAMETER TargetObjectDN
         Distinguished name of the target Active Directory object for ACL application.
@@ -102,7 +72,6 @@ function Set-ObjectACL {
         SECURITY CONSIDERATIONS:
         - Requires Modify Permissions permission on target object
         - Validates SDDL format before application
-        - Logs all ACL modifications for audit compliance
 
         TROUBLESHOOTING:
         - For permission errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
@@ -250,6 +219,8 @@ function Get-RestorationTarget {
         current ACL can be read. Write access is not probed. Rewriting a security descriptor
         needs WRITE_DAC, which no attribute read can show, and Set-Acl reports a permission
         failure itself when the restore is applied.
+
+        The object is read with Get-ADObject, so the ActiveDirectory module must be loaded.
 
     .PARAMETER TargetObjectDN
         Distinguished name of the target object to validate.

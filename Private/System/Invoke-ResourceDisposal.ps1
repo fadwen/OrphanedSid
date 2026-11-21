@@ -1,45 +1,12 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Resource Disposal and Cleanup Module for the OrphanedSid module
-
-.DESCRIPTION
-    Provides focused resource disposal and cleanup functionality including:
-    - Comprehensive resource cleanup operations
-    - IDisposable pattern implementation
-    - Memory manager disposal
-    - Enterprise-grade correlation tracking
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on resource disposal and cleanup operations.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For disposal issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
-    - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
-
-.COMPONENT
-    OrphanedSid Resource Disposal System
-
-.FUNCTIONALITY
-    - Comprehensive resource cleanup
-    - IDisposable pattern implementation
-    - Memory manager disposal
-    - Final garbage collection
-#>
-
 function Invoke-ResourceCleanup {
     <#
     .SYNOPSIS
         Performs comprehensive resource cleanup and disposal
 
     .DESCRIPTION
-        Executes enterprise-grade resource cleanup including object disposal,
+        Executes resource cleanup including object disposal,
         memory cleanup, and resource finalization following community
         best practices for PowerShell resource management.
 
@@ -63,16 +30,14 @@ function Invoke-ResourceCleanup {
         Disposes multiple resources safely
 
     .NOTES
-        ENTERPRISE COMPLIANCE:
-        - Follows PowerShell community disposal patterns
-        - Implements defense-in-depth cleanup strategy
-        - Provides comprehensive error handling
-        - Supports correlation tracking for audit trails
-
         WHATIF BEHAVIOR:
         - Resource disposal operations ALWAYS execute regardless of -WhatIf
         - Only detailed logging operations respect -WhatIf
         - This ensures critical cleanup is not skipped during simulations
+
+        TROUBLESHOOTING:
+        - For disposal issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
+        - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

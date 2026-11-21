@@ -1,38 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Memory Manager Instance Management Module for the OrphanedSid module
-
-.DESCRIPTION
-    Provides focused memory manager instance creation and configuration functionality including:
-    - Memory manager instance initialization
-    - Configuration validation and setup
-    - Enterprise-grade correlation tracking
-    - Configuration constants management
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on memory manager instance creation and configuration operations.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
-    - For configuration: .\Troubleshooting\Performance\Memory-Management-Issues.md
-
-.COMPONENT
-    OrphanedSid Memory Manager Initialization System
-
-.FUNCTIONALITY
-    - Memory manager instance creation
-    - Configuration validation and setup
-    - Correlation tracking initialization
-    - Memory management configuration constants
-#>
-
 # Memory management constants, defined once for the module: Invoke-Cleanup and
 # Invoke-ResourceCleanup read them and must not reassign the table, or a key one of them needs can
 # disappear after the other runs. Only keys something reads belong here.
@@ -51,7 +18,7 @@ function Initialize-MemoryManager {
 
     .DESCRIPTION
         Initializes a memory management system with specified thresholds
-        and monitoring intervals. Provides enterprise-grade memory monitoring
+        and monitoring intervals. Provides memory monitoring
         with correlation tracking for troubleshooting and performance analysis.
 
     .PARAMETER MaxMemoryMB
@@ -77,12 +44,6 @@ function Initialize-MemoryManager {
         [MemoryManager] Configured memory management instance
 
     .NOTES
-        BUSINESS VALUE:
-        - Prevents memory exhaustion in large-scale environments
-        - Enables predictable memory usage patterns
-        - Provides enterprise-grade monitoring and logging
-        - Supports correlation tracking for troubleshooting
-
         PERFORMANCE CONSIDERATIONS:
         - Lower thresholds: More frequent cleanup, better memory control
         - Higher thresholds: Less cleanup overhead, faster processing
@@ -92,6 +53,10 @@ function Initialize-MemoryManager {
         - Memory manager creation ALWAYS executes regardless of -WhatIf
         - Only logging and reporting operations respect -WhatIf
         - This ensures system stability is maintained during simulations
+
+        TROUBLESHOOTING:
+        - For memory issues: .\Troubleshooting\Performance\Memory-Management.md
+        - For configuration: .\Troubleshooting\Performance\Memory-Management-Issues.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

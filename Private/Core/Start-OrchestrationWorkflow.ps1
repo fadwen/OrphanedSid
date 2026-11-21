@@ -1,25 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    High-level workflow coordination for OrphanedSid operations
-
-.DESCRIPTION
-    Provides lightweight orchestration and coordination between focused
-    processing modules. Acts as the central coordinator that delegates
-    to specialized functions while maintaining workflow integrity.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md
-    - For workflow coordination: .\Troubleshooting\Common\Common-Issues.md
-#>
-
-
 function Start-OrchestrationWorkflow {
     <#
     .SYNOPSIS
@@ -29,13 +9,6 @@ function Start-OrchestrationWorkflow {
         Acts as the central coordinator for OrphanedSid operations,
         delegating to specialized functions while maintaining workflow
         integrity and proper error handling.
-
-        BUSINESS VALUE:
-        - Provides consistent workflow execution across operations
-        - Ensures proper initialization and cleanup sequences
-        - Maintains audit trail continuity across modules
-        - Enables centralized error handling and reporting
-        - Supports enterprise workflow standards
 
         COORDINATION FEATURES:
         - Module dependency management and initialization

@@ -1,52 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Analysis Module for the OrphanedSid module
-
-.DESCRIPTION
-    This module provides comprehensive SID analysis and categorization functionality
-    for the OrphanedSid module. It focuses exclusively on analyzing
-    Security Identifiers to determine their source, context, and characteristics.
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on SID analysis and categorization. It depends on the Test-SIDFormat module
-    for basic validation before performing detailed analysis.
-
-    BUSINESS VALUE:
-    - Provides accurate SID categorization for risk assessment
-    - Enables intelligent security analysis and policy enforcement
-    - Supports compliance requirements with detailed SID context
-    - Reduces false positives through comprehensive SID knowledge
-
-    TECHNICAL FEATURES:
-    - Advanced SID pattern recognition and categorization
-    - Domain context analysis with trust relationship awareness
-    - RID range analysis for object type identification
-    - Integration with enterprise security policies
-    - Comprehensive logging and correlation tracking
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    MODULE DESIGN:
-    This module implements the single-responsibility principle by focusing
-    exclusively on SID analysis and categorization. It provides detailed
-    context about SIDs while maintaining high cohesion and clear dependencies.
-
-    TROUBLESHOOTING:
-    - For analysis issues: .\Troubleshooting\Security\SID-Analysis-Issues.md
-
-    DEPENDENCIES:
-    - Requires Test-SIDFormat.ps1 for SID format validation
-    - Requires Classes.ps1 for SIDAnalysisResult type definitions
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Uses script-scoped $script:Config variable for configuration access
-#>
-
 function Get-SIDAnalysis {
     <#
     .SYNOPSIS
@@ -117,7 +70,6 @@ function Get-SIDAnalysis {
         - Uses secure SID format validation to prevent injection attacks
         - Implements comprehensive pattern matching for accurate categorization
         - Provides risk-based assessment for security decision making
-        - Integrates with enterprise security policies and compliance requirements
 
         TROUBLESHOOTING:
         - For invalid SID formats: Returns analysis with "Invalid" source and high risk
