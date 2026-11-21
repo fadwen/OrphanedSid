@@ -58,7 +58,9 @@
     }
 
     try {
-        $formattedEntryForFile = "[$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fff')] [$Level] [$Component] [$CorrelationId] $Message"
+        # The invariant culture, so that the time has colons in every session (#193)
+        $entryTime = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fff', [cultureinfo]::InvariantCulture)
+        $formattedEntryForFile = "[$entryTime] [$Level] [$Component] [$CorrelationId] $Message"
         if ($Details.Count -gt 0) {
             $detailsJson = $Details | ConvertTo-Json -Compress
             $formattedEntryForFile += " | Details: $detailsJson"

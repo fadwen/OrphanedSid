@@ -317,6 +317,8 @@ Describe "Format-LogMessage" {
             @{ Culture = 'en-US' }
             @{ Culture = 'en-AE' }
             @{ Culture = 'de-DE' }
+            # The time separator of this culture is a dot; the entry once read 21.54.45 (#193)
+            @{ Culture = 'fi-FI' }
         ) {
             # The timestamp text is read from the raw JSON and parsed with the exact format the function
             # writes, under the invariant culture, so a day-first culture cannot swap day and month.
@@ -335,6 +337,35 @@ Describe "Format-LogMessage" {
                 [System.Globalization.CultureInfo]::InvariantCulture)
 
             # The written value is truncated to milliseconds, so allow that much below $before
+            $timestamp | Should -BeGreaterOrEqual $before.AddMilliseconds(-1)
+            $timestamp | Should -BeLessOrEqual $after
+        }
+
+        It "Should write a date in the additional data as text in the format of Timestamp (#191)" {
+            # ConvertTo-Json writes a date as text on PowerShell 7. On Windows PowerShell 5.1 it
+            # writes "\/Date(...)\/", and for the object that Get-Date returns an object with
+            # the properties value, DisplayHint and DateTime.
+            $moment = [datetime]::new(2026, 11, 20, 21, 54, 45, 123, [System.DateTimeKind]::Utc)
+            $data = @{ Timestamp = $moment; Security_Timestamp = $moment; Other = 'text' }
+
+            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON" -AdditionalData $data
+
+            $result | Should -Match '"Timestamp":"2026-11-20T21:54:45\.123Z"'
+            $result | Should -Match '"Security_Timestamp":"2026-11-20T21:54:45\.123Z"'
+            $result | Should -Match '"Other":"text"'
+            $result | Should -Not -Match 'DisplayHint'
+            $result | Should -Not -Match 'Date\('
+        }
+
+        It "Should write the date that Get-Date returns as text with the offset of the session (#191)" {
+            $before = [DateTimeOffset]::Now
+            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON" -AdditionalData @{ Timestamp = Get-Date }
+            $after = [DateTimeOffset]::Now
+
+            $result | Should -Not -Match 'DisplayHint'
+            $result -match '"Timestamp":"(?<ts>[^"]+)"' | Should -BeTrue
+            $timestamp = [DateTimeOffset]::ParseExact($Matches['ts'], 'yyyy-MM-ddTHH:mm:ss.fffzzz',
+                [System.Globalization.CultureInfo]::InvariantCulture)
             $timestamp | Should -BeGreaterOrEqual $before.AddMilliseconds(-1)
             $timestamp | Should -BeLessOrEqual $after
         }

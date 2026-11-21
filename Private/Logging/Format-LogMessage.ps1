@@ -34,7 +34,11 @@
         $Level = 'Information'
     }
 
-    $timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffK"
+    # Formatted with the invariant culture: a colon in a date format stands for the time
+    # separator of the culture, so a session in fi-FI wrote 21.54.45 (#193).
+    $timestampFormat = 'yyyy-MM-ddTHH:mm:ss.fffK'
+    $invariantCulture = [cultureinfo]::InvariantCulture
+    $timestamp = (Get-Date).ToString($timestampFormat, $invariantCulture)
     
     $logData = [PSCustomObject]@{
         Timestamp = $timestamp
@@ -44,10 +48,18 @@
         Message = $Message
     }
 
-    # Add additional data
+    # Add additional data. A date becomes text in the format of Timestamp. ConvertTo-Json
+    # writes a date as ISO 8601 text on PowerShell 7, and on Windows PowerShell 5.1 as an
+    # object with the properties value, DisplayHint and DateTime, so the Timestamp that
+    # Write-SecurityLog passes had two shapes in the file (#191). Only a value of the entry
+    # itself is converted, not a date inside a value.
     if ($AdditionalData.Count -gt 0) {
         foreach ($key in $AdditionalData.Keys) {
-            $logData | Add-Member -MemberType NoteProperty -Name $key -Value $AdditionalData[$key] -Force
+            $value = $AdditionalData[$key]
+            if ($value -is [datetime]) {
+                $value = $value.ToString($timestampFormat, $invariantCulture)
+            }
+            $logData | Add-Member -MemberType NoteProperty -Name $key -Value $value -Force
         }
     }
 

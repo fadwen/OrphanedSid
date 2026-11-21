@@ -50,6 +50,20 @@ Describe "Write-StructuredLogEntry" {
             $line | Should -Match '^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\] \[Error\] \[Comp\] \[123\] Test$'
         }
 
+        It "Should write the time with colons in a session whose culture separates time with a dot (#193)" {
+            $logPath = Join-Path $TestDrive 'culture.log'
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new('fi-FI')
+                Write-StructuredLogEntry -Message "Test" -Level "Error" -Component "Comp" -CorrelationId "123" -LogPath $logPath
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
+
+            $line = Get-Content -Path $logPath
+            $line | Should -Match '^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\] \[Error\] \[Comp\] \[123\] Test$'
+        }
+
         It "Should append the details as compressed JSON" {
             $logPath = Join-Path $TestDrive 'details.log'
 

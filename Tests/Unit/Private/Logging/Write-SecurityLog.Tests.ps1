@@ -190,6 +190,21 @@ Describe "Write-SecurityLog" -Tag @('Unit', 'Logging', 'Security') {
             }
         }
 
+        It "Should write the time of the fallback line with colons in a session whose culture separates time with a dot (#193)" {
+            Mock Write-SecurityStructuredLogEntry { throw "Log system failure" }
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new('fi-FI')
+                Write-SecurityLog -SecurityEventType "ObjectAccess" -Message "Test" -Outcome "Failure" -CorrelationId "fb-2"
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
+
+            Should -Invoke Out-File -Times 1 -Exactly -ParameterFilter {
+                $InputObject -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[SecurityAudit\] \[Warning\] '
+            }
+        }
+
         It "Should write a critical error when the fallback file also fails" {
             Mock Write-SecurityStructuredLogEntry { throw "Log system failure" }
             Mock Out-File { throw "File system failure" }

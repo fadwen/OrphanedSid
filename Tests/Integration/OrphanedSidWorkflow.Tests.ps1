@@ -484,6 +484,36 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             Get-TrusteeSid -DN "CN=Payroll,OU=Finance,$script:DomainDN" | Should -Not -Contain $script:OrphanSid
         }
 
+        It 'Writes the times of every security entry as text with the offset of the session (#191, #192)' {
+            # On Windows PowerShell 5.1 Timestamp was an object with the properties value,
+            # DisplayHint and DateTime, and the Security_Timestamp of a removal was local time
+            # that ended in Z. The lines are read as text: ConvertFrom-Json on PowerShell 7 turns
+            # such a text back into a date, which would hide the form it has in the file.
+            $log = Join-Path $TestDrive "times-$([guid]::NewGuid().ToString('N')).log"
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                BackupPath            = $script:BackupRoot
+                LogPath               = $log
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+
+            $null = Remove-OrphanedSid @parameters
+
+            $securityLines = @(Get-Content -LiteralPath $log | Where-Object { $_.StartsWith('{') })
+            $securityLines.Count | Should -BeGreaterThan 0
+            $time = '"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}"'
+            @($securityLines | Where-Object { $_ -notmatch ('"Timestamp":' + $time) }).Count | Should -Be 0
+
+            # The entries of an Active Directory operation and of a removal carry a second time
+            $withSecondTime = @($securityLines | Where-Object { $_ -match '"Security_Timestamp":' })
+            $withSecondTime.Count | Should -BeGreaterThan 0
+            @($withSecondTime | Where-Object { $_ -notmatch ('"Security_Timestamp":' + $time) }).Count | Should -Be 0
+
+            # No other value of an entry is a date in one of the forms that Windows PowerShell 5.1 writes
+            @($securityLines | Where-Object { $_ -match 'DisplayHint|\\/Date\(' }).Count | Should -Be 0
+        }
+
         It 'Keeps the live, built-in and unverified ACEs' {
             $null = Invoke-RemoveOrphanedSid
 

@@ -86,6 +86,28 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- The times in the log have one form in every session and on both editions.
+  - On Windows PowerShell 5.1 the `Timestamp` of a security entry was an object with the
+    properties `value`, `DisplayHint` and `DateTime`, where PowerShell 7 wrote ISO 8601 text.
+    The sample in the troubleshooting guide that reads the field with `[datetime]` failed on
+    a log that Windows PowerShell 5.1 wrote. Both editions now write text such as
+    `2026-11-20T21:54:45.123+01:00`: the local time with its offset, with three decimal places
+    where PowerShell 7 wrote seven.
+    ([#191](https://github.com/fadwen/OrphanedSid/issues/191))
+  - The `Security_Timestamp` of the security entries that `Remove-OrphanedSid` writes around
+    an ACL change ended in `Z`, which says UTC, and held the local time. It now has the form
+    of `Timestamp`, and so has the `Security_Timestamp` of the entries of an Active Directory
+    operation, which was a date with the two shapes above.
+    ([#192](https://github.com/fadwen/OrphanedSid/issues/192))
+  - In a session whose culture separates hours, minutes and seconds with another character
+    than a colon, such as fi-FI, every time in the log was written with that character:
+    `21.54.45`. The times are written with colons in every session now: the time at the start
+    of each regular line, `Timestamp` and `Security_Timestamp`, `Start Time` in the header of
+    the file, and the lines of the fallback files.
+    ([#193](https://github.com/fadwen/OrphanedSid/issues/193))
+
+  Whatever reads these fields has to take the new form where it relied on seven decimal
+  places, on the `Z`, or on the object that Windows PowerShell 5.1 wrote.
 - `Restore-OrphanedSidBackup` writes security entries to the log, as `Remove-OrphanedSid` does
   for a change. A restore replaces the security descriptor of an object, and it wrote no
   security entry: with `-LogLevel Warning` or `-LogLevel Error` the log of a restore that
