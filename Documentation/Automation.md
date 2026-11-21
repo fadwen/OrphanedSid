@@ -235,7 +235,8 @@ Each operational log line has the form:
 [2025-01-27T14:30:22.123] [Information] [Main] [12345678-1234-1234-1234-123456789012] Starting discovery
 ```
 
-Entries with structured details append ` | Details: {...}` as compact JSON. Security audit
+Entries with structured details append ` | Details: {...}` as compact JSON; a time among the
+details is text with its offset from UTC, such as `2026-11-20T21:54:45.123+01:00`. Security audit
 entries are written as one compact JSON object per line, with `"Component":"SecurityAudit"`,
 `"SecurityEventType"`, `"Outcome"`, `"Message"` and `"CorrelationId"` keys; they are written at
 every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run's lines when

@@ -113,6 +113,10 @@ All notable changes to this module are recorded here. Format follows
     of each regular line, `Timestamp` and `Security_Timestamp`, `Start Time` in the header of
     the file, and the lines of the fallback files.
     ([#193](https://github.com/fadwen/OrphanedSid/issues/193))
+  - The line that reports a backup that could not be written ends in ` | Details: {...}`, and
+    the `Timestamp` among those details was, on Windows PowerShell 5.1, the same object with
+    `value`, `DisplayHint` and `DateTime`. It is text in the form of the other times now, on
+    both editions. ([#196](https://github.com/fadwen/OrphanedSid/issues/196))
 
   Whatever reads these fields has to take the new form where it relied on seven decimal
   places, on the `Z`, or on the object that Windows PowerShell 5.1 wrote.
