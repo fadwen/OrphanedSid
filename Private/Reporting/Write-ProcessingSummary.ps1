@@ -3,79 +3,64 @@
 function Write-ProcessingSummary {
     <#
     .SYNOPSIS
-        Write comprehensive processing summary with statistics and results
+        Writes the summary of a discovery or a removal to the log
 
     .DESCRIPTION
-        Generates and displays a comprehensive summary of processing results
-        including performance statistics, findings, and recommendations for
-        enterprise reporting and audit requirements.
+        Logs the totals of a run of Find-OrphanedSid or Remove-OrphanedSid: the objects
+        processed and the duration, and, where the result has them, the rate, the peak memory
+        use, the processing errors, the orphaned SIDs found, the objects that could not be
+        examined and the SIDs that could not be verified. Each of the last two gets a line at
+        Warning level when it is not zero.
 
-        REPORTING FEATURES:
-        - Multi-format output for different audiences
-        - Comprehensive performance metrics and statistics
-        - Automated CSV export for downstream processing
-        - Structured JSON output for automation integration
-        - Color-coded console output for immediate assessment
+        For a run that removed entries it logs how many removals were attempted, how many
+        succeeded and how many failed, and, when there is one, how many of the failed ones had
+        an entry that was no longer on the object.
+
+        When the run streamed results and -OutputPath is given, the streaming manager of the
+        result writes them to that CSV file, and a line says where the file is. Under -WhatIf
+        no file is written and a line says so. When the manager writes nothing outside
+        -WhatIf, a line at Warning level says that the file was not written. An export that
+        fails is logged at Error level and reported as a non-terminating error: the results
+        were already returned, so the command goes on. A run that streamed no result gets a
+        line that says the directory is clean, or, when it had processing errors, a line that
+        points at the error log.
+
+        Every line goes through Write-StructuredLog with the component Summary. A restore is
+        not summarised here: Restore-OrphanedSidBackup writes its own summary.
 
     .PARAMETER ProcessingResults
-        [Object] (Mandatory) Hashtable containing processing results and statistics.
-        Must include required properties for different operation types.
-
-        EXPECTED PROPERTIES:
-        - TotalObjectsProcessed: Number of objects analyzed
-        - ProcessingDuration: Time taken for processing
-        - ProcessingErrors: Count of errors encountered
-        - CorrelationId: Tracking identifier for audit
-
-        OPERATION-SPECIFIC PROPERTIES:
-        Discovery/Removal: OrphanedSIDsFound, RemovalResults, StreamingManager
+        The result of Invoke-MainProcessingLogic, as a hashtable or as an object with the same
+        names. TotalObjectsProcessed and ProcessingDuration, a TimeSpan, are read from every
+        result. ObjectsPerSecond, PeakMemoryUsageMB, ProcessingErrors, OrphanedSIDsFound,
+        UnexaminedObjects, UnverifiedSIDsFound, RemovalResults and StreamingManager are read
+        when the result has them.
 
     .PARAMETER OutputPath
-        [String] (Optional) Path for CSV export of results.
-        Enables downstream processing and analysis.
-
-        VALIDATION RULES:
-        - Directory must exist or be creatable
-        - Must have write permissions to specified location
-        - File extension should be .csv for consistency
-
-        BUSINESS CONTEXT:
-        The CSV file can be read by a reporting system or attached to a change record.
+        Path of the CSV file for the streamed results. The function does not check the path:
+        the public commands check its folder before a run starts.
 
     .PARAMETER CorrelationId
-        [String] (Optional) Correlation ID for tracking this operation.
-        Auto-generated if not provided for audit purposes.
+        Correlation ID of the log lines. One is generated when none is given.
+
+    .INPUTS
+        None.
 
     .OUTPUTS
-        [Void] Writes summary to console and optionally exports to files.
-        Side effects include console output and file creation if specified.
+        None.
 
     .EXAMPLE
-        PS> Write-ProcessingSummary -ProcessingResults $results -OutputPath ".\results.csv"
+        PS> Write-ProcessingSummary -ProcessingResults $results -OutputPath '.\results.csv' -CorrelationId $id
 
-        DESCRIPTION: Write summary and export results to CSV
-        OUTPUT: Console summary and CSV file export
-        USE CASE: Standard result reporting and documentation
+        Logs the summary of the run and exports its streamed results to results.csv.
 
     .NOTES
         Author: Jeffrey Stuhr
         Blog: https://www.techbyjeff.net
         LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
 
-        SECURITY CONSIDERATIONS:
-        - Results may contain sensitive information about AD structure
-        - Export files should be protected with appropriate permissions
-        - Correlation IDs enable security event tracking
-        - Summary data supports security audit requirements
-
         TROUBLESHOOTING:
         - For output issues: .\Troubleshooting\Common\Common-Issues.md
         - For performance optimization: .\Troubleshooting\Performance\Performance-Tuning.md
-
-        KNOWN LIMITATIONS:
-        - Large result sets may impact console display performance
-        - CSV export requires sufficient disk space
-        - Color output may not display correctly in all terminals
     #>
     [CmdletBinding()]
     param(
