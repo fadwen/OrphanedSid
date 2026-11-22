@@ -1,0 +1,27 @@
+# Dependabot version updates for the actions that the workflows use.
+#
+# Only the 'github-actions' ecosystem, because that is all Dependabot can read here. It has no
+# ecosystem for the PowerShell Gallery, and it does not read the versions that quality-gates.yml
+# names under env: Pester, PSScriptAnalyzer, PlatyPS and betterleaks are changed by hand, each
+# as the comment beside it says. The module itself requires no other module.
+#
+# A pull request from Dependabot keeps the form of a reference. A version tag stays a tag, and
+# a commit ID stays a commit ID with the version in the comment after it, which is what
+# Tests/Unit/Workflows.Contract.Tests.ps1 asks of every 'uses:' line.
+
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    # '/' stands for .github/workflows
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    # The titles of this repository are Conventional Commits; with the prefix they read 'ci: ...'
+    commit-message:
+      prefix: 'ci'
+    ignore:
+      # gallery-downloads.yml calls a reusable workflow at the commit that last changed it. The
+      # tags of that repository are the releases of a module, so an update would follow those
+      # releases and not the workflow. The comment in gallery-downloads.yml says how to take a
+      # newer version.
+      - dependency-name: 'fadwen/IntuneScriptLab'

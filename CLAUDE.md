@@ -388,6 +388,22 @@ in the form of a credential makes it at run time, as `Write-StructuredLog.Tests.
 A move to betterleaks 2 is not a change of the version number: it reads no allowlists, its
 ignore file holds hashes of the values and not places, and `dir` is `fs` there.
 
+### Dependabot updates the actions, and the other pins are changed by hand
+
+`.github/dependabot.yml` names one ecosystem, `github-actions`, and that is all there is for it
+to name. Dependabot has no ecosystem for the PowerShell Gallery, and it does not read a version
+that a workflow holds under `env:`. Pester, PSScriptAnalyzer, PlatyPS and betterleaks therefore
+stay as the section on the build tools describes them, and nothing proposes a newer one. The
+module requires no other module.
+
+The reusable workflow that `gallery-downloads.yml` calls is ignored in that file on purpose. It
+is pinned to the commit that last changed it, and the tags of its repository are the releases
+of a module, so an update would move the pin with each of those releases.
+
+Dependabot alerts are a setting of the repository, not a part of that file. GitHub raises one
+for an action that is referenced by a version tag and none for an action at a commit ID, so the
+stricter pin of CIC-09 takes an action out of the alerts.
+
 ### The MAML filename carries a capital H
 
 `en-US/OrphanedSid-Help.xml`, matching every `.EXTERNALHELP OrphanedSid-Help.xml` keyword in
