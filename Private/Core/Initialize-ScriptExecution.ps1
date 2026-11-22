@@ -23,10 +23,8 @@ function Initialize-ScriptExecution {
         If not provided, default configuration will be used.
 
         VALIDATION RULES:
-        - A path that does not exist is not an error here: the defaults are used. The public
-          commands refuse such a path before a run starts
-        - A file that cannot be read as JSON, or that holds a value outside its range, ends
-          the function with the error ConfigurationFileNotLoaded
+        - A file that is not there, that cannot be read as JSON, or that holds a value outside
+          its range ends the function with the error ConfigurationFileNotLoaded
 
     .PARAMETER LogPath
         [String] (Optional) Path for log file output.
@@ -201,7 +199,11 @@ function Initialize-ScriptExecution {
             # The configuration is read before the log file is set up, because its rotation settings
             # decide whether the existing file is renamed aside before this run writes to it. A file
             # that fails to load is reported once the log exists, so the failure reaches the file.
-            $configFromFile = [bool]($ConfigPath -and (Test-Path -LiteralPath $ConfigPath))
+            # A path that was given is loaded, whether or not the file is there. A file that
+            # has gone since the command checked the path fails in LoadFromFile, like one
+            # that cannot be read, so a run that asked for a configuration never goes on
+            # with the defaults in its place (#208).
+            $configFromFile = -not [string]::IsNullOrWhiteSpace($ConfigPath)
             $configLoadError = $null
             $script:Config = if ($configFromFile) {
                 try {

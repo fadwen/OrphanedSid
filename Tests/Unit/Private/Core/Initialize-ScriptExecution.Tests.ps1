@@ -159,17 +159,35 @@ Describe 'Initialize-ScriptExecution' -Tag 'Unit', 'Core', 'Private' {
         It 'Leaves the level alone with -UseConfigLogLevel when there is no configuration file' {
             $script:LogLevel = 'Warning'
 
-            Initialize-ScriptExecution -ConfigPath (Join-Path $script:workDir 'none.json') -UseConfigLogLevel | Out-Null
+            Initialize-ScriptExecution -UseConfigLogLevel | Out-Null
 
             $script:LogLevel | Should -Be 'Warning'
             Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'File log level set to*' }
         }
 
-        It 'Falls back to the defaults when the file does not exist' {
-            $result = Initialize-ScriptExecution -ConfigPath (Join-Path $script:workDir 'missing.json')
+        It 'Uses the defaults, and says so, when no file is given' {
+            $result = Initialize-ScriptExecution
 
             $result.Config.BatchSize | Should -Be 50
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq 'Using default configuration' }
+        }
+
+        It 'Ends with ConfigurationFileNotLoaded when the file that was given is not there (#208)' {
+            # The commands check the path when the parameter is bound. A file that goes away
+            # after that, on a share that drops for example, was taken for no file at all: the
+            # run went on with the defaults, without the protected SIDs of the file.
+            $script:missingConfig = Join-Path $script:workDir 'missing.json'
+
+            $expected = @{
+                ErrorId         = 'ConfigurationFileNotLoaded,Initialize-ScriptExecution'
+                ExpectedMessage = "Configuration file not found: $($script:missingConfig)"
+                ExceptionType   = [System.IO.InvalidDataException]
+            }
+            { Initialize-ScriptExecution -ConfigPath $script:missingConfig } | Should -Throw @expected
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Error' -and $Message -eq "Script initialization failed: Configuration file not found: $($script:missingConfig)"
+            }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -eq 'Using default configuration' }
         }
 
         It 'Throws when the file holds an invalid setting' {
