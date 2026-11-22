@@ -2,7 +2,8 @@
 
 How to run the OrphanedSid checks locally. The same checks run in
 [Quality Gates](https://github.com/fadwen/OrphanedSid/actions/workflows/quality-gates.yml) on every
-push and pull request, on PowerShell 7 and on Windows PowerShell 5.1, plus a help gate on Linux.
+push and pull request, on PowerShell 7 and on Windows PowerShell 5.1, plus a help gate and a
+credential scan on Linux.
 
 ## Requirements
 
@@ -86,6 +87,42 @@ foreach ($path in $paths) {
 ```
 
 Both loops are expected to return nothing.
+
+## Credential scan
+
+CI scans the repository for credentials with
+[betterleaks](https://github.com/betterleaks/betterleaks), at the version that
+`BETTERLEAKS_VERSION` in `quality-gates.yml` names. To run it locally, take the archive for your
+platform from that release, compare its SHA256 with `checksums.txt` of the same release, and put
+the binary on the path.
+
+```powershell
+$options = @(
+    '--config', '.betterleaks.toml'
+    '--gitleaks-ignore-path', '.betterleaksignore'
+    '--redact'
+    '--verbose'
+)
+betterleaks git . @options     # what every commit of every branch and tag added
+betterleaks dir . @options     # the files as they are, ignored folders such as Logs included
+```
+
+Both are expected to end with `no leaks found`. `--redact` shows a finding with its place and
+without its value. Do not add `--validation`: it sends what the scan found to the provider that
+the value seems to belong to.
+
+When the scan reports something:
+
+- A real credential is revoked first. A commit that removes it leaves it in the history, where
+  the scan keeps finding it.
+- A value that only has the form of a credential, in a file you can change, is changed so that
+  the scan does not report it. A test makes such a value at run time, with
+  `[guid]::NewGuid().ToString('N')` for example.
+- A line of a commit that is already on the default branch, read and found harmless, gets an
+  entry in `.betterleaksignore`. The entry is the `Fingerprint` of the finding in the report
+  that `--report-format json --report-path <file>` writes.
+
+`.betterleaks.toml` holds the two exceptions to the built-in rules, and says why they exist.
 
 ## Help and release rehearsal
 
