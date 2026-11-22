@@ -3,47 +3,36 @@
 function Start-OrchestrationWorkflow {
     <#
     .SYNOPSIS
-        Coordinates high-level workflow between processing modules
+        Starts the restore workflow for Restore-OrphanedSidBackup
 
     .DESCRIPTION
-        Acts as the central coordinator for OrphanedSid operations,
-        delegating to specialized functions while maintaining workflow
-        integrity and proper error handling.
+        Maps the parameters of a restore to those of Invoke-RestoreWorkflow, asks it to verify
+        each ACL after it is written, and calls it. The function writes a log line when it
+        starts and one when it ends, and logs a failure of the workflow before it passes the
+        error on.
 
-        COORDINATION FEATURES:
-        - Loads Invoke-RestoreWorkflow from its file when that function is not defined
-        - Workflow decision routing based on operation type
-        - Centralized correlation ID propagation
-        - Consistent error handling across all modules
-        - A log line when the workflow starts and one when it ends
-
-    .PARAMETER OperationType
-        [String] (Mandatory) Type of operation to coordinate.
-        Valid values: 'Discovery', 'Removal', 'Restore'
+        A discovery or a removal does not come through here: Find-OrphanedSid and
+        Remove-OrphanedSid call Invoke-MainProcessingLogic themselves.
 
     .PARAMETER Parameters
-        [Hashtable] (Mandatory) Parameters to pass to the selected workflow.
-        Must contain all required parameters for the specified operation type.
+        [Hashtable] (Mandatory) The parameters of the restore, by name. TargetObjectDN,
+        BackupPath, BackupFile and CorrelationId are passed on, and WhatIf when it is true.
+        Other keys are left out. A table without CorrelationId gets the one of -CorrelationId.
 
     .PARAMETER CorrelationId
-        [String] (Optional) Correlation ID for tracking this workflow.
-        Auto-generated if not provided for audit purposes.
+        [String] (Optional) Correlation ID of the log lines of this function, and of the
+        restore when the parameters hold none. One is generated when none is given.
+
+    .INPUTS
+        None.
 
     .OUTPUTS
-        [Object] Results from the coordinated workflow operation.
-        Type varies based on OperationType specified.
+        [Object] What Invoke-RestoreWorkflow returns.
 
     .EXAMPLE
-        PS> Start-OrchestrationWorkflow -OperationType 'Discovery' -Parameters @{SearchBase='OU=Users,DC=contoso,DC=com'}
+        PS> Start-OrchestrationWorkflow -Parameters @{ TargetObjectDN = 'CN=User1,CN=Users,DC=contoso,DC=com'; BackupPath = 'C:\Backups' }
 
-        DESCRIPTION: Coordinate discovery workflow
-        OUTPUT: Discovery results from main processing logic
-        USE CASE: Standard orphaned SID discovery operation
-
-    .EXAMPLE
-        PS> Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters @{SearchBase=@('CN=User1,CN=Users,DC=contoso,DC=com'); BackupPath='C:\Backups'}
-
-        DESCRIPTION: Coordinate restore workflow
+        DESCRIPTION: Start the restore of one object from a folder of backups
         OUTPUT: Restore operation results
         USE CASE: ACL restoration from backup files
 
@@ -58,12 +47,8 @@ function Start-OrchestrationWorkflow {
     #>
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
-        Justification = 'Routes to workflow functions that gate their own writes with ShouldProcess')]
+        Justification = 'Calls the restore workflow, which gates its own writes with ShouldProcess')]
     param(
-        [Parameter(Mandatory)]
-        [ValidateSet('Discovery', 'Removal', 'Restore')]
-        [string]$OperationType,
-
         [Parameter(Mandatory)]
         [hashtable]$Parameters,
 
@@ -72,14 +57,7 @@ function Start-OrchestrationWorkflow {
     )
 
     begin {
-        Write-StructuredLog "Starting orchestration workflow: $OperationType" -Level Information -Component 'Orchestration' -CorrelationId $CorrelationId
-
-        # Load required modules for restore operations
-        if ($OperationType -eq 'Restore') {
-            if (-not (Get-Command Invoke-RestoreWorkflow -ErrorAction SilentlyContinue)) {
-                . (Join-Path (Split-Path $PSScriptRoot -Parent) 'Backup\Invoke-RestoreWorkflow.ps1')
-            }
-        }
+        Write-StructuredLog 'Starting orchestration workflow: Restore' -Level Information -Component 'Orchestration' -CorrelationId $CorrelationId
 
         # Ensure CorrelationId is propagated to all operations
         if (-not $Parameters.ContainsKey('CorrelationId')) {
@@ -89,62 +67,48 @@ function Start-OrchestrationWorkflow {
 
     process {
         try {
-            switch ($OperationType) {
-                'Discovery' {
-                    Write-StructuredLog "Coordinating discovery workflow" -Level Debug -Component 'Orchestration' -CorrelationId $CorrelationId
-                    return Invoke-MainProcessingLogic @Parameters
-                }
-                'Removal' {
-                    Write-StructuredLog "Coordinating removal workflow" -Level Debug -Component 'Orchestration' -CorrelationId $CorrelationId
-                    # Add Remove switch for removal operations
-                    $Parameters.Remove = $true
-                    return Invoke-MainProcessingLogic @Parameters
-                }
-                'Restore' {
-                    Write-StructuredLog "Coordinating restore workflow" -Level Debug -Component 'Orchestration' -CorrelationId $CorrelationId
+            Write-StructuredLog "Coordinating restore workflow" -Level Debug -Component 'Orchestration' -CorrelationId $CorrelationId
 
-                    # Map parameters from main script format to restore workflow format
-                    $restoreParams = @{}
+            # Map parameters from main script format to restore workflow format
+            $restoreParams = @{}
 
-                    # Map TargetObjectDN (individual object for restore)
-                    if ($Parameters.ContainsKey('TargetObjectDN')) {
-                        $restoreParams.TargetObjectDN = $Parameters.TargetObjectDN
-                    }
-
-                    # Map BackupPath
-                    if ($Parameters.ContainsKey('BackupPath')) {
-                        $restoreParams.BackupPath = $Parameters.BackupPath
-                    }
-
-                    # Map BackupFile: one backup file by name, in place of the folder
-                    if ($Parameters.ContainsKey('BackupFile')) {
-                        $restoreParams.BackupFile = $Parameters.BackupFile
-                    }
-
-                    # Map CorrelationId
-                    if ($Parameters.ContainsKey('CorrelationId')) {
-                        $restoreParams.CorrelationId = $Parameters.CorrelationId
-                    }
-
-                    # Map WhatIf parameter
-                    if ($Parameters.ContainsKey('WhatIf') -and $Parameters.WhatIf) {
-                        $restoreParams.WhatIf = $true
-                    }
-
-                    # Verify the applied ACL against the backup after restoration. Without this the
-                    # restore workflow reports success on the write alone and never compares entries.
-                    $restoreParams.VerifyRestoration = $true
-
-                    return Invoke-RestoreWorkflow @restoreParams
-                }
+            # Map TargetObjectDN (individual object for restore)
+            if ($Parameters.ContainsKey('TargetObjectDN')) {
+                $restoreParams.TargetObjectDN = $Parameters.TargetObjectDN
             }
+
+            # Map BackupPath
+            if ($Parameters.ContainsKey('BackupPath')) {
+                $restoreParams.BackupPath = $Parameters.BackupPath
+            }
+
+            # Map BackupFile: one backup file by name, in place of the folder
+            if ($Parameters.ContainsKey('BackupFile')) {
+                $restoreParams.BackupFile = $Parameters.BackupFile
+            }
+
+            # Map CorrelationId
+            if ($Parameters.ContainsKey('CorrelationId')) {
+                $restoreParams.CorrelationId = $Parameters.CorrelationId
+            }
+
+            # Map WhatIf parameter
+            if ($Parameters.ContainsKey('WhatIf') -and $Parameters.WhatIf) {
+                $restoreParams.WhatIf = $true
+            }
+
+            # Verify the applied ACL against the backup after restoration. Without this the
+            # restore workflow reports success on the write alone and never compares entries.
+            $restoreParams.VerifyRestoration = $true
+
+            return Invoke-RestoreWorkflow @restoreParams
         }
         catch {
-            Write-StructuredLog "Orchestration workflow failed for $OperationType : $($_.Exception.Message)" -Level Error -Component 'Orchestration' -CorrelationId $CorrelationId
+            Write-StructuredLog "Orchestration workflow failed for Restore : $($_.Exception.Message)" -Level Error -Component 'Orchestration' -CorrelationId $CorrelationId
             $PSCmdlet.ThrowTerminatingError($_)
         }
         finally {
-            Write-StructuredLog "Orchestration workflow completed: $OperationType" -Level Information -Component 'Orchestration' -CorrelationId $CorrelationId
+            Write-StructuredLog 'Orchestration workflow completed: Restore' -Level Information -Component 'Orchestration' -CorrelationId $CorrelationId
         }
     }
 }

@@ -128,7 +128,7 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
                 -BackupPath $script:backupDir -Force -CorrelationId 'rs-1' | Out-Null
 
             Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 2 -Exactly -ParameterFilter {
-                $OperationType -eq 'Restore' -and $Parameters.BackupPath -eq $script:backupDir -and
+                $Parameters.BackupPath -eq $script:backupDir -and
                 $Parameters.CorrelationId -eq 'rs-1' -and $CorrelationId -eq 'rs-1' -and -not $Parameters.ContainsKey('WhatIf')
             }
             Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter { $Parameters.TargetObjectDN -eq 'CN=A,DC=contoso,DC=com' }
@@ -139,7 +139,7 @@ Describe 'Restore-OrphanedSidBackup' -Tag 'Unit', 'Public' {
             Restore-OrphanedSidBackup -TargetObjectDN 'CN=A,DC=contoso,DC=com' -BackupFile $script:backupFile -Force -CorrelationId 'rs-3' | Out-Null
 
             Should -Invoke -ModuleName OrphanedSid Start-OrchestrationWorkflow -Times 1 -Exactly -ParameterFilter {
-                $OperationType -eq 'Restore' -and $Parameters.TargetObjectDN -eq 'CN=A,DC=contoso,DC=com' -and
+                $Parameters.TargetObjectDN -eq 'CN=A,DC=contoso,DC=com' -and
                 $Parameters.BackupFile -eq $script:backupFile -and -not $Parameters.ContainsKey('BackupPath') -and
                 $Parameters.CorrelationId -eq 'rs-3' -and -not $Parameters.ContainsKey('WhatIf')
             }

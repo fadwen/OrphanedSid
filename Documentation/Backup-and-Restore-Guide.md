@@ -149,8 +149,8 @@ Restore-OrphanedSidBackup -TargetObjectDN "OU=Users,DC=contoso,DC=com" -BackupPa
 
 ### Restore Workflow Functions
 
-`Restore-OrphanedSidBackup` hands each target to `Start-OrchestrationWorkflow -OperationType
-'Restore'`, which calls `Invoke-RestoreWorkflow` (`Private/Backup/Invoke-RestoreWorkflow.ps1`)
+`Restore-OrphanedSidBackup` hands each target to `Start-OrchestrationWorkflow`, which calls
+`Invoke-RestoreWorkflow` (`Private/Backup/Invoke-RestoreWorkflow.ps1`)
 with `-TargetObjectDN`, `-BackupPath` or `-BackupFile`, `-VerifyRestoration` and the run's
 `-CorrelationId` (plus `-WhatIf` when the command was given it). For each selected file `Restore-IndividualObject`
 validates the backup, validates the target, and calls `Set-ObjectACL`
