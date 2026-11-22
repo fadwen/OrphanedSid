@@ -22,18 +22,19 @@ function Initialize-ScriptExecution {
         If not provided, default configuration will be used.
 
         VALIDATION RULES:
-        - Must be a valid file path if specified
-        - File must exist and be readable
-        - Must contain valid JSON configuration structure
+        - A path that does not exist is not an error here: the defaults are used. The public
+          commands refuse such a path before a run starts
+        - A file that cannot be read as JSON, or that holds a value outside its range, ends
+          the function with the error ConfigurationFileNotLoaded
 
     .PARAMETER LogPath
         [String] (Optional) Path for log file output.
         If not provided, default timestamped log file will be created.
 
         VALIDATION RULES:
-        - Directory must exist or be creatable
-        - Must have write permissions to the specified location
-        - File extension should be .log for consistency
+        - Without a path the file is .\Logs\OrphanedSid_[timestamp].log
+        - The folder is created when it does not exist. A path that cannot be used gives a
+          warning, and the log goes to a file of that name in the current location
 
     .PARAMETER MaxMemoryUsageMB
         [Int] (Optional) Maximum memory usage threshold in MB (Default: 1024).
@@ -41,8 +42,6 @@ function Initialize-ScriptExecution {
 
         VALIDATION RULES:
         - Must be between 100 and 16384 MB
-        - Should be appropriate for system resources
-        - Consider dataset size when setting limits
 
         PERFORMANCE IMPACT:
         Lower values trigger more frequent memory checks and cleanup.
@@ -50,11 +49,8 @@ function Initialize-ScriptExecution {
 
     .PARAMETER CorrelationId
         [String] (Optional) Unique identifier for tracking operations across log entries.
-        If not provided, a new GUID will be generated automatically.
-
-        VALIDATION RULES:
-        - Must be a valid non-empty string if provided
-        - Should follow GUID format for consistency
+        If not provided, a new GUID will be generated automatically. The value is not
+        checked.
 
     .PARAMETER LogLevel
         [String] (Optional) Sets the minimum log level for file output (Default: Information).
@@ -62,15 +58,11 @@ function Initialize-ScriptExecution {
 
         VALIDATION RULES:
         - Must be one of: Critical, Error, Warning, Information, Debug, Verbose
-        - Higher levels include all lower level messages
+        - A level includes the entries of the levels before it in that list
 
     .PARAMETER SuppressConsoleOutput
         [Switch] (Optional) Suppresses console output for automation scenarios.
         Logs are still written to file, but console output is disabled.
-
-        VALIDATION RULES:
-        - Switch parameter (present/absent)
-        - Does not affect file logging
 
     .PARAMETER UseConfigLogLevel
         [Switch] (Optional) Replace -LogLevel with the LogLevel of the -ConfigPath file once that

@@ -31,9 +31,9 @@ function Remove-OrphanedSidEntry {
         Specifies one or more Active Directory object distinguished names for SID removal.
 
         VALIDATION RULES:
-        - Must be valid LDAP distinguished names
-        - Objects must exist in Active Directory
-        - Must have read access to security descriptors
+        - Cannot be null or empty
+        - Not checked further here. Invoke-RemovalWorkflow reads the ACL of each object, and
+          an object whose ACL cannot be read gets a result with Success = False
 
         EXAMPLES:
         - Single OU: "OU=Finance,DC=contoso,DC=com"
@@ -45,9 +45,9 @@ function Remove-OrphanedSidEntry {
         Specifies the orphaned SIDs to remove from the target objects.
 
         VALIDATION RULES:
-        - Must be valid SID format (S-1-5-...)
-        - SIDs will be validated against protected SID lists
-        - Cannot include well-known system SIDs
+        - Cannot be null or empty
+        - Each SID goes through the security validation of the workflow. A SID that it blocks,
+          such as a protected or a well-known one, is not removed
 
         EXAMPLES:
         - Single SID: "S-1-5-21-1234567890-1234567890-1234567890-1001"
@@ -59,8 +59,7 @@ function Remove-OrphanedSidEntry {
         Specifies the directory path for backup storage before SID removal.
 
         VALIDATION RULES:
-        - Directory must be accessible with write permissions
-        - Sufficient disk space for backup files
+        - The folder is created by New-ACLBackup when it does not exist
         - Has no default here: without a path no backup is written. Remove-OrphanedSid
           passes its backup folder, which defaults to .\Backup\[timestamp]
 

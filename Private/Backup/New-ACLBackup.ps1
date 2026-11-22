@@ -27,9 +27,11 @@ function New-ACLBackup {
         Supports pipeline input for batch processing operations.
 
         VALIDATION RULES:
-        - Must be valid Distinguished Name format
-        - Cannot be empty, null, or whitespace
-        - Automatically trimmed and sanitized for safe processing
+        - Cannot be null or empty; a value of blanks only ends the function with an error
+        - Its form is not checked here: the caller passes the name of an object whose ACL it
+          has read
+        - Trimmed before use. The file name is made from it, with each character that a file
+          name cannot hold replaced
 
         EXAMPLES:
         - Single object: "CN=User1,CN=Users,DC=contoso,DC=com"
@@ -42,8 +44,8 @@ function New-ACLBackup {
         with properly initialized access control lists.
 
         VALIDATION RULES:
-        - Cannot be null or empty
-        - Must contain valid access control entries
+        - Cannot be null
+        - An ACL without an access entry is backed up all the same, with a warning in the log
         - The written file is read back, and its hash and object name are compared with
           what was written
 
@@ -56,9 +58,9 @@ function New-ACLBackup {
         Supports both absolute and relative paths with automatic creation.
 
         VALIDATION RULES:
-        - Parent directory must exist or be creatable
-        - Must have write permissions for backup file creation
-        - Automatically creates subdirectories as needed
+        - Cannot be null or empty
+        - The folder is created, with the folders above it, when it does not exist. A folder
+          that cannot be created ends the function with the error BackupFolderNotCreated
 
         EXAMPLES:
         - Standard path: "C:\ADBackups\ACLs"

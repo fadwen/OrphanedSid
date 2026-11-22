@@ -22,8 +22,8 @@ function Invoke-MainProcessingLogic {
 
         VALIDATION RULES:
         - Must pass Test-ValidDistinguishedName validation
-        - Each DN must exist in Active Directory
-        - User must have read permissions to the specified containers
+        - A base that cannot be read, because it does not exist or the account may not read
+          it, gives a warning, and the run goes on with the other bases
 
     .PARAMETER Remove
         [Switch] (Optional) Whether to perform SID removal operations.

@@ -64,8 +64,9 @@ function Test-OrphanedSID {
         The Security Identifier to test for orphaned status.
 
         VALIDATION RULES:
-        - Must be a valid SID string format
-        - Supports domain SIDs, well-known SIDs, and service SIDs
+        - Cannot be null or empty
+        - A value that Test-SIDFormat does not accept gets the status Unverified, and no
+          lookup is made
 
         EXAMPLES:
         - Domain user: "S-1-5-21-1234567890-1234567890-1234567890-1001"

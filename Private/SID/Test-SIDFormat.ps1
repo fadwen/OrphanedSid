@@ -22,8 +22,8 @@ function Test-SIDFormat {
         The string to validate as a SID format.
 
         VALIDATION RULES:
-        - Must start with "S-1-" pattern
-        - Must be valid according to .NET SecurityIdentifier class
+        - Must start with S-1- and two numbers with a hyphen between them
+        - Must be accepted by the constructor of the .NET SecurityIdentifier class
 
         EXAMPLES:
         - Valid domain SID: "S-1-5-21-1234567890-1234567890-1234567890-1001"
@@ -141,8 +141,9 @@ function Test-WellKnownSID {
         The Security Identifier to test for well-known status.
 
         VALIDATION RULES:
-        - Must be a valid SID string format
-        - Checked against Microsoft's well-known SID specifications
+        - Cannot be null or empty
+        - Compared with the WellKnownSIDPatterns and the ProtectedSIDs of the configuration,
+          and then with the well-known SIDs that the function lists
 
         EXAMPLES:
         - System account: "S-1-5-18" (Local System)
