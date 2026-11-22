@@ -25,9 +25,6 @@ function Test-SIDFormat {
         - Must start with "S-1-" pattern
         - Must be valid according to .NET SecurityIdentifier class
 
-        BUSINESS CONTEXT:
-        Used to validate SID strings before processing in security operations.
-
         EXAMPLES:
         - Valid domain SID: "S-1-5-21-1234567890-1234567890-1234567890-1001"
         - Valid well-known SID: "S-1-5-32-544"
@@ -146,10 +143,6 @@ function Test-WellKnownSID {
         VALIDATION RULES:
         - Must be a valid SID string format
         - Checked against Microsoft's well-known SID specifications
-
-        BUSINESS CONTEXT:
-        Used to identify SIDs that should never be removed from ACLs due to
-        their critical system importance.
 
         EXAMPLES:
         - System account: "S-1-5-18" (Local System)

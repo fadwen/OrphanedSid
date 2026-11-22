@@ -67,10 +67,6 @@ function Test-OrphanedSID {
         - Must be a valid SID string format
         - Supports domain SIDs, well-known SIDs, and service SIDs
 
-        BUSINESS CONTEXT:
-        SIDs from ACL entries that may no longer have corresponding AD objects.
-        Used during security audits and cleanup operations.
-
         EXAMPLES:
         - Domain user: "S-1-5-21-1234567890-1234567890-1234567890-1001"
         - Built-in account: "S-1-5-32-544"

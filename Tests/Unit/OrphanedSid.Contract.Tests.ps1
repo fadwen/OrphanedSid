@@ -377,6 +377,10 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             # Nothing in the module starts a job or a runspace or uses -Parallel, so help that
             # names parallel processing describes a mode that the module does not have
             @{ Issue = 188; What = 'mention of parallel processing'; Pattern = '\bparallel\b' }
+            # Sections that said, parameter by parameter, what a value is good for. They were
+            # written as examples for explaining a function to the business, and none of
+            # their lines could be checked against the code.
+            @{ Issue = 202; What = 'section of business context'; Pattern = 'BUSINESS CONTEXT' }
         ) {
             $folders = "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public"
             $shippingFiles = Get-ChildItem -Path $folders -Filter *.ps1 -Recurse -File

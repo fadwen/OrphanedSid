@@ -35,10 +35,6 @@ function Remove-OrphanedSidEntry {
         - Objects must exist in Active Directory
         - Must have read access to security descriptors
 
-        BUSINESS CONTEXT:
-        Target objects that require orphaned SID cleanup. Commonly includes
-        organizational units, groups, and shared resources with inherited permissions.
-
         EXAMPLES:
         - Single OU: "OU=Finance,DC=contoso,DC=com"
         - Multiple objects: @("OU=HR,DC=contoso,DC=com", "CN=SharedFolder,CN=Computer,DC=contoso,DC=com")
@@ -52,10 +48,6 @@ function Remove-OrphanedSidEntry {
         - Must be valid SID format (S-1-5-...)
         - SIDs will be validated against protected SID lists
         - Cannot include well-known system SIDs
-
-        BUSINESS CONTEXT:
-        These are the problematic SIDs identified during discovery that reference
-        deleted or inaccessible security principals.
 
         EXAMPLES:
         - Single SID: "S-1-5-21-1234567890-1234567890-1234567890-1001"
@@ -72,9 +64,6 @@ function Remove-OrphanedSidEntry {
         - Has no default here: without a path no backup is written. Remove-OrphanedSid
           passes its backup folder, which defaults to .\Backup\[timestamp]
 
-        BUSINESS CONTEXT:
-        Backups enable restoration if removal operations need to be reversed.
-
         EXAMPLES:
         - Network path: "\\backup-server\ad-backups\sid-removal"
         - Local path: "C:\ADBackups\SIDRemoval"
@@ -84,18 +73,11 @@ function Remove-OrphanedSidEntry {
 
         Enables preview mode to show what changes would be made without executing them.
 
-        BUSINESS CONTEXT:
-        Essential for validation in production environments. Allows review of
-        planned changes before execution for risk assessment and approval.
-
     .PARAMETER CorrelationId
         [String] (Optional)
 
         Provides a unique identifier for tracking operations across logs and systems.
-
-        BUSINESS CONTEXT:
-        Enables end-to-end tracking for troubleshooting.
-        Auto-generated if not provided for seamless operation tracking.
+        One is generated when none is given.
 
     .EXAMPLE
         PS> Remove-OrphanedSidEntry -ObjectDN "OU=Finance,DC=contoso,DC=com" -OrphanedSIDs "S-1-5-21-1234567890-1234567890-1234567890-1001"

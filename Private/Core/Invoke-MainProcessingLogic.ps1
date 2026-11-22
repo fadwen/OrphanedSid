@@ -25,10 +25,6 @@ function Invoke-MainProcessingLogic {
         - Each DN must exist in Active Directory
         - User must have read permissions to the specified containers
 
-        BUSINESS CONTEXT:
-        Defines the scope of orphaned SID discovery operation.
-        Consider organizational structure when selecting search bases.
-
     .PARAMETER Remove
         [Switch] (Optional) Whether to perform SID removal operations.
         Requires additional permissions and triggers backup creation.

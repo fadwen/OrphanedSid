@@ -26,10 +26,6 @@ function Initialize-ScriptExecution {
         - File must exist and be readable
         - Must contain valid JSON configuration structure
 
-        BUSINESS CONTEXT:
-        Allows customization of script behavior for different environments
-        (development, staging, production) while maintaining consistency.
-
     .PARAMETER LogPath
         [String] (Optional) Path for log file output.
         If not provided, default timestamped log file will be created.
@@ -38,9 +34,6 @@ function Initialize-ScriptExecution {
         - Directory must exist or be creatable
         - Must have write permissions to the specified location
         - File extension should be .log for consistency
-
-        BUSINESS CONTEXT:
-        A log file in a central location can be collected by a log aggregation system.
 
     .PARAMETER MaxMemoryUsageMB
         [Int] (Optional) Maximum memory usage threshold in MB (Default: 1024).
@@ -63,10 +56,6 @@ function Initialize-ScriptExecution {
         - Must be a valid non-empty string if provided
         - Should follow GUID format for consistency
 
-        BUSINESS CONTEXT:
-        Enables tracking of operations across multiple systems and log files
-        for comprehensive audit trails and troubleshooting support.
-
     .PARAMETER LogLevel
         [String] (Optional) Sets the minimum log level for file output (Default: Information).
         Controls the verbosity of log file output while maintaining performance.
@@ -75,10 +64,6 @@ function Initialize-ScriptExecution {
         - Must be one of: Critical, Error, Warning, Information, Debug, Verbose
         - Higher levels include all lower level messages
 
-        BUSINESS CONTEXT:
-        Enables fine-tuned control of log file size and performance impact
-        while maintaining necessary audit and troubleshooting information.
-
     .PARAMETER SuppressConsoleOutput
         [Switch] (Optional) Suppresses console output for automation scenarios.
         Logs are still written to file, but console output is disabled.
@@ -86,10 +71,6 @@ function Initialize-ScriptExecution {
         VALIDATION RULES:
         - Switch parameter (present/absent)
         - Does not affect file logging
-
-        BUSINESS CONTEXT:
-        Enables clean automation scenarios where console output would interfere
-        with script integration or scheduled task execution.
 
     .PARAMETER UseConfigLogLevel
         [Switch] (Optional) Replace -LogLevel with the LogLevel of the -ConfigPath file once that

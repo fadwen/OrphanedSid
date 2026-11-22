@@ -31,11 +31,6 @@ function New-ACLBackup {
         - Cannot be empty, null, or whitespace
         - Automatically trimmed and sanitized for safe processing
 
-        BUSINESS CONTEXT:
-        Used to specify target objects for backup operations. Consider
-        organizing backups by organizational unit or functional area
-        for easier management and recovery operations.
-
         EXAMPLES:
         - Single object: "CN=User1,CN=Users,DC=contoso,DC=com"
         - Container object: "OU=Sales,OU=Departments,DC=contoso,DC=com"
@@ -64,10 +59,6 @@ function New-ACLBackup {
         - Parent directory must exist or be creatable
         - Must have write permissions for backup file creation
         - Automatically creates subdirectories as needed
-
-        BUSINESS CONTEXT:
-        Recommended to use timestamped subdirectories for organized backup
-        management.
 
         EXAMPLES:
         - Standard path: "C:\ADBackups\ACLs"

@@ -79,10 +79,6 @@ function Invoke-MemoryCheck {
         Forces immediate memory check and cleanup if needed
 
     .NOTES
-        BUSINESS CONTEXT:
-        Critical for maintaining system stability during long-running
-        operations in enterprise environments with large datasets.
-
         PERFORMANCE IMPACT:
         - Minimal overhead during normal operations
         - Automatic cleanup prevents memory exhaustion
