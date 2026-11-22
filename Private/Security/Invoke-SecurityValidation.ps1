@@ -65,7 +65,7 @@ function Invoke-SecurityValidation {
 
     .NOTES
         SECURITY FEATURES:
-        - Uses SIDValidation module for comprehensive security testing
+        - Checks each SID with Test-SIDSecurity
         - Implements risk-based validation with graduated responses
         - Provides detailed audit trails with correlation tracking
         - Blocks protected and privileged SIDs automatically
@@ -107,7 +107,7 @@ function Invoke-SecurityValidation {
             foreach ($sid in $OrphanedSIDs) {
                 Write-StructuredLog "Validating SID for removal: $sid" -Level Debug -CorrelationId $CorrelationId
 
-                # Use SIDValidation module for comprehensive security testing
+                # Each SID is checked by Test-SIDSecurity
                 $sidValidation = Test-SIDSecurity -SIDString $sid -ObjectDN $ObjectDN -ValidationLevel 'Standard' -CurrentDomainSID $CurrentDomainSID -CorrelationId $CorrelationId
 
                 if (-not $sidValidation.IsValid) {

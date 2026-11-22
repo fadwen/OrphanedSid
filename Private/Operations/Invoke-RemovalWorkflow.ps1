@@ -73,7 +73,7 @@ function Invoke-RemovalWorkflow {
     .NOTES
         WORKFLOW FEATURES:
         - Modular design with specialized component delegation
-        - Comprehensive error handling with rollback capability
+        - A failure in any phase ends the workflow with a failed result; nothing is rolled back
         - Security-first approach with validation gates
         - Enterprise audit trail with correlation tracking
         - Flexible backup and verification options
@@ -83,7 +83,7 @@ function Invoke-RemovalWorkflow {
         - Protected SID detection and blocking
         - Risk-based operation controls
         - Comprehensive audit logging throughout workflow
-        - Backup creation for rollback capability
+        - A backup before the change, which Restore-OrphanedSidBackup restores from
 
         TROUBLESHOOTING:
         - For security blocks: Review security validation results

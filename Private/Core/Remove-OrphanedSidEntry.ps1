@@ -69,7 +69,8 @@ function Remove-OrphanedSidEntry {
         VALIDATION RULES:
         - Directory must be accessible with write permissions
         - Sufficient disk space for backup files
-        - Defaults to .\Backup\[timestamp] if not specified
+        - Has no default here: without a path no backup is written. Remove-OrphanedSid
+          passes its backup folder, which defaults to .\Backup\[timestamp]
 
         BUSINESS CONTEXT:
         Backups enable restoration if removal operations need to be reversed.

@@ -48,6 +48,12 @@ function Initialize-ScriptExecution {
 
         VALIDATION RULES:
         - Must be between 100 and 16384 MB
+        - Should be appropriate for system resources
+        - Consider dataset size when setting limits
+
+        PERFORMANCE IMPACT:
+        Lower values trigger more frequent memory checks and cleanup.
+        Higher values allow larger datasets but risk system instability.
 
     .PARAMETER CorrelationId
         [String] (Optional) Unique identifier for tracking operations across log entries.
@@ -84,12 +90,6 @@ function Initialize-ScriptExecution {
         BUSINESS CONTEXT:
         Enables clean automation scenarios where console output would interfere
         with script integration or scheduled task execution.
-        - Should be appropriate for system resources
-        - Consider dataset size when setting limits
-
-        PERFORMANCE IMPACT:
-        Lower values trigger more frequent memory checks and cleanup.
-        Higher values allow larger datasets but risk system instability.
 
     .PARAMETER CorrelationId
         [String] (Optional) Correlation ID for tracking this execution.

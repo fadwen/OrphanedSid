@@ -49,7 +49,8 @@ function New-ACLBackup {
         VALIDATION RULES:
         - Cannot be null or empty
         - Must contain valid access control entries
-        - Automatically validated for integrity before backup
+        - The written file is read back, and its hash and object name are compared with
+          what was written
 
         TECHNICAL DETAILS:
         The ACL object is converted to SDDL format for platform-independent
