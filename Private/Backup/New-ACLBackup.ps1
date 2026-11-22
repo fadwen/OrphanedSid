@@ -19,8 +19,7 @@ function New-ACLBackup {
         - SHA256 integrity verification for authenticity validation
         - Comprehensive metadata including context and versioning information
         - Safe filename generation with illegal character replacement
-        - Automatic backup directory creation with proper permissions
-        - Cross-platform compatibility for hybrid environments
+        - Creation of the backup folder when it does not exist
 
     .PARAMETER ObjectDN
         Distinguished name of the Active Directory object to backup.

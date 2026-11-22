@@ -75,8 +75,8 @@ function Invoke-RemovalWorkflow {
         - Modular design with specialized component delegation
         - A failure in any phase ends the workflow with a failed result; nothing is rolled back
         - Security-first approach with validation gates
-        - Enterprise audit trail with correlation tracking
-        - Flexible backup and verification options
+        - Security log entries for what the workflow does to the ACL, under the correlation ID
+        - A backup when a backup path is given, and a verification after every write
 
         SECURITY CONTROLS:
         - Multi-layer security validation before any changes

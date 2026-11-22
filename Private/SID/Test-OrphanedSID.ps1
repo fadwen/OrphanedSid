@@ -425,7 +425,7 @@ function Clear-SIDValidationCache {
 
         TECHNICAL FEATURES:
         - Safe cache clearing with null checking
-        - Verbose output showing entries cleared
+        - A log line that says how many entries were cleared
         - No side effects on other operations
 
     .PARAMETER CorrelationId

@@ -17,7 +17,6 @@ function New-OrphanedSIDResult {
         - Rich metadata including correlation IDs and processing timestamps
         - Comprehensive validation of input parameters and created objects
         - Support for different processing methods and analysis confidence levels
-        - Integration with enterprise logging and audit systems
 
     .PARAMETER ObjectDN
         Distinguished name of the Active Directory object containing the orphaned SID.

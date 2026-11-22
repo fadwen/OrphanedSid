@@ -11,8 +11,9 @@ function Initialize-ScriptExecution {
         Provides comprehensive error handling and validation for enterprise environments.
 
         INITIALIZATION FEATURES:
-        - Automatic log file rotation based on size limits
-        - Memory usage monitoring and management
+        - Rotation of the log file, when the configuration asks for it and the file is over
+          its size limit
+        - Creation of the memory manager with the limit of -MaxMemoryUsageMB
         - Configuration validation and error handling
         - Performance statistics initialization
         - Correlation ID tracking

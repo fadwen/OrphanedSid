@@ -14,7 +14,8 @@ function Invoke-MainProcessingLogic {
         - Memory-efficient streaming results management
         - Comprehensive retry logic for resilient operations
         - A progress line in the log after every 50 objects and after the last one
-        - Integration with backup systems for safe removal
+        - With -Remove, each object with orphaned SIDs goes to Remove-OrphanedSidEntry with
+          the backup path
 
     .PARAMETER SearchBase
         [String[]] (Mandatory) Distinguished Names of search bases for processing.

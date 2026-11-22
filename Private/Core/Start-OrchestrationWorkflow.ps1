@@ -11,11 +11,11 @@ function Start-OrchestrationWorkflow {
         integrity and proper error handling.
 
         COORDINATION FEATURES:
-        - Module dependency management and initialization
+        - Loads Invoke-RestoreWorkflow from its file when that function is not defined
         - Workflow decision routing based on operation type
         - Centralized correlation ID propagation
         - Consistent error handling across all modules
-        - Proper resource cleanup and finalization
+        - A log line when the workflow starts and one when it ends
 
     .PARAMETER OperationType
         [String] (Mandatory) Type of operation to coordinate.

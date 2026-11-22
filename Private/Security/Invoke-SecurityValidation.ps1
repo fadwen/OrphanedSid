@@ -69,10 +69,10 @@ function Invoke-SecurityValidation {
     .NOTES
         SECURITY FEATURES:
         - Checks each SID with Test-SIDSecurity
-        - Implements risk-based validation with graduated responses
+        - A SID that the check refuses is blocked. One that it marks for elevated confirmation
+          is allowed, and is reported as a high-risk SID
         - Provides detailed audit trails with correlation tracking
         - Blocks protected and privileged SIDs automatically
-        - Supports enterprise security policy integration
 
         TROUBLESHOOTING:
         - For blocked SIDs: Check protected SID configuration and policies

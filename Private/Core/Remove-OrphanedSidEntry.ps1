@@ -13,8 +13,9 @@ function Remove-OrphanedSidEntry {
 
         SECURITY FEATURES:
         - Protected SID validation prevents removal of critical system accounts
-        - Security risk assessment with configurable approval workflows
-        - Comprehensive backup creation before any modifications
+        - A risk rating of each SID. A rating of High is recorded in the result and does not
+          stop the removal
+        - A backup of the ACL before the change, when a backup path is given
         - Verification of the ACL after each removal
         - Audit logging with correlation tracking
 
