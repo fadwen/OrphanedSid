@@ -1,52 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Orphaned Detection and Cache Management Module for the OrphanedSid module
-
-.DESCRIPTION
-    This module provides comprehensive SID orphaned detection and cache management
-    functionality for the OrphanedSid module. It focuses exclusively
-    on identifying orphaned SIDs and managing validation cache for performance.
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on orphaned SID detection and cache management. It depends on the Test-SIDFormat
-    module for basic validation before performing Active Directory lookups.
-
-    BUSINESS VALUE:
-    - Enables accurate identification of orphaned SIDs for security cleanup
-    - Reduces false positives through comprehensive validation methods
-    - Improves security posture by identifying unused access rights
-    - Supports compliance requirements for access review and cleanup
-
-    TECHNICAL FEATURES:
-    - Multiple validation methods (Get-ADObject, SecurityIdentifier translation)
-    - Performance caching to avoid repeated AD queries
-    - Handles deleted objects and various object types
-    - Comprehensive error handling with correlation tracking
-    - Cache management for memory optimization
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    MODULE DESIGN:
-    This module implements the single-responsibility principle by focusing
-    exclusively on orphaned SID detection and cache management. It provides
-    comprehensive Active Directory integration while maintaining high cohesion.
-
-    TROUBLESHOOTING:
-    - For orphaned detection issues: .\Troubleshooting\Security\Orphaned-SID-Issues.md
-
-    DEPENDENCIES:
-    - Requires Test-SIDFormat.ps1 for SID format validation
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Requires ADRetry.ps1 for Invoke-ADOperationWithRetry function
-    - Uses script-scoped $script:SIDValidationCache variable for caching
-#>
-
 # Initialize cache at module level
 if (-not $script:SIDValidationCache) {
     $script:SIDValidationCache = @{}
@@ -99,15 +52,9 @@ function Test-OrphanedSID {
         the log says that the server cannot be contacted, and one information entry says when
         it answers again. See Register-DirectoryLookupOutcome.
 
-        BUSINESS VALUE:
-        - Enables accurate identification of orphaned SIDs for security cleanup
-        - Reduces false positives through comprehensive validation methods
-        - Improves security posture by identifying unused access rights
-        - Supports compliance requirements for access review and cleanup
-
         TECHNICAL FEATURES:
         - Multiple validation methods (Get-ADObject, SecurityIdentifier translation, type-specific lookups)
-        - Performance caching to avoid repeated AD queries
+        - Performance caching to avoid repeated AD queries, in $script:SIDValidationCache
         - Handles deleted objects and various object types
         - Comprehensive error handling with correlation tracking
         - Integration with retry logic for AD operations
@@ -480,12 +427,6 @@ function Clear-SIDValidationCache {
         results of orphaned SID tests for performance optimization. This function
         is useful for freeing memory or forcing re-validation of SIDs.
 
-        BUSINESS VALUE:
-        - Manages memory usage during long-running operations
-        - Allows fresh validation when AD state may have changed
-        - Supports testing and troubleshooting scenarios
-        - Enables cleanup after batch operations
-
         TECHNICAL FEATURES:
         - Safe cache clearing with null checking
         - Verbose output showing entries cleared
@@ -552,12 +493,6 @@ function Get-SIDValidationCacheStat {
         Provides detailed statistics about the SID validation cache including
         total entries, orphaned SIDs count, and valid SIDs count. This function
         is useful for monitoring cache utilization and performance analysis.
-
-        BUSINESS VALUE:
-        - Enables performance monitoring and optimization
-        - Provides visibility into validation patterns
-        - Supports capacity planning for large operations
-        - Assists with troubleshooting cache-related issues
 
         TECHNICAL FEATURES:
         - Safe statistics gathering with null checking

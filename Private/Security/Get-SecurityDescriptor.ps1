@@ -1,46 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Security Descriptor Retrieval Module for the OrphanedSid module
-
-.DESCRIPTION
-    This focused module handles all security descriptor retrieval and ACL processing
-    scenarios for the OrphanedSid module. It implements multiple
-    retrieval strategies with fallback mechanisms to ensure reliable access to
-    security descriptors across various Active Directory object types and states.
-
-    SINGLE RESPONSIBILITY:
-    This module does ONE thing well: Retrieve and process security descriptors
-    from Active Directory objects using multiple strategies for maximum reliability.
-
-    BUSINESS VALUE:
-    - Reliable security descriptor access across different object states
-    - Robust handling of deserialized objects from background jobs
-    - Comprehensive fallback mechanisms for production environments
-    - Optimized processing for large-scale AD environments
-
-    TECHNICAL FEATURES:
-    - Multiple security descriptor retrieval strategies (Get-Acl, binary, fresh query)
-    - Support for deserialized PowerShell objects from background jobs
-    - Intelligent format detection and conversion
-    - Memory-efficient processing with proper cleanup
-    - Comprehensive error handling and logging
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For ACL retrieval failures: .\Troubleshooting\Security\Security-Descriptor-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Uses script-scoped variables (CorrelationId for tracking)
-#>
-
 #region Security Descriptor Retrieval Functions
 
 function Get-ObjectAccessRule {
@@ -111,6 +70,9 @@ function Get-ObjectAccessRule {
         - Supports PowerShell 5.1 and 7.x environments
         - Handles deserialized objects from background jobs
         - Works with various security descriptor formats
+
+        TROUBLESHOOTING:
+        - For ACL retrieval failures: .\Troubleshooting\Security\Security-Descriptor-Issues.md
     #>
 
     [CmdletBinding()]

@@ -1,38 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Memory Monitoring and Threshold Management Module for the OrphanedSid module
-
-.DESCRIPTION
-    Provides focused memory monitoring and threshold checking functionality including:
-    - Memory usage monitoring and checks
-    - Threshold testing and evaluation
-    - Automated monitoring triggers
-    - Enterprise-grade correlation tracking
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on memory monitoring and threshold management operations.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For monitoring issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
-    - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
-
-.COMPONENT
-    OrphanedSid Memory Monitoring System
-
-.FUNCTIONALITY
-    - Memory usage monitoring
-    - Threshold testing and evaluation
-    - Automated monitoring triggers
-    - Memory pressure detection
-#>
-
 function Get-SystemGCTotalMemory {
     <#
     .SYNOPSIS
@@ -125,6 +92,10 @@ function Invoke-MemoryCheck {
         - Memory checking and cleanup operations ALWAYS execute regardless of -WhatIf
         - Only detailed logging operations respect -WhatIf
         - This ensures system health is maintained during simulations
+
+        TROUBLESHOOTING:
+        - For monitoring issues: .\Troubleshooting\Performance\Memory-Management-Issues.md
+        - For performance: .\Troubleshooting\Performance\Performance-Tuning.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

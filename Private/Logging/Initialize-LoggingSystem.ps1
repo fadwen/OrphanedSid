@@ -1,26 +1,5 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Core logging system initialization for OrphanedSid operations
-
-.DESCRIPTION
-    Provides centralized logging system state management with correlation tracking
-    and configuration validation. Focuses solely on logging system initialization
-    without path resolution or directory creation (handled by separate modules).
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-
-    TROUBLESHOOTING:
-    - For logging initialization issues: .\Troubleshooting\Common\Common-Issues.md
-
-.LINK
-    https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-logging
-#>
-
 # Import shared logging configuration and state management
 # Script-scoped variables are defined in LoggingConfiguration.ps1
 # This module uses those shared variables for state management
@@ -74,6 +53,7 @@ function Initialize-LoggingSystem {
         - Correlation ID validation ensures proper tracking
         - Log level validation prevents invalid configurations
         - State variables provide consistent behavior across modules
+        - For logging initialization issues: .\Troubleshooting\Common\Common-Issues.md
     #>
     [CmdletBinding()]
     param(

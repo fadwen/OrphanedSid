@@ -1,32 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    ACL application module for Active Directory object ACL modifications
-
-.DESCRIPTION
-    Provides focused ACL application functionality for safely applying modified
-    ACLs to Active Directory objects. This module implements the "tool" pattern
-    with proper error handling, retry logic, and comprehensive validation.
-
-    This module focuses solely on ACL application to AD objects, enabling
-    independent testing and reuse across different modification scenarios.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For ACL application failures: .\Troubleshooting\Common\Common-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Requires Operations\Invoke-ADOperationWithRetry.ps1 for retry logic
-    - Active Directory PowerShell module for Set-Acl cmdlet
-#>
-
 function Set-ModifiedACL {
     <#
     .SYNOPSIS
@@ -35,7 +8,7 @@ function Set-ModifiedACL {
     .DESCRIPTION
         Applies ACL changes to AD objects with comprehensive validation, retry logic,
         and proper error handling. This function implements the "tool" pattern for
-        focused ACL application with enterprise-grade reliability.
+        focused ACL application.
 
         The function includes:
         - Parameter validation before AD operations
@@ -105,6 +78,7 @@ function Set-ModifiedACL {
         - For permission errors: Verify AD modification rights
         - For connectivity issues: Check AD server availability
         - For validation failures: Ensure ACL object integrity
+        - For ACL application failures: .\Troubleshooting\Common\Common-Issues.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

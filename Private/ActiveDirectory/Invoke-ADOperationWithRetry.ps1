@@ -5,7 +5,7 @@ function Invoke-ADOperationWithRetry {
 
     .DESCRIPTION
         Orchestrates AD operations by combining retry mechanisms with proper security
-        audit logging. Provides enterprise-grade reliability for AD interactions.
+        audit logging.
 
     .PARAMETER ScriptBlock
         The AD operation to execute

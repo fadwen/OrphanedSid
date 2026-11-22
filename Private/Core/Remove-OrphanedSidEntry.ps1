@@ -1,56 +1,22 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Public API wrapper for SID removal operations
-
-.DESCRIPTION
-    Provides the public interface for SID removal operations. This lightweight
-    wrapper delegates to the modular workflow orchestration while maintaining
-    a clean, stable public API.
-
-    This follows the PowerShell community "controller" pattern where the public
-    function coordinates workflow without implementing business logic directly.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For removal failures: .\Troubleshooting\Security\Security-Validation-Guide.md
-    - For backup errors: .\Troubleshooting\Common\Backup-Restore-Issues.md
-
-    DEPENDENCIES:
-    - Requires Operations\Invoke-RemovalWorkflow.ps1 for workflow orchestration
-    - All modular dependencies are handled by the workflow orchestrator
-#>
-
 function Remove-OrphanedSidEntry {
     <#
     .SYNOPSIS
-        Removes orphaned SIDs from Active Directory objects with enterprise-grade security
+        Removes orphaned SIDs from the ACL of an Active Directory object
 
     .DESCRIPTION
-        This enterprise-grade function removes orphaned Security Identifiers (SIDs) from
+        This function removes orphaned Security Identifiers (SIDs) from
         Active Directory object ACLs with comprehensive security validation, backup creation,
         and verification. The function implements a modular architecture with specialized
         components for maximum reliability and maintainability.
-
-        BUSINESS VALUE:
-        - Improves Active Directory security by removing stale access permissions
-        - Provides comprehensive audit trails for regulatory compliance
-        - Reduces security risks from orphaned and unknown access entries
-        - Supports enterprise-scale operations with automated workflows
-        - Enables secure remediation with full rollback capabilities
 
         SECURITY FEATURES:
         - Protected SID validation prevents removal of critical system accounts
         - Security risk assessment with configurable approval workflows
         - Comprehensive backup creation before any modifications
         - Real-time verification of removal operations
-        - Full audit logging with correlation tracking for compliance
+        - Audit logging with correlation tracking
 
         MODULAR ARCHITECTURE:
         - Security validation: Specialized security assessment and risk analysis
@@ -106,7 +72,6 @@ function Remove-OrphanedSidEntry {
         - Defaults to .\Backup\[timestamp] if not specified
 
         BUSINESS CONTEXT:
-        Critical for rollback capabilities and compliance requirements.
         Backups enable restoration if removal operations need to be reversed.
 
         EXAMPLES:
@@ -128,7 +93,7 @@ function Remove-OrphanedSidEntry {
         Provides a unique identifier for tracking operations across logs and systems.
 
         BUSINESS CONTEXT:
-        Enables end-to-end tracking for audit compliance and troubleshooting.
+        Enables end-to-end tracking for troubleshooting.
         Auto-generated if not provided for seamless operation tracking.
 
     .EXAMPLE
@@ -188,13 +153,7 @@ function Remove-OrphanedSidEntry {
         - Uses privileged SID pattern detection for additional safety
         - Creates comprehensive backups before any changes
         - Provides rollback capability through backup restoration
-        - Logs all security decisions for audit compliance
-
-        BUSINESS COMPLIANCE:
-        - Full audit trail with correlation ID tracking
-        - Security validation with risk-based controls
-        - Backup and recovery capabilities for rollback
-        - Integration with enterprise governance workflows
+        - Logs all security decisions
 
         TROUBLESHOOTING:
         - For security validation failures: .\Troubleshooting\Security\Security-Validation-Guide.md

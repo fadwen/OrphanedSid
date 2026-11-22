@@ -1,61 +1,17 @@
 #Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Security Validation Module for the OrphanedSid module
-
-.DESCRIPTION
-    This module provides comprehensive SID security validation and risk assessment
-    functionality for the OrphanedSid module. It focuses exclusively
-    on security validation and compliance checking for SID operations.
-
-    This module follows the single-responsibility principle by focusing exclusively
-    on security validation and risk assessment. It depends on the Get-SIDAnalysis
-    module for detailed SID context and categorization.
-
-    BUSINESS VALUE:
-    - Implements defense-in-depth security validation for SID operations
-    - Ensures compliance with enterprise security policies
-    - Provides risk-based approval workflows for SID removal
-    - Supports audit requirements with comprehensive security logging
-
-    TECHNICAL FEATURES:
-    - Protected SID detection and blocking
-    - Risk-based validation with configurable thresholds
-    - Integration with enterprise security policies
-    - Comprehensive security audit logging
-    - Batch risk assessment for large-scale operations
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    MODULE DESIGN:
-    This module implements the single-responsibility principle by focusing
-    exclusively on security validation and risk assessment. It provides
-    comprehensive security controls while maintaining high cohesion.
-
-    TROUBLESHOOTING:
-    - For security validation issues: .\Troubleshooting\Security\Security-Validation-Guide.md
-    - For performance optimization: .\Troubleshooting\Performance\Performance-Tuning.md
-
-    DEPENDENCIES:
-    - Requires Get-SIDAnalysis.ps1 for SID analysis and categorization
-    - Requires Classes.ps1 for SecurityValidationResult type definitions
-    - Requires Logging.ps1 for Write-StructuredLog and Write-SecurityLog functions
-    - Uses script-scoped $script:Config variable for security configuration access
-#>
-
 function Test-SIDSecurity {
     <#
     .SYNOPSIS
         Performs security validation for SID removal operations
 
     .DESCRIPTION
-        Validates whether a SID can be safely removed based on security policies,
-        well-known SID protections, and enterprise compliance requirements.
+        Validates whether a SID can be safely removed. It refuses a SID in the ProtectedSIDs
+        of the configuration, a well-known SID at the Standard and Strict levels, a SID whose
+        analysis rates the risk Critical, and at the Strict level one that it rates High. A
+        risk of High, or of Medium at the Strict level, asks for elevated confirmation, and
+        so does an object that matches the CriticalObjectPatterns of the configuration. The
+        configuration is read from $script:Config.
         This function implements defense-in-depth security validation.
 
     .PARAMETER SIDString
@@ -89,7 +45,7 @@ function Test-SIDSecurity {
 
         DESCRIPTION: Batch security validation with object context
         OUTPUT: Array of SecurityValidationResult objects for approval workflow
-        USE CASE: Enterprise compliance validation for batch operations
+        USE CASE: Validation of a batch of SIDs before removal
 
     .OUTPUTS
         [SecurityValidationResult] Object containing validation status and details
@@ -108,7 +64,7 @@ function Test-SIDSecurity {
 
         TROUBLESHOOTING:
         - For blocked SIDs: Check Protected SIDs configuration
-        - For validation errors: Review security policy compliance
+        - For validation errors: Read the Issues of the result
         - For performance issues: .\Troubleshooting\Performance\Performance-Tuning.md
 
     .LINK

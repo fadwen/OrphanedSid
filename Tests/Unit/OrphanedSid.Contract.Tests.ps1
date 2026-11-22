@@ -28,12 +28,14 @@ BeforeAll {
     $script:Definitions = @{}
     $script:Duplicates = [System.Collections.Generic.List[string]]::new()
     $script:FileAsts = @{}
+    $script:FileTokens = @{}
     $shippingFiles = Get-ChildItem -Path "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public" -Filter *.ps1 -Recurse -File
     foreach ($file in $shippingFiles) {
         $tokens = $null
         $parseErrors = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors)
         $script:FileAsts[$file.FullName] = $ast
+        $script:FileTokens[$file.FullName] = $tokens
         $relative = $file.FullName.Substring($script:ModuleRoot.Length + 1)
         $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
         foreach ($function in $functions) {
@@ -356,13 +358,21 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
             @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
         }
 
-        It 'Holds no <What> in the shipping files (#158)' -ForEach @(
+        It 'Holds no <What> in the shipping files (#<Issue>)' -ForEach @(
             # Help written before the module had measurements or its present name. A maintainer
             # reads it as fact: a rate of 50 to 200 objects a second stood where 8 was measured.
-            @{ What = 'section of performance figures'; Pattern = 'PERFORMANCE CHARACTERISTICS' }
-            @{ What = 'version line in help'; Pattern = '^\s*#?\s*Version:\s*\d' }
-            @{ What = 'date of a last update'; Pattern = '^\s*#?\s*Last Updated:' }
-            @{ What = 'mention of the old name Find-UnknownSID'; Pattern = 'Find-UnknownSID' }
+            @{ Issue = 158; What = 'section of performance figures'; Pattern = 'PERFORMANCE CHARACTERISTICS' }
+            @{ Issue = 158; What = 'version line in help'; Pattern = '^\s*#?\s*Version:\s*\d' }
+            @{ Issue = 158; What = 'date of a last update'; Pattern = '^\s*#?\s*Last Updated:' }
+            @{ Issue = 158; What = 'mention of the old name Find-UnknownSID'; Pattern = 'Find-UnknownSID' }
+            # Claims made in words. Nothing shows that the module was checked against a regulation
+            # or a requirement, and what a function is worth to a business is not what it does.
+            # The help says what the code does: that a security entry is written whatever the log
+            # level is, not that this meets an audit requirement.
+            @{ Issue = 176; What = 'section of business value'; Pattern = 'BUSINESS VALUE' }
+            @{ Issue = 176; What = 'use of the word enterprise-grade'; Pattern = 'enterprise-grade' }
+            @{ Issue = 176; What = 'claim of compliance'; Pattern = 'complian' }
+            @{ Issue = 176; What = 'name of a regulation'; Pattern = '\b(SOX|GDPR|HIPAA)\b' }
         ) {
             $folders = "$script:ModuleRoot\Classes", "$script:ModuleRoot\Private", "$script:ModuleRoot\Public"
             $shippingFiles = Get-ChildItem -Path $folders -Filter *.ps1 -Recurse -File
@@ -370,6 +380,31 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
                     ForEach-Object { "$($_.Filename):$($_.LineNumber)" })
 
             $found | Should -BeNullOrEmpty -Because ($found -join '; ')
+        }
+
+        It 'Has no help block above the first function of a file (#176)' {
+            # Get-Help reads the block inside the function. A second block at the top of the file
+            # is read by people only, and nothing keeps the two alike: such blocks listed
+            # Logging.ps1 and Classes.ps1 as dependencies when neither file existed any more.
+            $commentKind = [System.Management.Automation.Language.TokenKind]::Comment
+            $stray = foreach ($path in ($script:FileAsts.Keys | Sort-Object)) {
+                $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                if ($relative -notmatch '^(Private|Public)[\\/]') { continue }
+
+                $firstFunction = $script:FileAsts[$path].Find(
+                    { param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
+                if ($null -eq $firstFunction) { continue }
+
+                foreach ($token in $script:FileTokens[$path]) {
+                    if ($token.Kind -eq $commentKind -and
+                        $token.Extent.EndOffset -le $firstFunction.Extent.StartOffset -and
+                        $token.Text -match '(?m)^\s*(<#)?\s*#?\s*\.(SYNOPSIS|DESCRIPTION|NOTES)\b') {
+                        "${relative}:$($token.Extent.StartLineNumber)"
+                    }
+                }
+            }
+
+            @($stray) | Should -BeNullOrEmpty -Because (@($stray) -join '; ')
         }
     }
 

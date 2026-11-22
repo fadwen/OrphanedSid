@@ -1,49 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    SID Identity Resolution Module for the OrphanedSid module
-
-.DESCRIPTION
-    This focused module handles all SID identity resolution, validation, and translation
-    for the OrphanedSid module. It processes various identity reference
-    types and performs comprehensive SID validation to detect orphaned accounts.
-
-    SINGLE RESPONSIBILITY:
-    This module does ONE thing well: Resolve and validate SID identities from various
-    identity reference formats, including complex scenarios like orphaned account detection.
-
-    BUSINESS VALUE:
-    - Accurate identity resolution across different reference formats
-    - Robust orphaned account detection with detailed analysis
-    - Comprehensive error handling for translation failures
-    - Support for complex Active Directory environments
-
-    TECHNICAL FEATURES:
-    - Multiple identity reference type handling (SecurityIdentifier, NTAccount, etc.)
-    - Enhanced NTAccount translation with orphaned account detection
-    - Comprehensive SID validation and classification
-    - Intelligent string extraction from various identity formats
-    - Integration with SID analysis and validation functions
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For identity resolution issues: .\Troubleshooting\Security\Identity-Resolution-Issues.md
-
-    DEPENDENCIES:
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Requires Test-SIDFormat.ps1 for SID format validation
-    - Requires Test-OrphanedSID.ps1 for orphaned SID detection
-    - Requires Get-SIDAnalysis.ps1 for SID analysis
-    - Requires New-SIDResult.ps1 for result object creation
-    - Uses script-scoped variables (CorrelationId for tracking)
-#>
-
 #region SID Identity Resolution Functions
 
 function Test-AccessRuleForOrphanedSID {
@@ -103,7 +59,7 @@ function Test-AccessRuleForOrphanedSID {
         PS> Test-AccessRuleForOrphanedSID -AccessRule $rule -ObjectDN $dn -ObjectClass "Group" -CorrelationId $correlationId
 
         DESCRIPTION: Tracked processing with correlation ID for audit trails
-        OUTPUT: OrphanedSIDResult with correlation tracking for compliance
+        OUTPUT: OrphanedSIDResult that carries the correlation ID
         INTEGRATION: Enterprise environments requiring audit trail correlation
 
     .OUTPUTS
@@ -132,6 +88,9 @@ function Test-AccessRuleForOrphanedSID {
         - Graceful handling of translation failures (indicates orphaned accounts)
         - Detailed logging for troubleshooting and audit purposes
         - Safe property access with null checking
+
+        TROUBLESHOOTING:
+        - For identity resolution issues: .\Troubleshooting\Security\Identity-Resolution-Issues.md
     #>
 
     [CmdletBinding()]

@@ -1,32 +1,5 @@
 ﻿#Requires -Version 5.1
 
-<#
-.SYNOPSIS
-    Security validation module for SID removal operations
-
-.DESCRIPTION
-    Provides comprehensive security validation and risk assessment for orphaned SID
-    removal operations. Implements enterprise-grade security controls including
-    protected SID validation, risk assessment, and comprehensive audit trails.
-
-    This module focuses solely on security validation logic, enabling independent
-    testing and reuse across different removal scenarios.
-
-.NOTES
-    Author: Jeffrey Stuhr
-    Blog: https://www.techbyjeff.net
-    LinkedIn: https://www.linkedin.com/in/jeffrey-stuhr-034214aa/
-    PowerShell Version: 5.1+ (Windows), 7.x+ (Cross-platform)
-
-    TROUBLESHOOTING:
-    - For validation failures: .\Troubleshooting\Security\Security-Validation-Guide.md
-
-    DEPENDENCIES:
-    - Requires Classes.ps1 for SecurityValidationResult type
-    - Requires Logging.ps1 for Write-StructuredLog function
-    - Requires SIDValidation.ps1 for Test-SIDSecurity function
-#>
-
 function Invoke-SecurityValidation {
     <#
     .SYNOPSIS
@@ -44,7 +17,6 @@ function Invoke-SecurityValidation {
         - Protected SID pattern detection
         - Privileged account validation
         - Risk level assessment
-        - Security policy compliance checking
 
     .PARAMETER OrphanedSIDs
         Array of orphaned Security Identifiers to validate for removal.
@@ -103,6 +75,7 @@ function Invoke-SecurityValidation {
         - For blocked SIDs: Check protected SID configuration and policies
         - For validation errors: Verify SID format and AD connectivity
         - For performance issues: Consider batch size and validation complexity
+        - For validation failures: .\Troubleshooting\Security\Security-Validation-Guide.md
     #>
 
     [CmdletBinding()]

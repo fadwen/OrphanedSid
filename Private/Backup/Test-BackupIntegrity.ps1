@@ -1,25 +1,5 @@
 #region Test-BackupIntegrity.ps1 - Backup integrity check for restore operations
-<#
-.SYNOPSIS
-    The integrity check every restore runs on a backup before applying it.
 
-.DESCRIPTION
-    Test-BackupIntegrity takes an imported backup and checks its required properties, its
-    signature, that the SHA256 of its SDDL matches the stored hash, and, when an expected object
-    is given, that the backup was recorded for that object. Invoke-RestoreWorkflow calls it at the
-    Standard level for every backup it restores.
-
-    This file used to be Test-BackupValidation.ps1 and also held Test-BackupValidation,
-    Test-BackupFormat and Get-BackupMetadata, which no command called; they were removed (#53).
-
-.NOTES
-    Author: Jeffrey Stuhr
-
-    SECURITY CONSIDERATIONS:
-    - Uses SHA256 cryptographic hash verification
-    - Validates SDDL format to prevent injection attacks
-    - Confirms backup signatures to prevent malicious data
-#>
 function Test-BackupIntegrity {
     <#
     .SYNOPSIS
@@ -36,11 +16,8 @@ function Test-BackupIntegrity {
         This function is the primary validation gate before any restore operation,
         ensuring backup data is complete, uncorrupted, and safe to apply.
 
-        BUSINESS VALUE:
-        - Prevents data corruption through cryptographic verification
-        - Ensures backup compatibility across different script versions
-        - Provides detailed validation reporting for audit compliance
-        - Reduces restoration failures through comprehensive pre-validation
+        Restore-IndividualObject calls it for every backup that a restore applies, at the
+        validation level of Invoke-RestoreWorkflow, which is Standard by default.
 
     .PARAMETER BackupData
         PSCustomObject containing backup data to validate.
