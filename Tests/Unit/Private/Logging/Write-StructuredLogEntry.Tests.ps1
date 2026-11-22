@@ -128,6 +128,69 @@ Describe "Write-StructuredLogEntry" {
             $details['Timestamp'] | Should -BeOfType [datetime]
         }
 
+        It "Should write [REDACTED] in place of the value of a detail named <DetailName> (#215)" -ForEach @(
+            @{ DetailName = 'Password' }
+            @{ DetailName = 'password' }
+            @{ DetailName = 'UserPasswd' }
+            @{ DetailName = 'ClientSecret' }
+            @{ DetailName = 'AccessToken' }
+            @{ DetailName = 'Credential' }
+            @{ DetailName = 'ApiKey' }
+            @{ DetailName = 'api_key' }
+            @{ DetailName = 'Access-Key' }
+            @{ DetailName = 'PrivateKey' }
+            @{ DetailName = 'SigningKey' }
+            @{ DetailName = 'Security_Password' }
+        ) {
+            # The value is made here, so that it is in no file and can be looked for in the line
+            $secretValue = [guid]::NewGuid().ToString('N')
+            $logPath = Join-Path $TestDrive "details-secret-$([guid]::NewGuid().ToString('N')).log"
+            $details = @{ ObjectCount = 3 }
+            $details[$DetailName] = $secretValue
+
+            Write-StructuredLogEntry -Message "Test" -Level "Error" -Details $details -LogPath $logPath
+
+            $line = Get-Content -Path $logPath
+            $line | Should -Not -Match $secretValue
+            $written = ($line -replace '^.* \| Details: ', '') | ConvertFrom-Json
+            $written.$DetailName | Should -BeExactly '[REDACTED]'
+            $written.ObjectCount | Should -Be 3
+            # The table of the caller keeps the value
+            $details[$DetailName] | Should -BeExactly $secretValue
+        }
+
+        It "Should keep the value of a detail named <DetailName> (#215)" -ForEach @(
+            @{ DetailName = 'Key' }
+            @{ DetailName = 'RegistryKey' }
+            @{ DetailName = 'CacheKey' }
+            @{ DetailName = 'KeyCount' }
+            @{ DetailName = 'PwdLastSet' }
+            @{ DetailName = 'ObjectDN' }
+            @{ DetailName = 'SID' }
+        ) {
+            # 'key' alone and 'pwd' are not in the pattern: these names hold no secret
+            $plainValue = [guid]::NewGuid().ToString('N')
+            $logPath = Join-Path $TestDrive "details-plain-$([guid]::NewGuid().ToString('N')).log"
+            $details = @{}
+            $details[$DetailName] = $plainValue
+
+            Write-StructuredLogEntry -Message "Test" -Level "Error" -Details $details -LogPath $logPath
+
+            $written = ((Get-Content -Path $logPath) -replace '^.* \| Details: ', '') | ConvertFrom-Json
+            $written.$DetailName | Should -BeExactly $plainValue
+        }
+
+        It "Should write [REDACTED] for a date in a detail that is named as a secret (#215)" {
+            # The name decides before the type does: the date is not written as text either
+            $logPath = Join-Path $TestDrive 'details-secret-date.log'
+            $date = [datetime]::new(2026, 11, 21, 11, 38, 29, [System.DateTimeKind]::Utc)
+
+            Write-StructuredLogEntry -Message "Test" -Level "Error" -Details @{ TokenIssued = $date } -LogPath $logPath
+
+            $line = Get-Content -Path $logPath
+            $line | Should -BeLike '* Test | Details: {"TokenIssued":"`[REDACTED`]"}'
+        }
+
         It "Should write the line without details when the details are null" {
             $logPath = Join-Path $TestDrive 'details-null.log'
 

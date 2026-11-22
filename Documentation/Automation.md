@@ -236,7 +236,9 @@ Each operational log line has the form:
 ```
 
 Entries with structured details append ` | Details: {...}` as compact JSON; a time among the
-details is text with its offset from UTC, such as `2026-11-20T21:54:45.123+01:00`. Security audit
+details is text with its offset from UTC, such as `2026-11-20T21:54:45.123+01:00`. A detail
+whose name says that it holds a secret, such as `Password` or `AccessToken`, is written as
+`[REDACTED]`; the same holds for a value of a security audit entry. Security audit
 entries are written as one compact JSON object per line, with `"Component":"SecurityAudit"`,
 `"SecurityEventType"`, `"Outcome"`, `"Message"` and `"CorrelationId"` keys; they are written at
 every `-LogLevel`. The correlation ID appears in both forms, so it isolates one run's lines when

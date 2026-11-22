@@ -14,6 +14,12 @@
         is what Get-Date returns, Z for a UTC time, and nothing for a date of unspecified
         kind. Only a value of the entry itself is converted, not a date inside a value.
 
+        A value of the additional data whose name says that it holds a secret is written
+        as [REDACTED]. That is a name which contains passw, secret, token or credential, or
+        api, access, private or signing followed by key, in any letter case. Only the name
+        of a value itself is read, not a name inside a value and not the text of the
+        message, so a caller still must not put a secret there.
+
     .PARAMETER Message
         Text of the entry.
 
@@ -32,7 +38,8 @@
         data is part of the JSON and XML forms only.
 
     .PARAMETER AdditionalData
-        Further values of the entry, by name. $null is taken as no values.
+        Further values of the entry, by name. $null is taken as no values. A value that
+        is named as a secret is not written.
     #>
     [CmdletBinding()]
     param(
@@ -84,10 +91,18 @@
     # object with the properties value, DisplayHint and DateTime, so the Timestamp that
     # Write-SecurityLog passes had two shapes in the file (#191). Only a value of the entry
     # itself is converted, not a date inside a value.
+    #
+    # A value that is named as a secret is written without its value (SEC-06, #215). 'key'
+    # alone is not in the pattern: a value can name a registry key or a cache key.
+    # Write-StructuredLogEntry holds the same pattern. The unit tests dot-source these files one
+    # at a time, so it is written out in both, and the contract tests compare the two.
     if ($null -ne $AdditionalData -and $AdditionalData.Count -gt 0) {
+        $secretNamePattern = 'passw|secret|token|credential|(api|access|private|signing)[_-]?key'
         foreach ($key in $AdditionalData.Keys) {
             $value = $AdditionalData[$key]
-            if ($value -is [datetime]) {
+            if ("$key" -match $secretNamePattern) {
+                $value = '[REDACTED]'
+            } elseif ($value -is [datetime]) {
                 $value = $value.ToString($timestampFormat, $invariantCulture)
             }
             $logData | Add-Member -MemberType NoteProperty -Name $key -Value $value -Force

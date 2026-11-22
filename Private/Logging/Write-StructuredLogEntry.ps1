@@ -16,6 +16,12 @@
         on PowerShell 7 and on Windows PowerShell 5.1. Only a value of the details itself
         is converted, not a date inside a value.
 
+        A detail whose name says that it holds a secret is written as [REDACTED] in place
+        of its value. That is a name which contains passw, secret, token or credential, or
+        api, access, private or signing followed by key, in any letter case. Only the name
+        of a detail itself is read, not a name inside a value and not the text of the
+        message, so a caller still must not put a secret there.
+
     .PARAMETER Message
         Text of the line.
 
@@ -35,7 +41,8 @@
 
     .PARAMETER Details
         Values that are added to the line in the file as compact JSON, after " | Details: ".
-        $null is taken as no details.
+        $null is taken as no details. The value of a detail that is named as a secret is
+        not written.
     #>
     [CmdletBinding()]
     param(
@@ -102,10 +109,19 @@
             # object with the properties value, DisplayHint and DateTime, so the details of a
             # failed backup had a time that only one edition wrote readably (#196). Only a
             # value of the details itself is converted, not a date inside a value.
+            #
+            # A detail that is named as a secret is written without its value (SEC-06, #215).
+            # 'key' alone is not in the pattern: a detail can name a registry key or a cache
+            # key. Format-LogMessage holds the same pattern. The unit tests dot-source these
+            # files one at a time, so it is written out in both, and the contract tests
+            # compare the two.
+            $secretNamePattern = 'passw|secret|token|credential|(api|access|private|signing)[_-]?key'
             $detailsForFile = @{}
             foreach ($key in $Details.Keys) {
                 $value = $Details[$key]
-                if ($value -is [datetime]) {
+                if ("$key" -match $secretNamePattern) {
+                    $value = '[REDACTED]'
+                } elseif ($value -is [datetime]) {
                     $value = $value.ToString('yyyy-MM-ddTHH:mm:ss.fffK', [cultureinfo]::InvariantCulture)
                 }
                 $detailsForFile[$key] = $value

@@ -90,6 +90,21 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
             }
         }
 
+        It "Should write data that is named as a secret to the file as [REDACTED] (#215)" {
+            # Security_ is the prefix that Write-SecurityLog gives the keys of a security context
+            $secretValue = [guid]::NewGuid().ToString('N')
+            $entryData = @{ Security_Password = $secretValue; Security_ObjectType = 'User' }
+
+            Write-SecurityStructuredLogEntry -Message "Test" -Data $entryData
+
+            Should -Invoke Add-Content -Times 1 -Exactly -ParameterFilter {
+                $entry = $Value | ConvertFrom-Json
+                "$Value" -notmatch $secretValue -and
+                $entry.Security_Password -ceq '[REDACTED]' -and
+                $entry.Security_ObjectType -eq 'User'
+            }
+        }
+
         It "Should include the ErrorRecord's exception, stack and error ID" {
             try {
                 throw "Specific test exception message"

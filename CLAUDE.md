@@ -404,6 +404,23 @@ Dependabot alerts are a setting of the repository, not a part of that file. GitH
 for an action that is referenced by a version tag and none for an action at a commit ID, so the
 stricter pin of CIC-09 takes an action out of the alerts.
 
+### A detail that is named as a secret is logged without its value
+
+`Write-StructuredLogEntry` and `Format-LogMessage` write `[REDACTED]` for a detail whose name
+matches `passw|secret|token|credential|(api|access|private|signing)[_-]?key` (#215). The module
+passes no such detail; the check is there for the change that one day does, because SEC-06 puts
+the duty on whatever writes named values to a log. Three things about it are deliberate:
+
+- `key` alone is not in the pattern, although the note under SEC-06 has it. A detail can name a
+  registry key or a cache key, and a log that drops those is a worse log.
+- The pattern is written out in both files, because the unit tests dot-source one file at a
+  time. The contract tests compare the two. With two patterns a name would be redacted in the
+  operational log and written out in the security log.
+- Only the name of a detail itself is read. That covers a security context, whose keys
+  `Write-SecurityLog` puts into the entry with the prefix `Security_`. It does not cover a name
+  inside a value, or a secret in the text of a message: no pattern can find that, and a caller
+  must not write one.
+
 ### The MAML filename carries a capital H
 
 `en-US/OrphanedSid-Help.xml`, matching every `.EXTERNALHELP OrphanedSid-Help.xml` keyword in
