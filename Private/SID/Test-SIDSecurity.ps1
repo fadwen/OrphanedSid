@@ -23,6 +23,10 @@ function Test-SIDSecurity {
     .PARAMETER ValidationLevel
         Level of security validation (Basic, Standard, Strict)
 
+    .PARAMETER CurrentDomainSID
+        SID of the current domain. It is passed on to Get-SIDAnalysis, which without it rates
+        every domain SID as one of an unknown domain.
+
     .PARAMETER CorrelationId
         Unique identifier for tracking this validation operation
 

@@ -91,14 +91,6 @@ function Initialize-ScriptExecution {
         Enables clean automation scenarios where console output would interfere
         with script integration or scheduled task execution.
 
-    .PARAMETER CorrelationId
-        [String] (Optional) Correlation ID for tracking this execution.
-        Auto-generated if not provided for enterprise audit requirements.
-
-    .PARAMETER LogLevel
-        [String] (Optional) Logging level for output control (Default: Information).
-        Controls verbosity of logging output for different environments.
-
     .PARAMETER UseConfigLogLevel
         [Switch] (Optional) Replace -LogLevel with the LogLevel of the -ConfigPath file once that
         file is loaded. Start-OrphanedSidSession sets it only when the command line chose no level

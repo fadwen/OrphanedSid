@@ -431,6 +431,9 @@ function Clear-SIDValidationCache {
         - Verbose output showing entries cleared
         - No side effects on other operations
 
+    .PARAMETER CorrelationId
+        Correlation ID of the log entries of this call. One is generated when none is given.
+
     .EXAMPLE
         PS> Clear-SIDValidationCache
 

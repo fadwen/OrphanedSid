@@ -410,6 +410,58 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
 
             @($stray) | Should -BeNullOrEmpty -Because (@($stray) -join '; ')
         }
+
+        It 'Documents each parameter of a function once in its comment-based help, and no other (#204)' {
+            # A parameter with no .PARAMETER block has no text in Get-Help, and a block for a name
+            # that the function does not have is help for nothing. Both come from a parameter that
+            # was added or renamed without its help: one function had two parameters twice, with
+            # blocks that said different things, and one documented a name that it had given up.
+            # A command whose help is external has no blocks here; the help job checks those.
+            $commentKind = [System.Management.Automation.Language.TokenKind]::Comment
+            $checked = 0
+            $drift = foreach ($path in ($script:FileAsts.Keys | Sort-Object)) {
+                $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                $functions = $script:FileAsts[$path].FindAll(
+                    { param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
+                foreach ($function in $functions) {
+                    $help = @($script:FileTokens[$path] | Where-Object {
+                            $_.Kind -eq $commentKind -and
+                            $_.Extent.StartOffset -gt $function.Extent.StartOffset -and
+                            $_.Extent.EndOffset -lt $function.Extent.EndOffset -and
+                            $_.Text -match '\.SYNOPSIS'
+                        })
+                    if ($help.Count -eq 0 -or $help[0].Text -match '\.EXTERNALHELP') { continue }
+                    $checked++
+
+                    $documented = @([regex]::Matches($help[0].Text, '(?m)^\s*\.PARAMETER\s+(\w+)') |
+                            ForEach-Object { $_.Groups[1].Value })
+                    $actual = @()
+                    $allowed = @()
+                    if ($null -ne $function.Body.ParamBlock) {
+                        $actual = @($function.Body.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+                        $allowed = $actual
+                        # The two parameters that SupportsShouldProcess adds may be documented
+                        $attributes = @($function.Body.ParamBlock.Attributes | ForEach-Object { $_.Extent.Text })
+                        if (@($attributes | Where-Object { $_ -match 'SupportsShouldProcess' }).Count -gt 0) {
+                            $allowed = $actual + 'WhatIf', 'Confirm'
+                        }
+                    }
+
+                    foreach ($group in @($documented | Group-Object | Where-Object { $_.Count -gt 1 })) {
+                        "${relative}: $($function.Name) documents $($group.Name) $($group.Count) times"
+                    }
+                    foreach ($name in @($documented | Select-Object -Unique | Where-Object { $allowed -notcontains $_ })) {
+                        "${relative}: $($function.Name) documents $name, which it does not have"
+                    }
+                    foreach ($name in @($actual | Where-Object { $documented -notcontains $_ })) {
+                        "${relative}: $($function.Name) does not document $name"
+                    }
+                }
+            }
+
+            $checked | Should -BeGreaterThan 80
+            @($drift) | Should -BeNullOrEmpty -Because (@($drift | Select-Object -First 8) -join '; ')
+        }
     }
 
     Context 'The pattern for the attribute that names a component (#134)' {

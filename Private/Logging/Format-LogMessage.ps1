@@ -13,6 +13,26 @@
         milliseconds depends on the kind of the date: the offset for a local time, which
         is what Get-Date returns, Z for a UTC time, and nothing for a date of unspecified
         kind. Only a value of the entry itself is converted, not a date inside a value.
+
+    .PARAMETER Message
+        Text of the entry.
+
+    .PARAMETER Level
+        Level of the entry: Critical, Error, Warning, Information, Debug or Verbose. INFO is
+        taken as Information.
+
+    .PARAMETER Component
+        Name of the part of the module that writes the entry. General when none is given.
+
+    .PARAMETER CorrelationId
+        Correlation ID of the entry. One is generated when none is given.
+
+    .PARAMETER Format
+        Form of the result: JSON, which is the default, PlainText, CSV or XML. The additional
+        data is part of the JSON and XML forms only.
+
+    .PARAMETER AdditionalData
+        Further values of the entry, by name. $null is taken as no values.
     #>
     [CmdletBinding()]
     param(

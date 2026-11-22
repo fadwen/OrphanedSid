@@ -20,6 +20,10 @@ function Invoke-ADOperationWithRetry {
     .PARAMETER ObjectContext
         Additional context about the AD object being accessed
 
+    .PARAMETER CorrelationId
+        Correlation ID of the security log entries of the operation, passed on to
+        Invoke-OperationWithRetry as well. One is generated when none is given.
+
     .EXAMPLE
         PS> Invoke-ADOperationWithRetry -ScriptBlock { Get-ADUser 'testuser' } -OperationName 'Get User'
 

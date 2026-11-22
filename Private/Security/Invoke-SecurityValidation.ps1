@@ -26,6 +26,9 @@ function Invoke-SecurityValidation {
         Distinguished name of the AD object for validation context.
         Used to determine object-specific security requirements.
 
+    .PARAMETER CurrentDomainSID
+        SID of the current domain. It is passed on to Test-SIDSecurity for each SID.
+
     .PARAMETER CorrelationId
         Unique identifier for tracking this validation operation across
         logs and audit trails. Generated automatically if not provided.

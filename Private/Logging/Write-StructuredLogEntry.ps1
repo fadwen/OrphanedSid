@@ -15,6 +15,27 @@
         form that Format-LogMessage gives a date in a JSON entry, and it is the same text
         on PowerShell 7 and on Windows PowerShell 5.1. Only a value of the details itself
         is converted, not a date inside a value.
+
+    .PARAMETER Message
+        Text of the line.
+
+    .PARAMETER Level
+        Level of the line: Critical, Error, Warning, Information, Debug or Verbose. INFO is
+        taken as Information.
+
+    .PARAMETER Component
+        Name of the part of the module that writes the line. General when none is given.
+
+    .PARAMETER CorrelationId
+        Correlation ID of the line. One is generated when none is given.
+
+    .PARAMETER LogPath
+        Path of the log file. Without it the path of the logging system is used, and with
+        neither the line goes to the console only.
+
+    .PARAMETER Details
+        Values that are added to the line in the file as compact JSON, after " | Details: ".
+        $null is taken as no details.
     #>
     [CmdletBinding()]
     param(

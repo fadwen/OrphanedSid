@@ -20,6 +20,10 @@ function Invoke-OperationWithRetry {
     .PARAMETER OperationName
         Descriptive name for logging purposes
 
+    .PARAMETER CorrelationId
+        Correlation ID, written in the verbose message with which the function starts. One is
+        generated when none is given.
+
     .EXAMPLE
         PS> Invoke-OperationWithRetry -ScriptBlock { Get-ADUser 'testuser' } -OperationName 'Get User'
 

@@ -21,6 +21,10 @@ function Get-ADObjectFromSearchBase {
         Retries after the first attempt when the read fails with an error that looks transient
         (0-10, default 3). A read that still fails is thrown to the caller.
 
+    .PARAMETER CorrelationId
+        Correlation ID, written in the verbose messages and passed on to
+        Invoke-ADOperationWithRetry. One is generated when none is given.
+
     .EXAMPLE
         PS> Get-ADObjectFromSearchBase -SearchBase "OU=Users,DC=contoso,DC=com"
 
