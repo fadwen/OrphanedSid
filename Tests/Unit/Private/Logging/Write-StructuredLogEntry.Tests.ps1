@@ -75,6 +75,68 @@ Describe "Write-StructuredLogEntry" {
             Get-Content -Path $logPath | Should -BeLike '* Test | Details: {"Key":"Value"}'
         }
 
+        It "Should write a date among the details as text with its offset: <Kind> (#196)" -ForEach @(
+            @{ Kind = 'a date that was constructed'; Date = [datetime]::new(2026, 11, 21, 11, 38, 29, [System.DateTimeKind]::Local) }
+            @{ Kind = 'the object that Get-Date returns'; Date = (Get-Date -Year 2026 -Month 11 -Day 21 -Hour 11 -Minute 38 -Second 29) }
+        ) {
+            # ConvertTo-Json writes the first as \/Date(...)\/ on Windows PowerShell 5.1 and the
+            # second as an object with the properties value, DisplayHint and DateTime. The line
+            # is read as text, because ConvertFrom-Json would turn the text back into a date.
+            $logPath = Join-Path $TestDrive "details-date-$([guid]::NewGuid().ToString('N')).log"
+
+            Write-StructuredLogEntry -Message "Test" -Level "Error" -Details @{ Function = 'New-ACLBackup'; Timestamp = $Date } -LogPath $logPath
+
+            $line = Get-Content -Path $logPath
+            $line | Should -Match '"Timestamp":"2026-11-21T11:38:29\.\d{3}[+-]\d{2}:\d{2}"'
+            $line | Should -Match '"Function":"New-ACLBackup"'
+            $line | Should -Not -Match 'DisplayHint|\\/Date\('
+        }
+
+        It "Should end a date among the details with <Ending> when its kind is <Kind> (#196)" -ForEach @(
+            @{ Kind = 'Utc'; Ending = 'Z'; Expected = '"Timestamp":"2026-11-21T11:38:29\.000Z"' }
+            @{ Kind = 'Unspecified'; Ending = 'no offset'; Expected = '"Timestamp":"2026-11-21T11:38:29\.000"' }
+        ) {
+            # Nothing says which offset a date of unspecified kind has, so none is written
+            $logPath = Join-Path $TestDrive "details-kind-$Kind.log"
+            $date = [datetime]::new(2026, 11, 21, 11, 38, 29, [System.DateTimeKind]$Kind)
+
+            Write-StructuredLogEntry -Message "Test" -Level "Error" -Details @{ Timestamp = $date } -LogPath $logPath
+
+            Get-Content -Path $logPath | Should -Match $Expected
+        }
+
+        It "Should write a date among the details with colons in a session whose culture separates time with a dot (#196)" {
+            $logPath = Join-Path $TestDrive 'details-culture.log'
+            $date = [datetime]::new(2026, 11, 21, 11, 38, 29, [System.DateTimeKind]::Local)
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new('fi-FI')
+                Write-StructuredLogEntry -Message "Test" -Level "Error" -Details @{ Timestamp = $date } -LogPath $logPath
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
+
+            Get-Content -Path $logPath | Should -Match '"Timestamp":"2026-11-21T11:38:29\.000[+-]\d{2}:\d{2}"'
+        }
+
+        It "Should leave the caller's details as they were" {
+            $logPath = Join-Path $TestDrive 'details-caller.log'
+            $details = @{ Timestamp = [datetime]::new(2026, 11, 21, 11, 38, 29, [System.DateTimeKind]::Local) }
+
+            Write-StructuredLogEntry -Message "Test" -Level "Error" -Details $details -LogPath $logPath
+
+            $details['Timestamp'] | Should -BeOfType [datetime]
+        }
+
+        It "Should write the line without details when the details are null" {
+            $logPath = Join-Path $TestDrive 'details-null.log'
+
+            $warnings = @(Write-StructuredLogEntry -Message "Test" -Level "Error" -Component "Comp" -CorrelationId "123" -Details $null -LogPath $logPath 3>&1)
+
+            $warnings | Should -BeNullOrEmpty
+            Get-Content -Path $logPath | Should -Match '\[Error\] \[Comp\] \[123\] Test$'
+        }
+
         It "Should normalize INFO to Information" {
             $logPath = Join-Path $TestDrive 'info.log'
 

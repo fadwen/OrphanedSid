@@ -2,6 +2,19 @@
     <#
     .SYNOPSIS
         Writes structured log entries with consistent formatting
+
+    .DESCRIPTION
+        Writes one regular line of the log: the time, the level, the component, the
+        correlation ID and the message, and after them the details as compact JSON when
+        there are any. The line goes to the console unless console output is suppressed,
+        and to the log file when the configured log level keeps it.
+
+        A date among the details is written as text, as yyyy-MM-ddTHH:mm:ss.fff and what
+        its kind adds: the offset from UTC for a local time, which is what Get-Date
+        returns, Z for a UTC time, and nothing for a date of unspecified kind. That is the
+        form that Format-LogMessage gives a date in a JSON entry, and it is the same text
+        on PowerShell 7 and on Windows PowerShell 5.1. Only a value of the details itself
+        is converted, not a date inside a value.
     #>
     [CmdletBinding()]
     param(
@@ -61,8 +74,22 @@
         # The invariant culture, so that the time has colons in every session (#193)
         $entryTime = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fff', [cultureinfo]::InvariantCulture)
         $formattedEntryForFile = "[$entryTime] [$Level] [$Component] [$CorrelationId] $Message"
-        if ($Details.Count -gt 0) {
-            $detailsJson = $Details | ConvertTo-Json -Compress
+        if ($null -ne $Details -and $Details.Count -gt 0) {
+            # A date among the details becomes text, in the format that Format-LogMessage uses
+            # for the JSON entries of the security log. ConvertTo-Json writes a date as ISO 8601
+            # text on PowerShell 7 and, on Windows PowerShell 5.1, as \/Date(...)\/ or as an
+            # object with the properties value, DisplayHint and DateTime, so the details of a
+            # failed backup had a time that only one edition wrote readably (#196). Only a
+            # value of the details itself is converted, not a date inside a value.
+            $detailsForFile = @{}
+            foreach ($key in $Details.Keys) {
+                $value = $Details[$key]
+                if ($value -is [datetime]) {
+                    $value = $value.ToString('yyyy-MM-ddTHH:mm:ss.fffK', [cultureinfo]::InvariantCulture)
+                }
+                $detailsForFile[$key] = $value
+            }
+            $detailsJson = $detailsForFile | ConvertTo-Json -Compress
             $formattedEntryForFile += " | Details: $detailsJson"
         }
 

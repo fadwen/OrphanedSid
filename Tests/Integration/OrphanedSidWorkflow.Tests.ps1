@@ -553,6 +553,34 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             }
         }
 
+        It 'Writes the time in the details of a backup that failed as text, and removes nothing (#196)' {
+            # The line that reports the failure carries details, and one of them is a date. On
+            # Windows PowerShell 5.1 it was written as an object with the properties value,
+            # DisplayHint and DateTime. The log is read as text for the same reason as above.
+            Mock -ModuleName OrphanedSid Export-Clixml { throw 'There is not enough space on the disk.' }
+            $log = Join-Path $TestDrive "backup-failed-$([guid]::NewGuid().ToString('N')).log"
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                BackupPath            = $script:BackupRoot
+                LogPath               = $log
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+
+            $results = @(Remove-OrphanedSid @parameters -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+
+            @($results | Where-Object { $_.Success }).Count | Should -Be 0
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+            $lines = @(Get-Content -LiteralPath $log)
+            $failureLines = @($lines | Where-Object { $_ -match 'Failed to create ACL backup for .* \| Details: \{' })
+            $failureLines.Count | Should -Be 2
+            $time = '"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}"'
+            @($failureLines | Where-Object { $_ -notmatch ('"Timestamp":' + $time) }).Count | Should -Be 0
+            @($lines | Where-Object { $_ -match 'DisplayHint|\\/Date\(' }).Count | Should -Be 0
+        }
+
         It 'Leaves an orphaned entry that is only inherited, and backs nothing up (#46)' {
             $dn = "CN=Child,OU=Finance,$script:DomainDN"
             # ID marks the entry as inherited from a parent object
