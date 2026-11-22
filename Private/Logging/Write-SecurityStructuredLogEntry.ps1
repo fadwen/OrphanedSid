@@ -115,13 +115,15 @@
 
             # Fallback 1: Try direct file write without formatting
             try {
-                $fallbackEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') [$Component] [$Level] SECURITY: $Message (CorrelationId: $effectiveCorrelationId)"
+                $fallbackTime = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff', [cultureinfo]::InvariantCulture)
+                $fallbackEntry = "$fallbackTime [$Component] [$Level] SECURITY: $Message (CorrelationId: $effectiveCorrelationId)"
                 Write-SecurityFileEntryDirect -Message $fallbackEntry
             }
             catch {
                 # Fallback 2: Write to temp directory as last resort
                 try {
-                    $emergencyEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') [SECURITY-EMERGENCY] [$Level] $Message (CorrelationId: $effectiveCorrelationId)"
+                    $emergencyTime = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff', [cultureinfo]::InvariantCulture)
+                    $emergencyEntry = "$emergencyTime [SECURITY-EMERGENCY] [$Level] $Message (CorrelationId: $effectiveCorrelationId)"
                     $emergencyEntry | Out-File -FilePath "$env:TEMP\OrphanedSid-Security-Emergency.log" -Append -Encoding UTF8 -ErrorAction Stop -WhatIf:$false
                     Write-Warning "Security log written to emergency file: $env:TEMP\OrphanedSid-Security-Emergency.log"
                 }

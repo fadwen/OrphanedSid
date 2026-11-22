@@ -79,6 +79,20 @@ Describe "Initialize-LogDirectory" -Tag "Unit", "Private", "FileSystem" {
             $content | Should -Match 'Console Output Suppressed: True'
         }
 
+        It "Should write the start time of the header with colons in a session whose culture separates time with a dot (#193)" {
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new('fi-FI')
+                Initialize-LogDirectory -LogPath $script:TestLogPath
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
+
+            $startTime = @(Get-Content $script:TestLogPath | Where-Object { $_ -like 'Start Time:*' })
+            $startTime.Count | Should -Be 1
+            $startTime[0] | Should -Match '^Start Time: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
+        }
+
         It "Should append the header to an existing log file, keeping the earlier runs (#44)" {
             New-Item -Path $script:TestRoot -ItemType Directory | Out-Null
             "Existing content" | Set-Content $script:TestLogPath

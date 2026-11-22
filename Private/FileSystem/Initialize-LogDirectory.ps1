@@ -438,7 +438,7 @@ function Initialize-LogFile {
         $logHeader = @"
 === OrphanedSid Log ===
 Module Version: $(Get-OrphanedSidModuleVersion)
-Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Start Time: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss', [cultureinfo]::InvariantCulture))
 Correlation ID: $($loggingState.CorrelationId)
 PowerShell Version: $($PSVersionTable.PSVersion)
 User Context: $env:USERNAME@$env:COMPUTERNAME

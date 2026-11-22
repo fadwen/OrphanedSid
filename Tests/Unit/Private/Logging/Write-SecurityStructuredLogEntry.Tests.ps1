@@ -186,6 +186,26 @@ Describe "Write-SecurityStructuredLogEntry" -Tag @('Unit', 'Logging', 'Security'
             }
         }
 
+        It "Should write the time of both fallback lines with colons in a session whose culture separates time with a dot (#193)" {
+            Mock Format-LogMessage { throw "Formatting error" }
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new('fi-FI')
+                Write-SecurityStructuredLogEntry -Message "Test" -Level Error -CorrelationId 'fb-2'
+                Mock Write-SecurityFileEntryDirect { throw "Direct write failed" }
+                Write-SecurityStructuredLogEntry -Message "Test" -Level Error -CorrelationId 'em-2'
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
+
+            Should -Invoke Add-Content -Times 1 -Exactly -ParameterFilter {
+                $Value -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[SecurityAudit\] \[Error\] SECURITY: Test '
+            }
+            Should -Invoke Out-File -Times 1 -Exactly -ParameterFilter {
+                $InputObject -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[SECURITY-EMERGENCY\] \[Error\] Test '
+            }
+        }
+
         It "Should write an error when every fallback fails" {
             Mock Format-LogMessage { throw "Formatting error" }
             Mock Write-SecurityFileEntryDirect { throw "Direct write failed" }

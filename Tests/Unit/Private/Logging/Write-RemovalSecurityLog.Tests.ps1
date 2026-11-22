@@ -70,10 +70,34 @@ Describe "Write-RemovalSecurityLog" -Tag @('Unit', 'Logging', 'Security') {
                 $SecurityContext.User -eq $env:USERNAME -and
                 $SecurityContext.Computer -eq $env:COMPUTERNAME -and
                 $SecurityContext.CorrelationId -eq 'ctx-1' -and
-                $SecurityContext.Timestamp -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' -and
+                $SecurityContext.Timestamp -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$' -and
                 $SecurityContext.SIDType -eq 'User' -and
                 $SecurityContext.Domain -eq 'TestDomain'
             }
+        }
+
+        It "Should give the entry the local time with its offset, in a session of the culture <Culture> (#192, #193)" -ForEach @(
+            @{ Culture = 'en-US' }
+            @{ Culture = 'fi-FI' }
+        ) {
+            # The value once ended in a literal Z, which says UTC, on a time that was local, and
+            # in a culture whose time separator is a dot it read 21.54.45.
+            Mock Write-SecurityLog { $script:writtenContext = $SecurityContext }
+            $savedCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+            try {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::new($Culture)
+                $before = [DateTimeOffset]::Now
+                Write-RemovalSecurityLog -SecurityEventType "PrivilegeUse" -Message "Test message" -Outcome "Success"
+                $after = [DateTimeOffset]::Now
+            } finally {
+                [System.Threading.Thread]::CurrentThread.CurrentCulture = $savedCulture
+            }
+
+            $written = [DateTimeOffset]::ParseExact($script:writtenContext['Timestamp'], 'yyyy-MM-ddTHH:mm:ss.fffzzz',
+                [System.Globalization.CultureInfo]::InvariantCulture)
+            $written | Should -BeGreaterOrEqual $before.AddMilliseconds(-1)
+            $written | Should -BeLessOrEqual $after
+            $written.Offset | Should -Be $before.Offset
         }
 
         It "Should generate correlation ID if not provided" {

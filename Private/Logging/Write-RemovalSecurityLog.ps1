@@ -94,7 +94,9 @@ function Write-RemovalSecurityLog {
             Component = 'RemovalSecurityLogging'
             EventType = $SecurityEventType
             Outcome = $Outcome
-            Timestamp = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fffZ'
+            # Local time with its offset. The format once ended in a literal Z, which says
+            # UTC, on a time that was local (#192).
+            Timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffK', [cultureinfo]::InvariantCulture)
             User = $env:USERNAME
             Computer = $env:COMPUTERNAME
             CorrelationId = $CorrelationId

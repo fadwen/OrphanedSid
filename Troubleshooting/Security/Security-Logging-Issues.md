@@ -13,10 +13,13 @@
 A security entry looks like:
 
 ```json
-{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"[ObjectAccess] [Success] Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.1181234+02:00", ...}
+{"Level":"Information","ProcessId":4321,"Outcome":"Success","SecurityEventType":"ObjectAccess","UserContext":"user@HOST","Message":"[ObjectAccess] [Success] Successfully completed Active Directory operation: AD-ObjectDiscovery","Component":"SecurityAudit","CorrelationId":"<guid>","Security_OperationName":"AD-ObjectDiscovery","Security_SearchBase":"OU=Users,DC=contoso,DC=com","Timestamp":"2025-07-02T14:30:52.118+02:00", ...}
 ```
 
-Property order varies. `Message` starts with the event type and outcome in brackets, followed by
+Property order varies. `Timestamp` is the local time with its offset from UTC, as text with three
+decimal places, on PowerShell 7 and on Windows PowerShell 5.1 alike; `Security_Timestamp`, where
+an entry has one, has the same form. `Message` starts with the event type and outcome in
+brackets, followed by
 the event text; `SecurityEventType` and `Outcome` are also separate properties, which are the
 ones to filter on. `Outcome` `Attempt` and `Success` are written at `Information`, `Failure` at
 `Warning`. On the console only `Warning`, `Error` and
