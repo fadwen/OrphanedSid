@@ -3,13 +3,13 @@
 
 <#
 .SYNOPSIS
-    Scenario tests for Write-ProcessingSummary: discovery, removal and restore results, and CSV
-    export.
+    Scenario tests for Write-ProcessingSummary: discovery and removal results, and CSV export.
 
 .DESCRIPTION
     Write-ProcessingSummary.Tests.ps1 checks the parameters and that the summary logs something.
-    These tests check what it logs for each shape of result the three public commands hand it, and
-    where the CSV goes. Only Write-StructuredLog is mocked; the CSV export writes to TestDrive.
+    These tests check what it logs for each shape of result that Find-OrphanedSid and
+    Remove-OrphanedSid hand it, and where the CSV goes. Only Write-StructuredLog is mocked; the
+    CSV export writes to TestDrive.
 #>
 
 BeforeAll {
@@ -17,7 +17,6 @@ BeforeAll {
     Set-StrictMode -Version Latest
 
     . "$PSScriptRoot\..\..\..\..\Private\Reporting\Write-ProcessingSummary.ps1"
-    . "$PSScriptRoot\..\..\..\..\Private\Reporting\Export-ResultCsv.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
 
@@ -52,19 +51,6 @@ BeforeAll {
         }
         [PSCustomObject]$results
     }
-
-    function New-RestoreResults {
-        param([int]$Failed = 0, [object[]]$Results)
-        [PSCustomObject]@{
-            TotalObjectsProcessed = $Results.Count
-            ProcessingDuration    = [TimeSpan]::FromMilliseconds(312)
-            SuccessfulRestores    = $Results.Count - $Failed
-            FailedRestores        = $Failed
-            BackupPath            = 'C:\OrphanedSidTest\Backup\20261108_133153'
-            WhatIfMode            = $false
-            RestoreResults        = $Results
-        }
-    }
 }
 
 Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
@@ -82,7 +68,6 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
                 'Peak memory usage: 141.5 MB', 'Processing errors: 0', 'Orphaned SIDs found: 2', 'Processing summary completed') {
                 Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq $expected -and $Component -eq 'Summary' -and $CorrelationId -eq 'sum-1' }
             }
-            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like '*RESTORE*' }
         }
 
         It 'Logs the same totals for the hashtable Invoke-MainProcessingLogic returns' {
@@ -229,80 +214,6 @@ Describe 'Write-ProcessingSummary' -Tag 'Unit', 'Reporting', 'Private' {
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
                 $Message -eq 'Of the failed removals, with an entry that was no longer on the object: 2 (3 SID(s))'
             }
-        }
-    }
-
-    Context 'Restore results' {
-        BeforeEach {
-            $script:restores = @(
-                [PSCustomObject]@{ ObjectDN = 'CN=Host 1,DC=contoso,DC=com'; Success = $true; EntriesRestored = 34; ErrorMessage = $null }
-                [PSCustomObject]@{ ObjectDN = 'CN=Host 2,DC=contoso,DC=com'; Success = $false; EntriesRestored = 0; ErrorMessage = 'Access is denied' }
-            )
-        }
-
-        It 'Logs the restore summary and one line per object, with the error for a failed one' {
-            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Failed 1 -Results $script:restores)
-
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq '=== RESTORE SUMMARY ===' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Successful restores: 1' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Failed restores: 1' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'Backup source: C:\OrphanedSidTest\Backup\20261108_133153' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq '  [SUCCESS] CN=Host 1,DC=contoso,DC=com (34 entries)' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq '  [FAILED] CN=Host 2,DC=contoso,DC=com' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq '    Error: Access is denied' }
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Level -eq 'Warning' -and $Message -like 'Some restore operations failed.*' }
-            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like '*PROCESSING ERRORS*' -or $Message -like 'Orphaned SIDs found*' }
-        }
-
-        It 'Celebrates when every restore succeeded' {
-            $all = @([PSCustomObject]@{ ObjectDN = 'CN=Host 1,DC=contoso,DC=com'; Success = $true; EntriesRestored = 34 })
-
-            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Results $all)
-
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'All restore operations completed successfully!' }
-        }
-
-        It 'Summarises one restore result that arrives as one object, not as a collection (#153)' {
-            # Under strict mode one object has no Count on Windows PowerShell 5.1. On PowerShell 7
-            # a custom object has a Count of 1, so only that edition shows the difference.
-            $one = [PSCustomObject]@{ ObjectDN = 'CN=Host 1,DC=contoso,DC=com'; Success = $true; EntriesRestored = 34; ErrorMessage = $null }
-            $results = New-RestoreResults -Results @($one)
-            $results.RestoreResults = $one
-
-            Write-ProcessingSummary -ProcessingResults $results -OutputPath $script:csv
-
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq '  [SUCCESS] CN=Host 1,DC=contoso,DC=com (34 entries)' }
-            @(Import-Csv $script:csv).Count | Should -Be 1
-            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Level -eq 'Error' }
-        }
-
-        It 'Exports the restore results to CSV' {
-            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Failed 1 -Results $script:restores) -OutputPath $script:csv
-
-            $rows = @(Import-Csv $script:csv)
-            $rows.Count | Should -Be 2
-            $rows[1].ErrorMessage | Should -Be 'Access is denied'
-            # Import-Csv skips a #TYPE line, so the first line is read as text (#159)
-            @(Get-Content -LiteralPath $script:csv -TotalCount 1)[0] | Should -BeLike '"ObjectDN",*'
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -eq "Results exported to: $($script:csv)" }
-        }
-
-        It 'Writes no restore CSV under -WhatIf and says so (#50)' {
-            $WhatIfPreference = $true
-
-            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Failed 1 -Results $script:restores) -OutputPath $script:csv
-
-            Test-Path $script:csv | Should -BeFalse
-            Should -Invoke Write-StructuredLog -Times 0 -ParameterFilter { $Message -like 'Results exported to:*' }
-            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
-                $Message -eq "WhatIf: results would be exported to $($script:csv); no file was written"
-            }
-        }
-
-        It 'Says so when no restore was performed' {
-            Write-ProcessingSummary -ProcessingResults (New-RestoreResults -Results @())
-
-            Should -Invoke Write-StructuredLog -Times 1 -ParameterFilter { $Message -eq 'No restore operations were performed.' }
         }
     }
 
