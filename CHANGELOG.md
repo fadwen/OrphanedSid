@@ -275,6 +275,13 @@ All notable changes to this module are recorded here. Format follows
 
 ### Security
 
+- A detail of a log entry whose name says that it holds a secret is written as `[REDACTED]` in
+  place of its value, in the operational log and in the security audit entries. That is a name
+  which contains `passw`, `secret`, `token` or `credential`, or `api`, `access`, `private` or
+  `signing` followed by `key`. The module itself passes no such detail, so no line that it
+  writes today changes; the logger wrote whatever it was handed, with nothing to stop a later
+  change from handing it a secret. Only the name of a detail is read, not the text of a
+  message. ([#215](https://github.com/fadwen/OrphanedSid/issues/215))
 - `Tools/Generate-OrphanedSIDs.ps1`, the script in the repository that fills a lab domain with
   test accounts, gives each account a random password that it keeps nowhere. It gave every
   account the same password, which is written in the script. The script deletes its accounts at

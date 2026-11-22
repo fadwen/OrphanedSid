@@ -501,6 +501,34 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'The pattern for the name of a secret (#215)' {
+        It 'Is the same in Write-StructuredLogEntry and in Format-LogMessage' {
+            # Both write named values to a log, and both leave out the value of a name that
+            # matches. The unit tests dot-source these files one at a time, so the pattern is
+            # written out in each of them and compared here. With two patterns, a name would be
+            # redacted in the operational log and written out in the security log, or the
+            # reverse.
+            $patterns = foreach ($name in 'Write-StructuredLogEntry', 'Format-LogMessage') {
+                $assignment = $script:Definitions[$name].Ast.Find({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                        $node.Left.Extent.Text -eq '$secretNamePattern'
+                    }, $true)
+                $assignment | Should -Not -BeNullOrEmpty -Because "$name assigns the pattern"
+                $assignment.Right.Find({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+                    }, $true).Value
+            }
+            $patterns = @($patterns)
+
+            $patterns.Count | Should -Be 2
+            # A pattern that came out empty would match every name
+            $patterns[0] | Should -Match 'passw'
+            $patterns[1] | Should -BeExactly $patterns[0]
+        }
+    }
+
     Context 'Strict mode (#153)' {
         # Under strict mode a read of a variable that was never assigned, or of a property that an
         # object does not have, is an error and not a silent $null. The root module sets it for

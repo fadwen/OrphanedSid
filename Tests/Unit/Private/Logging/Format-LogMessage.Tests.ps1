@@ -134,6 +134,47 @@ Describe "Format-LogMessage" {
             $data.Boolean | Should -Be $true
         }
 
+        It "Should write [REDACTED] in place of the value of additional data named <DataName> (#215)" -ForEach @(
+            @{ DataName = 'Password' }
+            @{ DataName = 'Security_Password' }
+            @{ DataName = 'Security_ApiKey' }
+            @{ DataName = 'ClientSecret' }
+            @{ DataName = 'AccessToken' }
+            @{ DataName = 'Credential' }
+            @{ DataName = 'private_key' }
+        ) {
+            # The value is made here, so that it is in no file and can be looked for in the entry
+            $secretValue = [guid]::NewGuid().ToString('N')
+            $data = @{ Other = 'text' }
+            $data[$DataName] = $secretValue
+
+            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON" -AdditionalData $data
+
+            $result | Should -Not -Match $secretValue
+            $entry = $result | ConvertFrom-Json
+            $entry.$DataName | Should -BeExactly '[REDACTED]'
+            $entry.Other | Should -Be 'text'
+            # The table of the caller keeps the value
+            $data[$DataName] | Should -BeExactly $secretValue
+        }
+
+        It "Should keep the value of additional data named <DataName> (#215)" -ForEach @(
+            @{ DataName = 'Key' }
+            @{ DataName = 'RegistryKey' }
+            @{ DataName = 'Security_ObjectId' }
+            @{ DataName = 'SecurityEventType' }
+            @{ DataName = 'PwdLastSet' }
+        ) {
+            # 'key' alone and 'pwd' are not in the pattern: these names hold no secret
+            $plainValue = [guid]::NewGuid().ToString('N')
+            $data = @{}
+            $data[$DataName] = $plainValue
+
+            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON" -AdditionalData $data
+
+            ($result | ConvertFrom-Json).$DataName | Should -BeExactly $plainValue
+        }
+
         It "Should produce compressed JSON without whitespace" {
             $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "JSON"
             $result | Should -Not -Match "\n"
@@ -252,6 +293,18 @@ Describe "Format-LogMessage" {
             $xml = [xml]$result
             
             ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "TestKey" }).InnerText | Should -Be 'TestValue'
+            ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "Number" }).InnerText | Should -Be '42'
+        }
+
+        It "Should write [REDACTED] in place of the value of additional data that is named as a secret in XML (#215)" {
+            $secretValue = [guid]::NewGuid().ToString('N')
+            $data = @{ AccessToken = $secretValue; Number = 42 }
+
+            $result = Format-LogMessage -Message "Test message" -Level "Information" -Format "XML" -AdditionalData $data
+
+            $result | Should -Not -Match $secretValue
+            $xml = [xml]$result
+            ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "AccessToken" }).InnerText | Should -BeExactly '[REDACTED]'
             ($xml.Objects.Object.Property | Where-Object { $_.Name -eq "Number" }).InnerText | Should -Be '42'
         }
 
