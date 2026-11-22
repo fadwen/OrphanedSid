@@ -1,6 +1,6 @@
 # Quality gates for OrphanedSid.
 #
-# Four jobs, because the module makes claims that can only fail in different places:
+# Five jobs, because the module makes claims that can only fail in different places:
 #
 #   tests     Windows, PowerShell 7. PSScriptAnalyzer over the shipping code with zero tolerance,
 #             over the tests with a relaxed rule set, and over everything with its ScriptSecurity
@@ -24,6 +24,13 @@
 #             imports the staged copy in a new process, measures the manifest against the limits
 #             of the Gallery, and stops before the upload. A change that breaks staging is found
 #             on its pull request and not when the release is made.
+#
+#   credentials  Ubuntu. betterleaks over every commit of every branch and tag, and over the
+#             files of the checkout, with the configuration in .betterleaks.toml. A credential
+#             that was committed stays in the repository after the commit that removes it, so
+#             the scan reads the history and not only the files. It first has to find a
+#             credential that the job plants outside the repository: a scan that reads nothing
+#             reports nothing.
 #
 # There is no Linux test job. The module reads and writes
 # System.DirectoryServices.ActiveDirectorySecurity, which is Windows-only in .NET, and the unit
@@ -58,6 +65,13 @@ env:
   PESTER_VERSION: '6.2.0'
   PSSCRIPTANALYZER_VERSION: '1.25.0'
   PLATYPS_VERSION: '1.0.3'
+  # betterleaks is a release archive and not a module, so its pin has two parts: the version, and
+  # the SHA256 of betterleaks_<version>_linux_x64.tar.gz as checksums.txt of that release gives
+  # it. A release tag can be moved to other content, and the hash then no longer matches. Change
+  # both together. The built-in rules belong to the version, so a new one can report what the
+  # old one did not: run the scan and read its findings in the same change.
+  BETTERLEAKS_VERSION: '1.10.1'
+  BETTERLEAKS_SHA256: 'c174b42d7aa60caf58c0c3e555c0e4bed01fe6b0d99a412bce777b5af4ce913e'
 
 jobs:
   tests:
@@ -349,3 +363,111 @@ jobs:
       - name: Stage and verify the package (no publish)
         shell: pwsh
         run: ./Build/Publish-Module.ps1 -WhatIf
+
+  credentials:
+    name: 'Credential scan'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Every commit of every branch and tag. The default is the one commit that is built, and
+      # the history scan would then read that commit and pass.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install betterleaks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:BETTERLEAKS_VERSION
+          $archive = "betterleaks_${version}_linux_x64.tar.gz"
+          $uri = "https://github.com/betterleaks/betterleaks/releases/download/v$version/$archive"
+          $archivePath = Join-Path -Path $env:RUNNER_TEMP -ChildPath $archive
+          Invoke-WebRequest -Uri $uri -OutFile $archivePath
+
+          $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+          if ($hash -ne $env:BETTERLEAKS_SHA256) {
+              throw "The SHA256 of $archive is $hash. The workflow expects $($env:BETTERLEAKS_SHA256)."
+          }
+
+          $toolPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath 'betterleaks'
+          $null = New-Item -Path $toolPath -ItemType Directory -Force
+          & tar -xzf $archivePath -C $toolPath betterleaks
+          if ($LASTEXITCODE -ne 0) {
+              throw "tar could not unpack $archive. Exit code $LASTEXITCODE."
+          }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $toolPath
+
+          & (Join-Path -Path $toolPath -ChildPath 'betterleaks') version
+          if ($LASTEXITCODE -ne 0) {
+              throw "betterleaks does not run. Exit code $LASTEXITCODE."
+          }
+
+      - name: Scan the history and the files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # --exit-code 3 tells a finding from a failure: betterleaks ends with 1 when it cannot
+          # run, for example on a configuration that does not load. --redact, because the log of
+          # this run is public: a finding is shown with its place and without its value. No
+          # --validation: nothing that the scan finds is sent to a provider.
+          $options = @(
+              '--config', '.betterleaks.toml'
+              '--gitleaks-ignore-path', '.betterleaksignore'
+              '--exit-code', '3'
+              '--redact'
+              '--no-banner'
+              '--no-color'
+          )
+
+          # First the scan has to find what is there. betterleaks reports "no leaks found" and
+          # ends with 0 for a folder that does not exist, and a configuration can leave out more
+          # than was meant. The probe is two values that are made here, outside the repository:
+          # one in the form of a key that a specific rule knows, and one quoted password, which
+          # is the rule that .betterleaks.toml adds exceptions to. They are put together from
+          # parts so that this file holds neither.
+          $probePath = Join-Path -Path $env:RUNNER_TEMP -ChildPath 'credential-probe'
+          $null = New-Item -Path $probePath -ItemType Directory -Force
+          $probeLines = @(
+              ('key: ' + 'sk_' + 'live_' + [guid]::NewGuid().ToString('N'))
+              ('password = "{0}"' -f [guid]::NewGuid().ToString('N'))
+          )
+          $probeFile = Join-Path -Path $probePath -ChildPath 'probe.txt'
+          Set-Content -LiteralPath $probeFile -Value $probeLines -Encoding ascii
+          $probeReport = Join-Path -Path $env:RUNNER_TEMP -ChildPath 'credential-probe.json'
+
+          & betterleaks dir $probePath @options --log-level error --report-format json --report-path $probeReport
+          if ($LASTEXITCODE -ne 3) {
+              throw "The scan of the probe ended with exit code $LASTEXITCODE. It has to end with 3, for a finding."
+          }
+          $probeRules = @(Get-Content -LiteralPath $probeReport -Raw | ConvertFrom-Json) |
+              ForEach-Object { $_.RuleID } |
+              Sort-Object -Unique
+          if (($probeRules -join ',') -ne 'generic-password,stripe-access-token') {
+              throw "The scan of the probe reported '$($probeRules -join ',')'. It has to report both values."
+          }
+          Write-Host 'The scan found both values of the probe.'
+
+          $shallow = & git rev-parse --is-shallow-repository
+          if ($LASTEXITCODE -ne 0 -or $shallow -ne 'false') {
+              throw 'The checkout does not hold the whole history, so the scan would read a part of it.'
+          }
+
+          # Both scans run, so that one run shows everything there is to see. 'git' reads what
+          # each commit added. 'dir' reads the files as they are, which also covers what a merge
+          # commit itself changed: the history scan does not read the patch of a merge.
+          $problems = [System.Collections.Generic.List[string]]::new()
+          foreach ($source in 'git', 'dir') {
+              Write-Host "betterleaks $source"
+              & betterleaks $source . @options --verbose
+              if ($LASTEXITCODE -eq 3) {
+                  $problems.Add("The '$source' scan reported what may be a credential; see above.")
+              } elseif ($LASTEXITCODE -ne 0) {
+                  $problems.Add("The '$source' scan could not run. Exit code $LASTEXITCODE.")
+              }
+          }
+          if ($problems.Count -gt 0) {
+              throw ($problems -join ' ')
+          }
+          Write-Host 'No credential in the history or in the files.'

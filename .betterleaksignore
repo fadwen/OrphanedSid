@@ -1,0 +1,54 @@
+# Findings of the credential scan that were read and are not credentials. The 'credentials' job
+# of quality-gates.yml passes this file to betterleaks, which leaves out a finding listed here.
+# A line is one finding: the commit that added the text, the file, the rule and the line number.
+#
+# Every entry is a line of a commit that was made before the scan existed. A commit does not
+# change, so an entry stays valid. What they hold are placeholders of tests, of sample code and
+# of help examples: passwords such as TestPassword123! and qwerty, the header of a JSON Web
+# Token with no payload and no signature, and a made-up value in the form of a Stripe key.
+#
+# Add a line only for a value that was read and is not a credential, and prefer changing the
+# value so that the scan does not report it. A real credential is revoked first: a commit that
+# removes it leaves it in the history, where the scan and everyone else still find it.
+
+1fbd613f49c45458ee2d450b9a35a916fa6f6713:.github/instructions/pester-supporting-docs/security-test-template.md:generic-password:67
+1fbd613f49c45458ee2d450b9a35a916fa6f6713:.github/instructions/pester-supporting-docs/security-test-template.md:generic-password:71
+1fbd613f49c45458ee2d450b9a35a916fa6f6713:.github/instructions/pester-supporting-docs/security-test-template.md:generic-password:275
+1fbd613f49c45458ee2d450b9a35a916fa6f6713:.github/instructions/pester-supporting-docs/test-data-guide.md:generic-password:469
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Private/Logging/Write-SecurityLogEvent.ps1:generic-password:269
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:231
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:232
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:233
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:255
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:256
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:257
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:277
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Tests/Security/Penetration-Testing.Tests.ps1:generic-api-key:278
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Security/Penetration-Testing.Tests.ps1:generic-password:301
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Security/Penetration-Testing.Tests.ps1:generic-api-key:302
+b3721496a60f7ca42d926a71f8e3178714d589f8:Tests/TestData/Fixtures/test-certificates/README.md:generic-password:9
+b3721496a60f7ca42d926a71f8e3178714d589f8:Tests/TestData/Fixtures/test-certificates/README.md:generic-password:15
+b3721496a60f7ca42d926a71f8e3178714d589f8:Tests/TestData/Fixtures/test-certificates/README.md:generic-password:25
+b3721496a60f7ca42d926a71f8e3178714d589f8:Tests/TestData/Fixtures/test-certificates/README.md:generic-password:30
+b3721496a60f7ca42d926a71f8e3178714d589f8:Tests/TestData/MockResponses/database-responses.json:generic-password:27
+3be20c7e84ddb78aa1f19eca5c47623379dadb3f:Tests/TestHelpers/SecurityTestHelpers.ps1:generic-password:166
+4dd304103472cd6cb33edaf2f43b5aafab37c235:Tests/TestHelpers/TestHelpers.ps1:generic-password:330
+13d229c688742e68637a40f7a20805b2d3dc9e33:Tests/Unit/Private/Core/Import-LoggingSystem.Tests.ps1:generic-password:356
+d7a04e0032ce5a38e0f92b32bd3d0164827f4c48:Tests/Unit/Private/Logging/Write-ClassSecurityEvent.Tests.ps1:generic-password:203
+4ecd34c079c2380ff58e172250688afb71fba45d:Tests/Unit/Private/Logging/Write-SecurityLogEvent.Tests.ps1:generic-password:67
+4ecd34c079c2380ff58e172250688afb71fba45d:Tests/Unit/Private/Logging/Write-StructuredLog.Tests.ps1:stripe-access-token:249
+8363be3d178a949bb3b64c4b5cb1ff6abd821202:Tests/Unit/Private/Logging/Write-StructuredLog.Tests.ps1:generic-password:434
+8363be3d178a949bb3b64c4b5cb1ff6abd821202:Tests/Unit/Private/Logging/Write-StructuredLog.Tests.ps1:stripe-access-token:435
+8363be3d178a949bb3b64c4b5cb1ff6abd821202:Tests/Unit/Private/Logging/Write-StructuredLog.Tests.ps1:generic-api-key:436
+e4116d07444463043711bc3b78a0f58104e8785e:Tests/Unit/System.Tests.ps1:generic-password:1090
+e4116d07444463043711bc3b78a0f58104e8785e:Tests/Unit/System.Tests.ps1:generic-api-key:1092
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-password:1158
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-api-key:1160
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-password:2492
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-api-key:2494
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-password:3844
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-api-key:3846
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-password:5153
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-api-key:5155
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-password:6032
+54ac4f5efe6efd2dab835f362f22a837c2f594cc:Tests/Unit/System.Tests.ps1:generic-api-key:6034

@@ -241,15 +241,19 @@ Describe "Write-StructuredLog" {
         }
 
         It "Should pass sensitive data through unchanged for the entry writer to handle" {
+            # Made at run time, so that this file holds no value in the form of a credential: the
+            # credential scan of the quality gates reads the tests as it reads everything else.
+            $passwordValue = [guid]::NewGuid().ToString('N')
+            $apiKeyValue = [guid]::NewGuid().ToString('N')
             $sensitiveData = @{
-                Password = "SuperSecretPassword123!"
-                APIKey = "sk_live_1234567890abcdef"
+                Password = $passwordValue
+                APIKey = $apiKeyValue
             }
 
             Write-StructuredLog -Message "Sensitive test" -Data $sensitiveData
 
             Should -Invoke Write-StructuredLogEntry -Exactly 1 -ParameterFilter {
-                $Details.Password -eq "SuperSecretPassword123!" -and $Details.APIKey -eq "sk_live_1234567890abcdef"
+                $Details.Password -eq $passwordValue -and $Details.APIKey -eq $apiKeyValue
             }
         }
 

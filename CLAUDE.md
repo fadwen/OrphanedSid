@@ -347,6 +347,46 @@ preset over every folder, `Tests` and `Tools` included, and the relaxed set does
 and every job installs and imports exactly that. The two test jobs once ran different Pester
 versions without anyone having chosen that: one installed a range and the other a fixed version.
 `release.yml` installs PlatyPS with a version of its own, which has to stay the same number.
+betterleaks is pinned there as well, as a version and the SHA256 of its release archive, because
+it is downloaded from a release and a release tag can be moved.
+
+### The credential scan reads the history, and it has to prove that it reads at all
+
+The `credentials` job runs betterleaks twice with `.betterleaks.toml`: `git` over what every
+commit of every branch and tag added, and `dir` over the files of the checkout. A credential
+stays in the repository after the commit that removes it, so the files alone are not enough; and
+the history scan does not read the patch of a merge commit, so the history alone is not enough
+either. Three things look removable and are not:
+
+- `fetch-depth: 0` on the checkout. With the default, the history scan reads one commit and
+  passes. The step fails on a shallow checkout for that reason.
+- The probe. betterleaks reports `no leaks found` and ends with 0 for a folder that does not
+  exist, and a configuration can leave out more than was meant. So the step first scans two
+  values that it makes outside the repository, and fails unless both are reported: one in the
+  form of a key that a specific rule knows, and one quoted password, the rule that the
+  configuration adds exceptions to.
+- `--redact`, and the absence of `--validation`. The log of a run is public, so a finding is
+  shown with its place and without its value; and validation sends what the scan found to the
+  provider it seems to belong to. The job spells every option out: `-v` is `--verbose` in
+  betterleaks 1.x and `--validate` in 2.
+
+`.betterleaks.toml` is the built-in rule set plus two exceptions for `generic-password`. That
+rule leaves out an unquoted value in the languages it knows, because such a value is an
+expression, and PowerShell is not among them: `$password = [System.Security.SecureString]::new()`
+was reported as a password. The exceptions are allowlists on purpose. Measured with 1.10.1, a
+global `filter` in a file that extends the built-in configuration replaces the global filter of
+that configuration, and a `filter` key written below `[extend]` belongs to that table and is
+ignored without a message.
+
+`.betterleaksignore` lists the findings that were read and are not credentials: placeholders in
+tests and sample code of commits made before the scan existed. An entry names a commit, so it
+stays valid. The files of the default branch need no entry, and should not get one: an entry
+for a file has no commit, only a line number, and stops matching when a line is added above it.
+A value in a current file that the scan reports is changed instead. A test that needs something
+in the form of a credential makes it at run time, as `Write-StructuredLog.Tests.ps1` does.
+
+A move to betterleaks 2 is not a change of the version number: it reads no allowlists, its
+ignore file holds hashes of the values and not places, and `dir` is `fs` there.
 
 ### The MAML filename carries a capital H
 
@@ -389,4 +429,7 @@ Invoke-Pester ./Tests                                # Pester 6; no domain or RS
 Invoke-ScriptAnalyzer -Path ./Private -Recurse -Severity Error, Warning   # repeat for Public, Classes, Build
 ./Build/Build-Help.ps1                               # rebuild MAML after editing docs/
 ./Build/Publish-Module.ps1 -WhatIf                   # full release rehearsal, publishes nothing
+
+# The credential scan, with betterleaks 1.10.1 on the path; `dir` in place of `git` reads the files
+betterleaks git . --config .betterleaks.toml --gitleaks-ignore-path .betterleaksignore --redact
 ```
