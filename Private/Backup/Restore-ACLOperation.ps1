@@ -148,9 +148,12 @@ function Set-ObjectACL {
                 }
                 catch {
                     $success = $false
-                    # Sanitize error message to remove sensitive information
-                    $sanitizedError = $_.Exception.Message -replace 'PASSWORD\d+', '[REDACTED]' -replace 'password\d+', '[REDACTED]'
-                    $errorMessage = "ACL application failed: $sanitizedError"
+                    # The text of the error as the write gave it. A replace that was meant to
+                    # take a password out of it matched the word followed by digits, which is
+                    # the form of a name: an object called Password1 lost its name in this
+                    # message. The module passes no password to the directory, so the error
+                    # of a write has none to take out (#216).
+                    $errorMessage = "ACL application failed: $($_.Exception.Message)"
                     Write-Error $errorMessage
                 }
             }

@@ -94,6 +94,12 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- The error of a restore whose write failed names the object as the directory reported it. A
+  replace that was meant to take a password out of that text matched the word `password`
+  followed by digits, so an object named `Password1` appeared as `[REDACTED]` in the
+  `ErrorMessage` of the result and in the error that was written. The module passes no
+  password to the directory, and the text of such an error holds none.
+  ([#216](https://github.com/fadwen/OrphanedSid/issues/216))
 - A `-ConfigPath` file that is no longer there when the run starts ends the command with the
   critical error `ConfigurationFileNotLoaded`. The commands check the path when the parameter
   is bound; a file that went away after that, on a share that dropped for example, was taken

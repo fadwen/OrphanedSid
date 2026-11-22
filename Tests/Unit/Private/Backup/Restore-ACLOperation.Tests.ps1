@@ -252,12 +252,22 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter { $Message -eq 'ACL application failed: Access denied' }
         }
 
-        It "Should redact a password in the Set-Acl error" {
-            Mock Set-Acl { throw 'Bind failed for PASSWORD123 and password456' }
+        It "Should report the Set-Acl error with the name it holds: <ObjectName> (#216)" -ForEach @(
+            @{ ObjectName = 'CN=Password1,OU=Sales,DC=contoso,DC=com' }
+            @{ ObjectName = 'CN=PASSWORD2026,OU=Sales,DC=contoso,DC=com' }
+        ) {
+            # A replace that was meant to take a password out of the error matched the word
+            # followed by digits, and wrote [REDACTED] where the name of the object was
+            $reportedText = "Cannot find an object with identity: $ObjectName"
+            Mock Set-Acl { throw "Cannot find an object with identity: $ObjectName" }
 
             $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup
 
-            $result.ErrorMessage | Should -Be 'ACL application failed: Bind failed for [REDACTED] and [REDACTED]'
+            $result.Success | Should -BeFalse
+            $result.ErrorMessage | Should -BeExactly "ACL application failed: $reportedText"
+            Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                $Message -ceq "ACL application failed: $reportedText"
+            }
         }
 
         It "Should report SDDL that does not parse without calling Set-Acl" {
