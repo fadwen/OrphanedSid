@@ -56,7 +56,8 @@ function Write-RemovalSecurityLog {
     .NOTES
         AUDIT FEATURES:
         - Comprehensive operation context logging
-        - Risk-based event classification
+        - The type of the event is the one the caller gives; the function adds the operation,
+          the user, the computer and the time
         - Detailed SID and object tracking
 
         TROUBLESHOOTING:

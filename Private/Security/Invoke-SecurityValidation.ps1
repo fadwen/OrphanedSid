@@ -26,6 +26,9 @@ function Invoke-SecurityValidation {
         Distinguished name of the AD object for validation context.
         Used to determine object-specific security requirements.
 
+    .PARAMETER CurrentDomainSID
+        SID of the current domain. It is passed on to Test-SIDSecurity for each SID.
+
     .PARAMETER CorrelationId
         Unique identifier for tracking this validation operation across
         logs and audit trails. Generated automatically if not provided.
@@ -65,11 +68,11 @@ function Invoke-SecurityValidation {
 
     .NOTES
         SECURITY FEATURES:
-        - Uses SIDValidation module for comprehensive security testing
-        - Implements risk-based validation with graduated responses
+        - Checks each SID with Test-SIDSecurity
+        - A SID that the check refuses is blocked. One that it marks for elevated confirmation
+          is allowed, and is reported as a high-risk SID
         - Provides detailed audit trails with correlation tracking
         - Blocks protected and privileged SIDs automatically
-        - Supports enterprise security policy integration
 
         TROUBLESHOOTING:
         - For blocked SIDs: Check protected SID configuration and policies
@@ -107,7 +110,7 @@ function Invoke-SecurityValidation {
             foreach ($sid in $OrphanedSIDs) {
                 Write-StructuredLog "Validating SID for removal: $sid" -Level Debug -CorrelationId $CorrelationId
 
-                # Use SIDValidation module for comprehensive security testing
+                # Each SID is checked by Test-SIDSecurity
                 $sidValidation = Test-SIDSecurity -SIDString $sid -ObjectDN $ObjectDN -ValidationLevel 'Standard' -CurrentDomainSID $CurrentDomainSID -CorrelationId $CorrelationId
 
                 if (-not $sidValidation.IsValid) {

@@ -20,7 +20,7 @@ function Invoke-RemovalWorkflow {
         - Post-operation verification
         - Comprehensive audit logging and tracking
 
-    .PARAMETER ObjectDN
+    .PARAMETER ObjectDistinguishedName
         Distinguished name of the Active Directory object to process.
         Object must exist and be accessible with current credentials.
 
@@ -41,14 +41,14 @@ function Invoke-RemovalWorkflow {
         and audit trails. Generated automatically if not provided.
 
     .EXAMPLE
-        PS> $result = Invoke-RemovalWorkflow -ObjectDN "CN=TestUser,CN=Users,DC=contoso,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
+        PS> $result = Invoke-RemovalWorkflow -ObjectDistinguishedName "CN=TestUser,CN=Users,DC=contoso,DC=com" -OrphanedSIDs @("S-1-5-21-1234567890-1001")
 
         DESCRIPTION: Orchestrates removal workflow for a single SID
         OUTPUT: RemovalOperationResult with comprehensive operation details
         USE CASE: Targeted cleanup with full workflow validation
 
     .EXAMPLE
-        PS> $result = Invoke-RemovalWorkflow -ObjectDN $dn -OrphanedSIDs $sids -BackupPath "C:\Backups" -WhatIfMode -CorrelationId $id
+        PS> $result = Invoke-RemovalWorkflow -ObjectDistinguishedName $dn -OrphanedSIDs $sids -BackupPath "C:\Backups" -WhatIfMode -CorrelationId $id
 
         DESCRIPTION: Preview workflow with backup preparation and correlation tracking
         OUTPUT: RemovalOperationResult showing planned operations without changes
@@ -73,17 +73,17 @@ function Invoke-RemovalWorkflow {
     .NOTES
         WORKFLOW FEATURES:
         - Modular design with specialized component delegation
-        - Comprehensive error handling with rollback capability
+        - A failure in any phase ends the workflow with a failed result; nothing is rolled back
         - Security-first approach with validation gates
-        - Enterprise audit trail with correlation tracking
-        - Flexible backup and verification options
+        - Security log entries for what the workflow does to the ACL, under the correlation ID
+        - A backup when a backup path is given, and a verification after every write
 
         SECURITY CONTROLS:
         - Multi-layer security validation before any changes
         - Protected SID detection and blocking
         - Risk-based operation controls
         - Comprehensive audit logging throughout workflow
-        - Backup creation for rollback capability
+        - A backup before the change, which Restore-OrphanedSidBackup restores from
 
         TROUBLESHOOTING:
         - For security blocks: Review security validation results

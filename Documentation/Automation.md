@@ -49,7 +49,7 @@ failures have an ID of their own:
 | Error ID | Exception type | Meaning |
 |----------|----------------|---------|
 | `ActiveDirectoryModuleMissing` | `System.InvalidOperationException` | The ActiveDirectory PowerShell module is not installed on this computer |
-| `ConfigurationFileNotLoaded` | `System.IO.InvalidDataException` | The `-ConfigPath` file could not be read as JSON, or it holds a value that is refused when the file is loaded, such as a `BatchSize` outside 1 to 1000. The message gives the reason |
+| `ConfigurationFileNotLoaded` | `System.IO.InvalidDataException` | The `-ConfigPath` file could not be read as JSON, it holds a value that is refused when the file is loaded, such as a `BatchSize` outside 1 to 1000, or it was no longer there when the run started. The message gives the reason |
 | `ConfigurationInvalid` | `System.IO.InvalidDataException` | The `-ConfigPath` file was loaded and its settings do not validate, for example a `LogLevel` that is not one of the six level names |
 | `SearchBaseNotUsable` | `System.ArgumentException` | `-SearchBase` was given to `Find-OrphanedSid` or `Remove-OrphanedSid` and held no usable distinguished name |
 | `RestoreTargetNotUsable` | `System.ArgumentException` | `-TargetObjectDN` of `Restore-OrphanedSidBackup` held no usable distinguished name |

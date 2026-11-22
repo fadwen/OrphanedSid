@@ -11,8 +11,9 @@ function Initialize-ScriptExecution {
         Provides comprehensive error handling and validation for enterprise environments.
 
         INITIALIZATION FEATURES:
-        - Automatic log file rotation based on size limits
-        - Memory usage monitoring and management
+        - Rotation of the log file, when the configuration asks for it and the file is over
+          its size limit
+        - Creation of the memory manager with the limit of -MaxMemoryUsageMB
         - Configuration validation and error handling
         - Performance statistics initialization
         - Correlation ID tracking
@@ -22,25 +23,17 @@ function Initialize-ScriptExecution {
         If not provided, default configuration will be used.
 
         VALIDATION RULES:
-        - Must be a valid file path if specified
-        - File must exist and be readable
-        - Must contain valid JSON configuration structure
-
-        BUSINESS CONTEXT:
-        Allows customization of script behavior for different environments
-        (development, staging, production) while maintaining consistency.
+        - A file that is not there, that cannot be read as JSON, or that holds a value outside
+          its range ends the function with the error ConfigurationFileNotLoaded
 
     .PARAMETER LogPath
         [String] (Optional) Path for log file output.
         If not provided, default timestamped log file will be created.
 
         VALIDATION RULES:
-        - Directory must exist or be creatable
-        - Must have write permissions to the specified location
-        - File extension should be .log for consistency
-
-        BUSINESS CONTEXT:
-        A log file in a central location can be collected by a log aggregation system.
+        - Without a path the file is .\Logs\OrphanedSid_[timestamp].log
+        - The folder is created when it does not exist. A path that cannot be used gives a
+          warning, and the log goes to a file of that name in the current location
 
     .PARAMETER MaxMemoryUsageMB
         [Int] (Optional) Maximum memory usage threshold in MB (Default: 1024).
@@ -49,17 +42,14 @@ function Initialize-ScriptExecution {
         VALIDATION RULES:
         - Must be between 100 and 16384 MB
 
+        PERFORMANCE IMPACT:
+        Lower values trigger more frequent memory checks and cleanup.
+        Higher values allow larger datasets but risk system instability.
+
     .PARAMETER CorrelationId
         [String] (Optional) Unique identifier for tracking operations across log entries.
-        If not provided, a new GUID will be generated automatically.
-
-        VALIDATION RULES:
-        - Must be a valid non-empty string if provided
-        - Should follow GUID format for consistency
-
-        BUSINESS CONTEXT:
-        Enables tracking of operations across multiple systems and log files
-        for comprehensive audit trails and troubleshooting support.
+        If not provided, a new GUID will be generated automatically. The value is not
+        checked.
 
     .PARAMETER LogLevel
         [String] (Optional) Sets the minimum log level for file output (Default: Information).
@@ -67,37 +57,11 @@ function Initialize-ScriptExecution {
 
         VALIDATION RULES:
         - Must be one of: Critical, Error, Warning, Information, Debug, Verbose
-        - Higher levels include all lower level messages
-
-        BUSINESS CONTEXT:
-        Enables fine-tuned control of log file size and performance impact
-        while maintaining necessary audit and troubleshooting information.
+        - A level includes the entries of the levels before it in that list
 
     .PARAMETER SuppressConsoleOutput
         [Switch] (Optional) Suppresses console output for automation scenarios.
         Logs are still written to file, but console output is disabled.
-
-        VALIDATION RULES:
-        - Switch parameter (present/absent)
-        - Does not affect file logging
-
-        BUSINESS CONTEXT:
-        Enables clean automation scenarios where console output would interfere
-        with script integration or scheduled task execution.
-        - Should be appropriate for system resources
-        - Consider dataset size when setting limits
-
-        PERFORMANCE IMPACT:
-        Lower values trigger more frequent memory checks and cleanup.
-        Higher values allow larger datasets but risk system instability.
-
-    .PARAMETER CorrelationId
-        [String] (Optional) Correlation ID for tracking this execution.
-        Auto-generated if not provided for enterprise audit requirements.
-
-    .PARAMETER LogLevel
-        [String] (Optional) Logging level for output control (Default: Information).
-        Controls verbosity of logging output for different environments.
 
     .PARAMETER UseConfigLogLevel
         [Switch] (Optional) Replace -LogLevel with the LogLevel of the -ConfigPath file once that
@@ -235,7 +199,11 @@ function Initialize-ScriptExecution {
             # The configuration is read before the log file is set up, because its rotation settings
             # decide whether the existing file is renamed aside before this run writes to it. A file
             # that fails to load is reported once the log exists, so the failure reaches the file.
-            $configFromFile = [bool]($ConfigPath -and (Test-Path -LiteralPath $ConfigPath))
+            # A path that was given is loaded, whether or not the file is there. A file that
+            # has gone since the command checked the path fails in LoadFromFile, like one
+            # that cannot be read, so a run that asked for a configuration never goes on
+            # with the defaults in its place (#208).
+            $configFromFile = -not [string]::IsNullOrWhiteSpace($ConfigPath)
             $configLoadError = $null
             $script:Config = if ($configFromFile) {
                 try {

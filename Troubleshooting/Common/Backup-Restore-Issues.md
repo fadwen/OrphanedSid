@@ -73,7 +73,7 @@ removal operation`.
 `-BackupPath` is mandatory and must be an existing folder; parameter validation rejects anything
 else before the command starts. Each `-TargetObjectDN` value (aliases `DistinguishedName` and
 `SearchBase`, also accepted from the pipeline) is passed to
-`Start-OrchestrationWorkflow -OperationType Restore` and on to `Invoke-RestoreWorkflow`
+`Start-OrchestrationWorkflow` and on to `Invoke-RestoreWorkflow`
 (`Private\Backup\Invoke-RestoreWorkflow.ps1`), which:
 
 1. **Validates input**: the DN must start with `CN=`, `OU=` or `DC=`

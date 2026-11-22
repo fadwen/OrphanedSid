@@ -14,7 +14,8 @@ function Invoke-MainProcessingLogic {
         - Memory-efficient streaming results management
         - Comprehensive retry logic for resilient operations
         - A progress line in the log after every 50 objects and after the last one
-        - Integration with backup systems for safe removal
+        - With -Remove, each object with orphaned SIDs goes to Remove-OrphanedSidEntry with
+          the backup path
 
     .PARAMETER SearchBase
         [String[]] (Mandatory) Distinguished Names of search bases for processing.
@@ -22,12 +23,8 @@ function Invoke-MainProcessingLogic {
 
         VALIDATION RULES:
         - Must pass Test-ValidDistinguishedName validation
-        - Each DN must exist in Active Directory
-        - User must have read permissions to the specified containers
-
-        BUSINESS CONTEXT:
-        Defines the scope of orphaned SID discovery operation.
-        Consider organizational structure when selecting search bases.
+        - A base that cannot be read, because it does not exist or the account may not read
+          it, gives a warning, and the run goes on with the other bases
 
     .PARAMETER Remove
         [Switch] (Optional) Whether to perform SID removal operations.

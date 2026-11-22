@@ -19,22 +19,18 @@ function New-ACLBackup {
         - SHA256 integrity verification for authenticity validation
         - Comprehensive metadata including context and versioning information
         - Safe filename generation with illegal character replacement
-        - Automatic backup directory creation with proper permissions
-        - Cross-platform compatibility for hybrid environments
+        - Creation of the backup folder when it does not exist
 
     .PARAMETER ObjectDN
         Distinguished name of the Active Directory object to backup.
         Supports pipeline input for batch processing operations.
 
         VALIDATION RULES:
-        - Must be valid Distinguished Name format
-        - Cannot be empty, null, or whitespace
-        - Automatically trimmed and sanitized for safe processing
-
-        BUSINESS CONTEXT:
-        Used to specify target objects for backup operations. Consider
-        organizing backups by organizational unit or functional area
-        for easier management and recovery operations.
+        - Cannot be null or empty; a value of blanks only ends the function with an error
+        - Its form is not checked here: the caller passes the name of an object whose ACL it
+          has read
+        - Trimmed before use. The file name is made from it, with each character that a file
+          name cannot hold replaced
 
         EXAMPLES:
         - Single object: "CN=User1,CN=Users,DC=contoso,DC=com"
@@ -47,9 +43,10 @@ function New-ACLBackup {
         with properly initialized access control lists.
 
         VALIDATION RULES:
-        - Cannot be null or empty
-        - Must contain valid access control entries
-        - Automatically validated for integrity before backup
+        - Cannot be null
+        - An ACL without an access entry is backed up all the same, with a warning in the log
+        - The written file is read back, and its hash and object name are compared with
+          what was written
 
         TECHNICAL DETAILS:
         The ACL object is converted to SDDL format for platform-independent
@@ -60,13 +57,9 @@ function New-ACLBackup {
         Supports both absolute and relative paths with automatic creation.
 
         VALIDATION RULES:
-        - Parent directory must exist or be creatable
-        - Must have write permissions for backup file creation
-        - Automatically creates subdirectories as needed
-
-        BUSINESS CONTEXT:
-        Recommended to use timestamped subdirectories for organized backup
-        management.
+        - Cannot be null or empty
+        - The folder is created, with the folders above it, when it does not exist. A folder
+          that cannot be created ends the function with the error BackupFolderNotCreated
 
         EXAMPLES:
         - Standard path: "C:\ADBackups\ACLs"

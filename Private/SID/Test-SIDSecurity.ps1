@@ -9,9 +9,10 @@ function Test-SIDSecurity {
         Validates whether a SID can be safely removed. It refuses a SID in the ProtectedSIDs
         of the configuration, a well-known SID at the Standard and Strict levels, a SID whose
         analysis rates the risk Critical, and at the Strict level one that it rates High. A
-        risk of High, or of Medium at the Strict level, asks for elevated confirmation, and
-        so does an object that matches the CriticalObjectPatterns of the configuration. The
-        configuration is read from $script:Config.
+        risk of High, or of Medium at the Strict level, is marked as needing elevated
+        confirmation, and so is an object that matches the CriticalObjectPatterns of the
+        configuration. The mark is in the result and in the log; nothing in the module asks
+        for a confirmation because of it. The configuration is read from $script:Config.
         This function implements defense-in-depth security validation.
 
     .PARAMETER SIDString
@@ -22,6 +23,10 @@ function Test-SIDSecurity {
 
     .PARAMETER ValidationLevel
         Level of security validation (Basic, Standard, Strict)
+
+    .PARAMETER CurrentDomainSID
+        SID of the current domain. It is passed on to Get-SIDAnalysis, which without it rates
+        every domain SID as one of an unknown domain.
 
     .PARAMETER CorrelationId
         Unique identifier for tracking this validation operation
@@ -58,8 +63,7 @@ function Test-SIDSecurity {
         SECURITY FEATURES:
         - Protected SID detection and blocking
         - Well-known SID preservation
-        - Risk-based validation with configurable thresholds
-        - Integration with enterprise security policies
+        - A risk rating from Get-SIDAnalysis; what it blocks depends on -ValidationLevel
         - Comprehensive audit logging
 
         TROUBLESHOOTING:

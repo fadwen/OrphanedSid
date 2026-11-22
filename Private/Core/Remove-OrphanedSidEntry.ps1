@@ -13,8 +13,9 @@ function Remove-OrphanedSidEntry {
 
         SECURITY FEATURES:
         - Protected SID validation prevents removal of critical system accounts
-        - Security risk assessment with configurable approval workflows
-        - Comprehensive backup creation before any modifications
+        - A risk rating of each SID. A rating of High is recorded in the result and does not
+          stop the removal
+        - A backup of the ACL before the change, when a backup path is given
         - Verification of the ACL after each removal
         - Audit logging with correlation tracking
 
@@ -31,13 +32,9 @@ function Remove-OrphanedSidEntry {
         Specifies one or more Active Directory object distinguished names for SID removal.
 
         VALIDATION RULES:
-        - Must be valid LDAP distinguished names
-        - Objects must exist in Active Directory
-        - Must have read access to security descriptors
-
-        BUSINESS CONTEXT:
-        Target objects that require orphaned SID cleanup. Commonly includes
-        organizational units, groups, and shared resources with inherited permissions.
+        - Cannot be null or empty
+        - Not checked further here. Invoke-RemovalWorkflow reads the ACL of each object, and
+          an object whose ACL cannot be read gets a result with Success = False
 
         EXAMPLES:
         - Single OU: "OU=Finance,DC=contoso,DC=com"
@@ -49,13 +46,9 @@ function Remove-OrphanedSidEntry {
         Specifies the orphaned SIDs to remove from the target objects.
 
         VALIDATION RULES:
-        - Must be valid SID format (S-1-5-...)
-        - SIDs will be validated against protected SID lists
-        - Cannot include well-known system SIDs
-
-        BUSINESS CONTEXT:
-        These are the problematic SIDs identified during discovery that reference
-        deleted or inaccessible security principals.
+        - Cannot be null or empty
+        - Each SID goes through the security validation of the workflow. A SID that it blocks,
+          such as a protected or a well-known one, is not removed
 
         EXAMPLES:
         - Single SID: "S-1-5-21-1234567890-1234567890-1234567890-1001"
@@ -67,12 +60,9 @@ function Remove-OrphanedSidEntry {
         Specifies the directory path for backup storage before SID removal.
 
         VALIDATION RULES:
-        - Directory must be accessible with write permissions
-        - Sufficient disk space for backup files
-        - Defaults to .\Backup\[timestamp] if not specified
-
-        BUSINESS CONTEXT:
-        Backups enable restoration if removal operations need to be reversed.
+        - The folder is created by New-ACLBackup when it does not exist
+        - Has no default here: without a path no backup is written. Remove-OrphanedSid
+          passes its backup folder, which defaults to .\Backup\[timestamp]
 
         EXAMPLES:
         - Network path: "\\backup-server\ad-backups\sid-removal"
@@ -83,18 +73,11 @@ function Remove-OrphanedSidEntry {
 
         Enables preview mode to show what changes would be made without executing them.
 
-        BUSINESS CONTEXT:
-        Essential for validation in production environments. Allows review of
-        planned changes before execution for risk assessment and approval.
-
     .PARAMETER CorrelationId
         [String] (Optional)
 
         Provides a unique identifier for tracking operations across logs and systems.
-
-        BUSINESS CONTEXT:
-        Enables end-to-end tracking for troubleshooting.
-        Auto-generated if not provided for seamless operation tracking.
+        One is generated when none is given.
 
     .EXAMPLE
         PS> Remove-OrphanedSidEntry -ObjectDN "OU=Finance,DC=contoso,DC=com" -OrphanedSIDs "S-1-5-21-1234567890-1234567890-1234567890-1001"

@@ -581,6 +581,42 @@ Describe 'OrphanedSid end to end' -Tag 'Integration' {
             @($lines | Where-Object { $_ -match 'DisplayHint|\\/Date\(' }).Count | Should -Be 0
         }
 
+        It 'Ends, and removes nothing, when the -ConfigPath file is gone by the time the run starts (#208)' {
+            # The command checks the path when the parameter is bound. The file is removed after
+            # that and before the configuration is loaded: by the stand-in for the look for the
+            # ActiveDirectory module, which a session makes first. The run once went on with the
+            # defaults, and so without the protected SIDs that the file lists.
+            $script:vanishing = Join-Path $TestDrive "vanishing-$([guid]::NewGuid().ToString('N')).json"
+            Set-Content -LiteralPath $script:vanishing -Value '{ "ProtectedSIDs": ["S-1-5-21-1-2-3-9999"] }' -Encoding ascii
+            Mock -ModuleName OrphanedSid Get-Module {
+                Remove-Item -LiteralPath $script:vanishing -ErrorAction SilentlyContinue
+                [PSCustomObject]@{ Name = 'ActiveDirectory' }
+            } -ParameterFilter { $Name -eq 'ActiveDirectory' }
+            $parameters = @{
+                SearchBase            = "OU=Finance,$script:DomainDN"
+                BackupPath            = $script:BackupRoot
+                ConfigPath            = $script:vanishing
+                LogPath               = Join-Path $TestDrive "vanishing-$([guid]::NewGuid().ToString('N')).log"
+                SuppressConsoleOutput = $true
+                Force                 = $true
+            }
+
+            $caught = $null
+            try {
+                $null = Remove-OrphanedSid @parameters
+            } catch {
+                $caught = $_
+            }
+
+            Test-Path -LiteralPath $script:vanishing | Should -BeFalse
+            $caught | Should -Not -BeNullOrEmpty
+            $caught.FullyQualifiedErrorId | Should -BeLike 'ConfigurationFileNotLoaded,*'
+            $caught.Exception.Message | Should -Be "Configuration file not found: $($script:vanishing)"
+            foreach ($dn in $script:Directory.Keys) {
+                $script:Directory[$dn].Sddl | Should -Be $script:OriginalSddl[$dn]
+            }
+        }
+
         It 'Leaves an orphaned entry that is only inherited, and backs nothing up (#46)' {
             $dn = "CN=Child,OU=Finance,$script:DomainDN"
             # ID marks the entry as inherited from a parent object

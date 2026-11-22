@@ -16,7 +16,6 @@ function Get-SIDAnalysis {
         - Domain context determination (local, foreign, unknown)
         - RID range analysis for object type identification
         - Risk assessment based on SID characteristics
-        - Integration with enterprise security policies
 
     .PARAMETER SIDString
         The Security Identifier string to analyze. Must be in valid SID format

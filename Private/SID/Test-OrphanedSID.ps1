@@ -64,12 +64,9 @@ function Test-OrphanedSID {
         The Security Identifier to test for orphaned status.
 
         VALIDATION RULES:
-        - Must be a valid SID string format
-        - Supports domain SIDs, well-known SIDs, and service SIDs
-
-        BUSINESS CONTEXT:
-        SIDs from ACL entries that may no longer have corresponding AD objects.
-        Used during security audits and cleanup operations.
+        - Cannot be null or empty
+        - A value that Test-SIDFormat does not accept gets the status Unverified, and no
+          lookup is made
 
         EXAMPLES:
         - Domain user: "S-1-5-21-1234567890-1234567890-1234567890-1001"
@@ -428,8 +425,11 @@ function Clear-SIDValidationCache {
 
         TECHNICAL FEATURES:
         - Safe cache clearing with null checking
-        - Verbose output showing entries cleared
+        - A log line that says how many entries were cleared
         - No side effects on other operations
+
+    .PARAMETER CorrelationId
+        Correlation ID of the log entries of this call. One is generated when none is given.
 
     .EXAMPLE
         PS> Clear-SIDValidationCache

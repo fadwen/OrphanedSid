@@ -95,7 +95,7 @@ function Find-OrphanedSIDsInObject {
         - Get-ObjectAccessRule for security descriptor processing
         - Test-AccessRuleForOrphanedSID for identity resolution
         - Correlation tracking across all processing modules
-        - Enterprise logging and audit trail integration
+        - Write-StructuredLog for its log entries
 
         TROUBLESHOOTING:
         - For orchestration issues: .\Troubleshooting\Common\SID-Processing-Orchestration-Issues.md

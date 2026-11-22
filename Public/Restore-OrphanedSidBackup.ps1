@@ -138,7 +138,7 @@ function Restore-OrphanedSidBackup {
                 }
 
                 try {
-                    $result = Start-OrchestrationWorkflow -OperationType 'Restore' -Parameters $restoreParameters -CorrelationId $CorrelationId
+                    $result = Start-OrchestrationWorkflow -Parameters $restoreParameters -CorrelationId $CorrelationId
                     if ($result) { $allResults.Add($result) }
                 }
                 catch {

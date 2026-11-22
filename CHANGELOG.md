@@ -94,6 +94,12 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- A `-ConfigPath` file that is no longer there when the run starts ends the command with the
+  critical error `ConfigurationFileNotLoaded`. The commands check the path when the parameter
+  is bound; a file that went away after that, on a share that dropped for example, was taken
+  for no file at all, and the run went on with the default configuration, without the
+  `ProtectedSIDs` and `WellKnownSIDPatterns` of the file and with nothing in the log above
+  Debug level to say so. ([#208](https://github.com/fadwen/OrphanedSid/issues/208))
 - The times in the log have one form in every session and on both editions.
   - On Windows PowerShell 5.1 the `Timestamp` of a security entry was an object with the
     properties `value`, `DisplayHint` and `DateTime`, where PowerShell 7 wrote ISO 8601 text.
