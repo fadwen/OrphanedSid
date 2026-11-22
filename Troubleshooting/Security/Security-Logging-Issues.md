@@ -8,7 +8,7 @@
 | Kind | Written by | File format | Filtered by `-LogLevel`? |
 |---|---|---|---|
 | Regular | `Write-StructuredLog` -> `Write-StructuredLogEntry` | `[timestamp] [Level] [Component] [CorrelationId] Message` | Yes (file only; console is not filtered) |
-| Security audit | `Write-SecurityLog`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog` -> `Write-SecurityStructuredLogEntry` | One compressed JSON object per line, `Component` is `SecurityAudit` | No; always written |
+| Security audit | `Write-SecurityLog`, `Write-ADOperationSecurityLog`, `Write-RemovalSecurityLog`, `Write-RestoreSecurityLog` -> `Write-SecurityStructuredLogEntry` | One compressed JSON object per line, `Component` is `SecurityAudit` | No; always written |
 
 A security entry looks like:
 

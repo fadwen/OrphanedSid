@@ -86,6 +86,18 @@ All notable changes to this module are recorded here. Format follows
 
 ### Fixed
 
+- `Restore-OrphanedSidBackup` writes security entries to the log, as `Remove-OrphanedSid` does
+  for a change. A restore replaces the security descriptor of an object, and it wrote no
+  security entry: with `-LogLevel Warning` or `-LogLevel Error` the log of a restore that
+  succeeded held only its header, and nothing in it said which object was written or from which
+  backup file. Now each object whose ACL is written has an `Attempt` entry before the write and
+  a `Success` entry after it, with the object, the backup file and the number of entries
+  restored. A restore that is not applied has a `Failure` entry with the reason, for example a
+  backup that fails its integrity check or a backup file of another object. Under `-WhatIf` only
+  the `Attempt` entry is written, marked as a preview. Like every security entry they are
+  written at every log level, and a `Failure` entry also shows as a `[SECURITY]` warning on the
+  console unless `-SuppressConsoleOutput` is given.
+  ([#187](https://github.com/fadwen/OrphanedSid/issues/187))
 - The help of `Find-OrphanedSid`, the `about_OrphanedSid` topic and the troubleshooting guide said
   that a lookup of a SID from a trusted domain that cannot be reached waits about 40 seconds for
   each SID. Measured on a lab forest trust, the wait is paid once, by the lookup that first finds

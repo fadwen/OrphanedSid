@@ -364,6 +364,17 @@ function Invoke-RestoreWorkflow {
                     $allResults += $failedResult
 
                     Write-Warning "Failed to process backup file $fileToProcess : $fileFailure"
+                    # A file that was refused or could not be read never reaches
+                    # Restore-IndividualObject, which writes the security entries of a restore
+                    $failureEntry = @{
+                        Outcome = 'Failure'
+                        Message = 'ACL restore operation failed'
+                        TargetObjectDN = $failedTarget
+                        BackupFile = $fileToProcess
+                        CorrelationId = $CorrelationId
+                        Detail = @{ Error = $fileFailure }
+                    }
+                    Write-RestoreSecurityLog @failureEntry
                 }
             }
 
@@ -546,6 +557,17 @@ function Restore-IndividualObject {
         $errorResult.PSTypeNames.Insert(0, 'RestoreWorkflowResult')
 
         Write-Warning "Failed to restore object: $TargetObjectDN - $Reason"
+        # A security entry, so that the failure is in the log file whatever the log level is. A
+        # backup that fails its integrity check is one of these.
+        $failureEntry = @{
+            Outcome = 'Failure'
+            Message = 'ACL restore operation failed'
+            TargetObjectDN = $TargetObjectDN
+            BackupFile = $BackupFile
+            CorrelationId = $CorrelationId
+            Detail = @{ Error = $Reason }
+        }
+        Write-RestoreSecurityLog @failureEntry
         $errorResult
     }
 
@@ -565,6 +587,16 @@ function Restore-IndividualObject {
         if (-not $targetValidation.IsValid) {
             return (& $newFailedResult "Target validation failed: $($targetValidation.Issues -join '; ')")
         }
+
+        # The restore replaces the whole security descriptor of the object. The attempt and its
+        # outcome are security entries, as the entries of a removal are, so they are in the log
+        # file at every log level (#187).
+        $securityEntry = @{
+            TargetObjectDN = $TargetObjectDN
+            BackupFile = $BackupFile
+            CorrelationId = $CorrelationId
+        }
+        Write-RestoreSecurityLog @securityEntry -Outcome Attempt -Message 'ACL restore operation initiated'
 
         # Apply ACL restoration. The target was validated above; Set-ObjectACL does not check it.
         $aclOperation = Set-ObjectACL -TargetObjectDN $TargetObjectDN -BackupData $BackupData -VerifyApplication:$VerifyRestoration -CorrelationId $CorrelationId
@@ -589,6 +621,13 @@ function Restore-IndividualObject {
         }
 
         $result.PSTypeNames.Insert(0, 'RestoreWorkflowResult')
+        # Under -WhatIf Set-ObjectACL reports success without writing, so there is no outcome to
+        # record: the entry of the attempt says that the run was a preview.
+        if (-not $WhatIfPreference) {
+            $successMessage = 'ACL restore operation completed successfully'
+            $restored = @{ EntriesRestored = $result.EntriesRestored }
+            Write-RestoreSecurityLog @securityEntry -Outcome Success -Message $successMessage -Detail $restored
+        }
         Write-Verbose "Successfully restored object: $TargetObjectDN ($($result.EntriesRestored) entries)"
         return $result
     }

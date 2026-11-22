@@ -91,6 +91,18 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
 - `Private/Operations/Invoke-RemovalWorkflow.ps1` via `Write-RemovalSecurityLog`
   (`Private/Logging/Write-RemovalSecurityLog.ps1`): `PrivilegeUse` events around each ACL
   modification, forwarded to `Write-SecurityLog`
+- `Private/Backup/Invoke-RestoreWorkflow.ps1` via `Write-RestoreSecurityLog`
+  (`Private/Logging/Write-RestoreSecurityLog.ps1`): `PrivilegeUse` events for each object of a
+  restore, forwarded to `Write-SecurityLog`. An object whose ACL is written has an `Attempt`
+  entry before the write and a `Success` entry after it, with the number of entries restored. A
+  restore that is not applied has a `Failure` entry with the reason: a backup that fails its
+  integrity check, a backup file of another object, a file that cannot be read, a target that
+  cannot be reached, a write that the directory refuses. Each entry names the object and the
+  backup file in `Security_TargetObjectDN` and `Security_BackupFile`, and has
+  `Security_Operation` `RestoreACL`. Under `-WhatIf` the `Attempt` entry is written with
+  `Security_WhatIfMode` true and no `Success` entry follows, because nothing is written to the
+  directory. The write itself goes to the directory directly and not through
+  `Invoke-ADOperationWithRetry`, so a restore has no `ObjectAccess` events for it
 
 ### Load Order
 

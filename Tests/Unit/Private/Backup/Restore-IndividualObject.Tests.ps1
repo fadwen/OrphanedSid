@@ -21,6 +21,7 @@ BeforeAll {
     # The parameters are the real function's. A mock takes any parameter name, so it is the
     # contract tests, not this placeholder, that fail when the caller names one that is gone.
     function Set-ObjectACL { param($TargetObjectDN, $BackupData, [switch]$VerifyApplication, $CorrelationId) }
+    function Write-RestoreSecurityLog { param($Outcome, $Message, $TargetObjectDN, $BackupFile, $CorrelationId, [hashtable]$Detail) }
 
     $script:backup = [PSCustomObject]@{
         ObjectDN = 'CN=Host 1,OU=Orphaned,DC=contoso,DC=com'
@@ -34,6 +35,117 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
         Mock Write-StructuredLog { }
         Mock Test-BackupIntegrity { [PSCustomObject]@{ IsValid = $true } }
         Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $true; Issues = @() } }
+        Mock Write-RestoreSecurityLog { }
+    }
+
+    Context 'Security log entries (#187)' {
+        # A restore replaces the security descriptor of an object and left no security entry: with
+        # -LogLevel Warning or Error the log of a restore that succeeded held only its header.
+        BeforeEach {
+            $script:restoreParameters = @{
+                TargetObjectDN = $script:backup.ObjectDN
+                BackupData     = $script:backup
+                BackupFile     = 'C:\Backup\host1.xml'
+                CorrelationId  = 'run-187'
+            }
+            # Read inside the parameter filters, where $TargetObjectDN and $BackupFile are the
+            # parameters of the mock
+            $script:expectedObject = $script:backup.ObjectDN
+        }
+
+        It 'Writes one entry for the attempt and one for the success, with the object, the file and the number of entries' {
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true; ModificationsApplied = 7 } }
+
+            Restore-IndividualObject @script:restoreParameters | Out-Null
+
+            Should -Invoke Write-RestoreSecurityLog -Times 2 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Attempt' -and $TargetObjectDN -eq $script:expectedObject -and
+                $BackupFile -eq 'C:\Backup\host1.xml' -and $CorrelationId -eq 'run-187'
+            }
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Success' -and $TargetObjectDN -eq $script:expectedObject -and
+                $BackupFile -eq 'C:\Backup\host1.xml' -and $CorrelationId -eq 'run-187' -and
+                $Detail['EntriesRestored'] -eq 7
+            }
+        }
+
+        It 'Writes the entry for the attempt before the ACL is written, and the one for the success after' {
+            $script:steps = [System.Collections.Generic.List[string]]::new()
+            Mock Write-RestoreSecurityLog { $script:steps.Add("entry $Outcome") }
+            Mock Set-ObjectACL {
+                $script:steps.Add('write')
+                [PSCustomObject]@{ Success = $true; ModificationsApplied = 1 }
+            }
+
+            Restore-IndividualObject @script:restoreParameters | Out-Null
+
+            $script:steps.Count | Should -Be 3
+            $script:steps[0] | Should -Be 'entry Attempt'
+            $script:steps[1] | Should -Be 'write'
+            $script:steps[2] | Should -Be 'entry Success'
+        }
+
+        It 'Writes an entry for the failure, with the reason, when the write fails' {
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $false; ErrorMessage = 'ACL application failed: access denied' } }
+
+            Restore-IndividualObject @script:restoreParameters -WarningAction SilentlyContinue | Out-Null
+
+            Should -Invoke Write-RestoreSecurityLog -Times 2 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter { $Outcome -eq 'Attempt' }
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and $TargetObjectDN -eq $script:expectedObject -and
+                $BackupFile -eq 'C:\Backup\host1.xml' -and $CorrelationId -eq 'run-187' -and
+                $Detail['Error'] -eq 'ACL application failed: access denied'
+            }
+        }
+
+        It 'Writes an entry for the failure when the write raises an error' {
+            Mock Set-ObjectACL { throw 'The server is not operational' }
+
+            $result = Restore-IndividualObject @script:restoreParameters -WarningAction SilentlyContinue
+
+            $result.Success | Should -BeFalse
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter { $Outcome -eq 'Attempt' }
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and $Detail['Error'] -eq 'The server is not operational'
+            }
+            Should -Invoke Write-RestoreSecurityLog -Times 0 -Exactly -ParameterFilter { $Outcome -eq 'Success' }
+        }
+
+        It 'Writes an entry for the failure, and none for an attempt, when <What>' -ForEach @(
+            @{ What = 'the backup fails its integrity check'; Reason = 'Backup validation failed: hash mismatch' }
+            @{ What = 'the target fails its check'; Reason = 'Target validation failed: not found' }
+        ) {
+            if ($Reason -like 'Backup*') {
+                Mock Test-BackupIntegrity { [PSCustomObject]@{ IsValid = $false; ErrorMessage = 'hash mismatch' } }
+            } else {
+                Mock Get-RestorationTarget { [PSCustomObject]@{ IsValid = $false; Issues = @('not found') } }
+            }
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true } }
+            $expectedReason = $Reason
+
+            Restore-IndividualObject @script:restoreParameters -WarningAction SilentlyContinue | Out-Null
+
+            Should -Invoke Set-ObjectACL -Times 0 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter {
+                $Outcome -eq 'Failure' -and $TargetObjectDN -eq $script:expectedObject -and
+                $Detail['Error'] -eq $expectedReason
+            }
+        }
+
+        It 'Writes the entry for the attempt and none for a success under -WhatIf, where nothing is written' {
+            # Set-ObjectACL reports success for a preview
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true; ModificationsApplied = 7 } }
+            $WhatIfPreference = $true
+
+            $result = Restore-IndividualObject @script:restoreParameters
+
+            $result.Success | Should -BeTrue
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly
+            Should -Invoke Write-RestoreSecurityLog -Times 1 -Exactly -ParameterFilter { $Outcome -eq 'Attempt' }
+        }
     }
 
     Context 'Successful restore' {
