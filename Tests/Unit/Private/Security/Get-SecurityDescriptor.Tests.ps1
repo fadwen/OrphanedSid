@@ -11,6 +11,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     function Write-StructuredLog { param($Message, $Level = 'Information', $CorrelationId, $Data) }
 
     # Pester can only mock a command that exists, so Get-ADObject is stubbed when RSAT is absent.
@@ -161,13 +164,35 @@ Describe "Get-ObjectAccessRule" -Tag 'Unit', 'Private', 'Security' {
             Should -Invoke Get-ADObject -Times 0 -Exactly
         }
 
-        It "Moves on to a fresh query when a deserialized descriptor has no Access entries" {
+        It "Reads no explicit rule, without a failure, from a deserialized descriptor whose entries are all inherited (#153)" {
+            # No explicit rule is nothing, and nothing has no Count under strict mode: the error
+            # was logged as a failure to process the descriptor
             Mock Get-ADObject { [PSCustomObject]@{ nTSecurityDescriptor = $null } }
-            $deserialized = [PSCustomObject]@{ PSTypeName = 'Deserialized.System.DirectoryServices.ActiveDirectorySecurity'; Access = $null }
+            $deserialized = [PSCustomObject]@{
+                PSTypeName = 'Deserialized.System.DirectoryServices.ActiveDirectorySecurity'
+                Access = @([PSCustomObject]@{ IdentityReference = 'S-1-5-21-1-2-3-1002'; IsInherited = $true })
+            }
+
+            Get-ObjectAccessRule -ADObject (New-TestObject -Descriptor $deserialized) | Should -BeNullOrEmpty
+
+            Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Successfully extracted 0 access rules from deserialized security descriptor for CN=TestUser,OU=Users,DC=domain,DC=com'
+            }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like 'Failed to process deserialized security descriptor*' }
+        }
+
+        It "Moves on to a fresh query when a deserialized descriptor has <Shape>" -ForEach @(
+            @{ Shape = 'no Access entries'; Members = @{ Access = $null } }
+            @{ Shape = 'no Access property (#153)'; Members = @{} }
+        ) {
+            Mock Get-ADObject { [PSCustomObject]@{ nTSecurityDescriptor = $null } }
+            $deserialized = [PSCustomObject]$Members
+            $deserialized.PSObject.TypeNames.Insert(0, 'Deserialized.System.DirectoryServices.ActiveDirectorySecurity')
 
             Get-ObjectAccessRule -ADObject (New-TestObject -Descriptor $deserialized) | Should -BeNullOrEmpty
 
             Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter { $Message -like 'Deserialized security descriptor has no Access property*' }
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Message -like 'Failed to process deserialized security descriptor*' }
             Should -Invoke Get-ADObject -Times 1 -Exactly
         }
 

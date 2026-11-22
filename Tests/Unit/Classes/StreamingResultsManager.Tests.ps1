@@ -1,6 +1,9 @@
 #Requires -Version 5.1
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     $ModuleRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
     . "$ModuleRoot\Classes\OrphanedSIDResult.ps1"
@@ -121,8 +124,10 @@ Describe "StreamingResultsManager Tests" -Tag "Unit", "Classes", "StreamingResul
             $manager.CurrentBatch | Should -Be 1
             $manager.CurrentResults.Count | Should -Be 0
             $manager.Summary.BatchFiles.Count | Should -Be 1
-            $batch = @(Get-Content $manager.Summary.BatchFiles[0] -Raw | ConvertFrom-Json)
-            $batch.OrphanedSID | Should -Be @('S-1-5-21-1-2-3-1', 'S-1-5-21-1-2-3-2')
+            # Each result is read in a pipeline: on Windows PowerShell 5.1 ConvertFrom-Json hands
+            # on the array as one object, which has no OrphanedSID to read
+            $batch = Get-Content $manager.Summary.BatchFiles[0] -Raw | ConvertFrom-Json
+            @($batch | ForEach-Object { $_.OrphanedSID }) | Should -Be @('S-1-5-21-1-2-3-1', 'S-1-5-21-1-2-3-2')
 
             $manager.Dispose()
         }

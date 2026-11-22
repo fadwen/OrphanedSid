@@ -109,10 +109,14 @@ It emits an `ObjectAccess` event with the message `Attempting Active Directory o
 `OrphanedSid.psm1` dot-sources `Private/Logging/` before every other `Private/` folder, so the
 logging functions, including the security writer, exist before any function that calls them is
 defined. `Private/Logging/Initialize-LoggingConfiguration.ps1` is the one file that does work at
-load time: it creates the shared logging state (`$script:LogLevel`, `$script:LogLevels`, the
-metrics tables) when the root module dot-sources it. Elsewhere, load-time code only sets initial
-module-scope values (`Initialize-MemoryManager.ps1`, `Test-OrphanedSID.ps1`) or defines guarded
-fallback functions (`Invoke-GarbageCollection.ps1`); it writes no log entries.
+load time: it creates the shared logging state (`$script:LogLevel`, `$script:LogLevels` and the
+other values that the logging functions share) when the root module dot-sources it. Elsewhere,
+load-time code only declares module-scope values (`Initialize-MemoryManager.ps1`,
+`Test-OrphanedSID.ps1`, `Initialize-LogDirectory.ps1`, `Write-SecurityStructuredLogEntry.ps1`)
+or defines guarded fallback functions (`Invoke-GarbageCollection.ps1`); it writes no log
+entries. The root module itself assigns the state of a run that the private functions share.
+The values are declared at load because the module runs under strict mode, where a function may
+not read a variable that nothing has assigned.
 `Start-OrphanedSidSession` configures the logging state per run.
 
 ## What This Provides

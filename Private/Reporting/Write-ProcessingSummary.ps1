@@ -111,34 +111,46 @@ function Write-ProcessingSummary {
                 @($ProcessingResults.PSObject.Properties.Name)
             }
 
+            # The values, in one table whichever shape arrived. A result has only the values of
+            # its kind of run, and under strict mode a read of a key or a property that is not
+            # there is an error. Read from this table with the index, it is $null.
+            $values = @{}
+            foreach ($key in $resultKeys) {
+                if ($ProcessingResults -is [System.Collections.IDictionary]) {
+                    $values[$key] = $ProcessingResults[$key]
+                } else {
+                    $values[$key] = $ProcessingResults.PSObject.Properties[$key].Value
+                }
+            }
+
             # Display processing summary
             Write-StructuredLog "Processing summary details:" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             Write-StructuredLog "=== PROCESSING SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-            Write-StructuredLog "Total objects processed: $($ProcessingResults.TotalObjectsProcessed)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-            Write-StructuredLog "Processing duration: $($ProcessingResults.ProcessingDuration.ToString('hh\:mm\:ss\.fff'))" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+            Write-StructuredLog "Total objects processed: $($values['TotalObjectsProcessed'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+            Write-StructuredLog "Processing duration: $($values['ProcessingDuration'].ToString('hh\:mm\:ss\.fff'))" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
 
             # Handle different result types
             if ($resultKeys -contains 'ObjectsPerSecond') {
-                Write-StructuredLog "Processing rate: $([Math]::Round($ProcessingResults.ObjectsPerSecond, 2)) objects/second" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "Processing rate: $([Math]::Round($values['ObjectsPerSecond'], 2)) objects/second" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             }
 
             if ($resultKeys -contains 'PeakMemoryUsageMB') {
-                Write-StructuredLog "Peak memory usage: $($ProcessingResults.PeakMemoryUsageMB) MB" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "Peak memory usage: $($values['PeakMemoryUsageMB']) MB" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             }
 
             # Check if this is a restore operation
             if ($resultKeys -contains 'SuccessfulRestores') {
                 # Restore operation summary
                 Write-StructuredLog "=== RESTORE SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Successful restores: $($ProcessingResults.SuccessfulRestores)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Failed restores: $($ProcessingResults.FailedRestores)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Backup source: $($ProcessingResults.BackupPath)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "WhatIf mode: $($ProcessingResults.WhatIfMode)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "Successful restores: $($values['SuccessfulRestores'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "Failed restores: $($values['FailedRestores'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "Backup source: $($values['BackupPath'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "WhatIf mode: $($values['WhatIfMode'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
 
                 # Show detailed restore results
-                if ($ProcessingResults.RestoreResults -and $ProcessingResults.RestoreResults.Count -gt 0) {
+                if ($values['RestoreResults'] -and @($values['RestoreResults']).Count -gt 0) {
                     Write-StructuredLog "=== RESTORE DETAILS ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    foreach ($result in $ProcessingResults.RestoreResults) {
+                    foreach ($result in $values['RestoreResults']) {
                         $status = if ($result.Success) { "SUCCESS" } else { "FAILED" }
                         $entriesInfo = if ($result.EntriesRestored) { " ($($result.EntriesRestored) entries)" } else { "" }
                         Write-StructuredLog "  [$status] $($result.ObjectDN)$entriesInfo" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
@@ -149,7 +161,7 @@ function Write-ProcessingSummary {
                 }
 
                 # Overall restore operation status
-                if ($ProcessingResults.FailedRestores -eq 0) {
+                if ($values['FailedRestores'] -eq 0) {
                     Write-StructuredLog "All restore operations completed successfully!" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 } else {
                     Write-StructuredLog "Some restore operations failed. Review the details above." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
@@ -157,45 +169,45 @@ function Write-ProcessingSummary {
             } else {
                 # Standard discovery/removal operation summary
                 if ($resultKeys -contains 'ProcessingErrors') {
-                    Write-StructuredLog "Processing errors: $($ProcessingResults.ProcessingErrors)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    Write-StructuredLog "Processing errors: $($values['ProcessingErrors'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
 
                 if ($resultKeys -contains 'OrphanedSIDsFound') {
-                    Write-StructuredLog "Orphaned SIDs found: $($ProcessingResults.OrphanedSIDsFound)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    Write-StructuredLog "Orphaned SIDs found: $($values['OrphanedSIDsFound'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 }
 
                 if ($resultKeys -contains 'UnexaminedObjects') {
-                    Write-StructuredLog "Objects not examined (security descriptor not readable): $($ProcessingResults.UnexaminedObjects)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    if ($ProcessingResults.UnexaminedObjects -gt 0) {
-                        Write-StructuredLog "$($ProcessingResults.UnexaminedObjects) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+                    Write-StructuredLog "Objects not examined (security descriptor not readable): $($values['UnexaminedObjects'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    if ($values['UnexaminedObjects'] -gt 0) {
+                        Write-StructuredLog "$($values['UnexaminedObjects']) object(s) could not be examined because their security descriptor could not be read; each is named in a Warning above. Orphaned entries on them, if any, were neither reported nor removed. Re-run with an account that may read them." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
                     }
                 }
 
                 if ($resultKeys -contains 'UnverifiedSIDsFound') {
-                    Write-StructuredLog "Unverified SIDs (lookup failed, not removed): $($ProcessingResults.UnverifiedSIDsFound)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                    if ($ProcessingResults.UnverifiedSIDsFound -gt 0) {
-                        Write-StructuredLog "$($ProcessingResults.UnverifiedSIDsFound) SID(s) could not be verified because a directory lookup failed. They are marked VerificationStatus Unverified in the results and were not removed; re-run once the domain controller is reachable and the account can read the targets." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
+                    Write-StructuredLog "Unverified SIDs (lookup failed, not removed): $($values['UnverifiedSIDsFound'])" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                    if ($values['UnverifiedSIDsFound'] -gt 0) {
+                        Write-StructuredLog "$($values['UnverifiedSIDsFound']) SID(s) could not be verified because a directory lookup failed. They are marked VerificationStatus Unverified in the results and were not removed; re-run once the domain controller is reachable and the account can read the targets." -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
                     }
                 }
             }
 
             # Removal summary if applicable
-            if ($ProcessingResults.RemovalResults -and $ProcessingResults.RemovalResults.Count -gt 0) {
+            if ($values['RemovalResults'] -and @($values['RemovalResults']).Count -gt 0) {
                 # @(...): on Windows PowerShell 5.1 a single object from Where-Object has no Count, so a run
                 # with one removal logged an empty number
-                $successfulRemovals = @($ProcessingResults.RemovalResults | Where-Object Success).Count
-                $failedRemovals = @($ProcessingResults.RemovalResults | Where-Object { -not $_.Success }).Count
+                $successfulRemovals = @($values['RemovalResults'] | Where-Object Success).Count
+                $failedRemovals = @($values['RemovalResults'] | Where-Object { -not $_.Success }).Count
 
                 Write-StructuredLog "Removal summary details:" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "=== REMOVAL SUMMARY ===" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                Write-StructuredLog "Removal operations attempted: $($ProcessingResults.RemovalResults.Count)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
+                Write-StructuredLog "Removal operations attempted: $(@($values['RemovalResults']).Count)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "Successful removals: $successfulRemovals" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 Write-StructuredLog "Failed removals: $failedRemovals" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
 
                 # A result in which an entry that discovery reported was no longer on the object is a
                 # failed removal. This line tells such a result from one in which an entry could not
                 # be removed, and is written only when there is one.
-                $goneCounts = @(foreach ($removalResult in $ProcessingResults.RemovalResults) {
+                $goneCounts = @(foreach ($removalResult in $values['RemovalResults']) {
                         $notFound = $removalResult.PSObject.Properties['NotFoundSIDs']
                         if ($null -ne $notFound -and @($notFound.Value).Count -gt 0) {
                             @($notFound.Value).Count
@@ -211,8 +223,8 @@ function Write-ProcessingSummary {
 
             # Export results to CSV if path provided
             # Check if we have streaming results or restore results
-            $hasStreamingResults = $ProcessingResults.StreamingManager -and $ProcessingResults.StreamingManager.Summary.TotalResults -gt 0
-            $hasRestoreResults = $ProcessingResults.RestoreResults -and $ProcessingResults.RestoreResults.Count -gt 0
+            $hasStreamingResults = $values['StreamingManager'] -and $values['StreamingManager'].Summary.TotalResults -gt 0
+            $hasRestoreResults = $values['RestoreResults'] -and @($values['RestoreResults']).Count -gt 0
 
             if ($hasStreamingResults -or $hasRestoreResults) {
                 if ($OutputPath) {
@@ -222,17 +234,17 @@ function Write-ProcessingSummary {
                         $exported = $false
                         if ($hasStreamingResults) {
                             # Use StreamingManager's efficient CSV export
-                            $exported = $ProcessingResults.StreamingManager.ExportToCsv($OutputPath)
+                            $exported = $values['StreamingManager'].ExportToCsv($OutputPath)
                         } elseif ($hasRestoreResults) {
                             if (-not $WhatIfPreference) {
-                                $restoreRows = @($ProcessingResults.RestoreResults)
+                                $restoreRows = @($values['RestoreResults'])
                                 Export-ResultCsv -InputObject $restoreRows -LiteralPath $OutputPath
                                 $exported = $true
                             }
                         }
                         if ($exported) {
                             Write-StructuredLog "Results exported to: $OutputPath" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
-                        } elseif ($WhatIfPreference -or ($hasStreamingResults -and $ProcessingResults.StreamingManager.WhatIfMode)) {
+                        } elseif ($WhatIfPreference -or ($hasStreamingResults -and $values['StreamingManager'].WhatIfMode)) {
                             Write-StructuredLog "WhatIf: results would be exported to $OutputPath; no file was written" -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                         } else {
                             Write-StructuredLog "No results were read back to export; $OutputPath was not written" -Level Warning -Component 'Summary' -CorrelationId $CorrelationId
@@ -259,7 +271,7 @@ function Write-ProcessingSummary {
                     Write-StructuredLog "No restore operations were performed." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                 } else {
                     # This is a discovery/removal operation
-                    if ($resultKeys -contains 'ProcessingErrors' -and $ProcessingResults.ProcessingErrors -gt 0) {
+                    if ($resultKeys -contains 'ProcessingErrors' -and $values['ProcessingErrors'] -gt 0) {
                         Write-StructuredLog "Consider reviewing the error log for detailed information." -Level Information -Component 'Summary' -CorrelationId $CorrelationId
                     } else {
                         Write-StructuredLog "No orphaned SIDs found. Active Directory ACLs appear to be clean." -Level Information -Component 'Summary' -CorrelationId $CorrelationId

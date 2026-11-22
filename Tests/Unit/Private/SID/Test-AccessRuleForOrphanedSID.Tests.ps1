@@ -14,6 +14,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Classes\OrphanedSIDResult.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\SID\Resolve-SIDIdentity.ps1"
 
@@ -27,6 +30,10 @@ BeforeAll {
     $script:dn = 'CN=Finance Share,OU=Groups,DC=contoso,DC=com'
     $script:orphanSid = 'S-1-5-21-111-222-333-9001'
     $script:domainSid = 'S-1-5-21-111-222-333'
+
+    # The module declares this when it loads, and Start-OrphanedSidSession fills it for a run.
+    # Without a run there is no cache, and the function checks every rule.
+    $script:SIDClassificationCache = $null
 }
 
 Describe 'Resolve-IdentityReference' -Tag 'Unit', 'SID', 'Private' {

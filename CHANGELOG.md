@@ -25,6 +25,14 @@ All notable changes to this module are recorded here. Format follows
 
 ### Changed
 
+- The module runs under strict mode: its root module sets `Set-StrictMode -Version Latest`, so
+  inside the module a read of a variable that was never assigned, or of a property that an
+  object does not have, is an error where it was an empty value. The mode applies inside the
+  module only, not to the script that calls it, and what the three commands do is unchanged.
+  The places that relied on the empty value were changed with it: a `-ConfigPath` file may
+  still leave out any setting, a backup file with a property missing is still reported with the
+  list of what is missing, and a restore in which no object succeeded still returns its failed
+  results. ([#153](https://github.com/fadwen/OrphanedSid/issues/153))
 - A run that meets a directory server that cannot be contacted no longer waits for one connect
   timeout, about 42 seconds, for each SID. After a lookup finds the server unreachable, no
   directory lookup is attempted for 60 seconds: each SID that needs one in that time is

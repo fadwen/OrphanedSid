@@ -2,6 +2,9 @@
 # Tests for Test-SIDFormat and Test-WellKnownSID in Private/SID/Test-SIDFormat.ps1
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
 
     . (Join-Path $PSScriptRoot '..\..\..\..\Private\SID\Test-SIDFormat.ps1')
@@ -119,14 +122,14 @@ Describe "Test-WellKnownSID" -Tag 'Unit', 'Private', 'SID' {
     }
 
     It "Recognises a SID matching a configured WellKnownSIDPatterns entry" {
-        $script:Config = @{ WellKnownSIDPatterns = @('^S-1-5-21-9-9-9-\d+$') }
+        $script:Config = @{ WellKnownSIDPatterns = @('^S-1-5-21-9-9-9-\d+$'); ProtectedSIDs = @() }
 
         Test-WellKnownSID -SID 'S-1-5-21-9-9-9-1001' | Should -BeTrue
         Test-WellKnownSID -SID 'S-1-5-21-8-8-8-1001' | Should -BeFalse
     }
 
     It "Recognises a SID listed in the configured ProtectedSIDs" {
-        $script:Config = @{ ProtectedSIDs = @('S-1-5-21-9-9-9-1001') }
+        $script:Config = @{ WellKnownSIDPatterns = @(); ProtectedSIDs = @('S-1-5-21-9-9-9-1001') }
 
         Test-WellKnownSID -SID 'S-1-5-21-9-9-9-1001' | Should -BeTrue
         Should -Invoke Write-StructuredLog -Times 1 -Exactly -ParameterFilter {

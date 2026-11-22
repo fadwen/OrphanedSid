@@ -160,8 +160,16 @@ function Restore-OrphanedSidBackup {
 
             $successful = @($allResults | Where-Object { $_.Success -eq $true }).Count
             $failed = @($allResults | Where-Object { $_.Success -ne $true }).Count
-            $entries = ($allResults | Where-Object { $_.Success -eq $true -and $_.EntriesRestored } |
-                Measure-Object -Property EntriesRestored -Sum).Sum
+            # Added up here and not with Measure-Object. When no restore succeeded it has no input
+            # and returns nothing, and under strict mode reading Sum from nothing is an error:
+            # it reached the catch below and ended the calling script for a restore that had
+            # only failed.
+            $entries = 0
+            foreach ($restored in $allResults) {
+                if ($restored.Success -eq $true) {
+                    $entries += [int]$restored.EntriesRestored
+                }
+            }
 
             Write-StructuredLog '=== RESTORE OPERATION SUMMARY ===' -Level Information -Component 'Summary' -CorrelationId $CorrelationId
             Write-StructuredLog "Total restore operations: $($allResults.Count)" -Level Information -Component 'Summary' -CorrelationId $CorrelationId

@@ -3,6 +3,9 @@
 
 # Stubs Write-StructuredLog and Test-SIDFormat, then loads the classes and the Private/SID functions
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     function Write-StructuredLog { param($Message, $Level, $CorrelationId, $Component, $Data) }
 
     function Test-SIDFormat { param($SID) return $SID -match '^S-1-\d+' }

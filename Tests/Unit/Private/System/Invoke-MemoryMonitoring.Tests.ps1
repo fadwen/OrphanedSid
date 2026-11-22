@@ -1,6 +1,9 @@
 #Requires -Version 5.1
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     # Pester can only mock a command that exists. The real Write-StructuredLog lives in another file;
     # this placeholder is what the Mock below replaces when the file runs on its own.
     if (-not (Get-Command Write-StructuredLog -ErrorAction SilentlyContinue)) {

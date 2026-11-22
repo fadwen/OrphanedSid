@@ -12,6 +12,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Core\Start-OrphanedSidSession.ps1"
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
@@ -97,7 +100,7 @@ Describe 'Start-OrphanedSidSession' -Tag 'Unit', 'Core', 'Private' {
     }
 
     Context 'Log path and level' {
-        It 'Defaults the log to .\Logs\<Command>_<timestamp>.log under the current directory: <Case>' -ForEach @(
+        It 'Defaults the log to a file named after the command and the time, in .\Logs under the current directory: <Case>' -ForEach @(
             @{ Case = 'no -LogPath'; Given = $null }
             @{ Case = 'a -LogPath of only spaces'; Given = '   ' }
         ) {

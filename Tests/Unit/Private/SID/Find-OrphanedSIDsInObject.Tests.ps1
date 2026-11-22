@@ -12,6 +12,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Classes\OrphanedSIDResult.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\SID\Invoke-SIDProcessing.ps1"
 
@@ -87,6 +90,27 @@ Describe 'Find-OrphanedSIDsInObject' -Tag 'Unit', 'SID', 'Private' {
             $results[0].ProcessingStatistics.OrphanedSIDsFound | Should -Be 1
             $results[0].ProcessingStatistics.ErrorsEncountered | Should -Be 0
             $results[0].ProcessingStatistics.Duration | Should -BeGreaterOrEqual 0
+        }
+
+        It 'Reports the orphaned SID of an object that has exactly one access rule (#153)' {
+            # One rule comes back as one object, not as a collection of one, and under strict mode
+            # one object has no Count. The rule is a real access rule: a custom object has a
+            # Count of 1 on PowerShell 7 even then, and would hide the difference.
+            $orphan = "$($script:domainSid)-9001"
+            $script:oneRule = [System.DirectoryServices.ActiveDirectoryAccessRule]::new(
+                [System.Security.Principal.SecurityIdentifier]::new($orphan),
+                [System.DirectoryServices.ActiveDirectoryRights]::GenericRead,
+                [System.Security.AccessControl.AccessControlType]::Allow)
+            Mock Get-ObjectAccessRule { $script:oneRule }
+            Mock Test-AccessRuleForOrphanedSID { New-TestResult -Dn $ObjectDN -Sid $AccessRule.IdentityReference.Value }
+
+            $results = @(Find-OrphanedSIDsInObject -ADObject (New-TestObject -Dn $script:dnA))
+
+            $results.Count | Should -Be 1
+            $results[0].OrphanedSID | Should -Be $orphan
+            $results[0].ProcessingStatistics.AccessRulesRetrieved | Should -Be 1
+            $results[0].ProcessingStatistics.ErrorsEncountered | Should -Be 0
+            Should -Invoke Write-StructuredLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Error' }
         }
 
         It 'Counts an Unverified result apart from the orphaned ones' {

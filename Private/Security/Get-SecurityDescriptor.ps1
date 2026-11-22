@@ -183,7 +183,10 @@ function Get-SecurityDescriptorFromGetAcl {
         # read, and detection translated each name back to a SID. Reading the rules once, with SID
         # references, removed both lookups from every rule (#111). An orphaned SID arrives as a
         # SecurityIdentifier either way.
-        $allRules = if ($acl) { @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) } else { @() }
+        # @() around the statement, not inside it: an if that is used as a value hands on what
+        # its branch writes, so an empty array inside it arrives as nothing, and under strict
+        # mode nothing has no Count.
+        $allRules = @(if ($acl) { $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) })
         if ($allRules.Count -eq 0) {
             Write-StructuredLog "Get-Acl returned null or empty access list for $objectDN" -Level Debug -CorrelationId $CorrelationId
             return $null
@@ -282,11 +285,12 @@ function Get-SecurityDescriptorFromBinary {
         if ($binarySD -is [System.DirectoryServices.ActiveDirectorySecurity]) {
             Write-StructuredLog "Processing regular ActiveDirectorySecurity object for $objectDN" -Level Debug -CorrelationId $CorrelationId
 
-            $accessRules = if ($IncludeInherited) {
-                $binarySD.Access
-            } else {
-                $binarySD.Access | Where-Object { -not $_.IsInherited }
-            }
+            # @(): with no rule, or with one, the value has no Count under strict mode
+            $accessRules = @(if ($IncludeInherited) {
+                    $binarySD.Access
+                } else {
+                    $binarySD.Access | Where-Object { -not $_.IsInherited }
+                })
 
             Write-StructuredLog "Successfully processed ActiveDirectorySecurity object for $objectDN - Found $($accessRules.Count) rules" -Level Debug -CorrelationId $CorrelationId
             return $accessRules
@@ -347,16 +351,20 @@ function Get-SecurityDescriptorFromDeserialized {
     try {
         Write-StructuredLog "Processing deserialized ActiveDirectorySecurity object for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
 
-        if (-not $SecurityDescriptor.Access) {
+        # Read by name: the descriptor is what a serializer left of the real one, and a
+        # property that is not there is an error to read as a member under strict mode
+        $accessProperty = $SecurityDescriptor.PSObject.Properties['Access']
+        if ($null -eq $accessProperty -or -not $accessProperty.Value) {
             Write-StructuredLog "Deserialized security descriptor has no Access property for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
             return $null
         }
 
-        $accessRules = if ($IncludeInherited) {
-            $SecurityDescriptor.Access
-        } else {
-            $SecurityDescriptor.Access | Where-Object { -not $_.IsInherited }
-        }
+        # @(): with no rule, or with one, the value has no Count under strict mode
+        $accessRules = @(if ($IncludeInherited) {
+                $accessProperty.Value
+            } else {
+                $accessProperty.Value | Where-Object { -not $_.IsInherited }
+            })
 
         Write-StructuredLog "Successfully extracted $($accessRules.Count) access rules from deserialized security descriptor for $ObjectDN" -Level Debug -CorrelationId $CorrelationId
         return $accessRules
@@ -430,11 +438,12 @@ function ConvertTo-SecurityDescriptor {
             $securityDescriptor.SetSecurityDescriptorBinaryForm($byteArray)
         }
 
-        $accessRules = if ($IncludeInherited) {
-            $securityDescriptor.Access
-        } else {
-            $securityDescriptor.Access | Where-Object { -not $_.IsInherited }
-        }
+        # @(): with no rule, or with one, the value has no Count under strict mode
+        $accessRules = @(if ($IncludeInherited) {
+                $securityDescriptor.Access
+            } else {
+                $securityDescriptor.Access | Where-Object { -not $_.IsInherited }
+            })
 
         Write-StructuredLog "Successfully converted binary security descriptor for $ObjectDN - Found $($accessRules.Count) rules" -Level Debug -CorrelationId $CorrelationId
 
@@ -518,11 +527,12 @@ function Invoke-FreshADQuery {
             }
         }
 
-        $accessRules = if ($IncludeInherited) {
-            $securityDescriptor.Access
-        } else {
-            $securityDescriptor.Access | Where-Object { -not $_.IsInherited }
-        }
+        # @(): with no rule, or with one, the value has no Count under strict mode
+        $accessRules = @(if ($IncludeInherited) {
+                $securityDescriptor.Access
+            } else {
+                $securityDescriptor.Access | Where-Object { -not $_.IsInherited }
+            })
 
         Write-StructuredLog "Fresh AD query successfully retrieved $($accessRules.Count) access rules for $objectDN" -Level Debug -CorrelationId $CorrelationId
 

@@ -12,6 +12,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Invoke-RestoreWorkflow.ps1"
 
     # Placeholders so the helpers can be mocked; the real ones live in other files
@@ -161,7 +164,7 @@ Describe 'Restore-IndividualObject' -Tag 'Unit', 'Backup', 'Private' {
         }
 
         It 'Reports zero entries when the ACL operation counted none' {
-            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true } }
+            Mock Set-ObjectACL { [PSCustomObject]@{ Success = $true; ModificationsApplied = 0 } }
 
             $result = Restore-IndividualObject -TargetObjectDN $script:backup.ObjectDN -BackupData $script:backup -BackupFile 'C:\Backup\host1.xml' -CorrelationId 'test'
 

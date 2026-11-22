@@ -445,9 +445,190 @@ Describe 'OrphanedSid module contract' -Tag 'Unit', 'Contract' {
         }
     }
 
+    Context 'Strict mode (#153)' {
+        # Under strict mode a read of a variable that was never assigned, or of a property that an
+        # object does not have, is an error and not a silent $null. The root module sets it for
+        # every file it loads. A line that is missing there, or state that is first assigned in a
+        # function, shows only when the read comes before the assignment, so these cases read the
+        # syntax tree.
+        BeforeAll {
+            $script:RootModulePath = Join-Path -Path $script:ModuleRoot -ChildPath 'OrphanedSid.psm1'
+            $rootTokens = $null
+            $rootErrors = $null
+            $script:RootModuleAst = [System.Management.Automation.Language.Parser]::ParseFile(
+                $script:RootModulePath, [ref]$rootTokens, [ref]$rootErrors)
+
+            $script:FindStrictModeCall = {
+                param($Ast)
+                @($Ast.FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.CommandAst] -and
+                            $node.GetCommandName() -eq 'Set-StrictMode'
+                        }, $true))
+            }
+        }
+
+        It 'Is set once in the root module, as Set-StrictMode -Version Latest' {
+            $calls = & $script:FindStrictModeCall $script:RootModuleAst
+
+            $calls.Count | Should -Be 1
+            $calls[0].Extent.Text | Should -Be 'Set-StrictMode -Version Latest'
+        }
+
+        It 'Is set at the top level of the root module, before the first file is loaded' {
+            $call = (& $script:FindStrictModeCall $script:RootModuleAst)[0]
+            $firstLoad = @($script:RootModuleAst.FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.CommandAst] -and
+                        $node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Dot
+                    }, $true) | Sort-Object -Property { $_.Extent.StartOffset })[0]
+
+            # A statement of the script itself: its pipeline is a statement of the end block
+            $script:RootModuleAst.EndBlock.Statements | Should -Contain $call.Parent
+            $firstLoad | Should -Not -BeNullOrEmpty
+            $call.Extent.StartOffset | Should -BeLessThan $firstLoad.Extent.StartOffset
+        }
+
+        It 'Is set in no file that the root module loads' {
+            # Set in a function file it would change the mode of whatever dot-sources that file
+            $offenders = foreach ($path in ($script:FileAsts.Keys | Sort-Object)) {
+                foreach ($call in (& $script:FindStrictModeCall $script:FileAsts[$path])) {
+                    "$($path.Substring($script:ModuleRoot.Length + 1)):$($call.Extent.StartLineNumber)"
+                }
+            }
+
+            @($offenders) | Should -BeNullOrEmpty -Because (@($offenders) -join '; ')
+        }
+
+        It 'Assigns every script-scoped variable that a function reads when the module loads, or earlier in that function' {
+            # A function that tests such a variable before anything has assigned it raises an
+            # error. The counters of the security log were first assigned inside the function that
+            # tested them, and the state of a run only by Start-OrphanedSidSession, so a private
+            # function called before the first run read a variable that did not exist.
+            $loadAssigned = @{}
+            $reads = [System.Collections.Generic.List[object]]::new()
+            $assignedInFunction = @{}
+            foreach ($path in $script:FileAsts.Keys) {
+                $relative = $path.Substring($script:ModuleRoot.Length + 1)
+                $variables = $script:FileAsts[$path].FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.VariableExpressionAst] -and $node.VariablePath.IsScript
+                    }, $true)
+                foreach ($variable in $variables) {
+                    $name = $variable.VariablePath.UserPath -replace '^script:', ''
+
+                    $owner = $null
+                    $insideIf = $false
+                    $parent = $variable.Parent
+                    while ($null -ne $parent -and $null -eq $owner) {
+                        if ($parent -is [System.Management.Automation.Language.IfStatementAst]) { $insideIf = $true }
+                        if ($parent -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $owner = $parent }
+                        $parent = $parent.Parent
+                    }
+
+                    $assignment = $variable.Parent
+                    $isAssigned = $assignment -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                        $assignment.Left -eq $variable -and
+                        $assignment.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals
+
+                    if ($isAssigned -and $null -eq $owner -and -not $insideIf) {
+                        $loadAssigned[$name] = $true
+                    } elseif ($isAssigned -and $null -ne $owner -and -not $insideIf) {
+                        # The first assignment of the function that always runs
+                        $key = "$relative|$($owner.Name)|$name"
+                        if (-not $assignedInFunction.ContainsKey($key)) {
+                            $assignedInFunction[$key] = $variable.Extent.StartOffset
+                        }
+                    } elseif (-not $isAssigned -and $null -ne $owner) {
+                        $reads.Add([PSCustomObject]@{
+                                Name = $name
+                                Key = "$relative|$($owner.Name)|$name"
+                                Offset = $variable.Extent.StartOffset
+                                Place = "${relative}:$($variable.Extent.StartLineNumber) ($($owner.Name))"
+                            })
+                    }
+                }
+            }
+
+            # The root module assigns the state that the private functions share, as statements
+            # of its own after it has loaded the files
+            foreach ($statement in $script:RootModuleAst.EndBlock.Statements) {
+                if ($statement -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $statement.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                    $statement.Left.VariablePath.IsScript -and
+                    $statement.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals) {
+                    $loadAssigned[($statement.Left.VariablePath.UserPath -replace '^script:', '')] = $true
+                }
+            }
+
+            $unassigned = foreach ($read in $reads) {
+                if ($loadAssigned.ContainsKey($read.Name)) { continue }
+                if ($assignedInFunction.ContainsKey($read.Key) -and $assignedInFunction[$read.Key] -lt $read.Offset) { continue }
+                "`$script:$($read.Name) at $($read.Place)"
+            }
+
+            $reads.Count | Should -BeGreaterThan 100
+            @($unassigned) | Should -BeNullOrEmpty -Because (@($unassigned | Select-Object -First 8) -join '; ')
+        }
+
+        It 'Is set by every unit test file that dot-sources the code it tests' {
+            # Such a file does not import the module, so nothing else puts the code it loads under
+            # the mode that the code runs in. Set in the first BeforeAll of the file, it reaches
+            # the functions the file loads and its tests, and does not reach the next file.
+            $unitRoot = Join-Path -Path $script:ModuleRoot -ChildPath 'Tests\Unit'
+            $testFiles = @(Get-ChildItem -LiteralPath (Join-Path -Path $unitRoot -ChildPath 'Private'),
+                (Join-Path -Path $unitRoot -ChildPath 'Classes') -Filter '*.Tests.ps1' -Recurse -File)
+
+            $missing = foreach ($testFile in $testFiles) {
+                $text = [System.IO.File]::ReadAllText($testFile.FullName)
+                if ($text -match 'OrphanedSid\.psd1') { continue }
+
+                $testTokens = $null
+                $testErrors = $null
+                $testAst = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$testTokens, [ref]$testErrors)
+                $firstBeforeAll = @($testAst.FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'BeforeAll'
+                        }, $true) | Sort-Object -Property { $_.Extent.StartOffset })[0]
+                $setsIt = $false
+                if ($null -ne $firstBeforeAll) {
+                    $calls = & $script:FindStrictModeCall $firstBeforeAll
+                    $setsIt = @($calls | Where-Object { $_.Extent.Text -eq 'Set-StrictMode -Version Latest' }).Count -gt 0
+                }
+                if (-not $setsIt) {
+                    $testFile.FullName.Substring($script:ModuleRoot.Length + 1)
+                }
+            }
+
+            $testFiles.Count | Should -BeGreaterThan 60
+            @($missing) | Should -BeNullOrEmpty -Because (@($missing) -join '; ')
+        }
+    }
+
     Context 'Fresh import' {
         BeforeAll {
             Import-Module "$script:ModuleRoot\OrphanedSid.psd1" -Force
+        }
+
+        It 'Runs the code of the module under strict mode (#153)' {
+            # The behaviour that the line in the root module is there for, read from the module
+            # itself: a variable that was never assigned is an error in its scope.
+            { & (Get-Module OrphanedSid) { $variableThatNothingAssigns } } |
+                Should -Throw -ExpectedMessage '*variableThatNothingAssigns*has not been set*'
+        }
+
+        It 'Has the state of a run from the moment it is imported (#153)' {
+            # Each of these is read by a function that can be called before the first run
+            $state = & (Get-Module OrphanedSid) {
+                foreach ($name in 'Config', 'MemoryManager', 'Statistics', 'StreamingResults', 'RemovalResults',
+                    'CurrentDomainSID', 'SIDClassificationCache', 'LogRotation', 'SecurityLoggingMetrics',
+                    'SIDValidationCache', 'DirectoryUnreachableSince', 'DirectoryRetryAt') {
+                    [PSCustomObject]@{ Name = $name; Exists = [bool](Get-Variable -Name $name -Scope Script -ErrorAction SilentlyContinue) }
+                }
+            }
+
+            @($state | Where-Object { -not $_.Exists } | ForEach-Object { $_.Name }) | Should -BeNullOrEmpty
+            @($state).Count | Should -Be 12
         }
 
         It 'Exports exactly the three public commands' {

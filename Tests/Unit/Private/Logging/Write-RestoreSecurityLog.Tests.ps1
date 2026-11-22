@@ -2,6 +2,9 @@
 #Requires -Version 5.1
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . (Join-Path -Path $PSScriptRoot -ChildPath '..\..\..\..\Private\Logging\Write-RestoreSecurityLog.ps1')
 
     # Pester mocks only a command that exists. The real function is in another file, and its

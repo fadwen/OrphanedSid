@@ -3,6 +3,9 @@
 # for real; individual tests mock Write-StructuredLogEntry where they inspect what it receives.
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\TestHelpers\Initialize-TestLogging.ps1"
 
     . "$PSScriptRoot\..\..\..\..\Private\Logging\Write-StructuredLog.ps1"

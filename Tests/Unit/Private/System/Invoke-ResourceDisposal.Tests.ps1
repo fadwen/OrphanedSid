@@ -20,6 +20,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     $projectRoot = Join-Path $PSScriptRoot '..\..\..\..'
 
     # The MemoryManager class is a typed parameter of Invoke-ResourceCleanup, so it must be defined

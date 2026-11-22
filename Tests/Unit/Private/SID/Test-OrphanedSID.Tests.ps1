@@ -5,6 +5,9 @@
 # local SecurityIdentifier translation can answer.
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent.
     # The helper also supplies the ADIdentityNotFoundException type the function's catch clauses name.
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"

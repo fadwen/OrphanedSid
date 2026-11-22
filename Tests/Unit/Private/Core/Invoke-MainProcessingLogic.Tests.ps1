@@ -22,6 +22,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
     . "$PSScriptRoot\..\..\..\..\Classes\ProcessingStatistics.ps1"
     # The -WhatIf preview is built as a RemovalOperationResult
@@ -86,7 +89,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             New-TestObject -Name 'Group1' -ObjectClass 'group'
         }
         Mock Find-OrphanedSIDsInObject {
-            [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+            [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null; IsInherited = $false }
         }
         # The real result type: a double with properties of its own once let the audit entry read
         # BackupCreated, BackupPath and RemovedCount, none of which the module returns (#49)
@@ -370,9 +373,9 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         It "Removes all of an object's orphaned SIDs in one call, so the object is backed up once (#40)" {
             Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
             Mock Find-OrphanedSIDsInObject {
-                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
-                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
-                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null; IsInherited = $false }
+                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null; IsInherited = $false }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null; IsInherited = $false }
             }
 
             $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true; BackupPath = 'C:\Backups' }
@@ -417,8 +420,8 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
         It "Leaves an object's unverified SID out of its single removal call" {
             Mock Get-ADObjectsSequential { New-TestObject -Name 'User1' -ObjectClass 'user' }
             Mock Find-OrphanedSIDsInObject {
-                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
-                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Access is denied.' }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null; IsInherited = $false }
+                [PSCustomObject]@{ OrphanedSID = $script:SidB; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Access is denied.'; IsInherited = $false }
             }
 
             Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; Remove = $true } | Out-Null
@@ -539,7 +542,7 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
             Mock Find-OrphanedSIDsInObject {
                 $script:findCalls++
                 if ($script:findCalls -eq 1) { throw 'Processing failed' }
-                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned' }
+                [PSCustomObject]@{ OrphanedSID = $script:SidA; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; IsInherited = $false }
             }
 
             $result = Invoke-Subject @{ SearchBase = 'OU=Test,DC=test,DC=com'; MaxRetries = 3 }
@@ -589,8 +592,8 @@ Describe "Invoke-MainProcessingLogic" -Tag 'Unit', 'Core', 'Private' {
 
             # One SID every lookup confirmed missing, one a failed lookup left unverified
             Mock Find-OrphanedSIDsInObject {
-                [PSCustomObject]@{ OrphanedSID = $script:verifiedSid; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null }
-                [PSCustomObject]@{ OrphanedSID = $script:unverifiedSid; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Get-ADObject: The server is not operational' }
+                [PSCustomObject]@{ OrphanedSID = $script:verifiedSid; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Orphaned'; VerificationError = $null; IsInherited = $false }
+                [PSCustomObject]@{ OrphanedSID = $script:unverifiedSid; ObjectDN = $ADObject.DistinguishedName; VerificationStatus = 'Unverified'; VerificationError = 'Get-ADObject: The server is not operational'; IsInherited = $false }
             }
         }
 

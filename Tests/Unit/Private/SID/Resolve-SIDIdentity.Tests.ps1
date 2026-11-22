@@ -12,6 +12,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     $rootPath = Split-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) -Parent
 
     function Write-StructuredLog { param($Message, $Level, $Component, $CorrelationId, $LogPath, $Data) }
@@ -56,7 +59,7 @@ Describe 'Test-SIDValidityAndType with the real format checks' -Tag 'Unit', 'SID
     }
 
     It 'Excludes a domain SID listed in the configured ProtectedSIDs' {
-        $script:Config = @{ ProtectedSIDs = @($script:userSid) }
+        $script:Config = @{ WellKnownSIDPatterns = @(); ProtectedSIDs = @($script:userSid) }
 
         Test-SIDValidityAndType -SIDString $script:userSid | Should -BeFalse
     }

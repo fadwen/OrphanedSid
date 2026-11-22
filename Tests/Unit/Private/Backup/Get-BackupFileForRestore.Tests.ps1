@@ -12,6 +12,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Get-BackupFileForRestore.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Utilities\ConvertTo-NormalizedDistinguishedName.ps1"
 
@@ -174,6 +177,19 @@ Describe 'Get-BackupFileForRestore' -Tag 'Unit', 'Backup', 'Private' {
             $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
             Copy-Item -LiteralPath $file -Destination (Join-Path $script:folder 'copy-of-alice.xmlbak')
             Copy-Item -LiteralPath $file -Destination (Join-Path $script:folder 'notes.txt')
+
+            $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
+
+            @($result.BackupFiles).Count | Should -Be 1
+            @($result.BackupFiles)[0] | Should -Be $file
+            Should -Invoke Write-Warning -Times 0 -Exactly
+        }
+
+        It 'Leaves out, without a warning, a Clixml file that is not a backup (#153)' {
+            # Such a file has no ObjectDN. Read as a member that is an error under strict mode,
+            # and the file was reported as one that could not be processed.
+            $file = New-BackupFile -Folder $script:folder -ObjectDN $script:alice -WrittenAt (Get-Date).AddMinutes(-1)
+            @{ Something = 'else' } | Export-Clixml -LiteralPath (Join-Path $script:folder 'not-a-backup.xml')
 
             $result = Get-BackupFileForRestore -TargetObjectDN $script:alice -BackupPath $script:folder
 

@@ -278,7 +278,10 @@ function New-ACLBackup {
                 ValidationSignature = "PSSecurityBackup_v2.1"
                 BackupMethod = "New-ACLBackup"
                 ACLEntryCount = $entryCount
-                Platform = if ($PSVersionTable.Platform) { $PSVersionTable.Platform } else { "Windows" }
+                # Windows PowerShell 5.1 has no Platform in $PSVersionTable. Read with the index,
+                # it is $null there; read as a member, it is an error under strict mode, and no
+                # backup could be written on that edition.
+                Platform = if ($PSVersionTable['Platform']) { $PSVersionTable['Platform'] } else { 'Windows' }
                 PSEdition = $PSVersionTable.PSEdition
             }
 

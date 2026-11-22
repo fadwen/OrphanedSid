@@ -14,6 +14,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     . "$PSScriptRoot\..\..\..\..\Private\Backup\New-ACLBackup.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Initialize-BackupFolder.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\ACL\Get-AclAccessRule.ps1"

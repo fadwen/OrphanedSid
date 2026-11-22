@@ -15,6 +15,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     # Dot-source the function under test and the files its begin block would otherwise load
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Test-BackupIntegrity.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\Backup\Restore-ACLOperation.ps1"
@@ -222,6 +225,20 @@ Describe "Invoke-RestoreWorkflow" -Tag "Unit", "Backup", "RestoreWorkflow" {
             $result.EntriesRestored | Should -Be 0
             $result.BackupFile | Should -Be $otherFile
             $result.ErrorMessage | Should -Be "Backup file $otherFile is a backup of 'CN=Someone Else,OU=Users,DC=company,DC=com', not of '$($script:TargetDN)'"
+        }
+
+        It "Should refuse a file that is not a backup as a backup of no object, and restore nothing (#153)" {
+            # The file is Clixml and has no ObjectDN. Read as a member that is an error under
+            # strict mode, and the result gave that error in place of what the file is.
+            $stray = Join-Path $script:folder 'not-a-backup.xml'
+            @{ Something = 'else' } | Export-Clixml -LiteralPath $stray
+
+            $result = Invoke-RestoreWorkflow -TargetObjectDN $script:TargetDN -BackupFile $stray -WarningAction SilentlyContinue
+
+            Should -Invoke Restore-IndividualObject -Times 0 -Exactly
+            $result.Success | Should -BeFalse
+            $result.TargetObjectDN | Should -Be $script:TargetDN
+            $result.ErrorMessage | Should -Be "Backup file $stray is a backup of '', not of '$($script:TargetDN)'"
         }
 
         It "Should write a security entry for a backup file that it refuses, which never reaches the restore of the object (#187)" {

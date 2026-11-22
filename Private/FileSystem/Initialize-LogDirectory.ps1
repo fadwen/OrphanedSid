@@ -1,5 +1,9 @@
 #Requires -Version 5.1
 
+# What the last call did to an existing log file; see -RotateAboveMB. Declared when the module
+# loads, so that it exists for a reader under strict mode (#153).
+$script:LogRotation = $null
+
 function Initialize-LogDirectory {
     <#
     .SYNOPSIS

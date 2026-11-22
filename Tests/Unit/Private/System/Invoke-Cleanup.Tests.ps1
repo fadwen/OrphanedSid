@@ -11,6 +11,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     # The constants Invoke-Cleanup reads are defined once, in Initialize-MemoryManager.ps1
     . "$PSScriptRoot\..\..\..\..\Private\System\Initialize-MemoryManager.ps1"
     . "$PSScriptRoot\..\..\..\..\Private\System\Invoke-GarbageCollection.ps1"

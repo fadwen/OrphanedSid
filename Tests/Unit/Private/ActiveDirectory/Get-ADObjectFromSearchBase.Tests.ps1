@@ -2,6 +2,9 @@
 Describe "Get-ADObjectFromSearchBase" -Tag "Unit", "ActiveDirectory" {
     
     BeforeAll {
+        # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+        Set-StrictMode -Version Latest
+
         # The shared stubs, not a local global Get-ADObject: a global defined here with a shorter
         # parameter list outlived the file, and Mock then built later files' Get-ADObject mocks from it,
         # so -IncludeDeletedObjects never reached the mock body.

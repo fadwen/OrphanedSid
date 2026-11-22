@@ -88,7 +88,16 @@ function Get-BackupFileForRestore {
         try {
             Write-Verbose "Processing backup file: $backupFilePath"
             $backupMetadata = Import-Clixml -LiteralPath $backupFilePath -ErrorAction Stop
-            $recordedName = [string]$backupMetadata.ObjectDN
+            # A file in the folder need not be a backup. Read by name, a property that is not
+            # there gives an empty name, and the file is left out below; read as a member, it
+            # is an error under strict mode.
+            $recordedName = ''
+            if ($null -ne $backupMetadata) {
+                $recordedProperty = $backupMetadata.PSObject.Properties['ObjectDN']
+                if ($null -ne $recordedProperty) {
+                    $recordedName = [string]$recordedProperty.Value
+                }
+            }
             [PSCustomObject]@{
                 Path = $backupFilePath
                 ObjectDN = ConvertTo-NormalizedDistinguishedName -DistinguishedName $recordedName

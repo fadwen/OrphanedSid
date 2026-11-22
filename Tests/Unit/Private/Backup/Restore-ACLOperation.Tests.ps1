@@ -16,6 +16,9 @@
 #>
 
 BeforeAll {
+    # As OrphanedSid.psm1 does: in the module the code under test runs under strict mode
+    Set-StrictMode -Version Latest
+
     # Pester can only mock a command that exists; define placeholder AD cmdlets when RSAT is absent
     . "$PSScriptRoot\..\..\..\TestHelpers\ADCmdletStubs.ps1"
 
@@ -139,6 +142,22 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             Should -Invoke Write-Error -Times 0 -Exactly
         }
 
+        It "Should report success for a descriptor with <Count> access control entr<Ending> (#153)" -ForEach @(
+            @{ Count = 1; Ending = 'y'; Sddl = 'O:BAG:BAD:(A;;GA;;;BA)' }
+            @{ Count = 0; Ending = 'ies'; Sddl = 'O:BAG:BAD:' }
+        ) {
+            # The entries are counted after the write. One entry is one string and none is
+            # nothing, and under strict mode neither has a Count: the error made a restore that
+            # had been applied come back as failed.
+            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData (New-TestBackup -Sddl $Sddl)
+
+            $result.Success | Should -BeTrue
+            $result.ErrorMessage | Should -BeNullOrEmpty
+            $result.ModificationsApplied | Should -Be $Count
+            Should -Invoke Set-Acl -Times 1 -Exactly
+            Should -Invoke Write-Error -Times 0 -Exactly
+        }
+
         It "Should not verify unless asked" {
             $null = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData $script:backup
 
@@ -165,6 +184,21 @@ Describe "Set-ObjectACL" -Tag "Unit", "Backup", "RestoreACL" {
             $result.Success | Should -BeTrue
             $result.WhatIfMode | Should -BeTrue
             $result.ModificationsApplied | Should -Be 3
+            Should -Invoke Set-Acl -Times 0 -Exactly
+        }
+
+        It "Should report the <Count> entr<Ending> that it would apply (#153)" -ForEach @(
+            @{ Count = 1; Ending = 'y'; Sddl = 'O:BAG:BAD:(A;;GA;;;BA)' }
+            @{ Count = 0; Ending = 'ies'; Sddl = 'O:BAG:BAD:' }
+        ) {
+            # One entry is one string and none is nothing, and neither has a Count under strict
+            # mode: the preview of such a restore came back as a failure
+            $result = Set-ObjectACL -TargetObjectDN $script:TestObjectDN -BackupData (New-TestBackup -Sddl $Sddl) -WhatIf
+
+            $result.Success | Should -BeTrue
+            $result.WhatIfMode | Should -BeTrue
+            $result.ErrorMessage | Should -BeNullOrEmpty
+            $result.ModificationsApplied | Should -Be $Count
             Should -Invoke Set-Acl -Times 0 -Exactly
         }
 

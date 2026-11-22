@@ -117,6 +117,15 @@ function Test-BackupIntegrity {
             $issues = @()
             $backupInfo = @{}
 
+            # The backup comes from a file, so any property may be missing. Read from this
+            # table with the index, a missing one is $null. Read as a member of the object, it
+            # is an error under strict mode, and the check reported that error in place of the
+            # list of what is missing.
+            $backup = @{}
+            foreach ($backupProperty in $BackupData.PSObject.Properties) {
+                $backup[$backupProperty.Name] = $backupProperty.Value
+            }
+
             # Phase 1: Basic validation - Required properties
             $requiredProperties = @('ObjectDN', 'BackupDate', 'SDDL', 'SDDLHash', 'ValidationSignature')
             foreach ($prop in $requiredProperties) {
@@ -133,13 +142,13 @@ function Test-BackupIntegrity {
 
             # Phase 2: Signature validation
             $validSignatures = @("PSSecurityBackup_v1.0", "PSSecurityBackup_v2.0", "PSSecurityBackup_v2.1")
-            if ($BackupData.ValidationSignature -notin $validSignatures) {
-                $issues += "Invalid backup signature: $($BackupData.ValidationSignature). Expected: $($validSignatures -join ', ')"
+            if ($backup['ValidationSignature'] -notin $validSignatures) {
+                $issues += "Invalid backup signature: $($backup['ValidationSignature']). Expected: $($validSignatures -join ', ')"
             }
 
             # Phase 3: Object DN validation (if specified)
-            if ($ExpectedObjectDN -and $BackupData.ObjectDN -ne $ExpectedObjectDN) {
-                $issues += "ObjectDN mismatch: Expected '$ExpectedObjectDN', found '$($BackupData.ObjectDN)'"
+            if ($ExpectedObjectDN -and $backup['ObjectDN'] -ne $ExpectedObjectDN) {
+                $issues += "ObjectDN mismatch: Expected '$ExpectedObjectDN', found '$($backup['ObjectDN'])'"
             }
 
             # Exit early for Basic validation
@@ -157,15 +166,15 @@ function Test-BackupIntegrity {
             }
 
             # Phase 4: Standard validation - SDDL integrity
-            if ($BackupData.SDDL -and $BackupData.SDDLHash) {
+            if ($backup['SDDL'] -and $backup['SDDLHash']) {
                 try {
-                    $sddlBytes = [System.Text.Encoding]::UTF8.GetBytes($BackupData.SDDL)
+                    $sddlBytes = [System.Text.Encoding]::UTF8.GetBytes($backup['SDDL'])
                     $sha256 = [System.Security.Cryptography.SHA256]::Create()
                     $calculatedHash = [System.Convert]::ToBase64String($sha256.ComputeHash($sddlBytes))
                     $sha256.Dispose()
 
-                    if ($calculatedHash -cne $BackupData.SDDLHash) {
-                        $issues += "SDDL integrity check failed: Hash mismatch (expected: $($BackupData.SDDLHash), calculated: $calculatedHash)"
+                    if ($calculatedHash -cne $backup['SDDLHash']) {
+                        $issues += "SDDL integrity check failed: Hash mismatch (expected: $($backup['SDDLHash']), calculated: $calculatedHash)"
                     }
                 }
                 catch {
@@ -174,10 +183,10 @@ function Test-BackupIntegrity {
             }
 
             # Phase 5: SDDL format validation
-            if ($BackupData.SDDL) {
+            if ($backup['SDDL']) {
                 try {
                     $testSecurityDescriptor = [System.DirectoryServices.ActiveDirectorySecurity]::new()
-                    $testSecurityDescriptor.SetSecurityDescriptorSddlForm($BackupData.SDDL)
+                    $testSecurityDescriptor.SetSecurityDescriptorSddlForm($backup['SDDL'])
                     $testSecurityDescriptor = $null # Cleanup
                 }
                 catch {
@@ -202,35 +211,35 @@ function Test-BackupIntegrity {
             # Phase 6: Comprehensive validation - Additional security and metadata checks
             if ($ValidationLevel -eq 'Comprehensive') {
                 # Validate backup date is reasonable
-                if ($BackupData.BackupDate) {
+                if ($backup['BackupDate']) {
                     try {
-                        $backupDate = [DateTime]$BackupData.BackupDate
+                        $backupDate = [DateTime]$backup['BackupDate']
                         $daysDiff = ((Get-Date) - $backupDate).Days
 
                         if ($daysDiff -lt 0) {
-                            $issues += "Backup date is in the future: $($BackupData.BackupDate)"
+                            $issues += "Backup date is in the future: $($backup['BackupDate'])"
                         }
                         elseif ($daysDiff -gt 365) {
-                            $issues += "Backup is older than 1 year: $($BackupData.BackupDate) (consider validation)"
+                            $issues += "Backup is older than 1 year: $($backup['BackupDate']) (consider validation)"
                         }
                     }
                     catch {
-                        $issues += "Invalid backup date format: $($BackupData.BackupDate)"
+                        $issues += "Invalid backup date format: $($backup['BackupDate'])"
                     }
                 }
 
                 # Validate ObjectDN format
-                if ($BackupData.ObjectDN) {
-                    if (-not ($BackupData.ObjectDN -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=.+')) {
-                        $issues += "Invalid ObjectDN format: $($BackupData.ObjectDN)"
+                if ($backup['ObjectDN']) {
+                    if (-not ($backup['ObjectDN'] -match '^([a-z][a-z0-9.-]*|\d+(\.\d+)+)=.+')) {
+                        $issues += "Invalid ObjectDN format: $($backup['ObjectDN'])"
                     }
                 }
 
                 # Check for suspicious SDDL patterns (basic security scan)
-                if ($BackupData.SDDL) {
+                if ($backup['SDDL']) {
                     $suspiciousPatterns = @('Everyone', 'Anonymous', 'S-1-1-0', 'S-1-5-7')
                     foreach ($pattern in $suspiciousPatterns) {
-                        if ($BackupData.SDDL -like "*$pattern*") {
+                        if ($backup['SDDL'] -like "*$pattern*") {
                             $issues += "Security warning: SDDL contains potentially risky permission: $pattern"
                         }
                     }
