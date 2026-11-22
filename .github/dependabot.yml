@@ -23,5 +23,6 @@ updates:
       # gallery-downloads.yml calls a reusable workflow at the commit that last changed it. The
       # tags of that repository are the releases of a module, so an update would follow those
       # releases and not the workflow. The comment in gallery-downloads.yml says how to take a
-      # newer version.
-      - dependency-name: 'fadwen/IntuneScriptLab'
+      # newer version. The wildcard is needed: Dependabot names a reusable workflow by its
+      # repository and the path of its file, where it names an action by its repository alone.
+      - dependency-name: 'fadwen/IntuneScriptLab*'
