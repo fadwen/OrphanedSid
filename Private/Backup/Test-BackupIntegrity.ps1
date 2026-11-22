@@ -86,7 +86,6 @@ function Test-BackupIntegrity {
 
     .LINK
         .\Troubleshooting\Common\Backup-Restore-Issues.md
-        .\Documentation\RestoreOperations-Analysis-Report.md
     #>
 
     [CmdletBinding()]

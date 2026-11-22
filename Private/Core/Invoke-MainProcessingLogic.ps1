@@ -11,7 +11,6 @@ function Invoke-MainProcessingLogic {
         handling and performance monitoring.
 
         PROCESSING FEATURES:
-        - Parallel processing for improved performance
         - Memory-efficient streaming results management
         - Comprehensive retry logic for resilient operations
         - Real-time progress reporting and monitoring

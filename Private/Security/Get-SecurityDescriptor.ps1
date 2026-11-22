@@ -48,7 +48,6 @@ function Get-ObjectAccessRule {
 
         DESCRIPTION: Processing deserialized objects from background jobs
         OUTPUT: Access rules extracted from job results with correlation tracking
-        INTEGRATION: Large-scale parallel processing scenarios
 
     .OUTPUTS
         [System.DirectoryServices.ActiveDirectoryAccessRule[]] Array of access rules

@@ -101,8 +101,7 @@ function New-ACLBackup {
         PS> New-ACLBackup -ObjectDN $ouDN -ACL $ouACL -BackupPath $timestampedPath -CorrelationId $correlationId
 
         DESCRIPTION: Backup with a correlation ID that the caller supplies
-        OUTPUT: Backup with correlation ID for integration with monitoring systems
-        MONITORING: Integration with enterprise security event management systems
+        OUTPUT: Backup file that holds the correlation ID
 
     .INPUTS
         [string] Distinguished name of object to backup (pipeline supported)

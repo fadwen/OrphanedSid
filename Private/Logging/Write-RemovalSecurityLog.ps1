@@ -58,12 +58,10 @@ function Write-RemovalSecurityLog {
         - Comprehensive operation context logging
         - Risk-based event classification
         - Detailed SID and object tracking
-        - Enterprise SIEM integration ready
 
         TROUBLESHOOTING:
         - For missing logs: Check logging configuration and permissions
         - For format issues: Verify security context structure
-        - For performance: Consider log level filtering and batch operations
         - For logging issues: .\Troubleshooting\Common\Common-Issues.md
         - For security logging issues: .\Troubleshooting\Security\Security-Logging-Issues.md
     #>

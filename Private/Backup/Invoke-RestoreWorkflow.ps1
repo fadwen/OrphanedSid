@@ -101,7 +101,6 @@ function Invoke-RestoreWorkflow {
 
     .LINK
         .\Troubleshooting\Common\Backup-Restore-Issues.md
-        .\Documentation\RestoreOperations-Refactoring-Plan.md
     #>
 
     [CmdletBinding(SupportsShouldProcess)]

@@ -25,7 +25,7 @@
 
         DESCRIPTION: Sequentially processes multiple organizational units
         OUTPUT: Combined collection of AD objects from all search bases
-        USE CASE: Reliable bulk processing when parallel processing isn't required
+        USE CASE: Discovery over several search bases in one run
 
     .NOTES
         Author: Jeffrey Stuhr
