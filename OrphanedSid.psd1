@@ -1,6 +1,6 @@
 @{
     RootModule = 'OrphanedSid.psm1'
-    ModuleVersion = '1.1.0'
+    ModuleVersion = '1.2.0'
     GUID = '7d3f2a9e-5b61-4c08-9e4a-2f8c1b6d0a37'
     Author = 'Jeffrey Stuhr'
     CompanyName = 'Jeffrey Stuhr'
@@ -36,21 +36,30 @@
             LicenseUri = 'https://github.com/fadwen/OrphanedSid/blob/main/LICENSE'
             ProjectUri = 'https://github.com/fadwen/OrphanedSid'
             ReleaseNotes = @'
-1.1.0 - Safer removal, faster detection, and fixes from testing against a live domain.
-A SID is reported orphaned only when its deleted object is found or every directory lookup
-completed and none found it. A SID whose lookup failed, including one from a trusted domain that
-cannot be reached, is reported as Unverified (new VerificationStatus and VerificationError
-properties) and is never removed. A live principal found among deleted-object search results is no
-longer taken as deleted.
-Remove-OrphanedSid takes one backup per object, removes all of that object's orphaned entries
-together, and returns one RemovalOperationResult per object; restoring such an object now brings
-back every removed entry. Inherited entries are left in place with a warning.
-Detection is several times faster: on a lab domain controller a typical user object went from
-941 ms to 96 ms on Windows PowerShell 5.1. An unreachable domain controller costs about 42 seconds
-per SID instead of 3.5 minutes.
-Pipeline input of Active Directory objects now works for all three commands. -MaxRetries now
-sets the retries of each search-base read and SID lookup. Logging, configuration, backup
-timestamps, correlation IDs and restore messages are corrected.
+1.2.0 - Objects that were reported and could not be cleaned, removal results that say what
+happened, and critical errors with error IDs of their own.
+Objects that Find-OrphanedSid reported and Remove-OrphanedSid could not reach are now cleaned and
+restored: a name with [ ] * ? or a backtick, a name with & ; | or %, an object that is named by an
+attribute other than CN, OU or DC, and, on Windows PowerShell 5.1, a name with a comma or another
+character that Active Directory escapes. The root of a single-label domain is accepted as a
+search base. A path with square brackets works for -BackupPath, -LogPath, -OutputPath and
+-ConfigPath.
+A removal result is Success = False when an entry that discovery reported is no longer on the
+object and when every entry failed to be removed, and a hosted PowerShell 7 runspace no longer
+reports a success with nothing removed. The new NotFoundSIDs property lists the entries that were
+not found.
+Restore-OrphanedSidBackup has a -BackupFile parameter for one object from one named file, writes
+security entries to the log, and finds the backup of a target that is typed with blanks after its
+commas.
+Critical errors have error IDs of their own, such as ActiveDirectoryModuleMissing and
+ConfigurationFileNotLoaded, and a start-up failure ends the command whatever the error action is.
+A -ConfigPath file that is gone when the run starts ends the run. Importing the module fails when
+one of its files does not load.
+A directory server that cannot be contacted no longer costs a connect timeout for every SID. The
+times in the log are text with the offset from UTC on both editions. A log detail that is named
+as a secret is written as [REDACTED]. The module runs under strict mode.
+Automation that matches an error ID, the text of an error, the Success of a removal or the form
+of a time in the log should read the Changed section of CHANGELOG.md first.
 See CHANGELOG.md for every change and the issue behind it.
 '@
             RequireLicenseAcceptance = $false

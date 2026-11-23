@@ -6,6 +6,8 @@ All notable changes to this module are recorded here. Format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-22
+
 ### Added
 
 - `Restore-OrphanedSidBackup` has a `-BackupFile` parameter, which restores one object from one
