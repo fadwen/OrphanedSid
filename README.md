@@ -252,11 +252,15 @@ git rm --cached -r . ; git reset --hard
 
 ## Blog posts
 
-The [OrphanedSid series](https://www.techbyjeff.net/series/orphanedsid/) on techbyjeff.net:
+The [OrphanedSid series](https://www.techbyjeff.net/series/orphanedsid/) on techbyjeff.net follows
+the module from a single script to its Gallery releases. Three posts to start with:
 
-- [OrphanedSid: Find, Remove, Restore](https://www.techbyjeff.net/orphanedsid-find-remove-restore/)
-- [Why Find-UnknownSID Left My Monorepo](https://www.techbyjeff.net/why-find-unknownsid-left-my-monorepo/)
-- [Moving 2,400 Tests From Pester 3.4 to Pester 6](https://www.techbyjeff.net/migrating-2400-tests-from-pester-3-to-6/)
+- [OrphanedSid: Find, Remove, Restore](https://www.techbyjeff.net/orphanedsid-find-remove-restore/):
+  a run against a lab domain, from discovery to restore.
+- [A Failed Lookup Isn't an Orphaned SID](https://www.techbyjeff.net/failed-lookups-arent-orphans/):
+  why a result can be `Unverified`.
+- [Backups That Couldn't Undo the Removal](https://www.techbyjeff.net/backups-that-couldnt-undo-the-removal/):
+  what a backup holds and what a restore puts back.
 
 ## History
 
